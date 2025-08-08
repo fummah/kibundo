@@ -1,0 +1,16 @@
+# Node.js
+node_modules/
+.env
+dist/
+build/
+.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.vscode/
+.DS_Store
+.idea/
+.next/
+out/
+coverage/
+node_modules

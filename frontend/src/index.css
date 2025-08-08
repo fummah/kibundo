@@ -1,0 +1,8 @@
+/* index.css */
+@import "antd/dist/reset.css";
+
+
+/* Then Tailwind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
