@@ -7,11 +7,22 @@ module.exports = (sequelize, DataTypes) => {
     active: { type: DataTypes.BOOLEAN, defaultValue: true },
     metadata: { type: DataTypes.JSONB, defaultValue: {} },
     created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-    updated_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+    updated_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+    created_by: {
+      type: DataTypes.STRING, // updated from TIME to STRING (VARCHAR)
+      allowNull: true
+    }
   }, {
     tableName: 'products',
     timestamps: false
   });
+
+    Product.associate = (models) => {
+        Product.hasMany(models.subscription, {
+    foreignKey: 'plan_id',
+    as: 'product'
+  });
+  };
   return Product;
 };
 

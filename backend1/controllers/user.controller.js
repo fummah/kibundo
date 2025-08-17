@@ -5,6 +5,10 @@ const Student = db.student;
 const Role = db.role;
 const Subject = db.subject;
 const Class = db.class;
+const Parent = db.parent;
+const Product = db.product;
+const Subscription = db.subscription;
+const BlogPost = db.blogpost;
 
 exports.getAllUsers = async (req, res) => {
   try {
@@ -324,6 +328,364 @@ exports.deleteSubject = async (req, res) => {
 
   } catch (error) {
     console.error('Error deleting subject:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.getParentById = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const parent = await Parent.findOne({
+      where: { id },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: { exclude: ['password'] }, // adjust fields
+        }, {
+          model: Student,
+          as: 'student', // Parent → Student
+          include: [
+            {
+              model: User,
+              as: 'user', // Student → User
+              attributes: { exclude: ['password'] }
+            }
+          ]
+        }
+      ]
+    });
+
+    if (!parent) {
+      return res.status(404).json({ message: 'Parent not found' });
+    }
+
+    return res.status(200).json(parent);
+
+  } catch (error) {
+    console.error('Error fetching parent by ID:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.getAllParents = async (req, res) => {
+  try {
+    const parents = await Parent.findAll({
+      attributes: {
+        exclude: []
+      },
+         include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: { exclude: ['password'] }, // adjust fields
+        }
+      ]
+   
+    });
+
+    res.status(200).json(parents);
+  } catch (err) {
+    console.error("Error fetching parents:", err);
+    res.status(500).json({ message: "Failed to get parents" });
+  }
+};
+
+
+exports.addparent = async (req, res) => {
+  try {
+    const { user_id } = req.body;
+const created_by = req.user.id;
+    const newParent = await Parent.create({
+      user_id,
+      created_by,
+    });
+
+    res.status(201).json({ message: "New parent registered", parent: newParent });
+  } catch (err) {
+    console.error("New parent registered error:", err);
+    res.status(500).json({ message: "Server error", error:err });
+  }
+};
+
+exports.deleteParent = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const parent = await Parent.findByPk(id);
+
+    if (!parent) {
+      return res.status(404).json({ message: 'Parent not found' });
+    }
+
+    await parent.destroy();
+
+    return res.status(200).json({ message: 'Parent deleted successfully' });
+
+  } catch (error) {
+    console.error('Error deleting parent:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.addproduct = async (req, res) => {
+  try {
+    const { stripe_product_id, name,description } = req.body;
+const created_by = req.user.id;
+    const newProduct = await Product.create({
+      stripe_product_id, 
+      name,
+      description,
+      created_by,
+    });
+
+    res.status(201).json({ message: "New product registered", product: newProduct });
+  } catch (err) {
+    console.error("New product registered error:", err);
+    res.status(500).json({ message: "Server error", error:err });
+  }
+};
+exports.getAllProducts = async (req, res) => {
+  try {
+    const products = await Product.findAll({
+      attributes: {
+        exclude: []
+      }
+   
+    });
+
+    res.status(200).json(products);
+  } catch (err) {
+    console.error("Error fetching products:", err);
+    res.status(500).json({ message: "Failed to get products" });
+  }
+};
+
+exports.getProductById = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const product = await Product.findOne({
+      where: { id }
+    });
+
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    return res.status(200).json(product);
+
+  } catch (error) {
+    console.error('Error fetching product by ID:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.deleteProduct = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const product = await Product.findByPk(id);
+
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    await product.destroy();
+
+    return res.status(200).json({ message: 'Product deleted successfully' });
+
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
+exports.addsubscription = async (req, res) => {
+  try {
+    const { parent_id, stripe_subscription_id,plan_id } = req.body;
+const created_by = req.user.id;
+    const newSubscription = await Subscription.create({
+      parent_id, 
+      stripe_subscription_id,
+      plan_id,
+      created_by,
+    });
+
+    res.status(201).json({ message: "New subscription registered", subscription: newSubscription });
+  } catch (err) {
+    console.error("New subscription registered error:", err);
+    res.status(500).json({ message: "Server error", error:err });
+  }
+};
+exports.getAllSubscriptions = async (req, res) => {
+  try {
+    const subscriptions = await Subscription.findAll({
+      attributes: {
+        exclude: []
+      },
+      include: [
+        {
+          model: Product,
+          as: "product"
+        },
+          {
+          model: Parent,
+          as: 'parent', // Parent → Student
+          include: [
+            {
+              model: User,
+              as: 'user', // Student → User
+              attributes: { exclude: ['password'] }
+            }
+          ]
+        }
+      ]
+   
+    });
+
+    res.status(200).json(subscriptions);
+  } catch (err) {
+    console.error("Error fetching subscriptions:", err);
+    res.status(500).json({ message: "Failed to get subscriptions" });
+  }
+};
+
+exports.getSubscriptionById = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const subscription = await Subscription.findOne({
+      where: { id },
+       include: [
+        {
+          model: Product,
+          as: "product"
+        },
+        {
+          model: Parent,
+          as: 'parent', // Parent → Student
+          include: [
+            {
+              model: User,
+              as: 'user', // Student → User
+              attributes: { exclude: ['password'] }
+            }
+          ]
+        }
+      ]
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ message: 'Subscription not found' });
+    }
+
+    return res.status(200).json(subscription);
+
+  } catch (error) {
+    console.error('Error fetching subscription by ID:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.deleteSubscription = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const subscription = await Subscription.findByPk(id);
+
+    if (!subscription) {
+      return res.status(404).json({ message: 'Subscription not found' });
+    }
+
+    await subscription.destroy();
+
+    return res.status(200).json({ message: 'Subscription deleted successfully' });
+
+  } catch (error) {
+    console.error('Error deleting subscription:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+ 
+exports.addblogpost = async (req, res) => {
+  try {
+    const { title, body_md,body_html,audience, status,slug, tags, seo, author_id, scheduled_for } = req.body;
+const created_by = req.user.id;
+    const newBlogPost = await BlogPost.create({
+     title, 
+     body_md,
+     body_html,
+     audience, 
+     slug,
+     status, 
+     tags, 
+     seo, 
+     author_id, 
+     scheduled_for,
+      created_by,
+    });
+
+    res.status(201).json({ message: "New blogpost registered", blogpost: newBlogPost });
+  } catch (err) {
+    console.error("New blogpost registered error:", err);
+    res.status(500).json({ message: "Server error", error:err });
+  }
+};
+exports.getAllBlogPosts = async (req, res) => {
+  try {
+    const blogposts = await Subscription.findAll({
+      attributes: {
+        exclude: []
+      }
+   
+    });
+
+    res.status(200).json(blogposts);
+  } catch (err) {
+    console.error("Error fetching blogposts:", err);
+    res.status(500).json({ message: "Failed to get blogposts" });
+  }
+};
+
+exports.getBlogPostById = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const blogpost = await BlogPost.findOne({
+      where: { id }
+    });
+
+    if (!blogpost) {
+      return res.status(404).json({ message: 'BlogPost not found' });
+    }
+
+    return res.status(200).json(blogpost);
+
+  } catch (error) {
+    console.error('Error fetching blogpost by ID:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.deleteBlogPost = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const blogpost = await BlogPost.findByPk(id);
+
+    if (!blogpost) {
+      return res.status(404).json({ message: 'BlogPost not found' });
+    }
+
+    await blogpost.destroy();
+
+    return res.status(200).json({ message: 'BlogPost deleted successfully' });
+
+  } catch (error) {
+    console.error('Error deleting blogpost:', error);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };

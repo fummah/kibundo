@@ -26,7 +26,11 @@ module.exports = (sequelize, DataTypes) => {
     scheduled_for: DataTypes.DATE,
     published_at: DataTypes.DATE,
     created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-    updated_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+    updated_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+    created_by: {
+      type: DataTypes.STRING, // updated from TIME to STRING (VARCHAR)
+      allowNull: true
+    }
   }, {
     tableName: 'blog_posts',
     timestamps: false

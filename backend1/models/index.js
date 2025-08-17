@@ -24,42 +24,42 @@ db.subject = require("./subject.model")(sequelize, DataTypes);
 db.class = require("./class.model")(sequelize, DataTypes);
 
 // New models from your schema
-db.parent = require("./parent")(sequelize, DataTypes);
+db.parent = require("./parent.model")(sequelize, DataTypes);
 
 // Billing
-db.subscription = require("./subscription")(sequelize, DataTypes);
-db.billingEvent = require("./billingevent")(sequelize, DataTypes);
+db.subscription = require("./subscription.model")(sequelize, DataTypes);
+db.billingEvent = require("./billingevent.model")(sequelize, DataTypes);
 
 // Invoicing & Products
-db.invoice = require("./invoice")(sequelize, DataTypes);
-db.product = require("./product")(sequelize, DataTypes);
-db.price = require("./price")(sequelize, DataTypes);
-db.coupon = require("./coupon")(sequelize, DataTypes);
+db.invoice = require("./invoice.model")(sequelize, DataTypes);
+db.product = require("./product.model")(sequelize, DataTypes);
+db.price = require("./price.model")(sequelize, DataTypes);
+db.coupon = require("./coupon.model")(sequelize, DataTypes);
 
 // Newsletter
-db.emailTemplate = require("./emailtemplate")(sequelize, DataTypes);
-db.segment = require("./segment")(sequelize, DataTypes);
-db.campaign = require("./campaign")(sequelize, DataTypes);
-db.emailLog = require("./emaillog")(sequelize, DataTypes);
-db.newsletterOptIn = require("./newsletteroptin")(sequelize, DataTypes);
+db.emailTemplate = require("./emailtemplate.model")(sequelize, DataTypes);
+db.segment = require("./segment.model")(sequelize, DataTypes);
+db.campaign = require("./campaign.model")(sequelize, DataTypes);
+db.emailLog = require("./emaillog.model")(sequelize, DataTypes);
+db.newsletterOptIn = require("./newsletteroptin.model")(sequelize, DataTypes);
 
 // Blog / News
-db.blogPost = require("./blogpost")(sequelize, DataTypes);
+db.blogpost = require("./blogpost.model")(sequelize, DataTypes);
 
 // Academics
-db.curriculum = require("./curriculum")(sequelize, DataTypes);
+db.curriculum = require("./curriculum.model")(sequelize, DataTypes);
 
 // Quizzes
-db.quiz = require("./quiz")(sequelize, DataTypes);
-db.quizItem = require("./quizitem")(sequelize, DataTypes);
+db.quiz = require("./quiz.model")(sequelize, DataTypes);
+db.quizItem = require("./quizitem.model")(sequelize, DataTypes);
 
 // Homework
-db.homeworkScan = require("./homeworkscan")(sequelize, DataTypes);
-db.homeworkScanEvent = require("./homeworkscanevent")(sequelize, DataTypes);
+db.homeworkScan = require("./homeworkscan.model")(sequelize, DataTypes);
+db.homeworkScanEvent = require("./homeworkscanevent.model")(sequelize, DataTypes);
 
 // Agent Admin
-db.agentPromptSet = require("./agentpromptset")(sequelize, DataTypes);
-db.agentTest = require("./agenttest")(sequelize, DataTypes);
+db.agentPromptSet = require("./agentpromptset.model")(sequelize, DataTypes);
+db.agentTest = require("./agenttest.model")(sequelize, DataTypes);
 
 // Load associations if present
 Object.keys(db).forEach(modelName => {

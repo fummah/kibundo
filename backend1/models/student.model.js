@@ -22,6 +22,9 @@ module.exports = (sequelize, DataTypes) => {
     created_by: {
       type: DataTypes.STRING, // updated from TIME to STRING (VARCHAR)
       allowNull: true
+    },
+        parent_id: {
+      type: DataTypes.INTEGER
     }
   }, {
     tableName: 'students',
@@ -39,6 +42,11 @@ module.exports = (sequelize, DataTypes) => {
     foreignKey: 'user_id',
     as: 'user'
   });
+
+     Student.belongsTo(models.parent, {
+      foreignKey: 'parent_id',
+      as: 'parent'
+    });
 
   };
   

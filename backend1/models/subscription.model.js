@@ -32,10 +32,34 @@ module.exports = (sequelize, DataTypes) => {
     updated_at: { 
         type: DataTypes.DATE, 
         defaultValue: DataTypes.NOW 
+    },
+    created_by: {
+      type: DataTypes.STRING, // updated from TIME to STRING (VARCHAR)
+      allowNull: true
     }
   }, {
     tableName: 'subscriptions',
     timestamps: false
   });
+
+    Subscription.associate = (models) => {
+    Subscription.belongsTo(models.product, {
+      foreignKey: 'plan_id',
+      as: 'product'
+    });
+  };
+
+      Subscription.associate = (models) => {
+
+    Subscription.belongsTo(models.product, {
+      foreignKey: 'plan_id',
+      as: 'product'
+    });
+       Subscription.belongsTo(models.parent, {
+      foreignKey: 'parent_id',
+      as: 'parent'
+    });
+
+  };
   return Subscription;
 };
