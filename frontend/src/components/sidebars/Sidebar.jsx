@@ -1,125 +1,165 @@
 import { useState, useEffect } from "react";
-import { useLocation, Link, useParams } from "react-router-dom";
+import { useLocation, Link } from "react-router-dom";
 import {
-  LayoutDashboard,
-  UserPlus,
-  UserCheck,
-  GraduationCap,
-  FileText,
-  Database,
-  BookOpen,
-  BarChart2,
-  ClipboardList,
-  Users,
-  ShieldCheck,
-  Settings,
-  Search,
-} from "lucide-react";
-import {
+  DashboardOutlined,
+  TeamOutlined,
+  ReadOutlined,
+  FileTextOutlined,
+  ExperimentOutlined,
+  ProjectOutlined,
+  RobotOutlined,
+  BookOutlined,
+  FileSearchOutlined,
   BarChartOutlined,
   LineChartOutlined,
-  RiseOutlined,
-  TeamOutlined,
+  ReconciliationOutlined,
+  TagsOutlined,
+  FileProtectOutlined,
+  ContainerOutlined,
+  ProfileOutlined,
+  SnippetsOutlined,
+  SettingOutlined,
+  SafetyCertificateOutlined,
+  SearchOutlined,
+  DatabaseOutlined,
 } from "@ant-design/icons";
-import { useAuthContext } from "../../context/AuthContext";
+import { useAuthContext } from "@/context/AuthContext";
 
+/**
+ * Props:
+ * - menuOpen?: boolean
+ * - setMenuOpen?: (open:boolean)=>void
+ */
 export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
   const location = useLocation();
   const { user } = useAuthContext();
-  const { schoolSlug } = useParams();
-  const slug = schoolSlug || "default-school";
+  const roleId = user?.role_id;
 
   const [searchTerm, setSearchTerm] = useState("");
   const [openSubmenu, setOpenSubmenu] = useState(null);
 
-  const roleId = user?.role_id;
+  /** Menus aligned to AdminRoutes.jsx (with Philosophy & Database) */
+  const adminMenu = [
+    {
+      label: "Dashboards",
+      icon: DashboardOutlined,
+      children: [
+        { href: "/admin/dashboard", label: "Admin Dashboard", icon: DashboardOutlined },
+        { href: "/admin/analytics", label: "Analytics", icon: BarChartOutlined },
+        { href: "/admin/statistics", label: "Statistics", icon: LineChartOutlined },
+      ],
+    },
 
+    {
+      label: "User Management",
+      icon: TeamOutlined,
+      children: [
+        { href: "/admin/parents", label: "Parents", icon: TeamOutlined },
+        { href: "/admin/students", label: "Students", icon: TeamOutlined },
+        { href: "/admin/teachers", label: "Teachers", icon: TeamOutlined },
+      ],
+    },
+
+    {
+      label: "Academics",
+      icon: ReadOutlined,
+      children: [
+        { href: "/admin/academics", label: "Overview", icon: ReadOutlined },
+        { href: "/admin/academics/curricula", label: "Curricula", icon: ReadOutlined },
+        { href: "/admin/academics/worksheet", label: "Worksheet", icon: FileTextOutlined },
+        { href: "/admin/academics/quiz", label: "Quiz", icon: ExperimentOutlined },
+        { href: "/admin/academics/game", label: "Game", icon: ProjectOutlined },
+        { href: "/admin/academics/ai-agent", label: "AI Agent", icon: RobotOutlined },
+        { href: "/admin/academics/subjects", label: "Subjects", icon: BookOutlined },
+        { href: "/admin/academics/subjects/new", label: "New Subject", icon: BookOutlined },
+      ],
+    },
+
+    {
+      label: "Homework / Scans",
+      icon: FileSearchOutlined,
+      children: [
+        { href: "/admin/scans", label: "Overview", icon: FileSearchOutlined },
+        { href: "/admin/scans/ocr", label: "OCR Workspace", icon: FileSearchOutlined },
+      ],
+    },
+
+    {
+      label: "Reports",
+      icon: BarChartOutlined,
+      children: [
+        { href: "/admin/reports", label: "Overview", icon: BarChartOutlined },
+        { href: "/admin/reports/generate", label: "Generate", icon: FileTextOutlined },
+      ],
+    },
+
+    {
+      label: "Billing",
+      icon: ReconciliationOutlined,
+      children: [
+        { href: "/admin/billing", label: "Overview", icon: ReconciliationOutlined },
+        { href: "/admin/billing/product", label: "Product", icon: TagsOutlined },
+        { href: "/admin/billing/contract", label: "Contract", icon: FileProtectOutlined },
+      ],
+    },
+
+    {
+      label: "Content",
+      icon: ContainerOutlined,
+      children: [
+        { href: "/admin/content", label: "Overview", icon: ContainerOutlined },
+        { href: "/admin/content/publish", label: "Publish Post", icon: ProfileOutlined },
+      ],
+    },
+
+    {
+      label: "Work",
+      icon: ProjectOutlined,
+      children: [
+        { href: "/admin/tickets", label: "Tickets", icon: SnippetsOutlined },
+        { href: "/admin/tasks", label: "Tasks", icon: ProjectOutlined },
+      ],
+    },
+
+    {
+      label: "Admin",
+      icon: SettingOutlined,
+      children: [
+        { href: "/admin/roles", label: "Roles", icon: SafetyCertificateOutlined },
+        { href: "/admin/settings", label: "Settings", icon: SettingOutlined },
+      ],
+    },
+
+    /** NEW groups */
+    {
+      label: "Database",
+      icon: DatabaseOutlined,
+      children: [
+        { href: "/admin/database", label: "Overview", icon: DatabaseOutlined },
+        { href: "/admin/database/management", label: "Database Management", icon: ContainerOutlined },
+      ],
+    },
+
+    {
+      label: "Philosophy",
+      icon: BookOutlined,
+      children: [
+        { href: "/admin/philosophy", label: "Educational Philosophy", icon: BookOutlined },
+      ],
+    },
+  ];
+
+  /** Minimal menus for other roles */
   const menuItemsByRole = {
-    // 👑 Admin
-    1: [
-      { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      {
-        label: "User Management",
-        icon: Users,
-        children: [
-          { href: "/admin/student-enrolment", label: "Student Enrolment", icon: GraduationCap },
-          { href: "/admin/teacher-enrolment", label: "Teacher Enrolment", icon: UserCheck },
-          { href: "/admin/roles", label: "Roles & Permissions", icon: ShieldCheck },
-        ],
-      },
-      {
-        label: "Reports",
-        icon: BarChart2,
-        children: [
-          { href: "/admin/reports", label: "Reports", icon: BarChart2 },
-          { href: "/admin/generate-reports", label: "Generate Reports", icon: BarChart2 },
-        ],
-      },
-      {
-        label: "Analysis",
-        icon: BarChart2,
-        children: [
-          { href: "/admin/analytics-dashboard", label: "Analytics Dashboard", icon: BarChartOutlined },
-          { href: "/admin/statistics", label: "Statistics", icon: LineChartOutlined },
-          { href: "/admin/analytics", label: "Analytics", icon: RiseOutlined },
-        ],
-      },
-      {
-        label: "School Management",
-        icon: TeamOutlined,
-        children: [
-          { href: "/admin/schools", label: "Select or Add School", icon: Search },
-          { href: `/admin/schools/${slug}/dashboard`, label: "Overview", icon: LayoutDashboard },
-          { href: `/admin/schools/${slug}/teachers`, label: "Teachers", icon: UserCheck },
-          { href: `/admin/schools/${slug}/students`, label: "Students", icon: GraduationCap },
-          { href: `/admin/schools/${slug}/reports`, label: "Reports", icon: BarChart2 },
-          { href: `/admin/schools/${slug}/settings`, label: "Settings", icon: Settings },
-        ],
-      },
-      {
-        label: "Academics",
-        icon: BookOpen,
-        children: [
-          { href: "/admin/subjects", label: "Subjects", icon: BookOpen },
-          { href: "/admin/assignments", label: "Assignments", icon: ClipboardList },
-        ],
-      },
-      { href: "/admin/contracts", label: "Contracts", icon: FileText },
-      { href: "/admin/database", label: "Database", icon: Database },
-      { href: "/admin/philosophy", label: "Philosophy", icon: BookOpen },
-      { href: "/admin/settings", label: "Settings", icon: Settings },
-    ],
-
-    // 👨‍🏫 Teacher
-    2: [
-      { href: "/teacher/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/teacher/students", label: "My Students", icon: GraduationCap },
-      { href: "/teacher/assignments", label: "Assignments", icon: ClipboardList },
-      { href: "/teacher/subjects", label: "Subjects", icon: BookOpen },
-      { href: "/teacher/reports", label: "Reports", icon: BarChart2 },
-      { href: "/teacher/settings", label: "Settings", icon: Settings },
-    ],
-
-    // 👩‍🎓 Student
-    3: [
-      { href: "/student/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/student/assignments", label: "Assignments", icon: ClipboardList },
-      { href: "/student/subjects", label: "Subjects", icon: BookOpen },
-      { href: "/student/grades", label: "Grades", icon: BarChart2 },
-      { href: "/student/settings", label: "Settings", icon: Settings },
-    ],
-
-    // 👨‍👩‍👧‍👦 Parent
-    4: [
-      { href: "/parent/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/parent/children", label: "Children", icon: Users },
-      { href: "/parent/progress", label: "Progress Reports", icon: BarChart2 },
-      { href: "/parent/settings", label: "Settings", icon: Settings },
-    ],
+    1: adminMenu, // Admin
+    2: [{ href: "/teacher", label: "Dashboard", icon: DashboardOutlined }],
+    3: [{ href: "/student", label: "Dashboard", icon: DashboardOutlined }],
+    4: [{ href: "/parent", label: "Dashboard", icon: DashboardOutlined }],
   };
 
   const menuItems = menuItemsByRole[roleId] || [];
 
+  // Auto-open active submenu on route change
   useEffect(() => {
     const currentPath = location.pathname;
     menuItems.forEach((item, index) => {
@@ -127,20 +167,20 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
         setOpenSubmenu(index);
       }
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
   const filterMenuItems = (items) => {
     const term = searchTerm.trim().toLowerCase();
+    if (!term) return items;
+
     return items
       .map((item) => {
         if (item.children) {
-          const filteredChildren = item.children.filter((child) =>
-            child.label.toLowerCase().includes(term)
-          );
-          return filteredChildren.length > 0 ? { ...item, children: filteredChildren } : null;
-        } else {
-          return item.label.toLowerCase().includes(term) ? item : null;
+          const children = item.children.filter((c) => c.label.toLowerCase().includes(term));
+          return children.length ? { ...item, children } : null;
         }
+        return item.label.toLowerCase().includes(term) ? item : null;
       })
       .filter(Boolean);
   };
@@ -162,12 +202,13 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
         } md:translate-x-0`}
       >
         <div className="flex flex-col h-full">
+          {/* Search */}
           <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-20 bg-white dark:bg-gray-900">
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <SearchOutlined className="absolute left-3 top-2.5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search menu..."
+                placeholder="Search menu…"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -175,10 +216,12 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
             </div>
           </div>
 
+          {/* Menu */}
           <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6 space-y-1">
             {filteredItems.map((item, index) => {
               const hasChildren = Array.isArray(item.children);
               const isSubmenuOpen = openSubmenu === index;
+              const Icon = item.icon;
 
               return (
                 <div key={index}>
@@ -193,7 +236,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
                         }`}
                       >
                         <span className="flex items-center gap-3">
-                          <item.icon className="w-5 h-5" />
+                          <Icon />
                           {item.label}
                         </span>
                         <svg
@@ -206,9 +249,11 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
                           <path fillRule="evenodd" d="M6 6l6 4-6 4V6z" clipRule="evenodd" />
                         </svg>
                       </button>
+
                       {isSubmenuOpen && (
                         <div className="ml-5 mt-1 space-y-1">
                           {item.children.map((child, subIdx) => {
+                            const ChildIcon = child.icon;
                             const isChildActive = currentPath === child.href;
                             return (
                               <Link
@@ -221,7 +266,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
                                     : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                                 }`}
                               >
-                                <child.icon className="w-4 h-4" />
+                                <ChildIcon />
                                 <span>{child.label}</span>
                               </Link>
                             );
@@ -239,7 +284,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
                           : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
                       }`}
                     >
-                      <item.icon className="w-5 h-5" />
+                      <Icon />
                       <span>{item.label}</span>
                     </Link>
                   )}

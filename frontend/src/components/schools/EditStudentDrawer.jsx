@@ -10,6 +10,7 @@ import {
   message,
   Spin,
 } from "antd";
+
 import api from "../../api/axios";
 
 const { Option } = Select;
@@ -18,68 +19,38 @@ export default function EditStudentDrawer({
   open,
   onCancel,
   student,
-  onSave,
+  onSave, // must return axios response
 }) {
   const [form] = Form.useForm();
   const [statusOptions, setStatusOptions] = useState([]);
-  const [subjectOptions, setSubjectOptions] = useState([]);
-  const [gradeOptions, setGradeOptions] = useState([]);
   const [loadingStatus, setLoadingStatus] = useState(false);
-  const [loadingSubjects, setLoadingSubjects] = useState(false);
-  const [loadingGrades, setLoadingGrades] = useState(false);
 
   const fetchStatusOptions = async () => {
     setLoadingStatus(true);
     try {
-      const res = await api.get("/student-status-options");
+      //const res = await api.get("/student-status-options"); // ✅ Your endpoint for status list
       setStatusOptions(res.data || []);
     } catch (err) {
+      console.error("Failed to fetch statuses:", err);
       message.error("Could not load status options");
     } finally {
       setLoadingStatus(false);
     }
   };
 
-  const fetchSubjectOptions = async () => {
-    setLoadingSubjects(true);
-    try {
-      const res = await api.get("/allsubjects");
-      setSubjectOptions(res.data || []);
-    } catch (err) {
-      message.error("Could not load subjects");
-    } finally {
-      setLoadingSubjects(false);
-    }
-  };
-
-  const fetchGradeOptions = async () => {
-    setLoadingGrades(true);
-    try {
-      const res = await api.get("/allclasses");
-      setGradeOptions(res.data || []);
-    } catch (err) {
-      message.error("Could not load grades");
-    } finally {
-      setLoadingGrades(false);
-    }
-  };
-
   useEffect(() => {
     if (open) {
       fetchStatusOptions();
-      fetchSubjectOptions();
-      fetchGradeOptions();
     }
   }, [open]);
 
   useEffect(() => {
     if (student) {
       form.setFieldsValue({
-        firstName: student.firstName,
-        lastName: student.lastName,
+        name: student.name,
         email: student.email,
         phone: student.phone,
-        grade: student.class_name,
+        grade: student.grade,
         subjects: student.subjects,
         status: student.status,
       });
@@ -89,20 +60,26 @@ export default function EditStudentDrawer({
   }, [student, form]);
 
   const handleSubmit = () => {
-    form.validateFields().then(async (values) => {
-      try {
-        const res = await onSave?.(values);
-        if (res?.status === 200) {
-          message.success("Student updated successfully");
-          onCancel();
-        } else {
-          message.error(res?.data?.message || "Failed to update student.");
+    form
+      .validateFields()
+      .then(async (values) => {
+        try {
+          const res = await onSave?.(values); // expects response object
+
+          if (res?.status === 200) {
+            message.success("Student updated successfully");
+            onCancel();
+          } else {
+            message.error(res?.data?.message || "Failed to update student.");
+          }
+        } catch (err) {
+          console.error("Update error:", err);
+          message.error("Failed to update student.");
         }
-      } catch (err) {
-        console.error("Update error:", err);
-        message.error("Failed to update student.");
-      }
-    });
+      })
+      .catch(() => {
+        message.error("Please fill all required fields");
+      });
   };
 
   return (
@@ -122,25 +99,17 @@ export default function EditStudentDrawer({
     >
       <Form layout="vertical" form={form}>
         <Form.Item
-          label="First Name"
-          name="firstName"
-          rules={[{ required: true, message: "First name is required" }]}
+          label="Name"
+          name="name"
+          rules={[{ required: true, message: "Name is required" }]}
         >
-          <Input placeholder="Enter first name" />
-        </Form.Item>
-
-        <Form.Item
-          label="Last Name"
-          name="lastName"
-          rules={[{ required: true, message: "Last name is required" }]}
-        >
-          <Input placeholder="Enter last name" />
+          <Input placeholder="Enter name" />
         </Form.Item>
 
         <Form.Item
           label="Email"
           name="email"
-          rules={[{ type: "email", required: true, message: "Valid email required" }]}
+          rules={[{ type: "email", required: true, message: "Email required" }]}
         >
           <Input placeholder="Enter email" />
         </Form.Item>
@@ -148,7 +117,7 @@ export default function EditStudentDrawer({
         <Form.Item
           label="Phone"
           name="phone"
-          rules={[{ required: true, message: "Phone number is required" }]}
+          rules={[{ required: true, message: "Phone is required" }]}
         >
           <Input placeholder="Enter phone number" />
         </Form.Item>
@@ -158,17 +127,11 @@ export default function EditStudentDrawer({
           name="grade"
           rules={[{ required: true, message: "Grade is required" }]}
         >
-          {loadingGrades ? (
-            <Spin />
-          ) : (
-            <Select placeholder="Select grade">
-              {gradeOptions.map((grade) => (
-                <Option key={grade.id} value={grade.class_name}>
-                  {grade.class_name}
-                </Option>
-              ))}
-            </Select>
-          )}
+          <Select placeholder="Select grade">
+            <Option value="Grade 4">Grade 4</Option>
+            <Option value="Grade 5">Grade 5</Option>
+            <Option value="Grade 6">Grade 6</Option>
+          </Select>
         </Form.Item>
 
         <Form.Item
@@ -176,17 +139,12 @@ export default function EditStudentDrawer({
           name="subjects"
           rules={[{ required: true, message: "At least one subject required" }]}
         >
-          {loadingSubjects ? (
-            <Spin />
-          ) : (
-            <Select mode="tags" placeholder="Select subjects">
-              {subjectOptions.map((subject) => (
-                <Option key={subject.id} value={subject.subject_name}>
-                  {subject.subject_name}
-                </Option>
-              ))}
-            </Select>
-          )}
+          <Select mode="tags" placeholder="Select subjects">
+            <Option value="Math">Math</Option>
+            <Option value="English">English</Option>
+            <Option value="Science">Science</Option>
+            <Option value="Life Skills">Life Skills</Option>
+          </Select>
         </Form.Item>
 
         <Form.Item

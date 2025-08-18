@@ -1,44 +1,78 @@
+// src/routes/AdminRoutes.jsx
 import { Route } from "react-router-dom";
-import ProtectedRoute from "../components/ProtectedRoute";
-import GlobalLayout from "../components/layouts/GlobalLayout";
+import ProtectedRoute from "@/components/ProtectedRoute.jsx";
+import GlobalLayout from "@/components/layouts/GlobalLayout.jsx";
 
-// 🏠 Admin Dashboard
-import Dashboard from "../pages/admin/Dashboard";
+// Dashboards
+import AdminDashboard from "@/pages/admin/AdminDashboard.jsx";
+import AnalyticsDashboard from "@/pages/analytics/AnalyticsDashboard.jsx";
+import StatisticsDashboard from "@/pages/statistics/StatisticsDashboard.jsx";
 
-// 📊 Core Insights
-import AnalyticsDashboard from "../pages/admin/AnalyticsDashboard";
-import StatisticsDashboard from "../pages/admin/StatisticsDashboard";
-import AnalyticsPage from "../pages/admin/AnalyticsPage";
-import GenerateReports from "../pages/admin/GenerateReports";
-import Reports from "../pages/admin/Reports";
-import ReportsSummary from "../pages/admin/ReportsSummary";
+// Reports
+import ReportsOverview from "@/pages/reports/ReportsOverview.jsx";
+import GenerateReports from "@/pages/reports/GenerateReports.jsx";
 
-// 🏫 School Dashboard Pages
-import SchoolLayout from "../pages/admin/school/SchoolLayout";
-import SchoolSelector from "../pages/admin/school/SchoolSelector";
-import SchoolDashboard from "../pages/admin/school/SchoolDashboard";
-import SchoolTeachers from "../pages/admin/school/SchoolTeachers";
-import SchoolStudents from "../pages/admin/school/SchoolStudents";
-import SchoolReports from "../pages/admin/school/SchoolReports";
-import SchoolSettings from "../pages/admin/school/SchoolSettings";
+// Billing
+import BillingOverview from "@/pages/billing/BillingOverview.jsx";
+import Product from "@/pages/billing/Product.jsx";
+import Contract from "@/pages/billing/Contract.jsx";
 
-// 👥 User Management
-import Users from "../pages/admin/Users";
-import Roles from "../pages/admin/Roles";
-import NewApplicants from "../pages/admin/NewApplicants";
-import StudentEnrolment from "../pages/admin/StudentEnrolment";
-import TeacherEnrolment from "../pages/admin/TeacherEnrolment";
+// Content
+import ContentOverview from "@/pages/content/ContentOverview.jsx";
+import PublishBlogPost from "@/pages/content/PublishBlogPost.jsx";
 
-// 📘 Academic Tools
-import Subjects from "../pages/admin/Subjects";
-import Assignments from "../pages/admin/Assignments";
+// Academics
+import AcademicsOverview from "@/pages/academics/AcademicsOverview.jsx";
+import Game from "@/pages/academics/Game.jsx";
+import Quiz from "@/pages/academics/Quiz.jsx";
+import Curricula from "@/pages/academics/Curricula.jsx";
+import Worksheet from "@/pages/academics/Worksheet.jsx";
+import AIAgent from "@/pages/academics/AIAgent.jsx";
 
-// 🛠️ Admin Tools
-import Database from "../pages/admin/Database";
-import Philosophy from "../pages/admin/Philosophy";
-import Contracts from "../pages/admin/Contracts";
-import Tickets from "../pages/admin/Tickets";
-import Settings from "../pages/admin/Settings";
+// Subjects (under Academics)
+import SubjectsList from "@/pages/academics/subjects/SubjectsList.jsx";
+import SubjectForm from "@/pages/academics/subjects/SubjectForm.jsx";
+import SubjectDetail from "@/pages/academics/subjects/SubjectDetail.jsx";
+
+// OCR / Scans
+import ScansOverview from "@/pages/ocr/ScansOverview.jsx";
+import OCRWorkspace from "@/pages/ocr/OCRWorkspace.jsx";
+
+// Parents
+import ParentsList from "@/pages/parents/ParentsList.jsx";
+import ParentForm from "@/pages/parents/ParentForm.jsx";
+import ParentDetail from "@/pages/parents/ParentDetail.jsx";
+
+// Teachers
+import TeachersList from "@/pages/teachers/TeachersList.jsx";
+import TeacherForm from "@/pages/teachers/TeacherForm.jsx";
+import TeacherDetail from "@/pages/teachers/TeacherDetail.jsx";
+
+// Students
+import StudentsList from "@/pages/students/StudentsList.jsx";
+import StudentForm from "@/pages/students/StudentForm.jsx";
+import StudentDetail from "@/pages/students/StudentDetail.jsx";
+
+// Settings & Roles
+import SettingsOverview from "@/pages/settings/SettingsOverview.jsx";
+import RolesList from "@/pages/roles/RolesList.jsx";
+import RoleDetail from "@/pages/roles/RoleDetail.jsx";
+import RoleForm from "@/pages/roles/RoleForm.jsx";
+
+// Tickets
+import TicketsList from "@/pages/tickets/TicketsList.jsx";
+import TicketDetail from "@/pages/tickets/TicketDetail.jsx";
+import TicketForm from "@/pages/tickets/TicketForm.jsx";
+
+// Tasks
+import TasksList from "@/pages/tasks/TasksList.jsx";
+import TaskDetail from "@/pages/tasks/TaskDetail.jsx";
+import TaskForm from "@/pages/tasks/TaskForm.jsx";
+
+/** NEW: Philosophy & Database */
+import PhilosophyOverview from "@/pages/philosophy/PhilosophyOverview.jsx";
+import DatabaseOverview from "@/pages/database/DatabaseOverview.jsx";
+import DatabaseManagement from "@/pages/database/DatabaseManagement.jsx";
 
 export default function AdminRoutes() {
   return (
@@ -50,48 +84,115 @@ export default function AdminRoutes() {
         </ProtectedRoute>
       }
     >
-      {/* 🏠 Dashboard */}
-      <Route index element={<Dashboard />} />
-      <Route path="dashboard" element={<Dashboard />} />
-
-      {/* 📊 Core Insights */}
-      <Route path="analytics-dashboard" element={<AnalyticsDashboard />} />
+      {/* Dashboards */}
+      <Route index element={<AdminDashboard />} />
+      <Route path="dashboard" element={<AdminDashboard />} />
+      <Route path="analytics" element={<AnalyticsDashboard />} />
       <Route path="statistics" element={<StatisticsDashboard />} />
-      <Route path="analytics" element={<AnalyticsPage />} />
-      <Route path="generate-reports" element={<GenerateReports />} />
-      <Route path="reports" element={<Reports />} />
-      <Route path="reports-summary" element={<ReportsSummary />} />
 
-      {/* 🏫 School Management */}
-      <Route path="schools">
-        <Route index element={<SchoolSelector />} />
-        <Route path=":schoolSlug" element={<SchoolLayout />}>
-          <Route index element={<SchoolDashboard />} />
-          <Route path="dashboard" element={<SchoolDashboard />} />
-          <Route path="teachers" element={<SchoolTeachers />} />
-          <Route path="students" element={<SchoolStudents />} />
-          <Route path="reports" element={<SchoolReports />} />
-          <Route path="settings" element={<SchoolSettings />} />
+      {/* Reports */}
+      <Route path="reports">
+        <Route index element={<ReportsOverview />} />
+        <Route path="generate" element={<GenerateReports />} />
+      </Route>
+
+      {/* Billing */}
+      <Route path="billing">
+        <Route index element={<BillingOverview />} />
+        <Route path="product" element={<Product />} />
+        <Route path="contract" element={<Contract />} />
+      </Route>
+
+      {/* Content */}
+      <Route path="content">
+        <Route index element={<ContentOverview />} />
+        <Route path="publish" element={<PublishBlogPost />} />
+      </Route>
+
+      {/* Academics */}
+      <Route path="academics">
+        <Route index element={<AcademicsOverview />} />
+        <Route path="curricula" element={<Curricula />} />
+        <Route path="worksheet" element={<Worksheet />} />
+        <Route path="quiz" element={<Quiz />} />
+        <Route path="game" element={<Game />} />
+        <Route path="ai-agent" element={<AIAgent />} />
+        {/* Subjects */}
+        <Route path="subjects">
+          <Route index element={<SubjectsList />} />
+          <Route path="new" element={<SubjectForm />} />
+          <Route path=":id" element={<SubjectDetail />} />
+          <Route path=":id/edit" element={<SubjectForm />} />
         </Route>
       </Route>
 
-      {/* 👥 User Management */}
-      <Route path="users" element={<Users />} />
-      <Route path="roles" element={<Roles />} />
-      <Route path="new-applicants" element={<NewApplicants />} />
-      <Route path="student-enrolment" element={<StudentEnrolment />} />
-      <Route path="teacher-enrolment" element={<TeacherEnrolment />} />
+      {/* OCR / Scans */}
+      <Route path="scans">
+        <Route index element={<ScansOverview />} />
+        <Route path="ocr" element={<OCRWorkspace />} />
+      </Route>
 
-      {/* 📘 Academic Tools */}
-      <Route path="subjects" element={<Subjects />} />
-      <Route path="assignments" element={<Assignments />} />
+      {/* Parents */}
+      <Route path="parents">
+        <Route index element={<ParentsList />} />
+        <Route path="new" element={<ParentForm />} />
+        <Route path=":id" element={<ParentDetail />} />
+        <Route path=":id/edit" element={<ParentForm />} />
+      </Route>
 
-      {/* 🛠️ Configuration */}
-      <Route path="database" element={<Database />} />
-      <Route path="philosophy" element={<Philosophy />} />
-      <Route path="contracts" element={<Contracts />} />
-      <Route path="tickets" element={<Tickets />} />
-      <Route path="settings" element={<Settings />} />
+      {/* Teachers */}
+      <Route path="teachers">
+        <Route index element={<TeachersList />} />
+        <Route path="new" element={<TeacherForm />} />
+        <Route path=":id" element={<TeacherDetail />} />
+        <Route path=":id/edit" element={<TeacherForm />} />
+      </Route>
+
+      {/* Students */}
+      <Route path="students">
+        <Route index element={<StudentsList />} />
+        <Route path="new" element={<StudentForm />} />
+        <Route path=":id" element={<StudentDetail />} />
+        <Route path=":id/edit" element={<StudentForm />} />
+      </Route>
+
+      {/* Tickets */}
+      <Route path="tickets">
+        <Route index element={<TicketsList />} />
+        <Route path="new" element={<TicketForm />} />
+        <Route path=":id" element={<TicketDetail />} />
+        <Route path=":id/edit" element={<TicketForm />} />
+      </Route>
+
+      {/* Tasks */}
+      <Route path="tasks">
+        <Route index element={<TasksList />} />
+        <Route path="new" element={<TaskForm />} />
+        <Route path=":id" element={<TaskDetail />} />
+        <Route path=":id/edit" element={<TaskForm />} />
+      </Route>
+
+      {/* Settings */}
+      <Route path="settings" index element={<SettingsOverview />} />
+
+      {/* Roles */}
+      <Route path="roles">
+        <Route index element={<RolesList />} />
+        <Route path="new" element={<RoleForm />} />
+        <Route path=":id" element={<RoleDetail />} />
+        <Route path=":id/edit" element={<RoleForm />} />
+      </Route>
+
+      {/* NEW: Philosophy */}
+      <Route path="philosophy">
+        <Route index element={<PhilosophyOverview />} />
+      </Route>
+
+      {/* NEW: Database */}
+      <Route path="database">
+        <Route index element={<DatabaseOverview />} />
+        <Route path="management" element={<DatabaseManagement />} />
+      </Route>
     </Route>
   );
 }

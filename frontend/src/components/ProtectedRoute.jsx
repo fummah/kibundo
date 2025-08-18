@@ -1,21 +1,18 @@
 // src/components/ProtectedRoute.jsx
 import { Navigate, Outlet } from "react-router-dom";
-import { useAuthContext } from "../context/AuthContext";
+import { useAuthContext } from "@/context/AuthContext"; // keep the alias here too
 
-export default function ProtectedRoute({ allowedRoles, children }) {
+export default function ProtectedRoute({ allowedRoles = [], children }) {
   const { isAuthenticated, user } = useAuthContext();
   const role = user?.role_id;
 
-  // 🔐 Not logged in
-  if (!isAuthenticated || !user) {
-    return <Navigate to="/signin" replace />;
+  // not logged in
+  if (!isAuthenticated || !user) return <Navigate to="/signin" replace />;
+
+  // role not permitted
+  if (allowedRoles.length && !allowedRoles.includes(role)) {
+    return <Navigate to="/unauthorized" replace />;
   }
 
-  // 🚫 Role not permitted
-  if (!allowedRoles.includes(role)) {
-    return <Navigate to="/" replace />;
-  }
-
-  // ✅ Access granted
   return children || <Outlet />;
 }
