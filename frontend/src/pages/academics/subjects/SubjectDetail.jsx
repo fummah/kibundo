@@ -1,195 +1,95 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { Card, Descriptions, Space, Typography, Button, Spin, message, Tag } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  Card,
-  Typography,
-  Button,
-  Space,
-  Modal,
-  Select,
-  Popconfirm,
-  Skeleton,
-  Descriptions,
-  Grid,
-} from "antd";
-import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
+import { EditOutlined, ArrowLeftOutlined, UserSwitchOutlined } from "@ant-design/icons";
+import api from "@/api/axios";
 
-import PageHeader from "@/components/PageHeader.jsx";
-import FluidTable from "@/components/FluidTable.jsx";
-import { SafeText, SafeDate } from "@/utils/safe";
-
-import {
-  getSubject,
-  listSubjectQuizzes,
-  listQuizzes,
-  linkQuizToSubject,
-  unlinkQuizFromSubject,
-} from "@/pages/academics/_api";
-
-const { Title } = Typography;
-const { useBreakpoint } = Grid;
+const fmt = (d) => (d ? new Date(d).toLocaleString() : "—");
 
 export default function SubjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const screens = useBreakpoint();
 
   const [subject, setSubject] = useState(null);
-  const [quizzes, setQuizzes] = useState([]);
-  const [allQuizzes, setAllQuizzes] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [assigned, setAssigned] = useState({ teachers: [], students: [] });
   const [loading, setLoading] = useState(true);
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [selectedQuiz, setSelectedQuiz] = useState(null);
+  const classLabel = (cls) =>
+    cls?.name || cls?.class_name || cls?.title || (cls?.id ? `Class #${cls.id}` : "—");
 
-  // QUIET load subject + quizzes: swallow errors, show blanks
+  const classNameFromId = (cid) => {
+    const cls = classes.find((c) => String(c.id) === String(cid));
+    return classLabel(cls);
+  };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [{ data: subj }, { data: cls }, { data: asg }] = await Promise.all([
+        api.get(`/subject/${id}`),
+        api.get("/allclasses"),
+        api.get(`/subject/${id}/assignments`),
+      ]);
+      setSubject(subj);
+      setClasses(Array.isArray(cls) ? cls : []);
+      setAssigned({ teachers: asg?.teachers ?? [], students: asg?.students ?? [] });
+    } catch {
+      message.error("Failed to load subject.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        setLoading(true);
-        const subj = await getSubject(id).catch(() => null);
-        if (!mounted) return;
-        setSubject(subj);
-
-        const subjQuizzes = await listSubjectQuizzes(id).catch(() => []);
-        if (!mounted) return;
-        setQuizzes(Array.isArray(subjQuizzes) ? subjQuizzes : []);
-
-        const all = await listQuizzes().catch(() => []);
-        if (!mounted) return;
-        setAllQuizzes(Array.isArray(all) ? all : []);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-    return () => { mounted = false; };
+    load();
   }, [id]);
 
-  const availableQuizzes = useMemo(() => {
-    const linkedIds = new Set((quizzes || []).map((q) => q.id));
-    return (allQuizzes || []).filter((q) => !linkedIds.has(q.id));
-  }, [allQuizzes, quizzes]);
-
-  const handleAddQuiz = async () => {
-    if (!selectedQuiz) return;
-    try {
-      await linkQuizToSubject(id, selectedQuiz);
-      const subjQuizzes = await listSubjectQuizzes(id).catch(() => []);
-      setQuizzes(Array.isArray(subjQuizzes) ? subjQuizzes : []);
-    } finally {
-      setModalOpen(false);
-      setSelectedQuiz(null);
-    }
-  };
-
-  const handleRemoveQuiz = async (quizId) => {
-    try {
-      await unlinkQuizFromSubject(id, quizId);
-      setQuizzes((prev) => prev.filter((q) => q.id !== quizId));
-    } catch {
-      // keep quiet
-    }
-  };
-
-  const columns = useMemo(
-    () => [
-      { title: "Quiz Title", dataIndex: "title", key: "title", render: (v) => <SafeText value={v} /> },
-      {
-        title: "Actions",
-        key: "actions",
-        width: 100,
-        render: (_, record) => (
-          <Popconfirm title="Remove this quiz?" onConfirm={() => handleRemoveQuiz(record.id)}>
-            <Button danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        ),
-      },
-    ],
-    []
-  );
+  if (loading) return <Spin />;
+  if (!subject) return null;
 
   return (
-    <div className="flex flex-col min-h-0">
-      <PageHeader
-        title="Subject"
-        subtitle="Manage quiz links for this subject."
-        extra={
-          <Space wrap>
-            <Button onClick={() => navigate(-1)}>Back</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-              Add Quiz
-            </Button>
-          </Space>
-        }
-      />
-
-      <div className="p-3 md:p-4">
-        {loading ? (
-          <Skeleton active />
-        ) : (
-          <Space direction="vertical" style={{ width: "100%" }} size="large">
-            <Card>
-              <Descriptions bordered column={screens.md ? 2 : 1}>
-                <Descriptions.Item label="Name"><SafeText value={subject?.name} /></Descriptions.Item>
-                <Descriptions.Item label="Code"><SafeText value={subject?.code} /></Descriptions.Item>
-                <Descriptions.Item label="Description"><SafeText value={subject?.description} /></Descriptions.Item>
-                <Descriptions.Item label="Created"><SafeDate value={subject?.created_at} /></Descriptions.Item>
-                <Descriptions.Item label="Updated"><SafeDate value={subject?.updated_at} /></Descriptions.Item>
-              </Descriptions>
-              <Space style={{ marginTop: 12 }} wrap>
-                <Button onClick={() => navigate(`/admin/academics/subjects/${id}/edit`)}>Edit</Button>
-              </Space>
-            </Card>
-
-            <Card
-              title={<Title level={4} style={{ margin: 0 }}>Linked Quizzes</Title>}
-              extra={
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-                  Add Quiz
-                </Button>
-              }
-              bodyStyle={{ padding: 0 }}
-              className="overflow-hidden"
-            >
-              <FluidTable
-                dataSource={Array.isArray(quizzes) ? quizzes : []}
-                columns={columns}
-                rowKey="id"
-                pagination={false}
-              />
-              {(!quizzes || quizzes.length === 0) && (
-                <div className="px-6 py-8 text-sm text-gray-500 dark:text-gray-400">
-                  No quizzes linked yet — use “Add Quiz”.
-                </div>
-              )}
-            </Card>
-          </Space>
-        )}
+    <Space direction="vertical" size="large" className="w-full">
+      <div className="flex items-center justify-between">
+        <Typography.Title level={3} className="!mb-0">
+          Subject Detail
+        </Typography.Title>
+        <Space>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>
+            Back
+          </Button>
+          <Button icon={<UserSwitchOutlined />} onClick={() => navigate(`/admin/academics/subjects`)}>
+            Manage Assignments
+          </Button>
+          <Button type="primary" icon={<EditOutlined />} onClick={() => navigate(`/admin/academics/subjects/${id}/edit`)}>
+            Edit
+          </Button>
+        </Space>
       </div>
 
-      {/* Add Quiz Modal */}
-      <Modal
-        title="Link Quiz to Subject"
-        open={modalOpen}
-        onOk={handleAddQuiz}
-        onCancel={() => setModalOpen(false)}
-        okText="Add"
-        width={Math.min(560, typeof window !== "undefined" ? window.innerWidth - 32 : 560)}
-      >
-        <Select
-          style={{ width: "100%" }}
-          placeholder="Select a quiz"
-          value={selectedQuiz}
-          onChange={setSelectedQuiz}
-          showSearch
-          optionFilterProp="label"
-          options={(availableQuizzes || []).map((quiz) => ({
-            value: quiz.id,
-            label: quiz.title || "–",
-          }))}
-        />
-      </Modal>
-    </div>
+      <Card>
+        <Descriptions bordered column={1} size="middle">
+          <Descriptions.Item label="ID">{subject.id}</Descriptions.Item>
+          <Descriptions.Item label="Subject">{subject.subject_name}</Descriptions.Item>
+          <Descriptions.Item label="Class">
+            {subject.class ? classLabel(subject.class) : classNameFromId(subject.class_id)}
+          </Descriptions.Item>
+          <Descriptions.Item label="Created By">
+            {subject.userCreated?.name || subject.created_by || "—"}
+          </Descriptions.Item>
+          <Descriptions.Item label="Created At">{fmt(subject.created_at)}</Descriptions.Item>
+          <Descriptions.Item label="Teachers">
+            {(assigned.teachers || []).length === 0
+              ? "—"
+              : (assigned.teachers || []).map(t => t.name || [t.first_name, t.last_name].filter(Boolean).join(" ") || `#${t.id}`).join(", ")}
+          </Descriptions.Item>
+          <Descriptions.Item label="Students">
+            {(assigned.students || []).length === 0
+              ? "—"
+              : (assigned.students || []).map(s => s.name || [s.first_name, s.last_name].filter(Boolean).join(" ") || `#${s.id}`).join(", ")}
+          </Descriptions.Item>
+        </Descriptions>
+      </Card>
+    </Space>
   );
 }

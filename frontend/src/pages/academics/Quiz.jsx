@@ -1,11 +1,13 @@
 // src/pages/academics/Quiz.jsx
 import React, { useMemo, useState } from "react";
 import {
-  Button, Card, Form, Input, Select, Space, Tag, Tooltip, message,
-  Popconfirm, Drawer, Divider, Grid
+  Button, Card, Form, Input, Select, Space, Tag, Drawer, Divider,
+  Grid, Dropdown, Modal, Descriptions
 } from "antd";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { DownloadOutlined, PlusOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
+import {
+  DownloadOutlined, PlusOutlined, ReloadOutlined, SaveOutlined, MoreOutlined
+} from "@ant-design/icons";
 import { BUNDESLAENDER, GRADES } from "./_constants";
 import { listQuizzes, createQuiz, updateQuiz, deleteQuiz, publishQuiz } from "./_api";
 import PageHeader from "@/components/PageHeader.jsx";
@@ -41,28 +43,27 @@ export default function Quiz() {
   const items = Array.isArray(data?.items) ? data.items : [];
   const total = Number.isFinite(data?.total) ? data.total : items.length;
 
+  // UI state
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewRec, setViewRec] = useState(null);
 
   const createMut = useMutation({
     mutationFn: (payload) => createQuiz(payload),
-    onSuccess: () => { message.success("Quiz created"); qc.invalidateQueries({ queryKey: ["quizzes"] }); setDrawerOpen(false); },
-    onError: () => { /* keep quiet UI-wise */ }
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["quizzes"] }); setDrawerOpen(false); }
   });
   const updateMut = useMutation({
     mutationFn: (payload) => updateQuiz(editId, payload),
-    onSuccess: () => { message.success("Quiz updated"); qc.invalidateQueries({ queryKey: ["quizzes"] }); setDrawerOpen(false); },
-    onError: () => { /* quiet */ }
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["quizzes"] }); setDrawerOpen(false); }
   });
   const del = useMutation({
     mutationFn: (id) => deleteQuiz(id),
-    onSuccess: () => { message.success("Deleted"); qc.invalidateQueries({ queryKey: ["quizzes"] }); },
-    onError: () => { /* quiet */ }
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["quizzes"] }); }
   });
   const pub = useMutation({
     mutationFn: ({ id, publish }) => publishQuiz(id, publish),
-    onSuccess: () => { message.success("Status updated"); qc.invalidateQueries({ queryKey: ["quizzes"] }); },
-    onError: () => { /* quiet */ }
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["quizzes"] }); }
   });
 
   const openCreate = () => {
@@ -87,34 +88,85 @@ export default function Quiz() {
     if (editId) updateMut.mutate(values); else createMut.mutate(values);
   };
 
+  const confirmDelete = (id) => {
+    Modal.confirm({
+      title: "Delete this quiz?",
+      content: "This action cannot be undone.",
+      okType: "danger",
+      okText: "Delete",
+      onOk: () =>
+        del.mutate(id, {
+          onSuccess: () => {
+            if (viewRec?.id === id) setViewOpen(false);
+          }
+        })
+    });
+  };
+
   const columns = useMemo(() => [
     { title: "Title", dataIndex: "title", render: (v) => <SafeText value={v} /> },
     { title: "Subject", dataIndex: "subject", width: 140, render: (v) => <SafeText value={v} /> },
     { title: "Grade", dataIndex: "grade", width: 90, render: (v) => <SafeText value={v} /> },
     { title: "State", dataIndex: "bundesland", width: 180, render: (v) => <SafeText value={v} /> },
-    { title: "Difficulty", dataIndex: "difficulty", width: 120, render: (d) => <Tag><SafeText value={d} /></Tag> },
-    { title: "Status", dataIndex: "status", width: 120, render: (s) => <Tag color={s==="live"?"green":s==="review"?"geekblue":"default"}><SafeText value={s} /></Tag> },
+    {
+      title: "Difficulty", dataIndex: "difficulty", width: 120,
+      render: (d) => (
+        <Tag color={d === "easy" ? "green" : d === "hard" ? "volcano" : "geekblue"}>
+          <SafeText value={d} />
+        </Tag>
+      )
+    },
+    {
+      title: "Status", dataIndex: "status", width: 120,
+      render: (s) => (
+        <Tag color={s === "live" ? "green" : s === "review" ? "geekblue" : "default"}>
+          <SafeText value={s} />
+        </Tag>
+      )
+    },
     { title: "Tags", dataIndex: "tags", render: (tags) => <SafeTags value={tags} /> },
     {
-      title: "Actions", key: "actions", width: 300, fixed: screens.md ? "right" : undefined,
-      render: (_, r) => (
-        <Space wrap>
-          <Button size="small" onClick={() => openEdit(r)}>Edit</Button>
-          <Tooltip title={r.status === "live" ? "Unpublish" : "Publish (live)"}>
-            <Button size="small" type={r.status === "live" ? "default" : "primary"}
-              loading={pub.isPending}
-              onClick={() => pub.mutate({ id: r.id, publish: r.status !== "live" })}
-            >
-              {r.status === "live" ? "Unpublish" : "Publish"}
-            </Button>
-          </Tooltip>
-          <Popconfirm title="Delete this quiz?" onConfirm={() => del.mutate(r.id)}>
-            <Button danger size="small">Delete</Button>
-          </Popconfirm>
-        </Space>
-      )
+      title: "Actions",
+      key: "actions",
+      width: 80,
+      fixed: screens.md ? "right" : undefined,
+      render: (_, r) => {
+        const isLive = r.status === "live";
+        const menu = {
+          items: [
+            { key: "view", label: "View" },
+            { type: "divider" },
+            { key: "edit", label: "Edit" },
+            { key: "toggle", label: isLive ? "Unpublish" : "Publish (live)" },
+            { key: "delete", label: <span style={{ color: "#ff4d4f" }}>Delete</span> },
+          ],
+          onClick: ({ key, domEvent }) => {
+            domEvent?.stopPropagation?.();
+            if (key === "view") {
+              setViewRec(r); setViewOpen(true);
+            } else if (key === "edit") {
+              openEdit(r);
+            } else if (key === "toggle") {
+              pub.mutate({ id: r.id, publish: !isLive });
+            } else if (key === "delete") {
+              confirmDelete(r.id);
+            }
+          }
+        };
+        return (
+          <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
+            <Button
+              size="small"
+              type="text"
+              icon={<MoreOutlined />}
+              aria-label="More actions"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </Dropdown>
+        );
+      }
     }
-  ], [pub.isPending, del.isPending, screens.md]);
+  ], [screens.md, pub.isPending, del.isPending]);
 
   const onExport = () => {
     const rows = (items ?? []).map(q => ({
@@ -186,6 +238,7 @@ export default function Quiz() {
         </Card>
       </div>
 
+      {/* Create/Edit Drawer */}
       <Drawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -216,6 +269,47 @@ export default function Quiz() {
           <Divider />
           <Form.Item name="status" label="Status"><Select options={["draft","review","live"].map(s => ({ value: s, label: s }))} /></Form.Item>
         </Form>
+      </Drawer>
+
+      {/* View Drawer */}
+      <Drawer
+        open={viewOpen}
+        onClose={() => setViewOpen(false)}
+        title="Quiz"
+        width={Math.min(680, typeof window !== "undefined" ? window.innerWidth - 32 : 680)}
+        extra={
+          viewRec ? (
+            <Space>
+              <Button onClick={() => { setViewOpen(false); openEdit(viewRec); }}>Edit</Button>
+              <Button onClick={() => pub.mutate({ id: viewRec.id, publish: viewRec.status !== "live" })}>
+                {viewRec.status === "live" ? "Unpublish" : "Publish"}
+              </Button>
+              <Button danger onClick={() => confirmDelete(viewRec.id)}>Delete</Button>
+            </Space>
+          ) : null
+        }
+      >
+        {viewRec ? (
+          <Descriptions column={1} bordered size="middle">
+            <Descriptions.Item label="Title"><SafeText value={viewRec.title} /></Descriptions.Item>
+            <Descriptions.Item label="Bundesland"><SafeText value={viewRec.bundesland} /></Descriptions.Item>
+            <Descriptions.Item label="Subject"><SafeText value={viewRec.subject} /></Descriptions.Item>
+            <Descriptions.Item label="Grade"><SafeText value={viewRec.grade} /></Descriptions.Item>
+            <Descriptions.Item label="Difficulty">
+              <Tag color={viewRec.difficulty === "easy" ? "green" : viewRec.difficulty === "hard" ? "volcano" : "geekblue"}>
+                <SafeText value={viewRec.difficulty} />
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Status">
+              <Tag color={viewRec.status === "live" ? "green" : viewRec.status === "review" ? "geekblue" : "default"}>
+                <SafeText value={viewRec.status} />
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Tags"><SafeTags value={viewRec.tags} /></Descriptions.Item>
+            <Descriptions.Item label="Description"><SafeText value={viewRec.description} /></Descriptions.Item>
+            <Descriptions.Item label="Objectives"><SafeTags value={viewRec.objectives} /></Descriptions.Item>
+          </Descriptions>
+        ) : null}
       </Drawer>
     </div>
   );

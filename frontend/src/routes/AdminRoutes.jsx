@@ -3,25 +3,30 @@ import { Route } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import GlobalLayout from "@/components/layouts/GlobalLayout.jsx";
 
-// Dashboards
+/* Dashboards (standalone items) */
 import AdminDashboard from "@/pages/admin/AdminDashboard.jsx";
 import AnalyticsDashboard from "@/pages/analytics/AnalyticsDashboard.jsx";
 import StatisticsDashboard from "@/pages/statistics/StatisticsDashboard.jsx";
 
-// Reports
+/* Reports */
 import ReportsOverview from "@/pages/reports/ReportsOverview.jsx";
 import GenerateReports from "@/pages/reports/GenerateReports.jsx";
 
-// Billing
+/* Billing */
 import BillingOverview from "@/pages/billing/BillingOverview.jsx";
 import Product from "@/pages/billing/Product.jsx";
 import Contract from "@/pages/billing/Contract.jsx";
+import Subscription from "@/pages/billing/Subscription.jsx";
+import Invoices from "@/pages/billing/Invoices.jsx";
 
-// Content
+/* Content */
 import ContentOverview from "@/pages/content/ContentOverview.jsx";
 import PublishBlogPost from "@/pages/content/PublishBlogPost.jsx";
 
-// Academics
+/* Newsletter */
+import Newsletter from "@/pages/newsletter/Newsletter.jsx";
+
+/* Academics */
 import AcademicsOverview from "@/pages/academics/AcademicsOverview.jsx";
 import Game from "@/pages/academics/Game.jsx";
 import Quiz from "@/pages/academics/Quiz.jsx";
@@ -29,47 +34,47 @@ import Curricula from "@/pages/academics/Curricula.jsx";
 import Worksheet from "@/pages/academics/Worksheet.jsx";
 import AIAgent from "@/pages/academics/AIAgent.jsx";
 
-// Subjects (under Academics)
+/* Subjects (under Academics) */
 import SubjectsList from "@/pages/academics/subjects/SubjectsList.jsx";
 import SubjectForm from "@/pages/academics/subjects/SubjectForm.jsx";
 import SubjectDetail from "@/pages/academics/subjects/SubjectDetail.jsx";
 
-// OCR / Scans
+/* Scans (moved under Academics) */
 import ScansOverview from "@/pages/ocr/ScansOverview.jsx";
-import OCRWorkspace from "@/pages/ocr/OCRWorkspace.jsx";
 
-// Parents
+
+/* Parents */
 import ParentsList from "@/pages/parents/ParentsList.jsx";
 import ParentForm from "@/pages/parents/ParentForm.jsx";
 import ParentDetail from "@/pages/parents/ParentDetail.jsx";
 
-// Teachers
+/* Teachers */
 import TeachersList from "@/pages/teachers/TeachersList.jsx";
 import TeacherForm from "@/pages/teachers/TeacherForm.jsx";
 import TeacherDetail from "@/pages/teachers/TeacherDetail.jsx";
 
-// Students
+/* Students */
 import StudentsList from "@/pages/students/StudentsList.jsx";
 import StudentForm from "@/pages/students/StudentForm.jsx";
 import StudentDetail from "@/pages/students/StudentDetail.jsx";
 
-// Settings & Roles
+/* Settings & Roles */
 import SettingsOverview from "@/pages/settings/SettingsOverview.jsx";
 import RolesList from "@/pages/roles/RolesList.jsx";
 import RoleDetail from "@/pages/roles/RoleDetail.jsx";
 import RoleForm from "@/pages/roles/RoleForm.jsx";
 
-// Tickets
+/* Tickets */
 import TicketsList from "@/pages/tickets/TicketsList.jsx";
 import TicketDetail from "@/pages/tickets/TicketDetail.jsx";
 import TicketForm from "@/pages/tickets/TicketForm.jsx";
 
-// Tasks
+/* Tasks */
 import TasksList from "@/pages/tasks/TasksList.jsx";
 import TaskDetail from "@/pages/tasks/TaskDetail.jsx";
 import TaskForm from "@/pages/tasks/TaskForm.jsx";
 
-/** NEW: Philosophy & Database */
+/* Philosophy & Database */
 import PhilosophyOverview from "@/pages/philosophy/PhilosophyOverview.jsx";
 import DatabaseOverview from "@/pages/database/DatabaseOverview.jsx";
 import DatabaseManagement from "@/pages/database/DatabaseManagement.jsx";
@@ -84,7 +89,7 @@ export default function AdminRoutes() {
         </ProtectedRoute>
       }
     >
-      {/* Dashboards */}
+      {/* Dashboards (standalone) */}
       <Route index element={<AdminDashboard />} />
       <Route path="dashboard" element={<AdminDashboard />} />
       <Route path="analytics" element={<AnalyticsDashboard />} />
@@ -99,17 +104,28 @@ export default function AdminRoutes() {
       {/* Billing */}
       <Route path="billing">
         <Route index element={<BillingOverview />} />
+        <Route path="invoices" element={<Invoices />} />
         <Route path="product" element={<Product />} />
+        <Route path="product/:id" element={<Product />} />
         <Route path="contract" element={<Contract />} />
+        <Route path="contract/:id" element={<Contract />} />
+        <Route path="subscription" element={<Subscription />} />
       </Route>
 
       {/* Content */}
       <Route path="content">
         <Route index element={<ContentOverview />} />
         <Route path="publish" element={<PublishBlogPost />} />
+        <Route path="publish/:id" element={<PublishBlogPost />} />
+        <Route path="new" element={<PublishBlogPost />} />
       </Route>
 
-      {/* Academics */}
+      {/* Newsletter */}
+      <Route path="newsletter">
+        <Route index element={<Newsletter />} />
+      </Route>
+
+      {/* Academics (now contains Scans) */}
       <Route path="academics">
         <Route index element={<AcademicsOverview />} />
         <Route path="curricula" element={<Curricula />} />
@@ -117,6 +133,7 @@ export default function AdminRoutes() {
         <Route path="quiz" element={<Quiz />} />
         <Route path="game" element={<Game />} />
         <Route path="ai-agent" element={<AIAgent />} />
+
         {/* Subjects */}
         <Route path="subjects">
           <Route index element={<SubjectsList />} />
@@ -124,12 +141,12 @@ export default function AdminRoutes() {
           <Route path=":id" element={<SubjectDetail />} />
           <Route path=":id/edit" element={<SubjectForm />} />
         </Route>
-      </Route>
 
-      {/* OCR / Scans */}
-      <Route path="scans">
-        <Route index element={<ScansOverview />} />
-        <Route path="ocr" element={<OCRWorkspace />} />
+        {/* ✅ Scans nested under Academics */}
+        <Route path="scans">
+          <Route index element={<ScansOverview />} />
+         
+        </Route>
       </Route>
 
       {/* Parents */}
@@ -173,7 +190,7 @@ export default function AdminRoutes() {
       </Route>
 
       {/* Settings */}
-      <Route path="settings" index element={<SettingsOverview />} />
+      <Route path="settings" element={<SettingsOverview />} />
 
       {/* Roles */}
       <Route path="roles">
@@ -183,12 +200,12 @@ export default function AdminRoutes() {
         <Route path=":id/edit" element={<RoleForm />} />
       </Route>
 
-      {/* NEW: Philosophy */}
+      {/* Philosophy */}
       <Route path="philosophy">
         <Route index element={<PhilosophyOverview />} />
       </Route>
 
-      {/* NEW: Database */}
+      {/* Database */}
       <Route path="database">
         <Route index element={<DatabaseOverview />} />
         <Route path="management" element={<DatabaseManagement />} />

@@ -1,11 +1,13 @@
 // src/pages/academics/Game.jsx
 import React, { useMemo, useState } from "react";
 import {
-  Button, Card, Form, Input, Select, Space, Tag, Tooltip,
-  Popconfirm, Drawer, Divider, Grid
+  Button, Card, Form, Input, Select, Space, Tag, Drawer, Divider, Grid,
+  Dropdown, Modal, Descriptions
 } from "antd";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { DownloadOutlined, PlusOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
+import {
+  DownloadOutlined, PlusOutlined, ReloadOutlined, SaveOutlined, MoreOutlined
+} from "@ant-design/icons";
 
 import PageHeader from "@/components/PageHeader.jsx";
 import ResponsiveFilters from "@/components/ResponsiveFilters.jsx";
@@ -16,11 +18,76 @@ import { BUNDESLAENDER, GRADES } from "./_constants";
 
 const { useBreakpoint } = Grid;
 
-/**
- * Optional backend endpoints (quietly failing-safe).
- * If your API is not implemented yet, these will just keep the UI empty
- * with no errors shown.
- */
+/* ----------------------------- Dummy fallback ----------------------------- */
+const MOCK_GAMES = [
+  {
+    id: 201,
+    title: "Fraction Frenzy",
+    description: "Match equivalent fractions in a timed grid.",
+    subject: "Mathematik",
+    grade: 4,
+    bundesland: "Bayern",
+    difficulty: "medium",
+    status: "review",
+    tags: ["fractions", "arithmetic"],
+    objectives: ["Brüche vergleichen", "Gleichwertigkeit erkennen"],
+    updated_at: "2025-08-10T09:30:00Z"
+  },
+  {
+    id: 202,
+    title: "Word Wizard",
+    description: "Build words from shuffled syllables.",
+    subject: "Deutsch",
+    grade: 2,
+    bundesland: "Berlin",
+    difficulty: "easy",
+    status: "live",
+    tags: ["phonics", "spelling"],
+    objectives: ["Silben trennen", "Rechtschreibung üben"],
+    updated_at: "2025-08-12T14:05:00Z"
+  },
+  {
+    id: 203,
+    title: "Geo Quest",
+    description: "Identify German states on a map.",
+    subject: "Sachkunde",
+    grade: 5,
+    bundesland: "Nordrhein-Westfalen",
+    difficulty: "medium",
+    status: "draft",
+    tags: ["geography", "bundesländer"],
+    objectives: ["Bundesländer erkennen"],
+    updated_at: "2025-08-13T16:40:00Z"
+  },
+  {
+    id: 204,
+    title: "Times Table Blitz",
+    description: "Rapid-fire multiplication practice.",
+    subject: "Mathematik",
+    grade: 3,
+    bundesland: "Baden-Württemberg",
+    difficulty: "hard",
+    status: "live",
+    tags: ["multiplication"],
+    objectives: ["Einmaleins automatisieren"],
+    updated_at: "2025-08-14T08:10:00Z"
+  },
+  {
+    id: 205,
+    title: "Sentence Sculptor",
+    description: "Drag words to form correct sentences.",
+    subject: "Deutsch",
+    grade: 3,
+    bundesland: "Hamburg",
+    difficulty: "easy",
+    status: "review",
+    tags: ["grammar", "syntax"],
+    objectives: ["Satzbau üben"],
+    updated_at: "2025-08-15T11:22:00Z"
+  }
+];
+
+/* ---------------------------- Quiet API helpers --------------------------- */
 const API = (p) => `/api${p}`;
 
 async function _buildUrl(path, params = {}) {
@@ -32,15 +99,20 @@ async function _buildUrl(path, params = {}) {
   return url.toString();
 }
 
-// ---- Quiet API helpers (swallow errors, return empty/neutral shapes) ----
 async function listGames(params = {}) {
   try {
     const url = await _buildUrl("/games", params);
     const res = await fetch(url, { credentials: "include" });
     if (!res.ok) throw new Error();
-    return await res.json(); // expected { items: [], total: number }
+    const data = await res.json(); // expected { items: [], total }
+    // If API returns nothing, serve dummy to keep UI lively
+    if (!data?.items?.length) {
+      return { items: MOCK_GAMES, total: MOCK_GAMES.length };
+    }
+    return data;
   } catch {
-    return { items: [], total: 0 };
+    // On error, return dummy dataset
+    return { items: MOCK_GAMES, total: MOCK_GAMES.length };
   }
 }
 async function createGame(payload) {
@@ -96,6 +168,7 @@ async function publishGame(id, publish) {
   }
 }
 
+/* --------------------------------- Page ---------------------------------- */
 export default function Game() {
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
@@ -106,7 +179,6 @@ export default function Game() {
   const [pageSize, setPageSize] = useState(20);
   const filters = Form.useWatch([], form);
 
-  // Quiet fetching (no error banners)
   const { data, isFetching, refetch } = useQuery({
     queryKey: ["games", { page, pageSize, ...filters }],
     queryFn: () => listGames({ page, pageSize, ...filters }),
@@ -116,30 +188,28 @@ export default function Game() {
   const items = Array.isArray(data?.items) ? data.items : [];
   const total = Number.isFinite(data?.total) ? data.total : items.length;
 
-  // Drawer state
+  // Drawers
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewRec, setViewRec] = useState(null);
 
-  // Mutations (quiet on error)
+  // Mutations
   const createMut = useMutation({
     mutationFn: (payload) => createGame(payload),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["games"] }); setDrawerOpen(false); },
-    onError: () => {}
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["games"] }); setDrawerOpen(false); }
   });
   const updateMut = useMutation({
     mutationFn: (payload) => updateGame(editId, payload),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["games"] }); setDrawerOpen(false); },
-    onError: () => {}
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["games"] }); setDrawerOpen(false); }
   });
   const del = useMutation({
     mutationFn: (id) => deleteGame(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["games"] }); },
-    onError: () => {}
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["games"] }); }
   });
   const pub = useMutation({
     mutationFn: ({ id, publish }) => publishGame(id, publish),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["games"] }); },
-    onError: () => {}
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["games"] }); }
   });
 
   const openCreate = () => {
@@ -171,6 +241,16 @@ export default function Game() {
     setDrawerOpen(true);
   };
 
+  const confirmDelete = (id) => {
+    Modal.confirm({
+      title: "Delete this game?",
+      content: "This action cannot be undone.",
+      okType: "danger",
+      okText: "Delete",
+      onOk: () => del.mutate(id, { onSuccess: () => { if (viewRec?.id === id) setViewOpen(false); } })
+    });
+  };
+
   const onSubmit = async () => {
     const values = await editForm.validateFields();
     if (editId) updateMut.mutate(values); else createMut.mutate(values);
@@ -181,35 +261,66 @@ export default function Game() {
     { title: "Subject", dataIndex: "subject", width: 140, render: (v) => <SafeText value={v} /> },
     { title: "Grade", dataIndex: "grade", width: 90, render: (v) => <SafeText value={v} /> },
     { title: "State", dataIndex: "bundesland", width: 180, render: (v) => <SafeText value={v} /> },
-    { title: "Difficulty", dataIndex: "difficulty", width: 120, render: (d) => <Tag><SafeText value={d} /></Tag> },
+    {
+      title: "Difficulty", dataIndex: "difficulty", width: 120,
+      render: (d) => (
+        <Tag color={d === "easy" ? "green" : d === "hard" ? "volcano" : "geekblue"}>
+          <SafeText value={d} />
+        </Tag>
+      )
+    },
     {
       title: "Status", dataIndex: "status", width: 120,
-      render: (s) => <Tag color={s==="live"?"green":s==="review"?"geekblue":"default"}><SafeText value={s} /></Tag>
+      render: (s) => (
+        <Tag color={s === "live" ? "green" : s === "review" ? "geekblue" : "default"}>
+          <SafeText value={s} />
+        </Tag>
+      )
     },
     { title: "Tags", dataIndex: "tags", render: (tags) => <SafeTags value={tags} /> },
     { title: "Updated", dataIndex: "updated_at", width: 200, render: (iso) => <SafeDate value={iso} /> },
     {
-      title: "Actions", key: "actions", width: 320, fixed: screens.md ? "right" : undefined,
-      render: (_, r) => (
-        <Space wrap>
-          <Button size="small" onClick={() => openEdit(r)}>Edit</Button>
-          <Tooltip title={r.status === "live" ? "Unpublish" : "Publish (live)"}>
+      title: "Actions",
+      key: "actions",
+      width: 80,
+      fixed: screens.md ? "right" : undefined,
+      render: (_, r) => {
+        const isLive = r.status === "live";
+        const menu = {
+          items: [
+            { key: "view", label: "View" },
+            { type: "divider" },
+            { key: "edit", label: "Edit" },
+            { key: "toggle", label: isLive ? "Unpublish" : "Publish (live)" },
+            { key: "delete", label: <span style={{ color: "#ff4d4f" }}>Delete</span> },
+          ],
+          onClick: ({ key, domEvent }) => {
+            domEvent?.stopPropagation?.();
+            if (key === "view") {
+              setViewRec(r); setViewOpen(true);
+            } else if (key === "edit") {
+              openEdit(r);
+            } else if (key === "toggle") {
+              pub.mutate({ id: r.id, publish: !isLive });
+            } else if (key === "delete") {
+              confirmDelete(r.id);
+            }
+          }
+        };
+        return (
+          <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
             <Button
               size="small"
-              type={r.status === "live" ? "default" : "primary"}
-              loading={pub.isPending}
-              onClick={() => pub.mutate({ id: r.id, publish: r.status !== "live" })}
-            >
-              {r.status === "live" ? "Unpublish" : "Publish"}
-            </Button>
-          </Tooltip>
-          <Popconfirm title="Delete this game?" onConfirm={() => del.mutate(r.id)}>
-            <Button danger size="small">Delete</Button>
-          </Popconfirm>
-        </Space>
-      )
+              type="text"
+              icon={<MoreOutlined />}
+              aria-label="More actions"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </Dropdown>
+        );
+      }
     }
-  ], [pub.isPending, del.isPending, screens.md]);
+  ], [screens.md, pub.isPending, del.isPending]);
 
   const onExport = () => {
     const rows = (items ?? []).map(g => ({
@@ -280,6 +391,7 @@ export default function Game() {
         </Card>
       </div>
 
+      {/* Create/Edit Drawer */}
       <Drawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -326,6 +438,48 @@ export default function Game() {
             <Select options={["draft","review","live"].map(s => ({ value: s, label: s }))} />
           </Form.Item>
         </Form>
+      </Drawer>
+
+      {/* View Drawer */}
+      <Drawer
+        open={viewOpen}
+        onClose={() => setViewOpen(false)}
+        title="Game"
+        width={Math.min(680, typeof window !== "undefined" ? window.innerWidth - 32 : 680)}
+        extra={
+          viewRec ? (
+            <Space>
+              <Button onClick={() => { setViewOpen(false); openEdit(viewRec); }}>Edit</Button>
+              <Button onClick={() => pub.mutate({ id: viewRec.id, publish: viewRec.status !== "live" })}>
+                {viewRec.status === "live" ? "Unpublish" : "Publish"}
+              </Button>
+              <Button danger onClick={() => confirmDelete(viewRec.id)}>Delete</Button>
+            </Space>
+          ) : null
+        }
+      >
+        {viewRec ? (
+          <Descriptions column={1} bordered size="middle">
+            <Descriptions.Item label="Title"><SafeText value={viewRec.title} /></Descriptions.Item>
+            <Descriptions.Item label="Bundesland"><SafeText value={viewRec.bundesland} /></Descriptions.Item>
+            <Descriptions.Item label="Subject"><SafeText value={viewRec.subject} /></Descriptions.Item>
+            <Descriptions.Item label="Grade"><SafeText value={viewRec.grade} /></Descriptions.Item>
+            <Descriptions.Item label="Difficulty">
+              <Tag color={viewRec.difficulty === "easy" ? "green" : viewRec.difficulty === "hard" ? "volcano" : "geekblue"}>
+                <SafeText value={viewRec.difficulty} />
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Status">
+              <Tag color={viewRec.status === "live" ? "green" : viewRec.status === "review" ? "geekblue" : "default"}>
+                <SafeText value={viewRec.status} />
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Tags"><SafeTags value={viewRec.tags} /></Descriptions.Item>
+            <Descriptions.Item label="Objectives"><SafeTags value={viewRec.objectives} /></Descriptions.Item>
+            <Descriptions.Item label="Updated"><SafeDate value={viewRec.updated_at} /></Descriptions.Item>
+            <Descriptions.Item label="Description"><SafeText value={viewRec.description} /></Descriptions.Item>
+          </Descriptions>
+        ) : null}
       </Drawer>
     </div>
   );

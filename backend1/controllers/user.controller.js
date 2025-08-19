@@ -642,11 +642,10 @@ exports.getAllBlogPosts = async (req, res) => {
       }
    
     });
-
-    res.status(200).json(blogposts);
+    res.json(blogposts);
   } catch (err) {
-    console.error("Error fetching blogposts:", err);
-    res.status(500).json({ message: "Failed to get blogposts" });
+    console.error(err);
+    res.status(500).json({ message: err.message });
   }
 };
 

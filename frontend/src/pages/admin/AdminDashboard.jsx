@@ -1,5 +1,18 @@
 // src/pages/admin/AdminDashboard.jsx
-import { Card, Button, Row, Col, Space, Avatar, Statistic } from "antd";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Card,
+  Button,
+  Row,
+  Col,
+  Space,
+  Avatar,
+  Statistic,
+  Spin,
+  Tag,
+  Typography,
+} from "antd";
 import {
   FileTextOutlined,
   DatabaseOutlined,
@@ -9,19 +22,138 @@ import {
   UserOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
+import { useAuthContext } from "@/context/AuthContext";
+import api from "@/api/axios";
+
+const { Text } = Typography;
+
+/* ------------------------------ Data Layer ------------------------------ */
+
+// Helper to safely GET JSON with Bearer token
+async function getJson(path, token) {
+  try {
+    const { data } = await api.get(path, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      withCredentials: true,
+    });
+    return data ?? null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Pulls from all listed routes concurrently. Uses /admin/dashboard when available.
+async function fetchDashboardBundle(token) {
+  const [
+    overview, // GET /admin/dashboard
+    users, // GET /users
+    parents, // GET /parents
+    students, // GET /allstudents
+    teachers, // GET /allteachers
+    classes, // GET /allclasses
+    subjects, // GET /allsubjects
+    products, // GET /products
+    subscriptions, // GET /subscriptions
+    blogposts, // GET /blogposts
+  ] = await Promise.all([
+    getJson("/admin/dashboard", token),
+    getJson("/users", token),
+    getJson("/parents", token),
+    getJson("/allstudents", token),
+    getJson("/allteachers", token),
+    getJson("/allclasses", token),
+    getJson("/allsubjects", token),
+    getJson("/products", token),
+    getJson("/subscriptions", token),
+    getJson("/blogposts", token),
+  ]);
+
+  const len = (x) => (Array.isArray(x) ? x.length : 0);
+
+  return {
+    overview, // may contain totalUsers, parents, reports, activeContracts, deltas
+    counts: {
+      users: len(users),
+      parents: len(parents),
+      students: len(students),
+      teachers: len(teachers),
+      classes: len(classes),
+      subjects: len(subjects),
+      products: len(products),
+      subscriptions: len(subscriptions),
+      blogposts: len(blogposts),
+    },
+  };
+}
+
+/* ------------------------------ Fallbacks ------------------------------ */
+
+const FALLBACK = {
+  totalUsers: 0,
+  parents: 0,
+  reports: 0,
+  activeContracts: 0,
+  deltas: { usersMoM: 0, parentsWoW: 0, reports30d: 0, contractsDue: 0 },
+};
+
+/* ------------------------------ Component ------------------------------ */
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const { user } = useAuthContext();
+  const token = user?.token;
 
-  // Dummy KPI values (fallback safe)
-  const totalUsers = 12500;
-  const parents = 750;
-  const reports = 320;
-  const activeContracts = 12;
+  const {
+    data,
+    isFetching,
+    refetch,
+    isError,
+  } = useQuery({
+    queryKey: ["admin-dashboard-bundle"],
+    queryFn: () => fetchDashboardBundle(token),
+    keepPreviousData: true,
+    refetchOnWindowFocus: false,
+  });
 
-  // Reusable styles for consistent sizing
+  const kpis = useMemo(() => {
+    const o = data?.overview || {};
+    const deltas = o?.deltas || {};
+    // Prefer overview -> fall back to list counts -> fall back to constants
+    return {
+      totalUsers: o.totalUsers ?? data?.counts?.users ?? FALLBACK.totalUsers,
+      parents: o.parents ?? data?.counts?.parents ?? FALLBACK.parents,
+      reports: o.reports ?? FALLBACK.reports,
+      activeContracts: o.activeContracts ?? FALLBACK.activeContracts,
+      usersMoM:
+        Number.isFinite(deltas.usersMoM) ? deltas.usersMoM : FALLBACK.deltas.usersMoM,
+      parentsWoW:
+        Number.isFinite(deltas.parentsWoW) ? deltas.parentsWoW : FALLBACK.deltas.parentsWoW,
+      reports30d:
+        Number.isFinite(deltas.reports30d) ? deltas.reports30d : FALLBACK.deltas.reports30d,
+      contractsDue:
+        Number.isFinite(deltas.contractsDue) ? deltas.contractsDue : FALLBACK.deltas.contractsDue,
+    };
+  }, [data]);
+
+  const extra = useMemo(() => {
+    const c = data?.counts || {};
+    return {
+      students: c.students ?? 0,
+      teachers: c.teachers ?? 0,
+      classes: c.classes ?? 0,
+      subjects: c.subjects ?? 0,
+      products: c.products ?? 0,
+      subscriptions: c.subscriptions ?? 0,
+      blogposts: c.blogposts ?? 0,
+      users: c.users ?? 0,
+      parents: c.parents ?? 0,
+    };
+  }, [data]);
+
+  // Reusable styles
   const kpiCardProps = {
     hoverable: true,
     className:
@@ -71,13 +203,23 @@ export default function AdminDashboard() {
 
   return (
     <div className="p-6 max-w-screen-xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">Master Support Interface</h1>
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <div className="flex flex-col">
+          <h1 className="text-3xl font-bold">Master Support Interface</h1>
+         
+        </div>
+        <Space>
+          <Button onClick={() => refetch()} icon={<ReloadOutlined />}>
+            Refresh
+          </Button>
+          {isFetching ? <Spin size="small" /> : null}
+        </Space>
+      </div>
 
       {/* Platform Overview */}
       <section className="mb-10">
         <h2 className="text-xl font-semibold mb-4">Platform Overview</h2>
 
-        {/* KPI Row (equal heights via flex) */}
         <Row gutter={[16, 16]} className="mb-4">
           <Col xs={24} sm={12} lg={6} style={{ display: "flex" }}>
             <Card
@@ -89,15 +231,17 @@ export default function AdminDashboard() {
                   <Avatar size="large" icon={<UserOutlined />} className="bg-white/20" />
                   <div>
                     <span className="text-white/80 text-sm">Total Users</span>
-                    <div className="text-3xl font-bold leading-none">{totalUsers ?? "-"}</div>
+                    <div className="text-3xl font-bold leading-none">
+                      {kpis.totalUsers ?? "-"}
+                    </div>
                   </div>
                 </Space>
                 <Statistic
-                  value={8.2}
+                  value={kpis.usersMoM}
                   precision={1}
                   suffix="%"
                   valueStyle={{ color: "#fff" }}
-                  prefix={<ArrowUpOutlined />}
+                  prefix={kpis.usersMoM >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
                   title={<span className="text-white/80">MoM</span>}
                 />
               </div>
@@ -114,15 +258,15 @@ export default function AdminDashboard() {
                   <Avatar size="large" icon={<TeamOutlined />} className="bg-white/20" />
                   <div>
                     <span className="text-white/80 text-sm">Parents</span>
-                    <div className="text-3xl font-bold leading-none">{parents ?? "-"}</div>
+                    <div className="text-3xl font-bold leading-none">{kpis.parents ?? "-"}</div>
                   </div>
                 </Space>
                 <Statistic
-                  value={-1.3}
+                  value={kpis.parentsWoW}
                   precision={1}
                   suffix="%"
                   valueStyle={{ color: "#fff" }}
-                  prefix={<ArrowDownOutlined />}
+                  prefix={kpis.parentsWoW >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
                   title={<span className="text-white/80">WoW</span>}
                 />
               </div>
@@ -139,15 +283,15 @@ export default function AdminDashboard() {
                   <Avatar size="large" icon={<FileTextOutlined />} className="bg-white/20" />
                   <div>
                     <span className="text-white/80 text-sm">Reports Generated</span>
-                    <div className="text-3xl font-bold leading-none">{reports ?? "-"}</div>
+                    <div className="text-3xl font-bold leading-none">{kpis.reports ?? "-"}</div>
                   </div>
                 </Space>
                 <Statistic
-                  value={4.7}
+                  value={kpis.reports30d}
                   precision={1}
                   suffix="%"
                   valueStyle={{ color: "#fff" }}
-                  prefix={<ArrowUpOutlined />}
+                  prefix={kpis.reports30d >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
                   title={<span className="text-white/80">30d</span>}
                 />
               </div>
@@ -165,12 +309,12 @@ export default function AdminDashboard() {
                   <div>
                     <span className="text-white/80 text-sm">Active Contracts</span>
                     <div className="text-3xl font-bold leading-none">
-                      {activeContracts ?? "-"}
+                      {kpis.activeContracts ?? "-"}
                     </div>
                   </div>
                 </Space>
                 <Statistic
-                  value={2}
+                  value={kpis.contractsDue}
                   precision={0}
                   suffix=" due"
                   valueStyle={{ color: "#fff" }}
@@ -182,7 +326,70 @@ export default function AdminDashboard() {
         </Row>
       </section>
 
-      {/* Key Functionalities (equal heights via flex) */}
+      {/* Data Snapshot (driven by DB counts) 
+      <section className="mb-10">
+        <h2 className="text-xl font-semibold mb-4">Data Snapshot</h2>
+        <Card className="rounded-xl">
+          <Row gutter={[12, 12]}>
+            <Col xs={12} sm={8} md={6} lg={4}>
+              <Space direction="vertical" size={0}>
+                <Text type="secondary">Users</Text>
+                <Tag>{extra.users}</Tag>
+              </Space>
+            </Col>
+            <Col xs={12} sm={8} md={6} lg={4}>
+              <Space direction="vertical" size={0}>
+                <Text type="secondary">Parents</Text>
+                <Tag color="blue">{extra.parents}</Tag>
+              </Space>
+            </Col>
+            <Col xs={12} sm={8} md={6} lg={4}>
+              <Space direction="vertical" size={0}>
+                <Text type="secondary">Students</Text>
+                <Tag color="green">{extra.students}</Tag>
+              </Space>
+            </Col>
+            <Col xs={12} sm={8} md={6} lg={4}>
+              <Space direction="vertical" size={0}>
+                <Text type="secondary">Teachers</Text>
+                <Tag color="purple">{extra.teachers}</Tag>
+              </Space>
+            </Col>
+            <Col xs={12} sm={8} md={6} lg={4}>
+              <Space direction="vertical" size={0}>
+                <Text type="secondary">Classes</Text>
+                <Tag color="magenta">{extra.classes}</Tag>
+              </Space>
+            </Col>
+            <Col xs={12} sm={8} md={6} lg={4}>
+              <Space direction="vertical" size={0}>
+                <Text type="secondary">Subjects</Text>
+                <Tag color="volcano">{extra.subjects}</Tag>
+              </Space>
+            </Col>
+            <Col xs={12} sm={8} md={6} lg={4}>
+              <Space direction="vertical" size={0}>
+                <Text type="secondary">Products</Text>
+                <Tag color="geekblue">{extra.products}</Tag>
+              </Space>
+            </Col>
+            <Col xs={12} sm={8} md={6} lg={4}>
+              <Space direction="vertical" size={0}>
+                <Text type="secondary">Subscriptions</Text>
+                <Tag color="gold">{extra.subscriptions}</Tag>
+              </Space>
+            </Col>
+            <Col xs={12} sm={8} md={6} lg={4}>
+              <Space direction="vertical" size={0}>
+                <Text type="secondary">Blog Posts</Text>
+                <Tag color="cyan">{extra.blogposts}</Tag>
+              </Space>
+            </Col>
+          </Row>
+        </Card>
+      </section>*/}
+
+      {/* Key Functionalities */}
       <section className="mb-10">
         <h2 className="text-xl font-semibold mb-4">Key Functionalities</h2>
         <Row gutter={[16, 16]}>

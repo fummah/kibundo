@@ -1,132 +1,121 @@
 import React, { useEffect, useState } from "react";
+import { Button, Form, Input, Select, Space, Spin, message } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  Button, Card, Form, Input, Space, Grid, Skeleton,
-} from "antd";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { SaveOutlined } from "@ant-design/icons";
+import api from "@/api/axios";
 
-import PageHeader from "@/components/PageHeader.jsx";
-import { getSubject, createSubject, updateSubject } from "@/pages/academics/_api";
-
-const { useBreakpoint } = Grid;
-
-export default function SubjectForm() {
-  const { id } = useParams();              // if present → edit mode
-  const isEdit = Boolean(id);
-  const navigate = useNavigate();
-  const screens = useBreakpoint();
-
+/**
+ * Props:
+ * - classes?: array (optional; if not provided and used as a route, we'll fetch)
+ * - initialValues?: { subject_name?, class_id?, created_by? }
+ * - onSubmit?: (vals) => Promise|void   // if not provided, acts as a route page and calls API itself
+ * - onCancel?: () => void
+ */
+export default function SubjectForm({ classes: classesProp, initialValues, onSubmit, onCancel }) {
   const [form] = Form.useForm();
-  const [loading, setLoading] = useState(isEdit);
+  const navigate = useNavigate();
+  const { id } = useParams(); // when used as a route
+  const [loading, setLoading] = useState(false);
+  const [bootstrap, setBootstrap] = useState(false);
+  const [classes, setClasses] = useState(classesProp || []);
 
-  // Quiet load for edit
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!isEdit) return;
-      try {
-        setLoading(true);
-        const subj = await getSubject(id).catch(() => null);
-        if (!mounted) return;
-        if (subj) {
-          form.setFieldsValue({
-            name: subj.name || "",
-            code: subj.code || "",
-            description: subj.description || "",
-          });
+    const setup = async () => {
+      if (!classesProp) {
+        try {
+          const { data } = await api.get("/allclasses");
+          setClasses(Array.isArray(data) ? data : []);
+        } catch {
+          message.error("Failed to load classes.");
         }
-      } finally {
-        if (mounted) setLoading(false);
       }
-    })();
-    return () => { mounted = false; };
-  }, [id, isEdit, form]);
 
-  const createMut = useMutation({
-    mutationFn: (payload) => createSubject(payload),
-    onSuccess: (res) => {
-      const newId = res?.id;
-      navigate(newId ? `/admin/academics/subjects/${newId}` : "/admin/academics/subjects");
-    },
-    onError: () => { /* quiet */ }
-  });
+      if (onSubmit) {
+        form.setFieldsValue({
+          subject_name: "",
+          class_id: undefined,
+          ...initialValues,
+        });
+        setBootstrap(true);
+        return;
+      }
 
-  const updateMut = useMutation({
-    mutationFn: (payload) => updateSubject(id, payload),
-    onSuccess: () => {
-      navigate(`/admin/academics/subjects/${id}`);
-    },
-    onError: () => { /* quiet */ }
-  });
+      // Standalone route usage
+      if (id) {
+        setLoading(true);
+        try {
+          const { data } = await api.get(`/subject/${id}`);
+          form.setFieldsValue({
+            subject_name: data?.subject_name ?? "",
+            class_id: data?.class_id,
+          });
+        } catch {
+          message.error("Failed to load subject.");
+        } finally {
+          setLoading(false);
+          setBootstrap(true);
+        }
+      } else {
+        form.setFieldsValue({ subject_name: "", class_id: undefined });
+        setBootstrap(true);
+      }
+    };
 
-  const onSubmit = async () => {
-    const values = await form.validateFields();
-    if (isEdit) updateMut.mutate(values); else createMut.mutate(values);
+    setup();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, onSubmit]);
+
+  const handleFinish = async (vals) => {
+    if (onSubmit) return onSubmit(vals);
+
+    try {
+      setLoading(true);
+      await api.post("/addsubject", id ? { id, ...vals } : vals);
+      message.success(id ? "Subject updated." : "Subject added.");
+      navigate("/admin/academics/subjects");
+    } catch {
+      message.error("Save failed.");
+    } finally {
+      setLoading(false);
+    }
   };
 
+  if (!bootstrap) return <Spin />;
+
+  const classOptionLabel = (c) => c?.name || c?.class_name || c?.title || `Class #${c.id}`;
+
   return (
-    <div className="flex flex-col min-h-0">
-      <PageHeader
-        title={isEdit ? "Edit Subject" : "New Subject"}
-        subtitle="Define subject metadata used across academics."
-        extra={
-          <Space wrap>
-            <Button onClick={() => navigate(-1)}>Cancel</Button>
-            <Button type="primary" icon={<SaveOutlined />}
-              loading={createMut.isPending || updateMut.isPending}
-              onClick={onSubmit}
-            >
-              {isEdit ? "Save" : "Create"}
-            </Button>
-          </Space>
-        }
-      />
+    <Form form={form} layout="vertical" onFinish={handleFinish}>
+      <Form.Item
+        name="subject_name"
+        label="Subject Name"
+        rules={[{ required: true, message: "Please enter subject name" }]}
+      >
+        <Input placeholder="e.g., Mathematics" />
+      </Form.Item>
 
-      <div className="p-3 md:p-4">
-        <Card>
-          {loading ? (
-            <Skeleton active />
-          ) : (
-            <Form
-              layout="vertical"
-              form={form}
-              initialValues={{ name: "", code: "", description: "" }}
-              onFinish={onSubmit}
-            >
-              <Form.Item
-                name="name"
-                label="Name"
-                rules={[{ required: true, message: "Please enter a subject name" }]}
-              >
-                <Input placeholder="e.g. Deutsch, Mathematik" />
-              </Form.Item>
+      <Form.Item
+        name="class_id"
+        label="Class"
+        rules={[{ required: true, message: "Select a class" }]}
+      >
+        <Select
+          placeholder="Select class"
+          options={classes.map((c) => ({ value: c.id, label: classOptionLabel(c) }))}
+          showSearch
+          optionFilterProp="label"
+        />
+      </Form.Item>
 
-              <Form.Item
-                name="code"
-                label="Code"
-                tooltip="A short unique code (letters or digits)"
-                rules={[{ required: true, message: "Please enter a code" }]}
-              >
-                <Input placeholder="e.g. DE, MATH" />
-              </Form.Item>
-
-              <Form.Item name="description" label="Description">
-                <Input.TextArea rows={4} placeholder="Optional description…" />
-              </Form.Item>
-
-              <Space wrap>
-                <Button onClick={() => navigate(-1)}>Cancel</Button>
-                <Button type="primary" htmlType="submit" icon={<SaveOutlined />}
-                  loading={createMut.isPending || updateMut.isPending}
-                >
-                  {isEdit ? "Save" : "Create"}
-                </Button>
-              </Space>
-            </Form>
-          )}
-        </Card>
-      </div>
-    </div>
+      <Space className="flex justify-end w-full">
+        {onCancel ? (
+          <Button onClick={onCancel}>Cancel</Button>
+        ) : (
+          <Button onClick={() => navigate(-1)}>Cancel</Button>
+        )}
+        <Button type="primary" htmlType="submit" loading={loading}>
+          Save
+        </Button>
+      </Space>
+    </Form>
   );
 }
