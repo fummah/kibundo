@@ -1,5 +1,5 @@
 // src/pages/content/PublishBlogPost.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
@@ -17,28 +17,23 @@ import {
   Tag,
   Tooltip,
   Popconfirm,
-  // Upload, // Commented out for now
 } from "antd";
-import { SaveOutlined, CheckOutlined, ReloadOutlined, EyeOutlined, DeleteOutlined } from "@ant-design/icons";
+import {
+  SaveOutlined,
+  CheckOutlined,
+  ReloadOutlined,
+  EyeOutlined,
+  DeleteOutlined,
+} from "@ant-design/icons";
 import dayjs from "dayjs";
 import api from "@/api/axios";
-import { marked } from "marked";
-import hljs from "highlight.js";
-import "highlight.js/styles/github-dark.css";
 
-const { Title, Paragraph } = Typography;
-const { TextArea } = Input;
-// const { Dragger } = Upload; // Image uploader commented
+import ReactQuill from "react-quill";
+import "react-quill/dist/quill.snow.css";
+
+const { Title } = Typography;
 
 const LS_SHADOW_KEY = "kibundo.blogPost.lastSaved.v1";
-
-// Syntax highlighting for Markdown
-marked.setOptions({
-  highlight: (code, lang) => {
-    const validLang = hljs.getLanguage(lang) ? lang : "plaintext";
-    return hljs.highlight(code, { language: validLang }).value;
-  },
-});
 
 // Auto-generate slug from title
 const slugify = (s) =>
@@ -50,6 +45,15 @@ const slugify = (s) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)+/g, "")
     .slice(0, 120);
+
+// Strip HTML for description snippets
+const stripHtml = (html) =>
+  (html || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 // -------------------- API Wrappers --------------------
 async function apiFetchOne(id) {
@@ -94,6 +98,87 @@ async function apiDelete(id) {
   }
 }
 
+/** ---- Tiny wrapper to make ReactQuill play nicely with AntD Form ---- */
+function RichTextArea({ value, onChange, onImageUpload }) {
+  const quillRef = useRef(null);
+
+  const handleImage = () => {
+    if (!onImageUpload) return;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const quill = quillRef.current?.getEditor();
+      const range = quill?.getSelection(true);
+      try {
+        const url = await onImageUpload(file); // must return a URL
+        if (range) {
+          quill.insertEmbed(range.index, "image", url, "user");
+          quill.setSelection(range.index + 1);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    input.click();
+  };
+
+  const modules = useMemo(
+    () => ({
+      toolbar: {
+        container: [
+          [{ header: [1, 2, 3, false] }],
+          ["bold", "italic", "underline", "strike"],
+          [{ color: [] }, { background: [] }],
+          [{ list: "ordered" }, { list: "bullet" }],
+          [{ align: [] }],
+          ["link", "image", "blockquote", "code-block"],
+          ["clean"],
+        ],
+        handlers: { image: handleImage },
+      },
+      clipboard: { matchVisual: false },
+    }),
+    []
+  );
+
+  const formats = [
+    "header",
+    "bold",
+    "italic",
+    "underline",
+    "strike",
+    "color",
+    "background",
+    "list",
+    "bullet",
+    "align",
+    "link",
+    "image",
+    "blockquote",
+    "code-block",
+  ];
+
+  return (
+    <div className="antd-quill">
+      <ReactQuill
+        ref={quillRef}
+        theme="snow"
+        value={value}
+        onChange={(html) => onChange?.(html)}
+        modules={modules}
+        formats={formats}
+      />
+      <style>{`
+        .antd-quill .ql-container { min-height: 260px; }
+        .antd-quill .ql-toolbar, .antd-quill .ql-container { border-radius: 8px; }
+      `}</style>
+    </div>
+  );
+}
+
 // -------------------- Component --------------------
 export default function PublishBlogPost() {
   const [form] = Form.useForm();
@@ -106,14 +191,14 @@ export default function PublishBlogPost() {
   const [previewOn, setPreviewOn] = useState(true);
 
   const watchTitle = Form.useWatch("title", form);
-  const watchBody = Form.useWatch("body_md", form);
+  const watchBodyHtml = Form.useWatch("body_html", form);
 
   // Auto-slug
   useEffect(() => {
     const t = form.getFieldValue("title");
     const s = form.getFieldValue("slug");
     if (!s || s === slugify(s)) form.setFieldsValue({ slug: slugify(t || "") });
-  }, [watchTitle]);
+  }, [watchTitle]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load existing post
   useEffect(() => {
@@ -127,7 +212,8 @@ export default function PublishBlogPost() {
         form.setFieldsValue({
           title: post.title || "",
           slug: post.slug || "",
-          body_md: post.body_md || "",
+          // Prefer HTML if present; fall back to markdown converted to plain text
+          body_html: post.body_html || post.body_md || "",
           audience: post.audience || "parents",
           status: post.status || "draft",
           tags: Array.isArray(post.tags) ? post.tags : [],
@@ -138,36 +224,55 @@ export default function PublishBlogPost() {
       }
       setLoading(false);
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [editingId, form]);
 
-  // Live HTML preview from Markdown
-  const htmlPreview = useMemo(() => marked.parse(watchBody || ""), [watchBody]);
+  // Live Preview uses HTML directly
+  const htmlPreview = useMemo(() => watchBodyHtml || "", [watchBodyHtml]);
+
+  // Simple example uploader for images inside rich editor (replace with your API)
+  const uploadImage = async (file) => {
+    // const fd = new FormData(); fd.append("file", file);
+    // const { data } = await api.post("/upload", fd);
+    // return data.url;
+    await new Promise((r) => setTimeout(r, 300));
+    return URL.createObjectURL(file); // preview URL; replace in production
+  };
 
   // Save or Publish
   const onSave = async (statusOverride) => {
     setSaving(true);
     try {
       const v = await form.validateFields();
-      if (!v.body_md || !v.body_md.trim()) return message.error("Post body cannot be blank");
+      if (!v.body_html || !stripHtml(v.body_html)) {
+        return message.error("Post body cannot be blank");
+      }
 
       const currentUser = JSON.parse(localStorage.getItem("user"));
       if (!currentUser?.id) return message.error("No logged-in user found.");
 
       let seoJson = {};
       if (v.seo) {
-        try { seoJson = JSON.parse(v.seo); } catch { seoJson = {}; message.warning("Invalid SEO JSON, default will be used."); }
+        try {
+          seoJson = JSON.parse(v.seo);
+        } catch {
+          seoJson = {};
+          message.warning("Invalid SEO JSON, default will be used.");
+        }
       }
 
       // Default SEO if blank
       if (!seoJson.title) seoJson.title = v.title || "Untitled Post";
-      if (!seoJson.description) seoJson.description = (v.body_md || "").substring(0, 160);
+      if (!seoJson.description) seoJson.description = stripHtml(v.body_html).slice(0, 160);
 
       const payload = {
         title: v.title?.trim() || "-",
         slug: v.slug?.trim() || slugify(v.title || ""),
-        body_md: v.body_md,
-        body_html: marked.parse(v.body_md),
+        body_html: v.body_html,       // <-- Rich text HTML
+        // Optionally also pass a plaintext/markdown surrogate for compatibility:
+        body_md: stripHtml(v.body_html),
         audience: v.audience || "parents",
         status: statusOverride || v.status || "draft",
         tags: v.tags || [],
@@ -179,11 +284,15 @@ export default function PublishBlogPost() {
       };
 
       const saved = await apiCreate(payload);
-      try { localStorage.setItem(LS_SHADOW_KEY, JSON.stringify(saved)); } catch {}
+      try {
+        localStorage.setItem(LS_SHADOW_KEY, JSON.stringify(saved));
+      } catch {}
 
       if (!editingId) navigate(`/admin/content/publish?id=${saved.id}`);
       message.success(editingId ? "Post version updated" : "Post created");
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Delete post
@@ -199,63 +308,161 @@ export default function PublishBlogPost() {
     <div className="max-w-[1400px] mx-auto px-3 md:px-4">
       <div className="flex items-center justify-between mb-3">
         <Space wrap>
-          <Title level={3} className="!mb-0">{editingId ? "Edit Blog Post" : "Publish Blog Post"}</Title>
+          <Title level={3} className="!mb-0">
+            {editingId ? "Edit Blog Post" : "Publish Blog Post"}
+          </Title>
           {editingId && <Tag color="blue">ID: {editingId}</Tag>}
         </Space>
         <Space wrap>
           <Button onClick={() => navigate(-1)}>Back</Button>
           {editingId && (
             <Popconfirm title="Delete this post?" onConfirm={onDelete}>
-              <Button danger icon={<DeleteOutlined />}>Delete</Button>
+              <Button danger icon={<DeleteOutlined />}>
+                Delete
+              </Button>
             </Popconfirm>
           )}
-          <Button icon={<ReloadOutlined />} onClick={() => form.resetFields()}>Reset</Button>
-          <Button type="primary" icon={<SaveOutlined />} onClick={() => onSave()} loading={saving}>Save Draft</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => form.resetFields()}>
+            Reset
+          </Button>
+          <Button
+            type="primary"
+            icon={<SaveOutlined />}
+            onClick={() => onSave()}
+            loading={saving}
+          >
+            Save Draft
+          </Button>
           <Tooltip title="Sets status to published; backend sets published_at">
-            <Button type="primary" ghost icon={<CheckOutlined />} onClick={() => onSave("published")} loading={saving}>Publish</Button>
+            <Button
+              type="primary"
+              ghost
+              icon={<CheckOutlined />}
+              onClick={() => onSave("published")}
+              loading={saving}
+            >
+              Publish
+            </Button>
           </Tooltip>
         </Space>
       </div>
 
       <Card className="rounded-2xl" loading={loading}>
-        <Form form={form} layout="vertical" initialValues={{ audience: "parents", status: "draft", tags: [] }}>
-          <Row gutter={[16,16]}>
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{ audience: "parents", status: "draft", tags: [], body_html: "" }}
+        >
+          <Row gutter={[16, 16]}>
             <Col xs={24} lg={14}>
-              <Card className="rounded-xl" title="Content"
+              <Card
+                className="rounded-xl"
+                title="Content"
                 extra={
                   <Space>
-                    <Button size="small" icon={<EyeOutlined />} onClick={() => setPreviewOn(true)}>Preview</Button>
-                    <Button size="small" icon={<ReloadOutlined />} onClick={() => setPreviewOn(false)}>Edit</Button>
+                    <Button size="small" icon={<EyeOutlined />} onClick={() => setPreviewOn(true)}>
+                      Preview
+                    </Button>
+                    <Button size="small" icon={<ReloadOutlined />} onClick={() => setPreviewOn(false)}>
+                      Edit
+                    </Button>
                   </Space>
-                }>
-                <Form.Item name="title" label="Title" rules={[{ required: true, message: "Please enter a title" }]}><Input placeholder="Post title" /></Form.Item>
-                <Form.Item name="slug" label="Slug" tooltip="Auto-generated from title" rules={[{ required: true }, { pattern: /^[a-z0-9-]+$/ }]}><Input placeholder="e.g., how-to-study-math" /></Form.Item>
-                <Form.Item name="body_md" label="Body (Markdown)" rules={[{ required: true, message: "Post body cannot be blank" }]}><TextArea autoSize={{ minRows:10, maxRows:30 }} placeholder="Write your post in Markdown…" /></Form.Item>
+                }
+              >
+                <Form.Item
+                  name="title"
+                  label="Title"
+                  rules={[{ required: true, message: "Please enter a title" }]}
+                >
+                  <Input placeholder="Post title" />
+                </Form.Item>
 
-                {/*
-                <Dragger {...uploadProps} className="mb-3">
-                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                  <p className="ant-upload-text">Drag & drop an image here, or click to upload</p>
-                </Dragger>
-                */}
+                <Form.Item
+                  name="slug"
+                  label="Slug"
+                  tooltip="Auto-generated from title"
+                  rules={[{ required: true }, { pattern: /^[a-z0-9-]+$/ }]}
+                >
+                  <Input placeholder="e.g., how-to-study-math" />
+                </Form.Item>
 
-                {previewOn && <><Divider /><Title level={5} className="!mb-2">Live Preview (HTML)</Title>
-                <div className="prose max-w-none dark:prose-invert border rounded-lg p-4 bg-white dark:bg-gray-900" dangerouslySetInnerHTML={{ __html: htmlPreview || "<p>-</p>" }} /></>}
+                {/* RICH TEXT EDITOR */}
+                <Form.Item
+                  name="body_html"
+                  label="Body (Rich Text)"
+                  rules={[{ required: true, message: "Post body cannot be blank" }]}
+                  valuePropName="value"
+                  getValueFromEvent={(v) => v}
+                >
+                  <RichTextArea
+                    value={Form.useWatch("body_html", form)}
+                    onChange={(html) => form.setFieldsValue({ body_html: html })}
+                    onImageUpload={uploadImage}
+                  />
+                </Form.Item>
+
+                {previewOn && (
+                  <>
+                    <Divider />
+                    <Title level={5} className="!mb-2">
+                      Live Preview (HTML)
+                    </Title>
+                    <div
+                      className="prose max-w-none border rounded-lg p-4 bg-white"
+                      dangerouslySetInnerHTML={{
+                        __html: htmlPreview || "<p>-</p>",
+                      }}
+                    />
+                  </>
+                )}
               </Card>
             </Col>
 
             <Col xs={24} lg={10}>
               <Card className="rounded-xl" title="Metadata">
                 <Form.Item name="audience" label="Audience">
-                  <Select options={[{ value:"parents", label:"Parents"},{value:"teachers",label:"Teachers"},{value:"both",label:"Both"}]} />
+                  <Select
+                    options={[
+                      { value: "parents", label: "Parents" },
+                      { value: "teachers", label: "Teachers" },
+                      { value: "both", label: "Both" },
+                    ]}
+                  />
                 </Form.Item>
                 <Form.Item name="status" label="Workflow Status">
-                  <Select options={[{ value:"draft", label:"Draft"},{value:"pending_review",label:"Pending review"},{value:"published",label:"Published"}]} />
+                  <Select
+                    options={[
+                      { value: "draft", label: "Draft" },
+                      { value: "pending_review", label: "Pending review" },
+                      { value: "published", label: "Published" },
+                    ]}
+                  />
                 </Form.Item>
-                <Form.Item name="tags" label="Tags"><Select mode="tags" tokenSeparators={[","]} placeholder="Add tags" /></Form.Item>
-                <Form.Item name="seo" label="SEO (JSON)" tooltip='Optional JSON like {"title":"...","description":"..."}'><TextArea autoSize={{ minRows:6,maxRows:16 }} placeholder="{ }" /></Form.Item>
-                <Form.Item name="scheduled_for" label="Scheduled for" tooltip="Optional date/time for scheduled publish"><DatePicker showTime className="w-full" /></Form.Item>
-                <Form.Item name="published_at" label="Published at"><DatePicker showTime className="w-full" disabled placeholder="Set by server on publish" /></Form.Item>
+                <Form.Item name="tags" label="Tags">
+                  <Select mode="tags" tokenSeparators={[","]} placeholder="Add tags" />
+                </Form.Item>
+                <Form.Item
+                  name="seo"
+                  label="SEO (JSON)"
+                  tooltip='Optional JSON like {"title":"...","description":"..."}'
+                >
+                  <Input.TextArea autoSize={{ minRows: 6, maxRows: 16 }} placeholder="{ }" />
+                </Form.Item>
+                <Form.Item
+                  name="scheduled_for"
+                  label="Scheduled for"
+                  tooltip="Optional date/time for scheduled publish"
+                >
+                  <DatePicker showTime className="w-full" />
+                </Form.Item>
+                <Form.Item name="published_at" label="Published at">
+                  <DatePicker
+                    showTime
+                    className="w-full"
+                    disabled
+                    placeholder="Set by server on publish"
+                  />
+                </Form.Item>
               </Card>
             </Col>
           </Row>
