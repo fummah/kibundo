@@ -40,6 +40,11 @@ module.exports = (sequelize, DataTypes) => {
     foreignKey: 'parent_id',
     as: 'parent'
   });
+
+     Parent.hasMany(models.invoice, {
+    foreignKey: 'parent_id',
+    as: 'invoiceuser'
+  });
   };
 
   return Parent;

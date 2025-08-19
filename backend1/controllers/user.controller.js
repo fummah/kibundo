@@ -9,6 +9,7 @@ const Parent = db.parent;
 const Product = db.product;
 const Subscription = db.subscription;
 const BlogPost = db.blogpost;
+const Invoice = db.invoice;
 
 exports.getAllUsers = async (req, res) => {
   try {
@@ -685,6 +686,105 @@ exports.deleteBlogPost = async (req, res) => {
 
   } catch (error) {
     console.error('Error deleting blogpost:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Invoice
+
+exports.addinvoice = async (req, res) => {
+  try {
+    const { parent_id, stripe_invoice_id,status,total_cents,lines, taxes } = req.body;
+const created_by = req.user.id;
+    const newInvoice = await Invoice.create({
+    parent_id, 
+    stripe_invoice_id,
+    status,
+    total_cents,
+    lines, 
+    taxes, 
+    created_by,
+    });
+
+    res.status(201).json({ message: "New invoice created", invoice: newInvoice });
+  } catch (err) {
+    console.error("New invoice registered error:", err);
+    res.status(500).json({ message: "Server error", error:err });
+  }
+};
+exports.getAllInvoices = async (req, res) => {
+  try {
+    const invoices = await Invoice.findAll({
+      attributes: {
+        exclude: []
+      },
+       include: {
+          model: Parent,
+          as: 'invoiceuser', // Parent → Student
+          include: [
+            {
+              model: User,
+              as: 'user', // Student → User
+              attributes: { exclude: ['password'] }
+            }
+          ]
+        }
+   
+    });
+    res.json(invoices);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getInvoiceById = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const invoice = await Invoice.findOne({
+      where: { id },      
+       include: {
+          model: Parent,
+          as: 'invoiceuser', // Parent → Student
+          include: [
+            {
+              model: User,
+              as: 'user', // Student → User
+              attributes: { exclude: ['password'] }
+            }
+          ]
+        }
+    });
+
+    if (!invoice) {
+      return res.status(404).json({ message: 'Invoice not found' });
+    }
+
+    return res.status(200).json(invoice);
+
+  } catch (error) {
+    console.error('Error fetching invoice by ID:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.deleteInvoice = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const invoice = await Invoice.findByPk(id);
+
+    if (!invoice) {
+      return res.status(404).json({ message: 'Invoice not found' });
+    }
+
+    await invoice.destroy();
+
+    return res.status(200).json({ message: 'Invoice deleted successfully' });
+
+  } catch (error) {
+    console.error('Error deleting invoice:', error);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };

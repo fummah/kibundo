@@ -4,7 +4,7 @@ const { getAllUsers, getAllRoles, addstudent, addteacher, addclass, addsubject, 
     getAllTeachers, getAllSubjects, getSubjectById, getStudentById, getTeacherById, deleteSubject, 
     getParentById, getAllParents, addparent, deleteParent, addproduct, getAllProducts, getProductById,
 deleteProduct, addsubscription, getAllSubscriptions, getSubscriptionById, deleteSubscription, addblogpost,getAllBlogPosts, 
-getBlogPostById, deleteBlogPost } = require("../controllers/user.controller");
+getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
 
@@ -41,8 +41,12 @@ router.get("/subscriptions", verifyToken, getAllSubscriptions);
 router.get('/subscription/:id', verifyToken,getSubscriptionById);
 router.delete('/subscription/:id', verifyToken,deleteSubscription);
 router.post("/addblogpost", verifyToken, addblogpost);
-router.get("/blogposts", verifyToken, getAllBlogPosts);
-router.get('/blogpost/:id', verifyToken,getBlogPostById);
+router.get("/blogposts", getAllBlogPosts);
+router.get('/blogpost/:id',getBlogPostById);
 router.delete('/blogpost/:id', verifyToken,deleteBlogPost);
+router.post("/addinvoice", verifyToken, addinvoice);
+router.get("/invoices", verifyToken, getAllInvoices);
+router.get('/invoice/:id', verifyToken,getInvoiceById);
+router.delete('/invoice/:id', verifyToken,deleteInvoice);
 
 module.exports = router;

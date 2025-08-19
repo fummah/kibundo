@@ -11,6 +11,7 @@ app.use(express.json());
 // Routes
 app.use("/api/auth", require("./routes/auth.routes"));
 app.use("/api", require("./routes/user.routes"));
+app.use("/api/ai", require("./routes/ai.routes"));
 // Sync DB and start server
 db.sequelize.sync().then(() => {
   const PORT = process.env.PORT || 8080;

@@ -9,10 +9,22 @@ module.exports = (sequelize, DataTypes) => {
     pdf_url: DataTypes.TEXT,
     lines: DataTypes.JSONB,
     taxes: DataTypes.JSONB,
-    created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+    created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+      created_by: {
+      type: DataTypes.STRING, // updated from TIME to STRING (VARCHAR)
+      allowNull: true
+    }
   }, {
     tableName: 'invoices',
     timestamps: false
   });
+  Invoice.associate = (models) => {
+
+    Invoice.belongsTo(models.parent, {
+      foreignKey: 'parent_id',
+      as: 'invoiceuser'
+    });
+  };
+
   return Invoice;
 };
