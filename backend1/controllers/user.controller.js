@@ -636,7 +636,7 @@ const created_by = req.user.id;
 };
 exports.getAllBlogPosts = async (req, res) => {
   try {
-    const blogposts = await Subscription.findAll({
+    const blogposts = await BlogPost.findAll({
       attributes: {
         exclude: []
       }
