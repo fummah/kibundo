@@ -22,6 +22,8 @@ import {
   SafetyCertificateOutlined,
   SearchOutlined,
   DatabaseOutlined,
+  FileDoneOutlined,   // ✅ Invoices
+  MailOutlined,       // ✅ Newsletter
 } from "@ant-design/icons";
 import { useAuthContext } from "@/context/AuthContext";
 
@@ -38,8 +40,9 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [openSubmenu, setOpenSubmenu] = useState(null);
 
-  /** Menus aligned to AdminRoutes.jsx (with Philosophy & Database) */
+  /** Menus aligned to AdminRoutes.jsx (with Philosophy, Database, Newsletter, Invoices) */
   const adminMenu = [
+    // --- Dashboards (flattened to standalone links below) ---
     {
       label: "Dashboards",
       icon: DashboardOutlined,
@@ -72,15 +75,9 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
         { href: "/admin/academics/ai-agent", label: "AI Agent", icon: RobotOutlined },
         { href: "/admin/academics/subjects", label: "Subjects", icon: BookOutlined },
         { href: "/admin/academics/subjects/new", label: "New Subject", icon: BookOutlined },
-      ],
-    },
 
-    {
-      label: "Homework / Scans",
-      icon: FileSearchOutlined,
-      children: [
-        { href: "/admin/scans", label: "Overview", icon: FileSearchOutlined },
-        { href: "/admin/scans/ocr", label: "OCR Workspace", icon: FileSearchOutlined },
+        // ✅ Scans nested under Academics (OCR link removed; opened inline in page)
+        { href: "/admin/academics/scans", label: "Scans", icon: FileSearchOutlined },
       ],
     },
 
@@ -98,8 +95,10 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
       icon: ReconciliationOutlined,
       children: [
         { href: "/admin/billing", label: "Overview", icon: ReconciliationOutlined },
-        { href: "/admin/billing/product", label: "Product", icon: TagsOutlined },
+        { href: "/admin/billing/invoices", label: "Invoices", icon: FileDoneOutlined }, // ✅
+        { href: "/admin/billing/product", label: "Products", icon: TagsOutlined },
         { href: "/admin/billing/contract", label: "Contract", icon: FileProtectOutlined },
+        { href: "/admin/billing/subscription", label: "Subscription", icon: FileProtectOutlined },
       ],
     },
 
@@ -109,6 +108,14 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
       children: [
         { href: "/admin/content", label: "Overview", icon: ContainerOutlined },
         { href: "/admin/content/publish", label: "Publish Post", icon: ProfileOutlined },
+      ],
+    },
+
+    {
+      label: "Newsletter",
+      icon: MailOutlined,
+      children: [
+        { href: "/admin/newsletter", label: "Newsletter & Automations", icon: MailOutlined },
       ],
     },
 
@@ -130,7 +137,6 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
       ],
     },
 
-    /** NEW groups */
     {
       label: "Database",
       icon: DatabaseOutlined,
@@ -157,16 +163,43 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
     4: [{ href: "/parent", label: "Dashboard", icon: DashboardOutlined }],
   };
 
-  const menuItems = menuItemsByRole[roleId] || [];
+  // (1) Force-flatten "Dashboards" into standalone links
+  // (2) Flatten groups with 0 or 1 child; keep submenu only if 2+ children
+  const applyFlattening = (items) =>
+    items.flatMap((item) => {
+      if (Array.isArray(item.children)) {
+        if (item.label?.toLowerCase() === "dashboards") {
+          return item.children.map((c) => ({
+            href: c.href,
+            label: c.label,
+            icon: c.icon || item.icon || DashboardOutlined,
+          }));
+        }
+        if (item.children.length === 0) return [];
+        if (item.children.length === 1) {
+          const c = item.children[0];
+          return [
+            { href: c.href, label: c.label || item.label, icon: c.icon || item.icon || DashboardOutlined },
+          ];
+        }
+        return [item];
+      }
+      return [item];
+    });
+
+  const baseMenuItems = menuItemsByRole[roleId] || [];
+  const menuItems = applyFlattening(baseMenuItems);
 
   // Auto-open active submenu on route change
   useEffect(() => {
     const currentPath = location.pathname;
+    let opened = null;
     menuItems.forEach((item, index) => {
       if (item.children?.some((child) => currentPath.startsWith(child.href))) {
-        setOpenSubmenu(index);
+        opened = index;
       }
     });
+    setOpenSubmenu(opened);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
@@ -177,7 +210,9 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
     return items
       .map((item) => {
         if (item.children) {
-          const children = item.children.filter((c) => c.label.toLowerCase().includes(term));
+          const children = item.children.filter((c) =>
+            c.label.toLowerCase().includes(term)
+          );
           return children.length ? { ...item, children } : null;
         }
         return item.label.toLowerCase().includes(term) ? item : null;
@@ -219,9 +254,9 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
           {/* Menu */}
           <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6 space-y-1">
             {filteredItems.map((item, index) => {
-              const hasChildren = Array.isArray(item.children);
+              const hasChildren = Array.isArray(item.children) && item.children.length > 1;
               const isSubmenuOpen = openSubmenu === index;
-              const Icon = item.icon;
+              const Icon = item.icon || DashboardOutlined;
 
               return (
                 <div key={index}>
@@ -253,7 +288,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
                       {isSubmenuOpen && (
                         <div className="ml-5 mt-1 space-y-1">
                           {item.children.map((child, subIdx) => {
-                            const ChildIcon = child.icon;
+                            const ChildIcon = child.icon || DashboardOutlined;
                             const isChildActive = currentPath === child.href;
                             return (
                               <Link

@@ -1,10 +1,14 @@
 import React, { useMemo, useState, useEffect } from "react";
 import {
-  Button, Card, Form, Input, Select, Space, Tag, Tooltip,
-  Popconfirm, Drawer, Divider, Upload, Descriptions, List, Empty, Modal, Grid, Skeleton
+  Button, Card, Form, Input, Select, Space, Tag,
+  Drawer, Divider, Upload, Descriptions, List, Empty,
+  Modal, Grid, Skeleton, Dropdown
 } from "antd";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { DownloadOutlined, PlusOutlined, ReloadOutlined, SaveOutlined, UploadOutlined } from "@ant-design/icons";
+import {
+  DownloadOutlined, PlusOutlined, ReloadOutlined,
+  SaveOutlined, UploadOutlined, MoreOutlined
+} from "@ant-design/icons";
 
 import PageHeader from "@/components/PageHeader.jsx";
 import ResponsiveFilters from "@/components/ResponsiveFilters.jsx";
@@ -51,7 +55,7 @@ export default function Curricula() {
   });
 
   const items = Array.isArray(data?.items) ? data.items : [];
-  const total = Number.isFinite(data?.total) ? data.total : items.length;
+   const total = Number.isFinite(data?.total) ? data.total : items.length;
 
   // UI state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -111,6 +115,21 @@ export default function Curricula() {
     onError: () => {}
   });
 
+  const confirmDelete = (id) => {
+    Modal.confirm({
+      title: "Delete this curriculum?",
+      content: "This action cannot be undone.",
+      okType: "danger",
+      okText: "Delete",
+      onOk: () =>
+        del.mutate(id, {
+          onSuccess: () => {
+            if (detailId === id) setDetailId(null);
+          }
+        })
+    });
+  };
+
   const columns = useMemo(() => [
     { title: "Subject", dataIndex: "subject", ellipsis: true, render: (v) => <SafeText value={v} /> },
     { title: "Grade", dataIndex: "grade", width: 90, responsive: ["sm"], render: (v) => <SafeText value={v} /> },
@@ -129,34 +148,56 @@ export default function Curricula() {
     },
     { title: "Updated", dataIndex: "updated_at", responsive: ["lg"], render: (iso) => <SafeDate value={iso} /> },
     {
-      title: "Actions", key: "actions", fixed: screens.md ? "right" : undefined, width: 320,
-      render: (_, r) => (
-        <Space wrap>
-          <Button size="small" onClick={() => setDetailId(r.id)}>View</Button>
-          {canWrite && (
-            <>
-              <Button size="small" onClick={() => openEdit(r.id)}>Edit</Button>
-              <Button size="small" onClick={() => { setDetailId(r.id); setVersionsOpen(true); }}>Versions</Button>
-              <Button size="small" onClick={() => { setDetailId(r.id); setLinkOpen(true); }}>Link</Button>
-              <Tooltip title={r.status === "published" ? "Unpublish" : "Publish"}>
-                <Button
-                  size="small"
-                  type={r.status === "published" ? "default" : "primary"}
-                  loading={pub.isPending}
-                  onClick={() => pub.mutate({ id: r.id, publish: r.status !== "published" })}
-                >
-                  {r.status === "published" ? "Unpublish" : "Publish"}
-                </Button>
-              </Tooltip>
-              <Popconfirm title="Delete this curriculum?" onConfirm={() => del.mutate(r.id)}>
-                <Button danger size="small">Delete</Button>
-              </Popconfirm>
-            </>
-          )}
-        </Space>
-      )
+      title: "Actions",
+      key: "actions",
+      fixed: screens.md ? "right" : undefined,
+      width: 80,
+      render: (_, r) => {
+        const isPublished = r.status === "published";
+        const menu = {
+          items: [
+            { key: "view", label: "View" },
+            { type: "divider" },
+            ...(canWrite ? [{ key: "edit", label: "Edit" }] : []),
+            ...(canWrite ? [{ key: "versions", label: "Versions" }] : []),
+            ...(canWrite ? [{ key: "link", label: "Link Quizzes" }] : []),
+            ...(canWrite ? [{ type: "divider" }] : []),
+            ...(canWrite ? [{ key: "toggle", label: isPublished ? "Unpublish" : "Publish" }] : []),
+            ...(canWrite ? [{ key: "delete", label: <span style={{ color: "#ff4d4f" }}>Delete</span> }] : []),
+          ],
+          onClick: ({ key, domEvent }) => {
+            domEvent?.stopPropagation?.();
+            if (key === "view") {
+              setDetailId(r.id);
+            } else if (key === "edit") {
+              openEdit(r.id);
+            } else if (key === "versions") {
+              setDetailId(r.id);
+              setVersionsOpen(true);
+            } else if (key === "link") {
+              setDetailId(r.id);
+              setLinkOpen(true);
+            } else if (key === "toggle") {
+              pub.mutate({ id: r.id, publish: !isPublished });
+            } else if (key === "delete") {
+              confirmDelete(r.id);
+            }
+          }
+        };
+        return (
+          <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
+            <Button
+              size="small"
+              type="text"
+              icon={<MoreOutlined />}
+              aria-label="More actions"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </Dropdown>
+        );
+      }
     }
-  ], [pub.isPending, del.isPending, screens.md]);
+  ], [screens.md, pub.isPending, del.isPending]);
 
   const onExport = () => {
     const rows = (items ?? []).map((r) => ({

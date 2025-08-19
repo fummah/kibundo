@@ -636,17 +636,13 @@ const created_by = req.user.id;
 };
 exports.getAllBlogPosts = async (req, res) => {
   try {
-    const blogposts = await Subscription.findAll({
-      attributes: {
-        exclude: []
-      }
-   
+    const blogposts = await BlogPost.findAll({
+      attributes: { exclude: [] } // or specify fields you want
     });
-
-    res.status(200).json(blogposts);
+    res.json(blogposts);
   } catch (err) {
-    console.error("Error fetching blogposts:", err);
-    res.status(500).json({ message: "Failed to get blogposts" });
+    console.error(err);
+    res.status(500).json({ message: err.message });
   }
 };
 

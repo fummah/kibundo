@@ -10,7 +10,7 @@ export default function ParentsList() {
         routeBase: "/admin/parents",
         idField: "id",
         api: {
-          listPath: "/allparents",
+          listPath: "/parents",
           updateStatusPath: (id) => `/parents/${id}/status`,
           removePath: (id) => `/parents/${id}`,
           parseList: (data) => {

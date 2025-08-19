@@ -1,131 +1,335 @@
-import React, { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  Button, Card, Form, Input, Space, Grid, Popconfirm,
+  Button, Card, DatePicker, Dropdown, Input, Modal, Select, Space, Table, Tag, Typography, message
 } from "antd";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { PlusOutlined, ReloadOutlined, DownloadOutlined } from "@ant-design/icons";
+import {
+  BookOutlined, EllipsisOutlined, EyeOutlined, EditOutlined, DeleteOutlined, SearchOutlined, PlusOutlined, UserSwitchOutlined
+} from "@ant-design/icons";
+import { Link } from "react-router-dom";
+import api from "@/api/axios";
+import SubjectForm from "./SubjectForm.jsx";
+import AssignSubjectModal from "./AssignSubjectModal.jsx";
+import { useAuthContext } from "@/context/AuthContext";
 
-import PageHeader from "@/components/PageHeader.jsx";
-import ResponsiveFilters from "@/components/ResponsiveFilters.jsx";
-import FluidTable from "@/components/FluidTable.jsx";
-import { SafeText, SafeDate, safe } from "@/utils/safe";
+const { RangePicker } = DatePicker;
 
-import { listSubjects, deleteSubject } from "@/pages/academics/_api";
-
-const { useBreakpoint } = Grid;
+/** Helpers */
+const fmt = (d) => (d ? new Date(d).toLocaleString() : "—");
+const withinRange = (iso, range) => {
+  if (!range || range.length !== 2) return true;
+  const ts = new Date(iso).getTime();
+  const start = range[0]?.startOf?.("day")?.toDate?.() ?? range[0];
+  const end = range[1]?.endOf?.("day")?.toDate?.() ?? range[1];
+  return ts >= new Date(start).getTime() && ts <= new Date(end).getTime();
+};
 
 export default function SubjectsList() {
-  const [form] = Form.useForm();
-  const navigate = useNavigate();
-  const qc = useQueryClient();
-  const screens = useBreakpoint();
+  const { user } = useAuthContext();
+  const currentUserId = user?.id ?? user?.user_id ?? user?.userId;
 
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-  const filters = Form.useWatch([], form);
+  const [subjects, setSubjects] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  // Quiet fetch: swallow errors and return empty shape
-  const { data, isFetching, refetch } = useQuery({
-    queryKey: ["subjects", { page, pageSize, ...filters }],
-    queryFn: async () => {
-      try {
-        return await listSubjects({ page, pageSize, ...filters });
-      } catch {
-        return { items: [], total: 0 };
-      }
-    },
-    keepPreviousData: true
-  });
+  // Filters
+  const [q, setQ] = useState("");
+  const [classFilter, setClassFilter] = useState();
+  const [dateRange, setDateRange] = useState();
 
-  const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
-  const total = Number.isFinite(data?.total) ? data.total : items.length;
+  // View modal
+  const [viewer, setViewer] = useState(null);
+  const [viewerLoading, setViewerLoading] = useState(false);
 
-  const del = useMutation({
-    mutationFn: (id) => deleteSubject(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subjects"] }); },
-    onError: () => {}
-  });
+  // Create/Edit modal
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
 
-  const columns = useMemo(() => [
-    { title: "Name", dataIndex: "name", render: (v) => <SafeText value={v} /> },
-    { title: "Code", dataIndex: "code", width: 140, render: (v) => <SafeText value={v} /> },
-    { title: "Description", dataIndex: "description", ellipsis: true, render: (v) => <SafeText value={v} /> },
-    { title: "Updated", dataIndex: "updated_at", width: 180, render: (iso) => <SafeDate value={iso} /> },
-    {
-      title: "Actions", key: "actions", width: 260, fixed: screens.md ? "right" : undefined,
-      render: (_, r) => (
-        <Space wrap>
-          <Button size="small" onClick={() => navigate(`/admin/academics/subjects/${r.id}`)}>View</Button>
-          <Button size="small" onClick={() => navigate(`/admin/academics/subjects/${r.id}/edit`)}>Edit</Button>
-          <Popconfirm title="Delete this subject?" onConfirm={() => del.mutate(r.id)}>
-            <Button danger size="small">Delete</Button>
-          </Popconfirm>
-        </Space>
-      )
+  // Assign modal
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignSubjectId, setAssignSubjectId] = useState(null);
+
+  const loadClasses = async () => {
+    try {
+      const { data } = await api.get("/allclasses");
+      setClasses(Array.isArray(data) ? data : []);
+    } catch {
+      message.error("Failed to load classes.");
     }
-  ], [navigate, del.isPending, screens.md]);
-
-  const onExport = () => {
-    const rows = (items ?? []).map(s => ({
-      id: safe(s.id), name: safe(s.name), code: safe(s.code),
-      description: safe(s.description), updated_at: safe(s.updated_at)
-    }));
-    const csv = [
-      "id,name,code,description,updated_at",
-      ...rows.map(r => [r.id,r.name,r.code,r.description,r.updated_at].join(","))
-    ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "subjects.csv"; a.click();
-    URL.revokeObjectURL(url);
   };
 
+  const loadSubjects = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/allsubjects");
+      setSubjects(Array.isArray(data) ? data : []);
+    } catch {
+      message.error("Failed to load subjects.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadClasses();
+    loadSubjects();
+  }, []);
+
+  const classLabel = (cls) =>
+    cls?.name || cls?.class_name || cls?.title || (cls?.id ? `Class #${cls.id}` : "—");
+
+  const classNameFromId = (cid) => {
+    const cls = classes.find((c) => String(c.id) === String(cid));
+    return classLabel(cls);
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    setModalOpen(true);
+  };
+
+  const openEdit = (rec) => {
+    setEditing(rec);
+    setModalOpen(true);
+  };
+
+  const onDelete = (rec) => {
+    Modal.confirm({
+      title: `Delete subject #${rec.id}?`,
+      content: "This action cannot be undone.",
+      okText: "Delete",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await api.delete(`/subject/${rec.id}`);
+          message.success("Subject deleted.");
+          loadSubjects();
+        } catch {
+          message.error("Delete failed.");
+        }
+      },
+    });
+  };
+
+  const onView = async (rec) => {
+    setViewerLoading(true);
+    try {
+      const { data } = await api.get(`/subject/${rec.id}`);
+      setViewer(data || rec);
+    } catch {
+      setViewer(rec);
+    } finally {
+      setViewerLoading(false);
+    }
+  };
+
+  const openAssign = (rec) => {
+    setAssignSubjectId(rec.id);
+    setAssignOpen(true);
+  };
+
+  const filtered = useMemo(() => {
+    return subjects.filter((r) => {
+      const text = `${r.subject_name ?? ""} ${classNameFromId(r.class_id)}`.toLowerCase();
+      const textMatch = !q || text.includes(q.toLowerCase());
+      const classMatch = !classFilter || String(r.class_id) === String(classFilter);
+      const dateMatch = !r.created_at || withinRange(r.created_at, dateRange);
+      return textMatch && classMatch && dateMatch;
+    });
+  }, [subjects, q, classFilter, dateRange, classes]);
+
+  const columns = useMemo(
+    () => [
+      {
+        title: "Subject",
+        dataIndex: "subject_name",
+        render: (_, rec) => (
+          <div className="leading-tight">
+            <div className="font-medium flex items-center gap-2">
+              <BookOutlined /> {rec.subject_name}
+            </div>
+            <div className="text-xs text-gray-500">
+              ID: <Tag>{rec.id}</Tag>
+            </div>
+          </div>
+        ),
+      },
+      {
+        title: "Class",
+        dataIndex: "class_id",
+        render: (cid, rec) =>
+          rec.class ? classLabel(rec.class) : classNameFromId(cid),
+        width: 220,
+      },
+      {
+        title: "Created By",
+        dataIndex: "created_by",
+        width: 140,
+        render: (v, rec) => rec.userCreated?.name || rec.userCreated?.fullName || v || "—",
+      },
+      {
+        title: "Created At",
+        dataIndex: "created_at",
+        width: 200,
+        render: (d) => fmt(d),
+      },
+      {
+        title: "",
+        key: "actions",
+        align: "right",
+        width: 60,
+        render: (_, rec) => {
+          const items = [
+            { key: "view", icon: <EyeOutlined />, label: "View", onClick: () => onView(rec) },
+            { key: "edit", icon: <EditOutlined />, label: "Edit", onClick: () => openEdit(rec) },
+            { key: "assign", icon: <UserSwitchOutlined />, label: "Assign", onClick: () => openAssign(rec) },
+            { key: "delete", icon: <DeleteOutlined />, label: <span className="text-red-600">Delete</span>, onClick: () => onDelete(rec) },
+          ];
+          return (
+            <Dropdown trigger={["click"]} placement="bottomRight" arrow menu={{ items }}>
+              <Button type="text" shape="circle" aria-label="Actions" icon={<EllipsisOutlined />} />
+            </Dropdown>
+          );
+        },
+      },
+    ],
+    [classes]
+  );
+
   return (
-    <div className="flex flex-col min-h-0">
-      <PageHeader
-        title="Subjects"
-        subtitle="Manage subjects used across curricula and quizzes."
-        extra={
+    <Space direction="vertical" size="large" className="w-full">
+      <div className="flex items-center justify-between">
+        <Typography.Title level={3} className="!mb-0 flex items-center gap-2">
+          <BookOutlined /> Subjects
+        </Typography.Title>
+        <Space>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            Add Subject
+          </Button>
+        </Space>
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
           <Space wrap>
-            <Button icon={<ReloadOutlined />} onClick={() => refetch()} />
-            <Button icon={<DownloadOutlined />} onClick={onExport}>Export CSV</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate("/admin/academics/subjects/new")}>
-              New Subject
+            <Input
+              prefix={<SearchOutlined />}
+              placeholder="Search by subject or class…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={{ width: 320 }}
+              allowClear
+            />
+            <Select
+              placeholder="Filter by class"
+              value={classFilter}
+              onChange={setClassFilter}
+              allowClear
+              options={classes.map((c) => ({ value: c.id, label: classLabel(c) }))}
+              style={{ width: 260 }}
+              showSearch
+              optionFilterProp="label"
+            />
+            <RangePicker value={dateRange} onChange={setDateRange} />
+          </Space>
+
+          <Space>
+            <Button onClick={() => { setQ(""); setClassFilter(undefined); setDateRange(undefined); }}>
+              Reset
             </Button>
           </Space>
-        }
-      />
+        </div>
 
-      <ResponsiveFilters>
-        <Form form={form} component={false} />
-        <Form.Item name="q">
-          <Input allowClear placeholder="Search by name/code…" style={{ width: 260 }} />
-        </Form.Item>
-        <Form.Item>
-          <Button onClick={() => form.resetFields()}>Reset</Button>
-        </Form.Item>
-      </ResponsiveFilters>
-
-      <div className="p-3 md:p-4">
-        <Card bodyStyle={{ padding: 0 }} className="overflow-hidden">
-          <FluidTable
+        <div className="mt-4">
+          <Table
             rowKey="id"
-            loading={isFetching}
+            loading={loading}
             columns={columns}
-            dataSource={items}
-            pagination={{
-              current: page, pageSize, total, showSizeChanger: true,
-              onChange: (p, ps) => { setPage(p); setPageSize(ps); }
-            }}
+            dataSource={filtered}
+            pagination={{ pageSize: 10 }}
           />
-          {!isFetching && items.length === 0 && (
-            <div className="px-6 py-8 text-sm text-gray-500 dark:text-gray-400">
-              No subjects yet — create one to get started.
-            </div>
-          )}
-        </Card>
-      </div>
-    </div>
+        </div>
+      </Card>
+
+      {/* VIEW MODAL */}
+      <Modal
+        open={!!viewer}
+        title={viewer ? `Subject #${viewer.id}` : ""}
+        confirmLoading={viewerLoading}
+        footer={
+          viewer && (
+            <Space>
+              <Link to={`/admin/academics/subjects/${viewer.id}`}>
+                <Button type="default">Open Detail Page</Button>
+              </Link>
+              <Button onClick={() => setViewer(null)}>Close</Button>
+            </Space>
+          )
+        }
+        onCancel={() => setViewer(null)}
+        width={720}
+      >
+        {viewer && !viewerLoading && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card size="small" title="Overview">
+              <div className="space-y-1 text-sm">
+                <div><strong>Subject:</strong> {viewer.subject_name}</div>
+                <div><strong>Class:</strong> {viewer.class ? (viewer.class.name || viewer.class.class_name || `Class #${viewer.class.id}`) : classNameFromId(viewer.class_id)}</div>
+                <div><strong>Created By:</strong> {viewer.userCreated?.name || viewer.created_by || "—"}</div>
+                <div><strong>Created At:</strong> {fmt(viewer.created_at)}</div>
+              </div>
+            </Card>
+            <Card size="small" title="Quick Actions">
+              <Space direction="vertical">
+                <Button icon={<UserSwitchOutlined />} onClick={() => { setViewer(null); openAssign(viewer); }}>Assign</Button>
+                <Button icon={<EditOutlined />} onClick={() => { setViewer(null); openEdit(viewer); }}>Edit</Button>
+                <Button danger icon={<DeleteOutlined />} onClick={() => onDelete(viewer)}>Delete</Button>
+              </Space>
+            </Card>
+          </div>
+        )}
+      </Modal>
+
+      {/* CREATE/EDIT MODAL */}
+      <Modal
+        open={modalOpen}
+        title={editing ? `Edit Subject #${editing.id}` : "Add Subject"}
+        onCancel={() => { setModalOpen(false); setEditing(null); }}
+        footer={null}
+        destroyOnClose
+      >
+        <SubjectForm
+          classes={classes}
+          initialValues={editing ? {
+            subject_name: editing.subject_name,
+            class_id: editing.class_id,
+            created_by: editing.created_by,
+          } : {}}
+          onSubmit={async (vals) => {
+            try {
+              const payload = editing
+                ? { id: editing.id, subject_name: vals.subject_name, class_id: Number(vals.class_id), created_by: editing.created_by ?? currentUserId }
+                : { subject_name: vals.subject_name, class_id: Number(vals.class_id), created_by: currentUserId };
+
+              await api.post("/addsubject", payload);
+              message.success(editing ? "Subject updated." : "Subject added.");
+              setModalOpen(false);
+              setEditing(null);
+              loadSubjects();
+            } catch {
+              message.error("Save failed.");
+            }
+          }}
+          onCancel={() => { setModalOpen(false); setEditing(null); }}
+        />
+      </Modal>
+
+      {/* ASSIGN MODAL */}
+      <AssignSubjectModal
+        subjectId={assignSubjectId}
+        open={assignOpen}
+        onClose={() => { setAssignOpen(false); setAssignSubjectId(null); }}
+      />
+    </Space>
   );
 }
