@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   Button, Card, Form, Input, Select, Space, Tag,
   Drawer, Divider, Upload, Descriptions, List, Empty,
@@ -30,7 +30,81 @@ import {
   unlinkQuiz,
 } from "./_api";
 
+import ReactQuill from "react-quill";
+import "react-quill/dist/quill.snow.css";
+
 const { useBreakpoint } = Grid;
+
+/** ---- Rich Text wrapper that plays nice with AntD Form ---- */
+function RichTextArea({ value, onChange, onImageUpload }) {
+  const quillRef = useRef(null);
+
+  const handleImage = () => {
+    if (!onImageUpload) return;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const quill = quillRef.current?.getEditor();
+      const range = quill?.getSelection(true);
+      try {
+        const url = await onImageUpload(file); // must return a URL
+        if (range) {
+          quill.insertEmbed(range.index, "image", url, "user");
+          quill.setSelection(range.index + 1);
+        }
+      } catch (e) {
+        // optionally show message.error(e.message)
+        console.error(e);
+      }
+    };
+    input.click();
+  };
+
+  const modules = useMemo(
+    () => ({
+      toolbar: {
+        container: [
+          [{ header: [1, 2, 3, false] }],
+          ["bold", "italic", "underline", "strike"],
+          [{ color: [] }, { background: [] }],
+          [{ list: "ordered" }, { list: "bullet" }],
+          [{ align: [] }],
+          ["link", "image", "blockquote", "code-block"],
+          ["clean"],
+        ],
+        handlers: { image: handleImage },
+      },
+      clipboard: { matchVisual: false },
+    }),
+    []
+  );
+
+  const formats = [
+    "header", "bold", "italic", "underline", "strike",
+    "color", "background", "list", "bullet", "align",
+    "link", "image", "blockquote", "code-block",
+  ];
+
+  return (
+    <div className="antd-quill">
+      <ReactQuill
+        ref={quillRef}
+        theme="snow"
+        value={value}
+        onChange={(html) => onChange?.(html)}
+        modules={modules}
+        formats={formats}
+      />
+      <style>{`
+        .antd-quill .ql-container { min-height: 160px; }
+        .antd-quill .ql-toolbar, .antd-quill .ql-container { border-radius: 8px; }
+      `}</style>
+    </div>
+  );
+}
 
 export default function Curricula() {
   const [form] = Form.useForm();
@@ -55,7 +129,7 @@ export default function Curricula() {
   });
 
   const items = Array.isArray(data?.items) ? data.items : [];
-   const total = Number.isFinite(data?.total) ? data.total : items.length;
+  const total = Number.isFinite(data?.total) ? data.total : items.length;
 
   // UI state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -85,7 +159,8 @@ export default function Curricula() {
         subject: item.subject || "",
         grade: item.grade || undefined,
         status: item.status || "draft",
-        tags: item.tags || []
+        tags: item.tags || [],
+        notes_html: item.notes_html || "",
       });
       setContentJson(JSON.stringify(item.content ?? {}, null, 2));
       setDrawerOpen(true);
@@ -219,7 +294,8 @@ export default function Curricula() {
     let parsed = {};
     try { parsed = contentJson ? JSON.parse(contentJson) : {}; }
     catch { return; } // keep quiet if invalid JSON
-    const payload = { ...values, content: parsed };
+    // include notes_html in payload (backend can ignore if unused)
+    const payload = { ...values, content: parsed, notes_html: values?.notes_html || "" };
     if (editId) updateMut.mutate(payload); else createMut.mutate(payload);
   };
 
@@ -239,6 +315,16 @@ export default function Curricula() {
   });
   const detail = detailData || null;
   useEffect(() => { if (detailId) refetchDetail(); }, [detailId, refetchDetail]);
+
+  // simple example uploader for images inside rich editor (replace with real API)
+  const uploadImage = async (file) => {
+    // Example: upload to your server and return a URL
+    // const formData = new FormData(); formData.append("file", file);
+    // const { data } = await api.post("/upload", formData);
+    // return data.url;
+    await new Promise(r => setTimeout(r, 300));
+    return URL.createObjectURL(file); // preview URL; replace in production
+  };
 
   return (
     <div className="flex flex-col min-h-0">
@@ -314,7 +400,7 @@ export default function Curricula() {
           </Space>
         }
       >
-        <Form form={form} layout="vertical" initialValues={{ status: "draft", grade: 1 }}>
+        <Form form={form} layout="vertical" initialValues={{ status: "draft", grade: 1, notes_html: "" }}>
           <Form.Item name="title" label="Title"><Input placeholder="Optional title e.g. Deutsch – BW – Grade 2" /></Form.Item>
           <Form.Item name="bundesland" label="Bundesland" rules={[{ required: true }]}>
             <Select options={BUNDESLAENDER.map(b => ({ value: b, label: b }))} />
@@ -323,14 +409,31 @@ export default function Curricula() {
           <Form.Item name="grade" label="Grade" rules={[{ required: true }]}><Select options={GRADES.map(g => ({ value: g, label: `Grade ${g}` }))} /></Form.Item>
           <Form.Item name="status" label="Status"><Select options={CURRICULUM_STATUSES.map(s => ({ value: s, label: s }))} /></Form.Item>
           <Form.Item name="tags" label="Tags"><Select mode="tags" placeholder="press Enter to add" /></Form.Item>
+
           <Divider />
+
+          {/* NEW: Rich Text Notes field */}
+          <Form.Item name="notes_html" label="Notes (Rich Text)">
+            <RichTextArea
+              value={Form.useWatch("notes_html", form)}
+              onChange={(html) => form.setFieldsValue({ notes_html: html })}
+              onImageUpload={uploadImage}
+            />
+          </Form.Item>
+
+          <Divider />
+
           <Form.Item label="Content (JSON / Blocks)">
             <Space direction="vertical" style={{ width: "100%" }}>
               <Upload accept=".json,application/json" beforeUpload={beforeUpload} maxCount={1} showUploadList={false}>
                 <Button icon={<UploadOutlined />}>Import JSON</Button>
               </Upload>
-              <Input.TextArea rows={12} value={contentJson} onChange={(e) => setContentJson(e.target.value)}
-                placeholder='{"units":[{"title":"…","outcomes":[…]}]}' />
+              <Input.TextArea
+                rows={12}
+                value={contentJson}
+                onChange={(e) => setContentJson(e.target.value)}
+                placeholder='{"units":[{"title":"…","outcomes":[…]}]}'
+              />
             </Space>
           </Form.Item>
         </Form>
@@ -374,6 +477,19 @@ export default function Curricula() {
               <Descriptions.Item label="Updated"><SafeDate value={detail?.updated_at} /></Descriptions.Item>
               <Descriptions.Item label="Created By"><SafeText value={detail?.created_by?.name} /></Descriptions.Item>
             </Descriptions>
+
+            {/* Render the rich notes if present */}
+            {detail?.notes_html ? (
+              <>
+                <Divider />
+                <h3 className="font-semibold mb-2">Notes</h3>
+                <div
+                  className="prose max-w-none ql-editor"
+                  // You already sanitize text elsewhere; if notes_html comes from trusted source, this is ok.
+                  dangerouslySetInnerHTML={{ __html: detail.notes_html }}
+                />
+              </>
+            ) : null}
 
             <Divider />
             <h3 className="font-semibold mb-2">Linked Quizzes</h3>

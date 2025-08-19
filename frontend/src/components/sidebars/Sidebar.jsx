@@ -74,7 +74,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
         { href: "/admin/academics/game", label: "Game", icon: ProjectOutlined },
         { href: "/admin/academics/ai-agent", label: "AI Agent", icon: RobotOutlined },
         { href: "/admin/academics/subjects", label: "Subjects", icon: BookOutlined },
-        { href: "/admin/academics/subjects/new", label: "New Subject", icon: BookOutlined },
+        //{ href: "/admin/academics/subjects/new", label: "New Subject", icon: BookOutlined },
 
         // ✅ Scans nested under Academics (OCR link removed; opened inline in page)
         { href: "/admin/academics/scans", label: "Scans", icon: FileSearchOutlined },
