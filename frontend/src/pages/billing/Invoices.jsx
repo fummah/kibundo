@@ -14,6 +14,13 @@ import api from "@/api/axios";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 
+// Optional: npm i dompurify (recommended)
+let DOMPurify;
+try {
+  // If available at runtime, use it; otherwise fall back to a simple strip
+  DOMPurify = require("dompurify");
+} catch {}
+
 const { RangePicker } = DatePicker;
 const { useBreakpoint } = Grid;
 
@@ -29,6 +36,9 @@ const CURRENCY_OPTIONS = [
   { value: "USD", label: "USD" },
   { value: "ZAR", label: "ZAR" }
 ];
+
+const fmtMoney = (amount, currency="EUR") =>
+  Number(amount ?? 0).toLocaleString(undefined, { style: "currency", currency });
 
 /* ---------------- DUMMY HELPERS ---------------- */
 function buildDummyInvoices(range) {
@@ -162,13 +172,14 @@ export default function Invoices() {
   const [loading, setLoading] = useState(false);
   const [range, setRange] = useState([dayjs().startOf("month"), dayjs().endOf("month")]);
   const [q, setQ] = useState("");
+  const qTimer = useRef(null);
 
   // modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form] = Form.useForm();
 
-  // preview drawer
+  // preview
   const [previewRow, setPreviewRow] = useState(null);
 
   const load = async () => {
@@ -203,8 +214,13 @@ export default function Invoices() {
   const exportCsv = () => {
     const rows = [["ID","Status","Total","Currency","Due","Created","Parent"]];
     filtered.forEach(i => rows.push([
-      i.id || i.stripe_invoice_id, i.status, (i.total_cents||0)/100, i.currency || "EUR",
-      i.due_at || "", i.created_at || "", i?.parent?.name || ""
+      i.id || i.stripe_invoice_id,
+      i.status,
+      (i.total_cents||0)/100,
+      i.currency || "EUR",
+      i.due_at || "",
+      i.created_at || "",
+      i?.parent?.name || ""
     ]));
     const csv = rows.map(r => r.map(x => `"${String(x??"").replace(/"/g,'""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -270,8 +286,15 @@ export default function Invoices() {
     });
   };
 
+  const sanitize = (html) => {
+    if (DOMPurify?.sanitize) return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+    // minimal fallback: strip script tags
+    return String(html || "").replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
+  };
+
   const submitModal = async () => {
     const vals = await form.validateFields();
+    const cleanNotes = sanitize(vals.notes_html || "");
     const payload = {
       id: vals.id,
       status: vals.status,
@@ -281,7 +304,7 @@ export default function Invoices() {
       created_at: vals.created_at?.toISOString(),
       parent: { name: vals.parent_name || "" },
       pdf_url: vals.pdf_url || "",
-      notes_html: vals.notes_html || "",
+      notes_html: cleanNotes,
     };
 
     if (editingId) {
@@ -300,16 +323,18 @@ export default function Invoices() {
 
   const uploadImage = async (file) => {
     // Replace with your real upload endpoint
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise(r => setTimeout(r, 250));
     return URL.createObjectURL(file);
   };
 
-  const columns = [
+  // memoized columns for perf + responsiveness
+  const columns = useMemo(() => [
     {
       title: "ID",
       dataIndex: "id",
       key: "id",
       ellipsis: true,
+      width: 180,
       render: (v, r) => v || r.stripe_invoice_id
     },
     {
@@ -322,6 +347,14 @@ export default function Invoices() {
       title: "Status",
       dataIndex: "status",
       key: "status",
+      width: 130,
+      filters: [
+        { text: "Paid", value: "paid" },
+        { text: "Open", value: "open" },
+        { text: "Past due", value: "past_due" },
+        { text: "Uncollectible", value: "uncollectible" },
+      ],
+      onFilter: (val, rec) => (rec.status || "").toLowerCase() === val,
       render: (v) =>
         UNPAID.has(String(v).toLowerCase()) ? (
           <Tag color="orange">{v}</Tag>
@@ -334,21 +367,31 @@ export default function Invoices() {
     {
       title: "Total",
       key: "total",
-      width: 140,
-      render: (_, r) => `${(r.total_cents||0)/100} ${r.currency||"EUR"}`
+      width: 160,
+      align: "right",
+      sorter: (a, b) => (a.total_cents||0) - (b.total_cents||0),
+      render: (_, r) => fmtMoney((r.total_cents||0)/100, r.currency||"EUR")
     },
     {
       title: "Due",
       dataIndex: "due_at",
       key: "due_at",
-      width: 130,
-      render: v => v ? new Date(v).toLocaleDateString() : "—"
+      width: 150,
+      sorter: (a, b) => new Date(a.due_at||0) - new Date(b.due_at||0),
+      render: (v, r) => v ? (
+        <Space size={4}>
+          <span>{new Date(v).toLocaleDateString()}</span>
+          {UNPAID.has(String(r.status).toLowerCase()) && new Date(v) < new Date() ? <Tag color="red">overdue</Tag> : null}
+        </Space>
+      ) : "—"
     },
     {
       title: "Created",
       dataIndex: "created_at",
       key: "created_at",
       width: 180,
+      sorter: (a, b) => new Date(a.created_at||0) - new Date(b.created_at||0),
+      defaultSortOrder: "descend",
       render: v => v ? new Date(v).toLocaleString() : "—"
     },
     {
@@ -390,14 +433,15 @@ export default function Invoices() {
         );
       }
     },
-  ];
+  ], [screens.md]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // quick KPIs (professional touch)
+  // quick KPIs
   const kpis = useMemo(() => {
     const total = filtered.reduce((acc, r) => acc + (r.total_cents || 0), 0) / 100;
     const unpaidCount = filtered.filter(r => UNPAID.has(String(r.status).toLowerCase())).length;
     const paidCount = filtered.filter(r => String(r.status).toLowerCase() === "paid").length;
-    return { total, unpaidCount, paidCount };
+    const cur = filtered[0]?.currency || "EUR";
+    return { total, unpaidCount, paidCount, cur };
   }, [filtered]);
 
   return (
@@ -415,7 +459,11 @@ export default function Invoices() {
               allowClear
               prefix={<SearchOutlined />}
               placeholder="Search ID or parent…"
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (qTimer.current) clearTimeout(qTimer.current);
+                qTimer.current = setTimeout(() => setQ(v), 250);
+              }}
               style={{ width: screens.xs ? 220 : 260 }}
             />
             <RangePicker value={range} onChange={setRange} />
@@ -430,12 +478,8 @@ export default function Invoices() {
         {/* KPI strip */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Card size="small" className="rounded-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs text-gray-500">Total Amount (filtered)</div>
-                <div className="text-lg font-semibold">{kpis.total.toLocaleString(undefined, { style: "currency", currency: "EUR" })}</div>
-              </div>
-            </div>
+            <div className="text-xs text-gray-500">Total Amount (filtered)</div>
+            <div className="text-lg font-semibold">{fmtMoney(kpis.total, kpis.cur)}</div>
           </Card>
           <Card size="small" className="rounded-xl">
             <div className="text-xs text-gray-500">Paid</div>
@@ -455,7 +499,8 @@ export default function Invoices() {
             dataSource={filtered}
             loading={loading}
             pagination={{ pageSize: 12, showSizeChanger: true }}
-            scroll={{ x: 800 }}
+            scroll={{ x: 900 }}
+            sticky
             locale={{
               emptyText: (
                 <Empty description={
@@ -528,7 +573,7 @@ export default function Invoices() {
         </Form>
       </Modal>
 
-      {/* Preview Drawer */}
+      {/* Preview Modal */}
       <Modal
         open={!!previewRow}
         onCancel={() => setPreviewRow(null)}
@@ -548,7 +593,7 @@ export default function Invoices() {
                 ) : (<Tag>{previewRow.status || "—"}</Tag>)}
               </Descriptions.Item>
               <Descriptions.Item label="Total">
-                {(previewRow.total_cents||0)/100} {previewRow.currency || "EUR"}
+                {fmtMoney((previewRow.total_cents||0)/100, previewRow.currency || "EUR")}
               </Descriptions.Item>
               <Descriptions.Item label="Due">
                 {previewRow.due_at ? new Date(previewRow.due_at).toLocaleString() : "—"}
@@ -571,13 +616,13 @@ export default function Invoices() {
                 <h4 className="font-semibold mb-2">Notes / Terms</h4>
                 <div
                   className="prose max-w-none ql-editor border rounded-md p-3 bg-white"
-                  dangerouslySetInnerHTML={{ __html: previewRow.notes_html }}
+                  dangerouslySetInnerHTML={{ __html: sanitize(previewRow.notes_html) }}
                 />
               </>
             ) : null}
 
             <Divider className="my-3" />
-            <Space>
+            <Space wrap>
               <Button icon={<EditOutlined />} onClick={() => { setPreviewRow(null); openEdit(previewRow); }}>
                 Edit
               </Button>

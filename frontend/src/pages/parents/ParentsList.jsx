@@ -1,3 +1,5 @@
+// src/pages/parents/ParentsList.jsx
+import { useNavigate } from "react-router-dom";
 import EntityList, { columnFactories as F } from "@/components/EntityList";
 
 export default function ParentsList() {
@@ -19,63 +21,79 @@ export default function ParentsList() {
 
             return src.map((p) => {
               const u = p.user || {};
-              const fullName =
+              const name =
                 u.name ||
                 [u.first_name, u.last_name].filter(Boolean).join(" ").trim() ||
-                p.name;
+                p.name || "-";
 
               return {
+                // everything we want available on detail prefill:
                 id: p.id,
-                name: fb(fullName),
+                name: fb(name),
                 email: fb(u.email || p.email),
-                phone: fb(u.contact_number || u.phone || p.phone),
-                relationship: fb(p.relationship),
                 status: fb(u.status || p.status),
-                user_id: p.user_id,
+                school: fb(p.school?.name || p.school_name || p.location),
+                bundesland: fb(p.bundesland),
                 created_at: p.created_at || u.created_at || null,
 
-                // future address/location fields
-                location: fb(p.location),
-                street: fb(p.street),
-                city: fb(p.city),
-                county: fb(p.county),
-                zipCode: fb(p.zipCode || p.zip_code),
-                country: fb(p.country),
-                bundesland: fb(p.bundesland),
+                // keep originals around just in case
+                user_id: p.user_id,
+                raw: p,
               };
             });
           },
         },
         statusFilter: true,
         billingFilter: false,
+
+        // IMPORTANT: override the ID column to navigate with router state
         columnsMap: (navigate) => ({
           status: F.status("status"),
-          id: F.idLink("ID", "/admin/parents", "id", navigate),
-          name: F.text("Full name", "name"),
-          relationship: F.text("Relationship", "relationship"),
+
+          // ID column → pass prefill
+          id: {
+            title: "ID",
+            dataIndex: "id",
+            key: "id",
+            width: 110,
+            render: (v, row) => (
+              <a
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(`/admin/parents/${row.id}`, { state: { prefill: row } });
+                }}
+                href={`/admin/parents/${row.id}`}
+              >
+                {v}
+              </a>
+            ),
+          },
+
+          // Name column also clickable (optional)
+          name: {
+            title: "Full name",
+            dataIndex: "name",
+            key: "name",
+            render: (v, row) => (
+              <a
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(`/admin/parents/${row.id}`, { state: { prefill: row } });
+                }}
+                href={`/admin/parents/${row.id}`}
+              >
+                {v}
+              </a>
+            ),
+          },
+
           email: F.email("email"),
-          phone: F.text("Phone number", "phone"),
-
-          // keep address columns for future data
-          location:   F.text("Location", "location"),
-          street:     F.text("Street Address", "street"),
-          city:       F.text("City", "city"),
+          school: F.text("School", "school"),
           bundesland: F.text("Bundesland", "bundesland"),
-          zipCode:    F.text("Zip Code", "zipCode"),
-          country:    F.text("Country", "country"),
-          
-
           created_at: F.date("Date added", "created_at"),
         }),
-        defaultVisible: ["status", "id", "name", "relationship", "email", "phone", "created_at"],
-        rowClassName: (r) =>
-          r.status === "active"
-            ? "row-status-active"
-            : r.status === "suspended"
-            ? "row-status-suspended"
-            : r.status === "disabled"
-            ? "row-status-disabled"
-            : "",
+
+        defaultVisible: ["status", "id", "name", "email", "school", "bundesland", "created_at"],
       }}
     />
   );

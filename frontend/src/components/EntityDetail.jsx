@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+// src/components/EntityDetail.jsx
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 
 import {
   Card,
@@ -19,11 +20,11 @@ import {
   DatePicker,
   Upload,
   List,
-  Tooltip,     // AntD Tooltip
-  Popconfirm,  // AntD Popconfirm
+  Tooltip,
+  Popconfirm,
+  Avatar,
 } from "antd";
 import { Comment } from "@ant-design/compatible";
-
 
 import {
   ArrowLeftOutlined,
@@ -46,14 +47,13 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip as RTooltip, // recharts tooltip (aliased)
+  Tooltip as RTooltip,
 } from "recharts";
 
 import api from "@/api/axios";
 
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
-
 
 const dash = (v) =>
   v === undefined || v === null || String(v).trim() === "" ? "-" : v;
@@ -89,46 +89,6 @@ const readPath = (obj, path) => {
   return typeof path === "string" ? obj[path] : undefined;
 };
 
-/** Dummy generators (used if no API paths are provided) */
-const genDummyTasks = (entityId) => [
-  {
-    id: `t${entityId}-1`,
-    title: "Call parent",
-    status: "open",
-    priority: "medium",
-    dueDate: null,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: `t${entityId}-2`,
-    title: "Review homework",
-    status: "in_progress",
-    priority: "high",
-    dueDate: null,
-    created_at: new Date().toISOString(),
-  },
-];
-
-const genDummyComments = (entityId) => [
-  {
-    id: `c${entityId}-1`,
-    author: "Support Bot",
-    text: "Welcome to Kibundo!",
-    created_at: new Date().toISOString(),
-  },
-];
-
-const genDummyDocuments = (entityId) => [
-  {
-    id: `d${entityId}-1`,
-    title: "Consent Form",
-    description: "Signed by guardian",
-    status: "approved",
-    date: new Date().toISOString().slice(0, 10),
-    url: "#",
-  },
-];
-
 /** Pretty format date (DD/MM/YYYY) */
 const fmtDate = (d) => {
   if (!d) return "-";
@@ -140,18 +100,53 @@ const fmtDate = (d) => {
   return `${dd}/${mm}/${yyyy}`;
 };
 
+/** Build initials for avatar: prefer user first/last, else first_name/last_name, else split `name` */
+const getInitials = (e) => {
+  if (!e) return "";
+  const first =
+    e?.user?.first_name || e?.first_name || (e?.name ? String(e.name).trim().split(/\s+/)[0] : "") || "";
+  const last =
+    e?.user?.last_name || e?.last_name || (e?.name ? String(e.name).trim().split(/\s+/)[1] : "") || "";
+  const i1 = first?.charAt(0)?.toUpperCase() || "";
+  const i2 = last?.charAt(0)?.toUpperCase() || "";
+  return `${i1}${i2}`;
+};
+
 export default function EntityDetail({ cfg }) {
   const navigate = useNavigate();
   const { id } = useParams();
+  const location = useLocation();
   const [messageApi, ctx] = message.useMessage();
 
+  const safeCfg = cfg || {};
+  const idField = safeCfg.idField || "id";
+  const routeBase = safeCfg.routeBase || "";
+  const apiObj = safeCfg.api || {};
+  const { getPath, updateStatusPath, removePath, relatedListPath, performancePath } = apiObj;
+
+  // Pre-fill support
+  const rawPrefill = useMemo(
+    () => safeCfg.initialEntity ?? location.state?.prefill ?? null,
+    [safeCfg.initialEntity, location.state]
+  );
+  const parsedPrefill = useMemo(() => {
+    if (!rawPrefill) return null;
+    try {
+      return typeof apiObj.parseEntity === "function"
+        ? apiObj.parseEntity(rawPrefill)
+        : rawPrefill;
+    } catch {
+      return rawPrefill;
+    }
+  }, [rawPrefill, apiObj]);
+
   // State
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!parsedPrefill);
   const [saving, setSaving] = useState(false);
-  const [entity, setEntity] = useState(null);
+  const [entity, setEntity] = useState(parsedPrefill || null);
   const [activeTab, setActiveTab] = useState("information");
 
-  // Related list (e.g., children/guardians/classes)
+  // Related list
   const [relatedRows, setRelatedRows] = useState([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
 
@@ -160,36 +155,35 @@ export default function EntityDetail({ cfg }) {
   const [perfLoading, setPerfLoading] = useState(false);
   const [performance, setPerformance] = useState([]);
 
-  // Tasks state
+  // Tasks
   const [tasks, setTasks] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(false);
 
-  // Comments state
+  // Comments
   const [comments, setComments] = useState([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
 
-  // Documents state + per-document comments
+  // Documents + per-doc comments
   const [documents, setDocuments] = useState([]);
   const [docsLoading, setDocsLoading] = useState(false);
-  const [docCommentMap, setDocCommentMap] = useState({}); // {docId: [comments]}
+  const [docCommentMap, setDocCommentMap] = useState({});
   const [docCommentLoadingId, setDocCommentLoadingId] = useState(null);
   const [docCommentModal, setDocCommentModal] = useState({ open: false, doc: null });
 
-  // cfg plumbing
-  const idField = cfg.idField || "id";
-  const routeBase = cfg.routeBase || "";
-  const apiObj = cfg.api || {};
-  const { getPath, updateStatusPath, removePath, relatedListPath, performancePath } = apiObj;
+  // StrictMode guard to avoid double fetch in dev
+  const didInitRef = useRef(false);
 
-  // ---- single-entity loader
+  useEffect(() => {
+    if (parsedPrefill) setEntity(parsedPrefill);
+  }, [parsedPrefill]);
+
+  /** single-entity loader */
   const load = useCallback(async () => {
     if (!getPath && typeof apiObj.loader !== "function") {
-      // No endpoint and no loader: provide a placeholder record
-      setEntity({ [idField]: id, name: "-", status: "active" });
+      if (!entity) setEntity({ [idField]: id, name: "-", status: "active" });
       setLoading(false);
       return;
     }
-
     setLoading(true);
     try {
       let obj;
@@ -200,37 +194,41 @@ export default function EntityDetail({ cfg }) {
         const raw = data?.data ?? data ?? {};
         obj = typeof apiObj.parseEntity === "function" ? apiObj.parseEntity(raw) : raw;
       }
-      setEntity(obj);
-    } catch {
-      messageApi.warning("Could not load details. Showing placeholder.");
-      setEntity({ [idField]: id, name: "-", status: "active" });
+      setEntity((prev) => ({ ...(prev || {}), ...(obj || {}) }));
+    } catch (err) {
+      if (!entity) setEntity({ [idField]: id, name: "-", status: "active" });
+      const status = err?.response?.status;
+      if (status === 404) {
+        messageApi.error("Record not found (404)");
+      } else {
+        messageApi.warning("Could not load details. Showing cached row.");
+      }
     } finally {
       setLoading(false);
     }
-  }, [id, getPath, apiObj, messageApi, idField]);
+  }, [id, getPath, apiObj, messageApi, idField, entity]);
 
-  // ---- related
+  /** related */
   const loadRelated = useCallback(async () => {
-    if (!cfg?.tabs?.related?.enabled) return;
-    const listFn = cfg?.tabs?.related?.listPath || relatedListPath;
+    if (!safeCfg?.tabs?.related?.enabled) return;
+    const listFn = safeCfg?.tabs?.related?.listPath || relatedListPath;
+    if (typeof listFn !== "function") {
+      setRelatedRows([]);
+      return;
+    }
     setRelatedLoading(true);
     try {
-      if (typeof listFn === "function") {
-        const { data } = await api.get(listFn(id));
-        const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-        setRelatedRows(list);
-      } else {
-        // dummy if no API
-        setRelatedRows([]);
-      }
+      const { data } = await api.get(listFn(id));
+      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      setRelatedRows(list);
     } catch {
-      setRelatedRows([]); // silent
+      setRelatedRows([]);
     } finally {
       setRelatedLoading(false);
     }
-  }, [cfg?.tabs?.related, id, relatedListPath]);
+  }, [safeCfg?.tabs?.related, id, relatedListPath]);
 
-  // ---- performance (optional small chart)
+  /** performance */
   const loadPerformance = useCallback(async () => {
     if (!performancePath) return;
     setPerfLoading(true);
@@ -250,8 +248,8 @@ export default function EntityDetail({ cfg }) {
     }
   }, [performancePath, id, perfRange]);
 
-  // ---- TASKS CRUD (with fallbacks)
-  const tasksCfg = cfg?.tabs?.tasks || {};
+  /** tasks */
+  const tasksCfg = safeCfg?.tabs?.tasks || {};
   const loadTasks = useCallback(async () => {
     if (!tasksCfg.enabled) return;
     setTasksLoading(true);
@@ -261,10 +259,16 @@ export default function EntityDetail({ cfg }) {
         const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
         setTasks(list);
       } else {
-        setTasks(genDummyTasks(id));
+        setTasks([
+          { id: `t${id}-1`, title: "Call parent", status: "open", priority: "medium", dueDate: null, created_at: new Date().toISOString() },
+          { id: `t${id}-2`, title: "Review homework", status: "in_progress", priority: "high", dueDate: null, created_at: new Date().toISOString() },
+        ]);
       }
     } catch {
-      setTasks(genDummyTasks(id));
+      setTasks([
+        { id: `t${id}-1`, title: "Call parent", status: "open", priority: "medium", dueDate: null, created_at: new Date().toISOString() },
+        { id: `t${id}-2`, title: "Review homework", status: "in_progress", priority: "high", dueDate: null, created_at: new Date().toISOString() },
+      ]);
     } finally {
       setTasksLoading(false);
     }
@@ -285,7 +289,6 @@ export default function EntityDetail({ cfg }) {
       messageApi.error("Failed to add task");
     }
   };
-
   const updateTask = async (taskId, patch) => {
     try {
       if (typeof tasksCfg.updatePath === "function") {
@@ -296,7 +299,6 @@ export default function EntityDetail({ cfg }) {
       messageApi.error("Failed to update task");
     }
   };
-
   const deleteTask = async (taskId) => {
     try {
       if (typeof tasksCfg.deletePath === "function") {
@@ -309,8 +311,8 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  // ---- COMMENTS (list/create with fallbacks)
-  const commCfg = cfg?.tabs?.communication || {};
+  /** comments (general) */
+  const commCfg = safeCfg?.tabs?.communication || {};
   const loadComments = useCallback(async () => {
     if (!commCfg?.enabled) return;
     setCommentsLoading(true);
@@ -320,10 +322,10 @@ export default function EntityDetail({ cfg }) {
         const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
         setComments(list);
       } else {
-        setComments(genDummyComments(id));
+        setComments([{ id: `c${id}-1`, author: "Support Bot", text: "Welcome!", created_at: new Date().toISOString() }]);
       }
     } catch {
-      setComments(genDummyComments(id));
+      setComments([{ id: `c${id}-1`, author: "Support Bot", text: "Welcome!", created_at: new Date().toISOString() }]);
     } finally {
       setCommentsLoading(false);
     }
@@ -345,8 +347,8 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  // ---- DOCUMENTS (list/upload/delete + per-doc comments)
-  const docsCfg = cfg?.tabs?.documents || {};
+  /** documents */
+  const docsCfg = safeCfg?.tabs?.documents || {};
   const loadDocuments = useCallback(async () => {
     if (!docsCfg?.enabled) return;
     setDocsLoading(true);
@@ -356,10 +358,10 @@ export default function EntityDetail({ cfg }) {
         const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
         setDocuments(list);
       } else {
-        setDocuments(genDummyDocuments(id));
+        setDocuments([{ id: `d${id}-1`, title: "Consent Form", description: "Signed by guardian", status: "approved", date: new Date().toISOString().slice(0, 10), url: "#" }]);
       }
     } catch {
-      setDocuments(genDummyDocuments(id));
+      setDocuments([{ id: `d${id}-1`, title: "Consent Form", description: "Signed by guardian", status: "approved", date: new Date().toISOString().slice(0, 10), url: "#" }]);
     } finally {
       setDocsLoading(false);
     }
@@ -371,14 +373,10 @@ export default function EntityDetail({ cfg }) {
         const form = new FormData();
         form.append("file", fileObj);
         Object.entries(meta || {}).forEach(([k, v]) => form.append(k, v ?? ""));
-        const { data } = await api.post(docsCfg.uploadPath(id), form, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        const created =
-          data?.data ?? data ?? { ...meta, title: meta?.title || fileObj?.name, id: `d${id}-${Date.now()}` };
+        const { data } = await api.post(docsCfg.uploadPath(id), form, { headers: { "Content-Type": "multipart/form-data" } });
+        const created = data?.data ?? data ?? { ...meta, title: meta?.title || fileObj?.name, id: `d${id}-${Date.now()}` };
         setDocuments((prev) => [created, ...prev]);
       } else {
-        // local dummy
         const created = {
           id: `d${id}-${Date.now()}`,
           title: meta?.title || fileObj?.name,
@@ -407,7 +405,7 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  // Per-document comments (list/add, optional API)
+  // Per-document comments
   const loadDocComments = async (doc) => {
     if (!doc) return;
     setDocCommentLoadingId(doc.id);
@@ -419,27 +417,13 @@ export default function EntityDetail({ cfg }) {
       } else {
         setDocCommentMap((m) => ({
           ...m,
-          [doc.id]: [
-            {
-              id: `dc-${doc.id}-1`,
-              author: "Support Bot",
-              text: "Looks good!",
-              created_at: new Date().toISOString(),
-            },
-          ],
+          [doc.id]: [{ id: `dc-${doc.id}-1`, author: "Support Bot", text: "Looks good!", created_at: new Date().toISOString() }],
         }));
       }
     } catch {
       setDocCommentMap((m) => ({
         ...m,
-        [doc.id]: [
-          {
-            id: `dc-${doc.id}-1`,
-            author: "Support Bot",
-            text: "Looks good!",
-            created_at: new Date().toISOString(),
-          },
-        ],
+        [doc.id]: [{ id: `dc-${doc.id}-1`, author: "Support Bot", text: "Looks good!", created_at: new Date().toISOString() }],
       }));
     } finally {
       setDocCommentLoadingId(null);
@@ -447,20 +431,14 @@ export default function EntityDetail({ cfg }) {
   };
 
   const addDocComment = async (doc, payload) => {
+    if (!doc) return;
     try {
+      let created = { id: `dc-${doc.id}-${Date.now()}`, created_at: new Date().toISOString(), ...payload };
       if (typeof docsCfg?.commentCreatePath === "function") {
-        await api.post(docsCfg.commentCreatePath(id, doc.id), payload);
+        const { data } = await api.post(docsCfg.commentCreatePath(id, doc.id), payload);
+        created = data?.data ?? data ?? created;
       }
-      setDocCommentMap((m) => {
-        const list = m[doc.id] || [];
-        return {
-          ...m,
-          [doc.id]: [
-            { id: `dc-${doc.id}-${Date.now()}`, created_at: new Date().toISOString(), ...payload },
-            ...list,
-          ],
-        };
-      });
+      setDocCommentMap((m) => ({ ...m, [doc.id]: [created, ...(m[doc.id] || [])] }));
       messageApi.success("Comment added");
     } catch {
       messageApi.error("Failed to add comment");
@@ -469,12 +447,14 @@ export default function EntityDetail({ cfg }) {
 
   // Effects
   useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
     load();
   }, [load]);
 
   useEffect(() => {
-    if (activeTab === "related" && (cfg?.tabs?.related?.enabled || relatedListPath)) loadRelated();
-  }, [activeTab, cfg?.tabs?.related?.enabled, loadRelated, relatedListPath]);
+    if (activeTab === "related" && (safeCfg?.tabs?.related?.enabled || relatedListPath)) loadRelated();
+  }, [activeTab, safeCfg?.tabs?.related?.enabled, loadRelated, relatedListPath]);
 
   useEffect(() => {
     if (activeTab === "information" && performancePath) loadPerformance();
@@ -494,12 +474,11 @@ export default function EntityDetail({ cfg }) {
 
   // Actions
   const goBack = () => navigate(-1);
-  const goEdit = () => navigate(`${routeBase}/${id}/edit`);
-
+  const goEdit = () => navigate(`${routeBase || location.pathname.replace(/\/[^/]+$/, "")}/${id}/edit`);
   const onDelete = () => {
     if (!removePath) return;
     Modal.confirm({
-      title: `Delete ${cfg.titleSingular || "record"}?`,
+      title: `Delete ${safeCfg.titleSingular || "record"}?`,
       content: (
         <>
           Are you sure you want to delete{" "}
@@ -527,7 +506,6 @@ export default function EntityDetail({ cfg }) {
       },
     });
   };
-
   const setStatus = async (next) => {
     if (!updateStatusPath) return;
     setSaving(true);
@@ -553,25 +531,25 @@ export default function EntityDetail({ cfg }) {
 
   // Top info chips
   const topInfoEls = useMemo(
-    () => (typeof cfg.topInfo === "function" ? cfg.topInfo(entity) : []),
-    [cfg, entity]
+    () => (typeof safeCfg.topInfo === "function" ? safeCfg.topInfo(entity) : []),
+    [safeCfg, entity]
   );
 
   // Info rows
   const infoRows = useMemo(() => {
-    const fields = Array.isArray(cfg.infoFields) ? cfg.infoFields : [];
+    const fields = Array.isArray(safeCfg.infoFields) ? safeCfg.infoFields : [];
     return fields.map((f) => ({
       key: Array.isArray(f.name) ? f.name.join(".") : f.name,
       label: f.label,
       value: dash(readPath(entity, f.name)),
     }));
-  }, [cfg.infoFields, entity]);
+  }, [safeCfg.infoFields, entity]);
 
   // Related columns
   const relatedColumns = useMemo(() => {
-    const def = cfg.tabs?.related?.columns || [];
+    const def = safeCfg.tabs?.related?.columns || [];
     return def.map((c) => ({ ...c }));
-  }, [cfg.tabs]);
+  }, [safeCfg.tabs]);
 
   // Performance card
   const PerformanceCard = performancePath ? (
@@ -607,21 +585,8 @@ export default function EntityDetail({ cfg }) {
             <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
             <XAxis dataKey="label" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 12 }} width={36} />
-            <RTooltip
-              formatter={(v) => [v, "Score"]}
-              labelStyle={{ fontWeight: 600 }}
-              contentStyle={{ borderRadius: 8 }}
-            />
-            <Area
-              type="monotone"
-              dataKey="value"
-              stroke="#1677ff"
-              fill="url(#perfGrad)"
-              strokeWidth={2}
-              dot={{ r: 2 }}
-              activeDot={{ r: 4 }}
-              isAnimationActive
-            />
+            <RTooltip formatter={(v) => [v, "Score"]} labelStyle={{ fontWeight: 600 }} contentStyle={{ borderRadius: 8 }} />
+            <Area type="monotone" dataKey="value" stroke="#1677ff" fill="url(#perfGrad)" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }} isAnimationActive />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -683,12 +648,12 @@ export default function EntityDetail({ cfg }) {
   );
 
   const relatedTab =
-    cfg.tabs?.related?.enabled && (
+    safeCfg.tabs?.related?.enabled && (
       <Card className="!rounded-xl" bodyStyle={{ padding: 0 }}>
         <div className="p-3 flex items-center justify-between">
-          <Text strong>{cfg.tabs.related.label || "Related"}</Text>
+          <Text strong>{safeCfg.tabs.related.label || "Related"}</Text>
           <Space>
-            {typeof cfg.tabs.related.toolbar === "function" ? cfg.tabs.related.toolbar(entity) : null}
+            {typeof safeCfg.tabs.related.toolbar === "function" ? safeCfg.tabs.related.toolbar(entity) : null}
             <Button icon={<ReloadOutlined />} onClick={loadRelated} />
           </Space>
         </div>
@@ -697,15 +662,12 @@ export default function EntityDetail({ cfg }) {
             columns={relatedColumns}
             dataSource={relatedRows}
             loading={relatedLoading}
-            rowKey={cfg.tabs.related.idField || "id"}
+            rowKey={safeCfg.tabs.related.idField || "id"}
             pagination={{ pageSize: 10 }}
             scroll={{ x: 800 }}
             locale={{
               emptyText: (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={cfg.tabs.related.empty || "No related records."}
-                />
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={safeCfg.tabs.related.empty || "No related records."} />
               ),
             }}
           />
@@ -714,10 +676,10 @@ export default function EntityDetail({ cfg }) {
     );
 
   const billingTab =
-    cfg.tabs?.billing?.enabled && (
+    safeCfg.tabs?.billing?.enabled && (
       <Card className="!rounded-xl">
         {(() => {
-          const rows = cfg.tabs?.billing?.rows && entity ? cfg.tabs.billing.rows(entity) : [];
+          const rows = safeCfg.tabs?.billing?.rows && entity ? safeCfg.tabs.billing.rows(entity) : [];
           return rows.length ? (
             <div className="flex flex-col gap-3">
               {rows.map((r, i) => (
@@ -731,11 +693,10 @@ export default function EntityDetail({ cfg }) {
       </Card>
     );
 
-  /* ---- AUDIT LOG (optional: use tabs.audit) ---- */
-  const auditCfg = cfg.tabs?.audit;
+  const auditCfg = safeCfg.tabs?.audit;
   const auditTab = auditCfg?.enabled && (
     <Card className="!rounded-xl" bodyStyle={{ padding: 0 }}>
-      <div className="p-3 flex itemsCenter justify-between">
+      <div className="p-3 flex items-center justify-between">
         <Text strong>{auditCfg.label || "Audit Log"}</Text>
       </div>
       <div className="px-3 pb-3">
@@ -744,15 +705,12 @@ export default function EntityDetail({ cfg }) {
           dataSource={auditCfg.data || []}
           pagination={{ pageSize: 10 }}
           scroll={{ x: 800 }}
-          locale={{
-            emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"No audit entries."} />,
-          }}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"No audit entries."} /> }}
         />
       </div>
     </Card>
   );
 
-  /* ---- TASKS Tab (CRUD) ---- */
   const TasksTab = tasksCfg.enabled && (
     <Card className="!rounded-xl">
       <AddTaskForm onSubmit={createTask} />
@@ -775,43 +733,29 @@ export default function EntityDetail({ cfg }) {
             width: 160,
             render: (_, r) => (
               <Space>
-                <Button
-                  size="small"
-                  onClick={() =>
-                    updateTask(r.id, { status: r.status === "done" ? "open" : "done" })
-                  }
-                >
+                <Button size="small" onClick={() => updateTask(r.id, { status: r.status === "done" ? "open" : "done" })}>
                   {r.status === "done" ? "Reopen" : "Mark Done"}
                 </Button>
                 <Popconfirm title="Delete task?" onConfirm={() => deleteTask(r.id)}>
-                  <Button size="small" danger>
-                    Delete
-                  </Button>
+                  <Button size="small" danger>Delete</Button>
                 </Popconfirm>
               </Space>
             ),
           },
         ]}
-        locale={{
-          emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No tasks yet." />,
-        }}
+        locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No tasks yet." /> }}
       />
     </Card>
   );
 
-  /* ---- COMMENTS Tab (list + add) ---- */
   const CommunicationTab = commCfg?.enabled && (
     <Card className="!rounded-xl">
-      <AddCommentForm
-        onSubmit={(vals) => addComment({ author: vals.author || "You", text: vals.text })}
-      />
+      <AddCommentForm onSubmit={(vals) => addComment({ author: vals.author || "You", text: vals.text })} />
       <Divider />
       <List
         loading={commentsLoading}
         dataSource={comments}
-        locale={{
-          emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No comments yet." />,
-        }}
+        locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No comments yet." /> }}
         renderItem={(item) => (
           <li key={item.id}>
             <Comment
@@ -825,7 +769,6 @@ export default function EntityDetail({ cfg }) {
     </Card>
   );
 
-  /* ---- DOCUMENTS Tab (upload + list + per-doc comments) ---- */
   const DocumentsTab = docsCfg?.enabled && (
     <Card className="!rounded-xl">
       <UploadDocumentForm onUpload={uploadDocument} />
@@ -842,48 +785,28 @@ export default function EntityDetail({ cfg }) {
           { title: "Description", dataIndex: "description", key: "description", render: (v) => v ?? "-" },
           { title: "Status", dataIndex: "status", key: "status", width: 120, render: (v) => v ?? "-" },
           { title: "Date", dataIndex: "date", key: "date", width: 130, render: (v) => (v ? fmtDate(v) : "-") },
-          {
-            title: "File",
-            dataIndex: "url",
-            key: "url",
-            width: 110,
-            render: (v) => (v ? <a href={v} target="_blank" rel="noreferrer">Open</a> : "-"),
-          },
+          { title: "File", dataIndex: "url", key: "url", width: 110, render: (v) => (v ? <a href={v} target="_blank" rel="noreferrer">Open</a> : "-") },
           {
             title: "",
             key: "actions",
             width: 200,
             render: (_, r) => (
               <Space>
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setDocCommentModal({ open: true, doc: r });
-                    loadDocComments(r);
-                  }}
-                >
+                <Button size="small" onClick={() => { setDocCommentModal({ open: true, doc: r }); loadDocComments(r); }}>
                   Comments
                 </Button>
                 <Popconfirm title="Delete document?" onConfirm={() => deleteDocument(r.id)}>
-                  <Button size="small" danger icon={<DeleteTwoTone twoToneColor="#ff4d4f" />}>
-                    Delete
-                  </Button>
+                  <Button size="small" danger icon={<DeleteTwoTone twoToneColor="#ff4d4f" />}>Delete</Button>
                 </Popconfirm>
               </Space>
             ),
           },
         ]}
-        locale={{
-          emptyText: (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents uploaded." />
-          ),
-        }}
+        locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents uploaded." /> }}
       />
 
       <Modal
-        title={
-          docCommentModal.doc ? `Comments — ${docCommentModal.doc.title || "-"}` : "Comments"
-        }
+        title={docCommentModal.doc ? `Comments — ${docCommentModal.doc.title || "-"}` : "Comments"}
         open={docCommentModal.open}
         onCancel={() => setDocCommentModal({ open: false, doc: null })}
         footer={null}
@@ -918,14 +841,34 @@ export default function EntityDetail({ cfg }) {
   // Tabs assemble
   const tabItems = useMemo(() => {
     const items = [{ key: "information", label: "Information", children: informationTab }];
-    if (relatedTab) items.push({ key: "related", label: cfg.tabs.related.label || "Related", children: relatedTab });
-    if (billingTab) items.push({ key: "billing", label: "Billing", children: billingTab });
-    if (cfg.tabs?.audit?.enabled) items.push({ key: "audit", label: cfg.tabs.audit.label || "Audit Log", children: auditTab });
+    if (relatedTab) items.push({ key: "related", label: safeCfg.tabs.related.label || "Related", children: relatedTab });
+    if (billingTab) items.push({ key: "billing", label: safeCfg.tabs.billing.label || "Billing", children: billingTab });
+    if (safeCfg.tabs?.audit?.enabled) items.push({ key: "audit", label: safeCfg.tabs.audit.label || "Audit Log", children: auditTab });
     if (tasksCfg.enabled) items.push({ key: "tasks", label: tasksCfg.label || "Tasks", children: TasksTab });
     if (docsCfg?.enabled) items.push({ key: "documents", label: docsCfg.label || "Documents", children: DocumentsTab });
     if (commCfg?.enabled) items.push({ key: "communication", label: commCfg.label || "Comments", children: CommunicationTab });
+    if (safeCfg.tabs?.activity?.enabled) items.push({ key: "activity", label: safeCfg.tabs.activity.label || "Activity", children: (
+      <Card className="!rounded-xl" bodyStyle={{ padding: 0 }}>
+        <div className="p-3 flex items-center justify-between">
+          <Text strong>{safeCfg.tabs.activity.label || "Activity"}</Text>
+          <Space>
+            {typeof safeCfg.tabs.activity.toolbar === "function" ? safeCfg.tabs.activity.toolbar(entity) : null}
+            <Button icon={<ReloadOutlined />} onClick={() => { /* let toolbar handle refresh via event */ }} />
+          </Space>
+        </div>
+        <div className="px-3 pb-3">
+          <Table
+            columns={safeCfg.tabs.activity.columns || []}
+            dataSource={[]} // provide your own via cfg if needed
+            pagination={{ pageSize: 10 }}
+            scroll={{ x: 800 }}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={safeCfg.tabs.activity.empty || "No activity."} /> }}
+          />
+        </div>
+      </Card>
+    )});
     return items;
-  }, [informationTab, relatedTab, billingTab, auditTab, tasksCfg.enabled, docsCfg?.enabled, commCfg?.enabled, cfg.tabs]);
+  }, [informationTab, relatedTab, billingTab, auditTab, tasksCfg.enabled, docsCfg?.enabled, commCfg?.enabled, safeCfg.tabs]);
 
   return (
     <div className="max-w-[1400px] mx-auto px-3 md:px-4">
@@ -936,8 +879,14 @@ export default function EntityDetail({ cfg }) {
           <Button icon={<ArrowLeftOutlined />} onClick={goBack}>
             Back
           </Button>
+          {/* Built-in avatar (configurable) */}
+          {safeCfg?.ui?.showAvatar !== false ? (
+            <Avatar size="large" style={{ backgroundColor: "#1677ff", fontWeight: 600 }}>
+              {getInitials(entity) || "•"}
+            </Avatar>
+          ) : null}
           <Title level={3} className="!mb-0">
-            {cfg.titleSingular || "Detail"} — <span className="font-normal">{titleName}</span>
+            {safeCfg.titleSingular || "Detail"} — <span className="font-normal">{titleName}</span>
           </Title>
           <span>{statusTag(entity?.status)}</span>
         </Space>
@@ -985,21 +934,22 @@ function AddTaskForm({ onSubmit }) {
       form={form}
       layout="inline"
       onFinish={(vals) => {
+        const toIso = (d) => {
+          if (!d) return null;
+          const jsDate = d?.toDate ? d.toDate() : new Date(d);
+          return isNaN(jsDate) ? null : jsDate.toISOString();
+        };
         const payload = {
           title: vals.title?.trim() || "-",
           priority: vals.priority || "medium",
           status: "open",
-          dueDate: vals.dueDate ? vals.dueDate.toISOString() : null,
+          dueDate: toIso(vals.dueDate),
         };
         onSubmit(payload);
         form.resetFields();
       }}
     >
-      <Form.Item
-        name="title"
-        rules={[{ required: true, message: "Enter task title" }]}
-        style={{ minWidth: 260 }}
-      >
+      <Form.Item name="title" rules={[{ required: true, message: "Enter task title" }]} style={{ minWidth: 260 }}>
         <Input placeholder="Task title" />
       </Form.Item>
       <Form.Item name="priority" initialValue="medium">
@@ -1031,10 +981,7 @@ function AddCommentForm({ onSubmit }) {
       form={form}
       layout="vertical"
       onFinish={(vals) => {
-        const payload = {
-          author: (vals.author || "You").trim(),
-          text: (vals.text || "").trim(),
-        };
+        const payload = { author: (vals.author || "You").trim(), text: (vals.text || "").trim() };
         if (!payload.text) return;
         onSubmit(payload);
         form.resetFields(["text"]);
@@ -1044,11 +991,7 @@ function AddCommentForm({ onSubmit }) {
         <Form.Item name="author" className="!mb-0">
           <Input placeholder="Author (optional)" />
         </Form.Item>
-        <Form.Item
-          name="text"
-          className="!mb-0"
-          rules={[{ required: true, message: "Enter a comment" }]}
-        >
+        <Form.Item name="text" className="!mb-0" rules={[{ required: true, message: "Enter a comment" }]}>
           <Input.TextArea placeholder="Add a comment…" autoSize={{ minRows: 1, maxRows: 6 }} />
         </Form.Item>
         <Form.Item className="!mb-0">
@@ -1096,10 +1039,7 @@ function UploadDocumentForm({ onUpload }) {
           />
         </Form.Item>
         <Form.Item label="Description" name="description" className="md:col-span-2">
-          <Input.TextArea
-            placeholder="Description (optional)"
-            autoSize={{ minRows: 2, maxRows: 6 }}
-          />
+          <Input.TextArea placeholder="Description (optional)" autoSize={{ minRows: 2, maxRows: 6 }} />
         </Form.Item>
         <Form.Item label="Date" name="date">
           <DatePicker className="w-full" />

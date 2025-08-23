@@ -16,7 +16,6 @@ import {
 import {
   FileTextOutlined,
   DatabaseOutlined,
-  BookOutlined,
   PieChartOutlined,
   TeamOutlined,
   UserOutlined,
@@ -32,7 +31,6 @@ const { Text } = Typography;
 
 /* ------------------------------ Data Layer ------------------------------ */
 
-// Helper to safely GET JSON with Bearer token
 async function getJson(path, token) {
   try {
     const { data } = await api.get(path, {
@@ -40,24 +38,23 @@ async function getJson(path, token) {
       withCredentials: true,
     });
     return data ?? null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
 
-// Pulls from all listed routes concurrently. Uses /admin/dashboard when available.
 async function fetchDashboardBundle(token) {
   const [
-    overview, // GET /admin/dashboard
-    users, // GET /users
-    parents, // GET /parents
-    students, // GET /allstudents
-    teachers, // GET /allteachers
-    classes, // GET /allclasses
-    subjects, // GET /allsubjects
-    products, // GET /products
-    subscriptions, // GET /subscriptions
-    blogposts, // GET /blogposts
+    overview,
+    users,
+    parents,
+    students,
+    teachers,
+    classes,
+    subjects,
+    products,
+    subscriptions,
+    blogposts,
   ] = await Promise.all([
     getJson("/admin/dashboard", token),
     getJson("/users", token),
@@ -74,7 +71,7 @@ async function fetchDashboardBundle(token) {
   const len = (x) => (Array.isArray(x) ? x.length : 0);
 
   return {
-    overview, // may contain totalUsers, parents, reports, activeContracts, deltas
+    overview,
     counts: {
       users: len(users),
       parents: len(parents),
@@ -94,9 +91,9 @@ async function fetchDashboardBundle(token) {
 const FALLBACK = {
   totalUsers: 0,
   parents: 0,
-  reports: 0,
+  students: 0,
   activeContracts: 0,
-  deltas: { usersMoM: 0, parentsWoW: 0, reports30d: 0, contractsDue: 0 },
+  deltas: { usersMoM: 0, parentsWoW: 0, contractsDue: 0, studentsMoM: 0 },
 };
 
 /* ------------------------------ Component ------------------------------ */
@@ -106,12 +103,7 @@ export default function AdminDashboard() {
   const { user } = useAuthContext();
   const token = user?.token;
 
-  const {
-    data,
-    isFetching,
-    refetch,
-    isError,
-  } = useQuery({
+  const { data, isFetching, refetch } = useQuery({
     queryKey: ["admin-dashboard-bundle"],
     queryFn: () => fetchDashboardBundle(token),
     keepPreviousData: true,
@@ -121,51 +113,36 @@ export default function AdminDashboard() {
   const kpis = useMemo(() => {
     const o = data?.overview || {};
     const deltas = o?.deltas || {};
-    // Prefer overview -> fall back to list counts -> fall back to constants
+    const counts = data?.counts || {};
+    const totalUsers = o.totalUsers ?? counts.users ?? FALLBACK.totalUsers;
+    const parents = o.parents ?? counts.parents ?? FALLBACK.parents;
+    const students = o.students ?? counts.students ?? FALLBACK.students;
+
     return {
-      totalUsers: o.totalUsers ?? data?.counts?.users ?? FALLBACK.totalUsers,
-      parents: o.parents ?? data?.counts?.parents ?? FALLBACK.parents,
-      reports: o.reports ?? FALLBACK.reports,
+      totalUsers,
+      parents,
+      students,
       activeContracts: o.activeContracts ?? FALLBACK.activeContracts,
-      usersMoM:
-        Number.isFinite(deltas.usersMoM) ? deltas.usersMoM : FALLBACK.deltas.usersMoM,
-      parentsWoW:
-        Number.isFinite(deltas.parentsWoW) ? deltas.parentsWoW : FALLBACK.deltas.parentsWoW,
-      reports30d:
-        Number.isFinite(deltas.reports30d) ? deltas.reports30d : FALLBACK.deltas.reports30d,
+      usersMoM: Number.isFinite(deltas.usersMoM) ? deltas.usersMoM : FALLBACK.deltas.usersMoM,
+      parentsWoW: Number.isFinite(deltas.parentsWoW) ? deltas.parentsWoW : FALLBACK.deltas.parentsWoW,
+      studentsMoM: Number.isFinite(deltas.studentsMoM) ? deltas.studentsMoM : FALLBACK.deltas.studentsMoM,
       contractsDue:
         Number.isFinite(deltas.contractsDue) ? deltas.contractsDue : FALLBACK.deltas.contractsDue,
     };
   }, [data]);
-
-  const extra = useMemo(() => {
-    const c = data?.counts || {};
-    return {
-      students: c.students ?? 0,
-      teachers: c.teachers ?? 0,
-      classes: c.classes ?? 0,
-      subjects: c.subjects ?? 0,
-      products: c.products ?? 0,
-      subscriptions: c.subscriptions ?? 0,
-      blogposts: c.blogposts ?? 0,
-      users: c.users ?? 0,
-      parents: c.parents ?? 0,
-    };
-  }, [data]);
-
-  // Reusable styles
-  const kpiCardProps = {
-    hoverable: true,
-    className:
-      "rounded-xl text-white transition-transform duration-200 hover:scale-[1.02] flex-1",
-    bodyStyle: { minHeight: 120, display: "flex", alignItems: "center" },
-  };
 
   const featureCardProps = {
     hoverable: true,
     className:
       "rounded-xl shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-[2px] cursor-pointer flex-1",
     bodyStyle: { minHeight: 170, display: "flex", alignItems: "center" },
+  };
+
+  const kpiCardProps = {
+    hoverable: true,
+    className:
+      "rounded-xl text-white transition-transform duration-200 hover:scale-[1.02] flex-1",
+    bodyStyle: { minHeight: 120, display: "flex", alignItems: "center" },
   };
 
   const features = [
@@ -193,12 +170,7 @@ export default function AdminDashboard() {
       desc: "Oversee and manage the platform's database.",
       to: "/admin/analytics",
     },
-    {
-      icon: <BookOutlined style={{ fontSize: 28, color: "#1677ff" }} />,
-      title: "Educational Philosophy",
-      desc: "Review the core educational principles guiding the platform.",
-      to: "/admin/content",
-    },
+    // ❌ Educational Philosophy removed
   ];
 
   return (
@@ -206,7 +178,6 @@ export default function AdminDashboard() {
       <div className="flex items-center justify-between gap-3 mb-6">
         <div className="flex flex-col">
           <h1 className="text-3xl font-bold">Master Support Interface</h1>
-         
         </div>
         <Space>
           <Button onClick={() => refetch()} icon={<ReloadOutlined />}>
@@ -221,33 +192,50 @@ export default function AdminDashboard() {
         <h2 className="text-xl font-semibold mb-4">Platform Overview</h2>
 
         <Row gutter={[16, 16]} className="mb-4">
-          <Col xs={24} sm={12} lg={6} style={{ display: "flex" }}>
-            <Card
-              {...kpiCardProps}
-              className={`${kpiCardProps.className} bg-gradient-to-br from-indigo-600 to-violet-600`}
-            >
-              <div className="w-full flex items-center justify-between">
-                <Space>
-                  <Avatar size="large" icon={<UserOutlined />} className="bg-white/20" />
-                  <div>
-                    <span className="text-white/80 text-sm">Total Users</span>
-                    <div className="text-3xl font-bold leading-none">
-                      {kpis.totalUsers ?? "-"}
-                    </div>
-                  </div>
-                </Space>
-                <Statistic
-                  value={kpis.usersMoM}
-                  precision={1}
-                  suffix="%"
-                  valueStyle={{ color: "#fff" }}
-                  prefix={kpis.usersMoM >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-                  title={<span className="text-white/80">MoM</span>}
-                />
-              </div>
-            </Card>
-          </Col>
+          {/* Total Users + split (Parents + Students) */}
+          {/* Total Users + split (Parents + Students) */}
+<Col xs={24} sm={12} lg={6} style={{ display: "flex" }}>
+  <Card
+    {...kpiCardProps}
+    className={`${kpiCardProps.className} bg-gradient-to-br from-indigo-600 to-violet-600`}
+  >
+    <div className="w-full flex items-center justify-between">
+      <Space align="start">
+        <Avatar size="large" icon={<UserOutlined />} className="bg-white/20" />
+        <div>
+          <span className="text-white/80 text-sm">Total Users</span>
+          <div className="text-3xl font-bold leading-none">
+            {kpis.totalUsers ?? "-"}
+          </div>
 
+          {/* 👇 Aligned split */}
+          <div className="mt-2 flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <Tag color="blue" className="!m-0">Parents</Tag>
+              <Text className="text-white font-medium">{kpis.parents ?? "-"}</Text>
+            </div>
+            <div className="flex items-center gap-2">
+              <Tag color="green" className="!m-0">Students</Tag>
+              <Text className="text-white font-medium">{kpis.students ?? "-"}</Text>
+            </div>
+          </div>
+        </div>
+      </Space>
+
+      <Statistic
+        value={kpis.usersMoM}
+        precision={1}
+        suffix="%"
+        valueStyle={{ color: "#fff" }}
+        prefix={kpis.usersMoM >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+        title={<span className="text-white/80">MoM</span>}
+      />
+    </div>
+  </Card>
+</Col>
+
+
+          {/* Parents */}
           <Col xs={24} sm={12} lg={6} style={{ display: "flex" }}>
             <Card
               {...kpiCardProps}
@@ -273,6 +261,7 @@ export default function AdminDashboard() {
             </Card>
           </Col>
 
+          {/* Students (replaces Reports) */}
           <Col xs={24} sm={12} lg={6} style={{ display: "flex" }}>
             <Card
               {...kpiCardProps}
@@ -280,24 +269,26 @@ export default function AdminDashboard() {
             >
               <div className="w-full flex items-center justify-between">
                 <Space>
-                  <Avatar size="large" icon={<FileTextOutlined />} className="bg-white/20" />
+                  <Avatar size="large" icon={<TeamOutlined />} className="bg-white/20" />
                   <div>
-                    <span className="text-white/80 text-sm">Reports Generated</span>
-                    <div className="text-3xl font-bold leading-none">{kpis.reports ?? "-"}</div>
+                    <span className="text-white/80 text-sm">Students</span>
+                    <div className="text-3xl font-bold leading-none">{kpis.students ?? "-"}</div>
                   </div>
                 </Space>
+                {/* Optional MoM for students if provided */}
                 <Statistic
-                  value={kpis.reports30d}
+                  value={kpis.studentsMoM}
                   precision={1}
                   suffix="%"
                   valueStyle={{ color: "#fff" }}
-                  prefix={kpis.reports30d >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-                  title={<span className="text-white/80">30d</span>}
+                  prefix={kpis.studentsMoM >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+                  title={<span className="text-white/80">MoM</span>}
                 />
               </div>
             </Card>
           </Col>
 
+          {/* Active Contracts (unchanged) */}
           <Col xs={24} sm={12} lg={6} style={{ display: "flex" }}>
             <Card
               {...kpiCardProps}
@@ -326,79 +317,13 @@ export default function AdminDashboard() {
         </Row>
       </section>
 
-      {/* Data Snapshot (driven by DB counts) 
-      <section className="mb-10">
-        <h2 className="text-xl font-semibold mb-4">Data Snapshot</h2>
-        <Card className="rounded-xl">
-          <Row gutter={[12, 12]}>
-            <Col xs={12} sm={8} md={6} lg={4}>
-              <Space direction="vertical" size={0}>
-                <Text type="secondary">Users</Text>
-                <Tag>{extra.users}</Tag>
-              </Space>
-            </Col>
-            <Col xs={12} sm={8} md={6} lg={4}>
-              <Space direction="vertical" size={0}>
-                <Text type="secondary">Parents</Text>
-                <Tag color="blue">{extra.parents}</Tag>
-              </Space>
-            </Col>
-            <Col xs={12} sm={8} md={6} lg={4}>
-              <Space direction="vertical" size={0}>
-                <Text type="secondary">Students</Text>
-                <Tag color="green">{extra.students}</Tag>
-              </Space>
-            </Col>
-            <Col xs={12} sm={8} md={6} lg={4}>
-              <Space direction="vertical" size={0}>
-                <Text type="secondary">Teachers</Text>
-                <Tag color="purple">{extra.teachers}</Tag>
-              </Space>
-            </Col>
-            <Col xs={12} sm={8} md={6} lg={4}>
-              <Space direction="vertical" size={0}>
-                <Text type="secondary">Classes</Text>
-                <Tag color="magenta">{extra.classes}</Tag>
-              </Space>
-            </Col>
-            <Col xs={12} sm={8} md={6} lg={4}>
-              <Space direction="vertical" size={0}>
-                <Text type="secondary">Subjects</Text>
-                <Tag color="volcano">{extra.subjects}</Tag>
-              </Space>
-            </Col>
-            <Col xs={12} sm={8} md={6} lg={4}>
-              <Space direction="vertical" size={0}>
-                <Text type="secondary">Products</Text>
-                <Tag color="geekblue">{extra.products}</Tag>
-              </Space>
-            </Col>
-            <Col xs={12} sm={8} md={6} lg={4}>
-              <Space direction="vertical" size={0}>
-                <Text type="secondary">Subscriptions</Text>
-                <Tag color="gold">{extra.subscriptions}</Tag>
-              </Space>
-            </Col>
-            <Col xs={12} sm={8} md={6} lg={4}>
-              <Space direction="vertical" size={0}>
-                <Text type="secondary">Blog Posts</Text>
-                <Tag color="cyan">{extra.blogposts}</Tag>
-              </Space>
-            </Col>
-          </Row>
-        </Card>
-      </section>*/}
-
       {/* Key Functionalities */}
       <section className="mb-10">
         <h2 className="text-xl font-semibold mb-4">Key Functionalities</h2>
         <Row gutter={[16, 16]}>
           {features.map((item, index) => (
             <Col key={index} xs={24} sm={12} md={8} lg={6} style={{ display: "flex" }}>
-              <Card
-                {...featureCardProps}
-                onClick={() => item.to && navigate(item.to)}
-              >
+              <Card {...featureCardProps} onClick={() => item.to && navigate(item.to)}>
                 <div className="w-full flex flex-col items-center text-center gap-2">
                   {item.icon}
                   <p className="font-semibold mt-1">{item.title}</p>

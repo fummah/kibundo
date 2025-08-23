@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
-  Card, Typography, Input, Select, Tag, Table, Button, Space, Empty,
+  Card, Typography, Input, Select, Tag, Table, Button, Space,
   Modal, Dropdown, Tabs, Tooltip, Breadcrumb, Checkbox, Divider
 } from "antd";
 import {
@@ -68,14 +68,13 @@ export default function EntityList({ cfg }) {
     columnsMap,
     defaultVisible,
     rowClassName, // optional override from cfg
-    rowActions,
   } = cfg;
 
-  // default endpoints for your backend
+  // Default endpoints for your backend (parents fixed to /parents)
   const DEFAULT_LIST_PATHS = {
     students: "/allstudents",
     teachers: "/allteachers",
-    parents: "/allparents",
+    parents: "/parents",
   };
   const listPath = apiCfg.listPath || DEFAULT_LIST_PATHS[entityKey] || `/${entityKey}`;
 
@@ -120,14 +119,11 @@ export default function EntityList({ cfg }) {
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
-  const [fetchFailed, setFetchFailed] = useState(false);
-
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [pageSize, setPageSize] = useState(readPageSize);
 
   const [visibleCols, setVisibleCols] = useState(readCols);
   const [colModalOpen, setColModalOpen] = useState(false);
-
   const [billing, setBilling] = useState(readBillingFilter);
 
   /* debounce search */
@@ -162,7 +158,6 @@ export default function EntityList({ cfg }) {
   /* loader */
   const load = useCallback(async () => {
     setLoading(true);
-    setFetchFailed(false);
     try {
       const effectiveStatus = tab === "active" ? "active" : status;
       const { data } = await api.get(listPath, {
@@ -180,8 +175,6 @@ export default function EntityList({ cfg }) {
         : (Array.isArray(rawList) ? rawList : []);
       setRows(Array.isArray(list) ? list : []);
     } catch {
-      // ❌ No error toast — just mark failed and show dashes/empty
-      setFetchFailed(true);
       setRows([]);
     } finally {
       setLoading(false);
@@ -211,23 +204,16 @@ export default function EntityList({ cfg }) {
     ALL_COLUMNS_MAP = {};
   }
 
-  const goToDetail = (rid) => navigate(`${cfg.routeBase}/${rid}`);
-  const goToEdit   = (rid) => navigate(`${cfg.routeBase}/${rid}/edit`);
+  // Use the routeBase from props
+  const goToDetail = (rid) => navigate(`${routeBase}/${rid}`);
+  const goToEdit   = (rid) => navigate(`${routeBase}/${rid}/edit`);
 
-  let columns = [
-    ...visibleCols.map((k) => ALL_COLUMNS_MAP[k]).filter(Boolean),
-  ];
-
-  // If no columns resolved, provide a safe placeholder column
+  let columns = [...visibleCols.map((k) => ALL_COLUMNS_MAP[k]).filter(Boolean)];
   if (!columns.length) {
-    columns = [{
-      title: "—",
-      key: "__placeholder__",
-      render: () => "-",
-    }];
+    columns = [{ title: "—", key: "__placeholder__", render: () => "-" }];
   }
 
-  // Always append actions column (safe even if placeholder rows)
+  // Actions column
   columns.push({
     title: "",
     key: "actions",
@@ -261,13 +247,11 @@ export default function EntityList({ cfg }) {
                 okButtonProps: { danger: true },
                 cancelText: "Cancel",
                 onOk: async () => {
-                  try { await api.delete(apiCfg.removePath(r[idField])); /* silent success */ load(); }
-                  catch { /* silent fail */ }
+                  try { await api.delete(apiCfg.removePath(r[idField])); load(); }
+                  catch { /* silent */ }
                 },
               });
             }
-
-            if (cfg.rowActions?.onClick) cfg.rowActions.onClick(key, r, { reload: load });
           },
         }}
       >
@@ -293,7 +277,6 @@ export default function EntityList({ cfg }) {
     ],
     onClick: async ({ key }) => {
       if (key === "export_all") {
-        // Always produce a file (even if empty -> single dash row)
         const visible = columns.filter(Boolean).filter((c) => c.key !== "actions");
         const cellValue = (c, r) => {
           try {
@@ -309,7 +292,7 @@ export default function EntityList({ cfg }) {
         };
 
         const header = visible.length ? visible.map((c) => c.title || c.key) : ["-"];
-        const safeRows = rows.length ? rows : [{}]; // at least one placeholder row
+        const safeRows = rows.length ? rows : [{}];
         const lines = safeRows.map((r) =>
           (visible.length ? visible : [{ key: "__placeholder__" }]).map((c) => dash(cellValue(c, r)))
         );
@@ -327,7 +310,7 @@ export default function EntityList({ cfg }) {
       }
       if (key === "reset") return resetAll();
 
-      if (!selectedRowKeys.length) return; // silent when nothing selected
+      if (!selectedRowKeys.length) return;
       const newStatus = key === "reactivate" ? "active" : key === "suspend" ? "suspended" : "disabled";
       try {
         await Promise.all(
@@ -335,9 +318,7 @@ export default function EntityList({ cfg }) {
         );
         setSelectedRowKeys([]);
         load();
-      } catch {
-        // silent on failure
-      }
+      } catch {}
     },
   };
 
@@ -358,16 +339,6 @@ export default function EntityList({ cfg }) {
     </div>
   );
 
-  const tableBillingFilterProps =
-    billingFilter
-      ? {
-          onChange: (_, filters) => {
-            const f = filters?.billingStatus;
-            setBilling(Array.isArray(f) && f.length ? f[0] : null);
-          },
-        }
-      : {};
-
   const effectiveRows = useMemo(() => {
     if (!billingFilter || !billing) return rows;
     const norm = String(billing).toLowerCase();
@@ -386,6 +357,16 @@ export default function EntityList({ cfg }) {
       : s === "disabled"
       ? "row-status-disabled"
       : "";
+  };
+
+  // ✅ Combine highlight + clickability (and optional custom class)
+  const appliedRowClassName = (r) => {
+    const custom =
+      typeof rowClassName === "function"
+        ? rowClassName(r)
+        : (rowClassName || "");
+    const def = defaultRowHighlight(r);
+    return [custom || def, "row-clickable"].filter(Boolean).join(" ");
   };
 
   return (
@@ -465,12 +446,28 @@ export default function EntityList({ cfg }) {
             sticky
             childrenColumnName="__none__"
             expandable={{ showExpandColumn: false, rowExpandable: () => false, expandIcon: () => null }}
-            rowClassName={rowClassName || defaultRowHighlight}
-            // 🔇 No error visuals. Always show a simple dash when there is nothing.
-            locale={{
-              emptyText: <div className="text-gray-400">-</div>,
-            }}
-            {...tableBillingFilterProps}
+            // ✅ clickable full-row navigation + keyboard support
+            onRow={(record) => ({
+              onClick: () => goToDetail(record[idField]),
+              tabIndex: 0,
+              role: "link",
+              onKeyDown: (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  goToDetail(record[idField]);
+                }
+              },
+            })}
+            rowClassName={appliedRowClassName}
+            locale={{ emptyText: <div className="text-gray-400">-</div> }}
+            {...(billingFilter
+              ? {
+                  onChange: (_, filters) => {
+                    const f = filters?.billingStatus;
+                    setBilling(Array.isArray(f) && f.length ? f[0] : null);
+                  },
+                }
+              : {})}
           />
         </div>
       </Card>
@@ -519,15 +516,33 @@ export default function EntityList({ cfg }) {
         <Text type="secondary" className="block">“Actions” is always visible.</Text>
       </Modal>
 
-      {/* Full-row status highlight helpers */}
-      <style>{`
-        .row-status-active    .ant-table-cell { background: #d9f7be !important; }
-        .row-status-suspended .ant-table-cell { background: #fff7e6 !important; }
-        .row-status-disabled  .ant-table-cell { background: #ffd6d6 !important; }
-        .row-status-active:hover    .ant-table-cell,
-        .row-status-suspended:hover .ant-table-cell,
-        .row-status-disabled:hover  .ant-table-cell { filter: brightness(0.98); }
-      `}</style>
+      {/* Full-row status highlight + clickable row visuals */}
+     <style>{`
+-  .row-status-active    .ant-table-cell { background: #d9f7be !important; }
+-  .row-status-suspended .ant-table-cell { background: #fff7e6 !important; }
+-  .row-status-disabled  .ant-table-cell { background: #ffd6d6 !important; }
+-  .row-status-active:hover    .ant-table-cell,
+-  .row-status-suspended:hover .ant-table-cell,
+-  .row-status-disabled:hover  .ant-table-cell { filter: brightness(0.98); }
+-
+-  /* clickable rows */
+-  .row-clickable { cursor: pointer; }
+-  .row-clickable:hover .ant-table-cell { background: rgba(0,0,0,0.02) !important; }
++  .row-status-active    { background-color: #d9f7be !important; }
++  .row-status-suspended { background-color: #fff7e6 !important; }
++  .row-status-disabled  { background-color: #ffd6d6 !important; }
++
++  .row-status-active:hover,
++  .row-status-suspended:hover,
++  .row-status-disabled:hover {
++    filter: brightness(0.97);
++  }
++
++  /* clickable rows */
++  .row-clickable { cursor: pointer; }
++  .row-clickable:hover { background-color: rgba(0,0,0,0.03) !important; }
+`}</style>
+
     </div>
   );
 }

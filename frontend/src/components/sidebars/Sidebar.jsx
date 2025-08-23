@@ -22,8 +22,9 @@ import {
   SafetyCertificateOutlined,
   SearchOutlined,
   DatabaseOutlined,
-  FileDoneOutlined,   // ✅ Invoices
-  MailOutlined,       // ✅ Newsletter
+  FileDoneOutlined,   // Invoices
+  MailOutlined,       // Newsletter
+  GiftOutlined,       // Coupons
 } from "@ant-design/icons";
 import { useAuthContext } from "@/context/AuthContext";
 
@@ -40,7 +41,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [openSubmenu, setOpenSubmenu] = useState(null);
 
-  /** Menus aligned to AdminRoutes.jsx (with Philosophy, Database, Newsletter, Invoices) */
+  /** Menus aligned to AdminRoutes.jsx (Philosophy removed) */
   const adminMenu = [
     // --- Dashboards (flattened to standalone links below) ---
     {
@@ -72,11 +73,8 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
         { href: "/admin/academics/worksheet", label: "Worksheet", icon: FileTextOutlined },
         { href: "/admin/academics/quiz", label: "Quiz", icon: ExperimentOutlined },
         { href: "/admin/academics/game", label: "Game", icon: ProjectOutlined },
-        { href: "/admin/academics/ai-agent", label: "AI Agent", icon: RobotOutlined },
+        { href: "/admin/academics/ai-agent", label: "Kibundo (Manage & Train)", icon: RobotOutlined },
         { href: "/admin/academics/subjects", label: "Subjects", icon: BookOutlined },
-        //{ href: "/admin/academics/subjects/new", label: "New Subject", icon: BookOutlined },
-
-        // ✅ Scans nested under Academics (OCR link removed; opened inline in page)
         { href: "/admin/academics/scans", label: "Scans", icon: FileSearchOutlined },
       ],
     },
@@ -95,10 +93,11 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
       icon: ReconciliationOutlined,
       children: [
         { href: "/admin/billing", label: "Overview", icon: ReconciliationOutlined },
-        { href: "/admin/billing/invoices", label: "Invoices", icon: FileDoneOutlined }, // ✅
+        { href: "/admin/billing/invoices", label: "Invoices", icon: FileDoneOutlined },
         { href: "/admin/billing/product", label: "Products", icon: TagsOutlined },
         { href: "/admin/billing/contract", label: "Contract", icon: FileProtectOutlined },
         { href: "/admin/billing/subscription", label: "Subscription", icon: FileProtectOutlined },
+        { href: "/admin/billing/coupons", label: "Coupons", icon: GiftOutlined },
       ],
     },
 
@@ -143,14 +142,6 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
       children: [
         { href: "/admin/database", label: "Overview", icon: DatabaseOutlined },
         { href: "/admin/database/management", label: "Database Management", icon: ContainerOutlined },
-      ],
-    },
-
-    {
-      label: "Philosophy",
-      icon: BookOutlined,
-      children: [
-        { href: "/admin/philosophy", label: "Educational Philosophy", icon: BookOutlined },
       ],
     },
   ];
@@ -223,6 +214,8 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
   const filteredItems = filterMenuItems(menuItems);
   const currentPath = location.pathname;
 
+  const isActive = (href) => currentPath === href || currentPath.startsWith(href + "/");
+
   return (
     <>
       {menuOpen && (
@@ -289,7 +282,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
                         <div className="ml-5 mt-1 space-y-1">
                           {item.children.map((child, subIdx) => {
                             const ChildIcon = child.icon || DashboardOutlined;
-                            const isChildActive = currentPath === child.href;
+                            const isChildActive = isActive(child.href);
                             return (
                               <Link
                                 key={subIdx}
@@ -314,7 +307,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
                       to={item.href}
                       onClick={() => setMenuOpen(false)}
                       className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition ${
-                        currentPath === item.href
+                        isActive(item.href)
                           ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-700 dark:text-white font-semibold"
                           : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
                       }`}

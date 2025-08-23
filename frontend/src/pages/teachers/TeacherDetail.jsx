@@ -1,4 +1,6 @@
+// src/pages/teachers/TeacherDetail.jsx
 import React from "react";
+import { useLocation } from "react-router-dom";
 import EntityDetail from "@/components/EntityDetail.jsx";
 import { Tag } from "antd";
 
@@ -9,32 +11,81 @@ const euro = (cents) => {
 };
 
 export default function TeacherDetail() {
+  const location = useLocation();
+  const prefill = location.state?.prefill || null;
+
   const cfg = {
     titleSingular: "Teacher",
     idField: "id",
-    routeBase: "/admin/teachers",
+    routeBase: "/admin/teacher", // your UI route base
 
     api: {
-      getPath: (id) => `/teachers/${id}`,
-      updateStatusPath: (id) => `/teachers/${id}/status`,
-      removePath: (id) => `/teachers/${id}`,
-      parseEntity: (raw) => {
-        const subjectsText = Array.isArray(raw?.subjects) ? raw.subjects.join(", ") : raw?.subjects || "-";
-        const classes = Array.isArray(raw?.classes) ? raw.classes : [];
-        const totalStudents = classes.reduce((acc, c) => acc + Number(c?.studentsCount || 0), 0);
-        const subscription = raw?.activePlan || raw?.subscription || {};
-        return { ...raw, subjectsText, classesCount: classes.length, totalStudents, subscription };
+      // ✅ match Express (singular)
+      getPath: (id) => `/teacher/${id}`,
+      updateStatusPath: (id) => `/teacher/${id}/status`,
+      removePath: (id) => `/teacher/${id}`,
+
+      // same normalization style as student
+      parseEntity: (payload) => {
+        const t = payload?.data ?? payload ?? {};
+        const u = t.user || {};
+        const fb = (v) =>
+          v === undefined || v === null || String(v).trim() === "" ? "-" : v;
+
+        const name =
+          t.name ||
+          u.name ||
+          [u.first_name, u.last_name].filter(Boolean).join(" ").trim() ||
+          "-";
+
+        // Location = School
+        const school =
+          t.school?.name || t.school_name || t.school || t.location || "-";
+
+        const email = t.email || u.email || "-";
+        const bundesland = t.bundesland || "-";
+        const status = t.status || u.status || "-";
+
+        const subjectsText = Array.isArray(t.subjects)
+          ? t.subjects.join(", ")
+          : t.subjects || "-";
+
+        const classes = Array.isArray(t.classes) ? t.classes : [];
+        const classesCount = classes.length;
+        const totalStudents = classes.reduce(
+          (acc, c) => acc + Number(c?.studentsCount || 0),
+          0
+        );
+
+        const subscription = t.activePlan || t.subscription || {};
+
+        return {
+          id: t.id,
+          name: fb(name),
+          email: fb(email),
+          school: fb(school),
+          bundesland: fb(bundesland),
+          status: fb(status),
+          subjectsText,
+          classesCount,
+          totalStudents,
+          billing_email: t.billing_email,
+          billing_type: t.billing_type,
+          accountBalanceCents: t.accountBalanceCents,
+          subscription,
+          createdAt: t.createdAt || t.created_at || u.created_at || null,
+          updatedAt: t.updatedAt || t.updated_at || null,
+          raw: t,
+        };
       },
     },
+
+    initialEntity: prefill || undefined,
 
     infoFields: [
       { label: "Name", name: "name" },
       { label: "Email", name: "email" },
-      { label: "Phone", name: "phone" },
-      { label: "Department", name: "department" },
-      { label: "City", name: "city" },
-      { label: "Street", name: "street" },
-      { label: "ZIP", name: "zip" },
+      { label: "School", name: "school" },
       { label: "Bundesland", name: "bundesland" },
       { label: "Subjects", name: "subjectsText" },
       { label: "Classes (Count)", name: "classesCount" },
@@ -42,7 +93,8 @@ export default function TeacherDetail() {
       { label: "Billing Email", name: "billing_email" },
       { label: "Billing Type", name: "billing_type" },
       { label: "Subscription Status", name: ["subscription", "status"] },
-      { label: "Account Balance (EUR)", name: "accountBalanceCents" },
+      { label: "Plan Interval", name: ["subscription", "interval"] },
+      { label: "Account Balance", name: "accountBalanceCents" },
       { label: "Created", name: "createdAt" },
       { label: "Updated", name: "updatedAt" },
     ],
@@ -50,9 +102,18 @@ export default function TeacherDetail() {
     topInfo: (e) => {
       if (!e) return [];
       const chips = [];
-      if (e.department) chips.push(<Tag key="dept">{e.department}</Tag>);
-      if (e.city) chips.push(<Tag key="city">{e.city}</Tag>);
-      if (e?.subjectsText && e.subjectsText !== "-") chips.push(<Tag key="subjects">{e.subjectsText}</Tag>);
+      if (e.school && e.school !== "-") chips.push(<Tag key="school">{e.school}</Tag>);
+      if (e.bundesland && e.bundesland !== "-") chips.push(<Tag key="state">{e.bundesland}</Tag>);
+      if (e?.subjectsText && e.subjectsText !== "-")
+        chips.push(<Tag key="subjects">{e.subjectsText}</Tag>);
+      if (e?.subscription?.status) {
+        const s = String(e.subscription.status).toLowerCase();
+        chips.push(
+          <Tag key="sub" color={s === "active" ? "green" : s === "past_due" ? "gold" : "red"}>
+            {e.subscription.status}
+          </Tag>
+        );
+      }
       return chips;
     },
 
@@ -61,7 +122,7 @@ export default function TeacherDetail() {
         enabled: true,
         label: "Classes",
         idField: "id",
-        // listPath: (id) => `/teachers/${id}/classes`,
+        // listPath: (id) => `/teacher/${id}/classes`, // add when backend exposes it
         columns: [
           { title: "ID", dataIndex: "id", key: "id", width: 80, render: (v) => v ?? "-" },
           { title: "Name", dataIndex: "name", key: "name", render: (v) => v ?? "-" },
@@ -69,50 +130,12 @@ export default function TeacherDetail() {
           { title: "Room", dataIndex: "room", key: "room", width: 110, render: (v) => v ?? "-" },
           { title: "Students", dataIndex: "studentsCount", key: "studentsCount", width: 120, render: (v) => v ?? "-" },
         ],
+        empty: "No classes for this teacher.",
       },
-
-      audit: {
-        enabled: true,
-        label: "Audit Log",
-        columns: [
-          { title: "Time", dataIndex: "created_at", key: "created_at", width: 180, render: (v) => v ?? "-" },
-          { title: "Actor", dataIndex: "actor_id", key: "actor_id", width: 120, render: (v) => v ?? "-" },
-          { title: "Role", dataIndex: "actor_role", key: "actor_role", width: 120, render: (v) => v ?? "-" },
-          { title: "Action", dataIndex: "action", key: "action", width: 160, render: (v) => v ?? "-" },
-          { title: "Target", dataIndex: "target_type", key: "target_type", width: 120, render: (v, r) => r?.target_type ?? "-" },
-          { title: "Payload", dataIndex: "payload", key: "payload", render: (v) => (v ? JSON.stringify(v) : "-") },
-        ],
-      },
-
-      // TASKS CRUD
-      tasks: {
-        enabled: true,
-        label: "Tasks",
-        // listPath: (id) => `/teachers/${id}/tasks`,
-        // createPath: (id) => `/teachers/${id}/tasks`,
-        // updatePath: (id, taskId) => `/teachers/${id}/tasks/${taskId}`,
-        // deletePath: (id, taskId) => `/teachers/${id}/tasks/${taskId}`,
-      },
-
-      // DOCUMENTS
-      documents: {
-        enabled: true,
-        label: "Documents",
-        // listPath: (id) => `/teachers/${id}/documents`,
-        // uploadPath: (id) => `/teachers/${id}/documents`,
-        // deletePath: (id, docId) => `/teachers/${id}/documents/${docId}`,
-        // commentListPath: (id, docId) => `/teachers/${id}/documents/${docId}/comments`,
-        // commentCreatePath: (id, docId) => `/teachers/${id}/documents/${docId}/comments`,
-      },
-
-      // COMMENTS
-      communication: {
-        enabled: true,
-        label: "Comments",
-        // listPath: (id) => `/teachers/${id}/comments`,
-        // createPath: (id) => `/teachers/${id}/comments`,
-      },
-
+      audit: { enabled: true, label: "Audit Log", columns: [] },
+      tasks: { enabled: true, label: "Tasks" },
+      documents: { enabled: true, label: "Documents" },
+      communication: { enabled: true, label: "Comments" },
       billing: {
         enabled: true,
         rows: (e) => {

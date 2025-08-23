@@ -12,16 +12,19 @@ export default function StudentForm() {
       titleNew="Add Student"
       titleEdit="Edit Student"
       apiCfg={{
-        getPath: (id) => `/students/${id}`,
+        getPath:   (id) => `/students/${id}`,
         createPath: "/addstudent",
         updatePath: (id) => `/students/${id}`,
       }}
-      // lead layout with async DB-backed selects
+      // Minimal profile per spec
       fields={[
+        // Identity
         { name: "first_name", label: "First name", placeholder: "e.g., John", rules: [{ required: true, message: "First name is required" }] },
         { name: "last_name",  label: "Last name",  placeholder: "e.g., Smith", rules: [{ required: true, message: "Last name is required" }] },
 
-        // Grade from DB (server search, lazy-loaded on first open)
+        // Core
+        { name: "email",  label: "Email", placeholder: "student@example.com", rules: [{ type: "email", message: "Invalid email" }] },
+
         {
           name: "grade",
           label: "Grade",
@@ -30,24 +33,18 @@ export default function StudentForm() {
           optionsUrl: "/grades",
           serverSearch: true,
           searchParam: "q",
-          optionValue: "value",        // adjust if your API uses different keys
+          optionValue: "value",
           optionLabel: "label",
           autoloadOptions: false,
+          rules: [{ required: true, message: "Grade is required" }],
         },
 
-        { name: "email",  label: "Email",       placeholder: "student@example.com", rules: [{ type: "email", message: "Invalid email" }] },
-        { name: "phone",  label: "Phone",       placeholder: "+49 151 9876543" },
-        { name: "status", label: "Status",      input: "select", options: statusOptions, placeholder: "Select status" },
+        { name: "status", label: "Status", input: "select", options: statusOptions, placeholder: "Select status" },
 
-        // Address
-        { name: "location",  label: "Location",       placeholder: "e.g., South Campus" },
-        { name: "street",    label: "Street Address", placeholder: "e.g., Lindenstraße 5" },
-        { name: "city",      label: "City",           placeholder: "e.g., Hamburg" },
-        { name: "county",    label: "County",         placeholder: "e.g., Altona" },
-        { name: "zipCode",   label: "ZIP / Postal Code", placeholder: "e.g., 20095" },
-        { name: "country",   label: "Country",        placeholder: "e.g., Germany" },
+        // Location = School only
+        { name: "school", label: "School", placeholder: "e.g., South Campus" },
 
-        // Bundesland from DB
+        // Bundesland (DB-backed)
         {
           name: "bundesland",
           label: "Bundesland",
@@ -56,11 +53,39 @@ export default function StudentForm() {
           optionsUrl: "/bundeslaender",
           serverSearch: true,
           searchParam: "q",
-          // If API returns { code, name }:
           transform: (it) => ({ value: it.code ?? it.id ?? it, label: it.name ?? it.label ?? String(it) }),
           autoloadOptions: false,
         },
+
+        // 🔗 Optional: link a parent immediately by email
+        { name: "parent_email", label: "Link Parent by Email (optional)", placeholder: "parent@example.com", rules: [{ type: "email", message: "Invalid email" }] },
+        { name: "is_payer", label: "Parent is Payer", input: "switch", initialValue: true },
+
+        // Extras (optional)
+        { name: "interests", label: "Interests", input: "tags", placeholder: "Type and press Enter" },
       ]}
+      // Optional: map form payload before submit to match your API
+      transformSubmit={(vals) => {
+        const payload = {
+          first_name: vals.first_name,
+          last_name: vals.last_name,
+          email: vals.email,
+          grade: vals.grade,
+          status: vals.status,
+          school: vals.school,
+          bundesland: vals.bundesland,
+          interests: vals.interests ?? [],
+        };
+
+        // If a parent email is provided, include linkage instructions
+        if (vals.parent_email) {
+          payload.parent_link = {
+            email: vals.parent_email,
+            is_payer: Boolean(vals.is_payer),
+          };
+        }
+        return payload;
+      }}
       toListRelative=".."
       toDetailRelative={(id) => `${id}`}
       submitLabel="Add"

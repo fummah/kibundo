@@ -1,5 +1,4 @@
-// src/routes/AdminRoutes.jsx
-import { Route } from "react-router-dom";
+import { Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import GlobalLayout from "@/components/layouts/GlobalLayout.jsx";
 
@@ -18,6 +17,7 @@ import Product from "@/pages/billing/Product.jsx";
 import Contract from "@/pages/billing/Contract.jsx";
 import Subscription from "@/pages/billing/Subscription.jsx";
 import Invoices from "@/pages/billing/Invoices.jsx";
+import Coupons from "@/pages/billing/Coupons.jsx";
 
 /* Content */
 import ContentOverview from "@/pages/content/ContentOverview.jsx";
@@ -34,6 +34,7 @@ import Curricula from "@/pages/academics/Curricula.jsx";
 import Worksheet from "@/pages/academics/Worksheet.jsx";
 import AIAgent from "@/pages/academics/AIAgent.jsx";
 
+
 /* Subjects (under Academics) */
 import SubjectsList from "@/pages/academics/subjects/SubjectsList.jsx";
 import SubjectForm from "@/pages/academics/subjects/SubjectForm.jsx";
@@ -41,7 +42,6 @@ import SubjectDetail from "@/pages/academics/subjects/SubjectDetail.jsx";
 
 /* Scans (moved under Academics) */
 import ScansOverview from "@/pages/ocr/ScansOverview.jsx";
-
 
 /* Parents */
 import ParentsList from "@/pages/parents/ParentsList.jsx";
@@ -110,6 +110,7 @@ export default function AdminRoutes() {
         <Route path="contract" element={<Contract />} />
         <Route path="contract/:id" element={<Contract />} />
         <Route path="subscription" element={<Subscription />} />
+        <Route path="coupons" element={<Coupons />} />
       </Route>
 
       {/* Content */}
@@ -132,7 +133,12 @@ export default function AdminRoutes() {
         <Route path="worksheet" element={<Worksheet />} />
         <Route path="quiz" element={<Quiz />} />
         <Route path="game" element={<Game />} />
-        <Route path="ai-agent" element={<AIAgent />} />
+        
+
+        {/* ✅ New canonical route name */}
+        <Route path="kibundo" element={<AIAgent />} />
+        {/* 🔁 Back-compat redirect from old path */}
+        <Route path="ai-agent" element={<Navigate to="/admin/academics/kibundo" replace />} />
 
         {/* Subjects */}
         <Route path="subjects">
@@ -142,10 +148,9 @@ export default function AdminRoutes() {
           <Route path=":id/edit" element={<SubjectForm />} />
         </Route>
 
-        {/* ✅ Scans nested under Academics */}
+        {/* Scans nested under Academics */}
         <Route path="scans">
           <Route index element={<ScansOverview />} />
-         
         </Route>
       </Route>
 

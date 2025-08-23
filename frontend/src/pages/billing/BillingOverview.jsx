@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Card, Row, Col, Typography, Statistic, Space, Button, List, Tag, Tooltip,
-  message, Skeleton, Empty, DatePicker, Select, Input
+  message, Skeleton, Empty, DatePicker, Select, Input, Table, Segmented, Badge
 } from "antd";
 import {
   TeamOutlined, UsergroupAddOutlined, FileAddOutlined, SendOutlined,
@@ -38,6 +38,14 @@ const read = (obj, path) => {
 
 const UNPAID = new Set(["open", "past_due", "uncollectible"]);
 const DONUT_COLORS = ["#1677ff", "#faad14", "#52c41a", "#eb2f96"];
+const STATUS_COLORS = {
+  paid: "green",
+  open: "orange",
+  past_due: "red",
+  uncollectible: "volcano",
+  void: "default",
+  draft: "default",
+};
 
 /* ---------- DUMMY FALLBACKS ---------- */
 const DUMMY_STUDENTS = [
@@ -97,6 +105,7 @@ export default function BillingHome() {
   const [currency, setCurrency] = useState("EUR");
   const [dateRange, setDateRange] = useState([dayjs().startOf("month"), dayjs().endOf("month")]);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all"); // all | paid | unpaid
 
   // data
   const [loading, setLoading] = useState(false);
@@ -119,15 +128,9 @@ export default function BillingHome() {
 
       setStudents(stData.length ? stData : DUMMY_STUDENTS);
       setParents(pData.length ? pData : DUMMY_PARENTS);
-
-      if (!stData.length || !pData.length) {
-        // quiet info to console only
-        // console.info("Using dummy students/parents");
-      }
-    } catch (err) {
+    } catch {
       setStudents(DUMMY_STUDENTS);
       setParents(DUMMY_PARENTS);
-      // console.info("Using dummy students/parents (error path)");
     }
 
     /* ---- invoices ---- */
@@ -145,7 +148,6 @@ export default function BillingHome() {
         setInvoices(data);
         setHasInvoices(true);
       } else {
-        // fallback to dummy if endpoint returns [] or unexpected
         setInvoices(DUMMY_INVOICES);
         setHasInvoices(false);
       }
@@ -197,11 +199,17 @@ export default function BillingHome() {
   );
 
   /* ---------- metrics ---------- */
-  const filteredInvoices = useMemo(() => {
+  const searchedInvoices = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return normInvoices;
     return normInvoices.filter((i) => `${i.id} ${i.customer}`.toLowerCase().includes(q));
   }, [normInvoices, search]);
+
+  const filteredInvoices = useMemo(() => {
+    if (statusFilter === "paid") return searchedInvoices.filter((i) => i.status === "paid" && !i.is_credit_note);
+    if (statusFilter === "unpaid") return searchedInvoices.filter((i) => UNPAID.has(i.status) && !i.is_credit_note);
+    return searchedInvoices;
+  }, [searchedInvoices, statusFilter]);
 
   const cur = filteredInvoices[0]?.currency || currency;
   const totalPaidCents = filteredInvoices
@@ -230,7 +238,7 @@ export default function BillingHome() {
   /* ---------- reminders ---------- */
   const today = new Date();
   const reminders = useMemo(() => {
-    const overdue = filteredInvoices
+    const overdue = searchedInvoices
       .filter((i) => UNPAID.has(i.status) && i.due_at && new Date(i.due_at) < today)
       .slice(0, 5)
       .map((i) => ({
@@ -245,7 +253,7 @@ export default function BillingHome() {
       { title: "Send statements to families", date: "", tag: "Reminder", color: "default" },
       { title: "Create tuition charges", date: "", tag: "Task", color: "blue" },
     ].slice(0, 10);
-  }, [filteredInvoices]);
+  }, [searchedInvoices]);
 
   /* ---------- shortcuts ---------- */
   const shortcuts = [
@@ -291,6 +299,72 @@ export default function BillingHome() {
     URL.revokeObjectURL(url);
   };
 
+  /* ---------- table columns ---------- */
+  const invoiceCols = [
+    {
+      title: "Invoice",
+      dataIndex: "id",
+      render: (v, r) => (
+        <Space direction="vertical" size={0}>
+          <Text strong>{v}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>{r.customer || "—"}</Text>
+        </Space>
+      ),
+      width: 220,
+      ellipsis: true,
+    },
+    {
+      title: "Status",
+      dataIndex: "status",
+      width: 120,
+      filters: [
+        { text: "Paid", value: "paid" },
+        { text: "Open", value: "open" },
+        { text: "Past due", value: "past_due" },
+        { text: "Uncollectible", value: "uncollectible" },
+      ],
+      onFilter: (val, rec) => rec.status === val,
+      render: (s, r) => (
+        <Space>
+          <Tag color={STATUS_COLORS[s] || "default"}>{s || "—"}</Tag>
+          {r.is_credit_note ? <Badge color="magenta" text="credit note" /> : null}
+        </Space>
+      ),
+    },
+    {
+      title: "Total",
+      dataIndex: "total_cents",
+      align: "right",
+      render: (c, r) => money((c || 0) / 100, r.currency || cur),
+      sorter: (a, b) => (a.total_cents || 0) - (b.total_cents || 0),
+      width: 140,
+    },
+    {
+      title: "Due",
+      dataIndex: "due_at",
+      width: 150,
+      render: (v, r) => {
+        if (!v) return "—";
+        const isOverdue = UNPAID.has(r.status) && new Date(v) < new Date();
+        return (
+          <Space>
+            <span>{new Date(v).toLocaleDateString()}</span>
+            {isOverdue ? <Tag color="red">overdue</Tag> : null}
+          </Space>
+        );
+      },
+      sorter: (a, b) => new Date(a.due_at || 0) - new Date(b.due_at || 0),
+    },
+    {
+      title: "Created",
+      dataIndex: "created_at",
+      width: 180,
+      render: (v) => (v ? new Date(v).toLocaleString() : "—"),
+      sorter: (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0),
+      defaultSortOrder: "descend",
+    },
+  ];
+
   /* ---------- UI ---------- */
   return (
     <div className="p-4 md:p-6 max-w-[1600px] mx-auto">
@@ -305,8 +379,10 @@ export default function BillingHome() {
       >
         <Row gutter={[16, 16]} align="middle" justify="space-between">
           <Col xs={24} md={10}>
-            <Title level={3} className="!mb-0">Billing / Overview</Title>
-          
+            <Space direction="vertical" size={0}>
+              <Title level={3} className="!mb-0">Billing / Overview</Title>
+              <Text type="secondary">Collections, dues, and quick actions</Text>
+            </Space>
           </Col>
           <Col xs={24} md={14}>
             <Space wrap style={{ width: "100%", justifyContent: "flex-end" }}>
@@ -315,7 +391,7 @@ export default function BillingHome() {
                 prefix={<SearchOutlined />}
                 placeholder="Search invoices or customers…"
                 onChange={(e) => setSearch(e.target.value)}
-                style={{ width: 240 }}
+                style={{ width: 260 }}
               />
               <RangePicker value={dateRange} onChange={setDateRange} allowClear={false} />
               <Select
@@ -402,7 +478,28 @@ export default function BillingHome() {
             </Row>
           </Card>
 
-          <Card hoverable variant="outlined" title="Total Collections Vs Invoices">
+          <Card
+            hoverable
+            variant="outlined"
+            title={
+              <Space align="center">
+                <PieChartOutlined />
+                Total Collections vs Pending
+              </Space>
+            }
+            extra={
+              <Segmented
+                size="small"
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={[
+                  { label: "All", value: "all" },
+                  { label: "Paid", value: "paid" },
+                  { label: "Unpaid", value: "unpaid" },
+                ]}
+              />
+            }
+          >
             <div style={{ width: "100%", height: 280 }}>
               {loading ? (
                 <Skeleton active />
@@ -471,6 +568,45 @@ export default function BillingHome() {
             ) : (
               <Empty description="No reminders" />
             )}
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Bottom row: Recent invoices + Legend */}
+      <Row gutter={[16, 16]} className="mt-4">
+        <Col xs={24} lg={16}>
+          <Card
+            hoverable
+            variant="outlined"
+            title="Recent Invoices"
+            extra={<Text type="secondary">{filteredInvoices.length} shown</Text>}
+          >
+            <Table
+              rowKey="id"
+              size="middle"
+              dataSource={[...filteredInvoices]
+                .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+                .slice(0, 12)}
+              columns={invoiceCols}
+              pagination={{ pageSize: 12, showSizeChanger: false }}
+              loading={loading}
+              onRow={(r) => ({
+                onClick: () => navigate(`/admin/billing/invoices/${encodeURIComponent(r.id)}`),
+                style: { cursor: "pointer" },
+              })}
+            />
+          </Card>
+        </Col>
+
+        <Col xs={24} lg={8}>
+          <Card hoverable variant="outlined" title="Status Legend">
+            <Space direction="vertical">
+              <Space><Tag color="green">paid</Tag><Text type="secondary">Paid in full</Text></Space>
+              <Space><Tag color="orange">open</Tag><Text type="secondary">Issued; not due/paid yet</Text></Space>
+              <Space><Tag color="red">past_due</Tag><Text type="secondary">Past due date; unpaid</Text></Space>
+              <Space><Tag color="volcano">uncollectible</Tag><Text type="secondary">Marked as bad debt</Text></Space>
+              <Space><Badge color="magenta" text="credit note" /><Text type="secondary">Negative adjustment</Text></Space>
+            </Space>
           </Card>
         </Col>
       </Row>

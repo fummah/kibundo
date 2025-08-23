@@ -1,68 +1,99 @@
-import { useMemo } from "react";
-import EntityDetail from "../../components/EntityDetail.jsx"; // ✅ use relative path unless '@' alias is configured
-import { Button } from "antd";
+// src/pages/parents/ParentDetail.jsx
+import React from "react";
+import { useLocation } from "react-router-dom";
+import { Button, Space, Tag, message } from "antd";
+import { LinkOutlined, DisconnectOutlined } from "@ant-design/icons";
+import EntityDetail from "@/components/EntityDetail.jsx";
+import api from "@/api/axios";
 
-/**
- * Parent detail wiring for EntityDetail
- * - Uses your API surface if available (by providing path builders)
- * - Falls back to dummy data inside EntityDetail if endpoints are missing
- */
 export default function ParentDetail() {
-  // Table columns for Related (Children)
-  const relatedColumns = useMemo(() => [
-    { title: "Child ID", dataIndex: "id", key: "id", width: 110, render: (v) => v ?? "-" },
-    { title: "Name", dataIndex: "name", key: "name", render: (v) => v ?? "-" },
-    { title: "Grade", dataIndex: "grade", key: "grade", width: 110, render: (v) => v ?? "-" },
-    { title: "State", dataIndex: "bundesland", key: "bundesland", width: 140, render: (v) => v ?? "-" },
-    { title: "Unlock Status", dataIndex: "unlockStatus", key: "unlockStatus", width: 140, render: (v) => v ?? "-" },
-    { title: "Status", dataIndex: "status", key: "status", width: 120, render: (v) => v ?? "-" },
-  ], []);
-
-  // Billing rows renderer
-  const billingRows = (p) => {
-    const plan = p?.activePlan || {};
-    return [
-      { label: "Billing Type", value: p?.billing_type || "-" },
-      { label: "Billing Email", value: p?.billing_email || "-" },
-      { label: "Billing Status", value: p?.billingStatus || "-" },
-      { label: "Account Balance (cents)", value: p?.accountBalanceCents ?? "-" },
-      { label: "Active Plan", value: plan?.name || "-" },
-      { label: "Plan Interval", value: plan?.interval || "-" },
-      { label: "Plan Price (cents)", value: plan?.priceCents ?? "-" },
-      { label: "Renews On", value: plan?.renewsOn || "-" },
-    ];
-  };
+  const location = useLocation();
+  const prefill = location.state?.prefill || null; // ← comes from list
 
   const cfg = {
     titleSingular: "Parent",
-    routeBase: "/admin/parents",
     idField: "id",
+    routeBase: "/admin/parents", // plural route base for pages list consistency
+
+    ui: {
+      // Avatar rendered globally by EntityDetail; keep default (show)
+      // showAvatar: false,
+    },
+
+    api: {
+      getPath: (id) => `/parent/${id}`,
+      updateStatusPath: (id) => `/parent/${id}/status`,
+      removePath: (id) => `/parent/${id}`,
+
+      // Children linking from the parent account (selection)
+      linkStudentByIdPath: (id) => `/parent/${id}/children`, // POST { student_id }
+      linkStudentByEmailPath: (id) => `/parent/${id}/children/link-by-email`, // POST { email }
+      unlinkStudentPath: (id, studentId) => `/parent/${id}/children/${studentId}`,
+
+      // Accept either raw or { data: raw }
+      parseEntity: (payload) => {
+        const p = payload?.data ?? payload ?? {};
+        const u = p.user || {};
+        const fb = (v) =>
+          v === undefined || v === null || String(v).trim() === "" ? "-" : v;
+
+        const name =
+          p.name ||
+          u.name ||
+          [u.first_name, u.last_name].filter(Boolean).join(" ").trim() ||
+          "-";
+
+        const email = p.email || u.email || p.contact_email || "-";
+        const status = p.status || u.status || "-";
+        const school = p.school?.name || p.school_name || p.location || "-";
+
+        return {
+          id: p.id,
+          name: fb(name),
+          email: fb(email),
+          status: fb(status),
+          school: fb(school),          // Location = School only
+          bundesland: fb(p.bundesland),
+          created_at: p.created_at || u.created_at || null,
+          user_id: p.user_id,
+          raw: p,
+        };
+      },
+    },
+
+    // Use prefill immediately while fetch runs
+    initialEntity: prefill || undefined,
+
+    // Minimal set: no phone/street/city/postal/country
     infoFields: [
       { label: "Name", name: "name" },
       { label: "Email", name: "email" },
-      { label: "Phone", name: "phone" },
-      { label: "Company", name: "company" },
-      { label: "Street", name: "street" },
-      { label: "City", name: "city" },
-      { label: "ZIP", name: "zip" },
-      { label: "State (Bundesland)", name: "bundesland" },
-      { label: "Portal Login", name: "portal_login" },
-    ],
-    topInfo: (e) => [
-      <span key="created" className="text-gray-500">Created: {e?.createdAt || "-"}</span>,
-      <span key="updated" className="text-gray-500">Updated: {e?.updatedAt || "-"}</span>,
+      { label: "School", name: "school" },       // Location = School only
+      { label: "Bundesland", name: "bundesland" },
+      { label: "Status", name: "status" },
+      { label: "Date added", name: "created_at" },
     ],
 
-    api: {
-      // ✅ Use your REST if available; otherwise EntityDetail falls back to dummies
-      getPath:  (id) => `/parents/${id}`,
-      updateStatusPath: (id) => `/parents/${id}/status`,
-      removePath: (id) => `/parents/${id}`,
-      // Optional: provide performancePath if you have one
-      // performancePath: (id) => `/parents/${id}/performance`,
-
-      // Related = children of this parent
-      // You can also override in cfg.tabs.related.listPath
+    topInfo: (e) => {
+      if (!e) return [];
+      const chips = [];
+      if (e.status && e.status !== "-") {
+        const s = String(e.status).toLowerCase();
+        chips.push(
+          <Tag
+            key="status"
+            color={s === "active" ? "green" : s === "suspended" ? "gold" : "default"}
+          >
+            {e.status}
+          </Tag>
+        );
+      }
+      if (e.school && e.school !== "-") chips.push(<Tag key="school">{e.school}</Tag>);
+      if (e.bundesland && e.bundesland !== "-")
+        chips.push(<Tag key="state">{e.bundesland}</Tag>);
+      // helper chip to highlight that students can be linked from here
+      chips.push(<Tag key="linking" color="blue">Can link students</Tag>);
+      return chips;
     },
 
     tabs: {
@@ -70,63 +101,86 @@ export default function ParentDetail() {
         enabled: true,
         label: "Children",
         idField: "id",
-        columns: relatedColumns,
-        // If your API exists, this will be used (else EntityDetail shows empty/dummy)
-        listPath: (id) => `/parents/${id}/children`,
+        listPath: (id) => `/parent/${id}/children`, // singular route
+
+        // Toolbar to link/unlink students from the parent account
         toolbar: (parent) => (
-          <Button size="small" onClick={() => console.log("Add child for parent", parent?.id)}>
-            Add Child
-          </Button>
+          <Space size="small">
+            <Button
+              size="small"
+              icon={<LinkOutlined />}
+              onClick={async () => {
+                const studentId = window.prompt("Enter Student ID to link to this parent:");
+                if (!studentId) return;
+                try {
+                  await api.post(cfg.api.linkStudentByIdPath(parent?.id), { student_id: String(studentId) });
+                  message.success("Student linked by ID");
+                } catch {
+                  message.error("Failed to link student by ID");
+                }
+              }}
+            >
+              Link Student by ID
+            </Button>
+
+            <Button
+              size="small"
+              icon={<LinkOutlined />}
+              onClick={async () => {
+                const email = window.prompt("Enter Student Email to link to this parent:");
+                if (!email) return;
+                try {
+                  await api.post(cfg.api.linkStudentByEmailPath(parent?.id), { email });
+                  message.success("Student linked by email");
+                } catch {
+                  message.error("Failed to link student by email");
+                }
+              }}
+            >
+              Link Student by Email
+            </Button>
+          </Space>
         ),
+
+        columns: [
+          { title: "Child ID", dataIndex: "id", key: "id", width: 110, render: (v) => v ?? "-" },
+          { title: "Name", dataIndex: "name", key: "name", render: (v) => v ?? "-" },
+          { title: "Grade", dataIndex: "grade", key: "grade", width: 90, render: (v) => v ?? "-" },
+          { title: "Bundesland", dataIndex: "bundesland", key: "bundesland", width: 140, render: (v) => v ?? "-" },
+          { title: "Status", dataIndex: "status", key: "status", width: 120, render: (v) => v ?? "-" },
+          // If you later add an unlink endpoint, you can add an action button like below:
+          // {
+          //   title: "",
+          //   key: "actions",
+          //   width: 140,
+          //   render: (_, r) => (
+          //     <Button
+          //       size="small"
+          //       danger
+          //       icon={<DisconnectOutlined />}
+          //       onClick={async () => {
+          //         try {
+          //           await api.delete(cfg.api.unlinkStudentPath(parent?.id, r.id));
+          //           message.success("Unlinked");
+          //         } catch {
+          //           message.error("Failed to unlink");
+          //         }
+          //       }}
+          //     >
+          //       Unlink
+          //     </Button>
+          //   ),
+          // },
+        ],
+
         empty: "No children linked to this parent.",
       },
 
-      billing: {
-        enabled: true,
-        rows: billingRows,
-      },
-
-      // Optional Audit stub; provide your own data/columns if you have an endpoint
-      audit: {
-        enabled: true,
-        label: "Audit Log",
-        columns: [
-          { title: "Time", dataIndex: "t", key: "t", width: 180, render: (v) => v ?? "-" },
-          { title: "Action", dataIndex: "action", key: "action", render: (v) => v ?? "-" },
-          { title: "By", dataIndex: "by", key: "by", width: 180, render: (v) => v ?? "-" },
-          { title: "Context", dataIndex: "context", key: "context", render: (v) => v ?? "-" },
-        ],
-        data: [], // leave empty for now; you can wire /parents/:id/audit later
-      },
-
-      // Enable Tasks tab with optional API endpoints. Falls back to local dummy if missing.
-      tasks: {
-        enabled: true,
-        label: "Tasks",
-        // listPath: (id) => `/parents/${id}/tasks`,
-        // createPath: (id) => `/parents/${id}/tasks`,
-        // updatePath: (id, taskId) => `/parents/${id}/tasks/${taskId}`,
-        // deletePath: (id, taskId) => `/parents/${id}/tasks/${taskId}`,
-      },
-
-      // Enable Documents tab. Falls back to local dummies if paths absent.
-      documents: {
-        enabled: true,
-        label: "Documents",
-        // listPath: (id) => `/parents/${id}/documents`,
-        // uploadPath: (id) => `/parents/${id}/documents`,
-        // deletePath: (id, docId) => `/parents/${id}/documents/${docId}`,
-        // commentListPath: (id, docId) => `/parents/${id}/documents/${docId}/comments`,
-        // commentCreatePath: (id, docId) => `/parents/${id}/documents/${docId}/comments`,
-      },
-
-      // Enable Comments/Communication tab. Falls back to local dummy if paths absent.
-      communication: {
-        enabled: true,
-        label: "Comments",
-        // listPath: (id) => `/parents/${id}/comments`,
-        // createPath: (id) => `/parents/${id}/comments`,
-      },
+      billing: { enabled: true, rows: () => [] },
+      audit: { enabled: true, label: "Audit Log", columns: [] },
+      documents: { enabled: true, label: "Documents" },
+      communication: { enabled: true, label: "Comments" },
+      tasks: { enabled: true, label: "Tasks" },
     },
   };
 

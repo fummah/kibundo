@@ -17,6 +17,8 @@ import {
   Tag,
   Tooltip,
   Popconfirm,
+  Upload,
+  Image,
 } from "antd";
 import {
   SaveOutlined,
@@ -24,6 +26,8 @@ import {
   ReloadOutlined,
   EyeOutlined,
   DeleteOutlined,
+  UploadOutlined,
+  CloseCircleFilled,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import api from "@/api/axios";
@@ -190,8 +194,16 @@ export default function PublishBlogPost() {
   const [saving, setSaving] = useState(false);
   const [previewOn, setPreviewOn] = useState(true);
 
+  const [thumbPreview, setThumbPreview] = useState("");
+
   const watchTitle = Form.useWatch("title", form);
   const watchBodyHtml = Form.useWatch("body_html", form);
+  const watchThumb = Form.useWatch("thumbnail_url", form);
+
+  // Keep local preview in sync (URL input or upload)
+  useEffect(() => {
+    setThumbPreview(watchThumb || "");
+  }, [watchThumb]);
 
   // Auto-slug
   useEffect(() => {
@@ -212,7 +224,6 @@ export default function PublishBlogPost() {
         form.setFieldsValue({
           title: post.title || "",
           slug: post.slug || "",
-          // Prefer HTML if present; fall back to markdown converted to plain text
           body_html: post.body_html || post.body_md || "",
           audience: post.audience || "parents",
           status: post.status || "draft",
@@ -220,6 +231,8 @@ export default function PublishBlogPost() {
           seo: JSON.stringify(post.seo || {}, null, 2),
           scheduled_for: post.scheduled_for ? dayjs(post.scheduled_for) : null,
           published_at: post.published_at ? dayjs(post.published_at) : null,
+          // NEW: thumbnail field
+          thumbnail_url: post.thumbnail_url || post.thumbnail || "",
         });
       }
       setLoading(false);
@@ -239,6 +252,21 @@ export default function PublishBlogPost() {
     // return data.url;
     await new Promise((r) => setTimeout(r, 300));
     return URL.createObjectURL(file); // preview URL; replace in production
+  };
+
+  // Thumbnail uploader
+  const handleThumbBeforeUpload = async (file) => {
+    // Replace with real upload API; set returned URL to the form field
+    const url = URL.createObjectURL(file);
+    form.setFieldsValue({ thumbnail_url: url });
+    setThumbPreview(url);
+    message.success(`Thumbnail loaded: ${file.name}`);
+    return false; // prevent auto upload
+  };
+
+  const clearThumbnail = () => {
+    form.setFieldsValue({ thumbnail_url: "" });
+    setThumbPreview("");
   };
 
   // Save or Publish
@@ -266,12 +294,16 @@ export default function PublishBlogPost() {
       // Default SEO if blank
       if (!seoJson.title) seoJson.title = v.title || "Untitled Post";
       if (!seoJson.description) seoJson.description = stripHtml(v.body_html).slice(0, 160);
+      // If missing image and we have a thumbnail, set it
+      if (!seoJson.image && v.thumbnail_url) {
+        seoJson.image = v.thumbnail_url;
+        seoJson["og:image"] = v.thumbnail_url;
+      }
 
       const payload = {
         title: v.title?.trim() || "-",
         slug: v.slug?.trim() || slugify(v.title || ""),
-        body_html: v.body_html,       // <-- Rich text HTML
-        // Optionally also pass a plaintext/markdown surrogate for compatibility:
+        body_html: v.body_html,       // Rich text HTML
         body_md: stripHtml(v.body_html),
         audience: v.audience || "parents",
         status: statusOverride || v.status || "draft",
@@ -280,6 +312,7 @@ export default function PublishBlogPost() {
         author_id: currentUser.id,
         created_by: currentUser.email || currentUser.name || "system",
         scheduled_for: v.scheduled_for ? v.scheduled_for.toISOString() : null,
+        thumbnail_url: v.thumbnail_url || "",   // <-- NEW: send to backend
         ...(editingId ? { id: Number(editingId) } : {}),
       };
 
@@ -351,7 +384,13 @@ export default function PublishBlogPost() {
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ audience: "parents", status: "draft", tags: [], body_html: "" }}
+          initialValues={{
+            audience: "parents",
+            status: "draft",
+            tags: [],
+            body_html: "",
+            thumbnail_url: "",
+          }}
         >
           <Row gutter={[16, 16]}>
             <Col xs={24} lg={14}>
@@ -419,51 +458,107 @@ export default function PublishBlogPost() {
             </Col>
 
             <Col xs={24} lg={10}>
-              <Card className="rounded-xl" title="Metadata">
-                <Form.Item name="audience" label="Audience">
-                  <Select
-                    options={[
-                      { value: "parents", label: "Parents" },
-                      { value: "teachers", label: "Teachers" },
-                      { value: "both", label: "Both" },
-                    ]}
-                  />
-                </Form.Item>
-                <Form.Item name="status" label="Workflow Status">
-                  <Select
-                    options={[
-                      { value: "draft", label: "Draft" },
-                      { value: "pending_review", label: "Pending review" },
-                      { value: "published", label: "Published" },
-                    ]}
-                  />
-                </Form.Item>
-                <Form.Item name="tags" label="Tags">
-                  <Select mode="tags" tokenSeparators={[","]} placeholder="Add tags" />
-                </Form.Item>
-                <Form.Item
-                  name="seo"
-                  label="SEO (JSON)"
-                  tooltip='Optional JSON like {"title":"...","description":"..."}'
+              <Space direction="vertical" size="large" className="w-full">
+                <Card className="rounded-xl" title="Metadata">
+                  <Form.Item name="audience" label="Audience">
+                    <Select
+                      options={[
+                        { value: "parents", label: "Parents" },
+                        { value: "teachers", label: "Teachers" },
+                        { value: "both", label: "Both" },
+                      ]}
+                    />
+                  </Form.Item>
+                  <Form.Item name="status" label="Workflow Status">
+                    <Select
+                      options={[
+                        { value: "draft", label: "Draft" },
+                        { value: "pending_review", label: "Pending review" },
+                        { value: "published", label: "Published" },
+                      ]}
+                    />
+                  </Form.Item>
+                  <Form.Item name="tags" label="Tags">
+                    <Select mode="tags" tokenSeparators={[","]} placeholder="Add tags" />
+                  </Form.Item>
+                  <Form.Item
+                    name="seo"
+                    label="SEO (JSON)"
+                    tooltip='Optional JSON like {"title":"...","description":"...","image":"..."}'
+                  >
+                    <Input.TextArea autoSize={{ minRows: 6, maxRows: 16 }} placeholder="{ }" />
+                  </Form.Item>
+                  <Form.Item
+                    name="scheduled_for"
+                    label="Scheduled for"
+                    tooltip="Optional date/time for scheduled publish"
+                  >
+                    <DatePicker showTime className="w-full" />
+                  </Form.Item>
+                  <Form.Item name="published_at" label="Published at">
+                    <DatePicker
+                      showTime
+                      className="w-full"
+                      disabled
+                      placeholder="Set by server on publish"
+                    />
+                  </Form.Item>
+                </Card>
+
+                {/* NEW: Thumbnail for overview */}
+                <Card
+                  className="rounded-xl"
+                  title="Thumbnail (Overview Card)"
+                  extra={
+                    thumbPreview ? (
+                      <Button type="text" icon={<CloseCircleFilled />} onClick={clearThumbnail}>
+                        Remove
+                      </Button>
+                    ) : null
+                  }
                 >
-                  <Input.TextArea autoSize={{ minRows: 6, maxRows: 16 }} placeholder="{ }" />
-                </Form.Item>
-                <Form.Item
-                  name="scheduled_for"
-                  label="Scheduled for"
-                  tooltip="Optional date/time for scheduled publish"
-                >
-                  <DatePicker showTime className="w-full" />
-                </Form.Item>
-                <Form.Item name="published_at" label="Published at">
-                  <DatePicker
-                    showTime
-                    className="w-full"
-                    disabled
-                    placeholder="Set by server on publish"
-                  />
-                </Form.Item>
-              </Card>
+                  <Form.Item
+                    name="thumbnail_url"
+                    label="Thumbnail URL"
+                    tooltip="Shown on blog overview cards (recommended 1200×630). You can paste a URL or upload below."
+                  >
+                    <Input
+                      placeholder="https://…/image.jpg"
+                      onBlur={(e) => setThumbPreview(e.target.value || "")}
+                      allowClear
+                    />
+                  </Form.Item>
+
+                  <Upload.Dragger
+                    multiple={false}
+                    accept="image/*"
+                    beforeUpload={handleThumbBeforeUpload}
+                    showUploadList={false}
+                    className="!p-4"
+                  >
+                    <p className="ant-upload-drag-icon">
+                      <UploadOutlined />
+                    </p>
+                    <p className="ant-upload-text">Click or drag image to upload</p>
+                    <p className="ant-upload-hint">PNG/JPG/WebP. We’ll store the URL in the form.</p>
+                  </Upload.Dragger>
+
+                  {thumbPreview ? (
+                    <div className="mt-3">
+                      <div className="text-xs text-gray-500 mb-1">Preview</div>
+                      <div className="border rounded-lg overflow-hidden">
+                        <Image
+                          src={thumbPreview}
+                          alt="Thumbnail preview"
+                          width="100%"
+                          style={{ maxHeight: 220, objectFit: "cover" }}
+                          preview={false}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </Card>
+              </Space>
             </Col>
           </Row>
         </Form>

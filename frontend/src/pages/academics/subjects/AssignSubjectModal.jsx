@@ -1,218 +1,185 @@
+// src/pages/academics/subjects/AssignSubjectModal.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Button, Modal, Select, Space, Tabs, Tag, Typography, message } from "antd";
+import { Modal, Tabs, Table, Space, Button, Input, message } from "antd";
+import { SaveOutlined } from "@ant-design/icons";
 import api from "@/api/axios";
 
-const { Text } = Typography;
+const LS_KEY = "subjects.assignments.v1";
 
-const labelOfTeacher = (t) =>
-  t?.name || [t?.first_name, t?.last_name].filter(Boolean).join(" ") || t?.email || `Teacher #${t?.id}`;
-const labelOfStudent = (s) =>
-  s?.name || [s?.first_name, s?.last_name].filter(Boolean).join(" ") || s?.email || `Student #${s?.id}`;
+const readMap = () => {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); } catch { return {}; }
+};
+const writeMap = (m) => {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(m)); } catch {}
+};
 
-export default function AssignSubjectModal({ subjectId, open, onClose }) {
+export const getSubjectAssignment = (subjectId) => {
+  const m = readMap();
+  return m?.[String(subjectId)] || { teacherIds: [], studentIds: [] };
+};
+
+export default function AssignSubjectModal({
+  subjectId,
+  open,
+  onClose,
+  onSaved, // optional callback
+}) {
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-
   const [teachers, setTeachers] = useState([]);
   const [students, setStudents] = useState([]);
 
-  const [assignedTeachers, setAssignedTeachers] = useState([]);
-  const [assignedStudents, setAssignedStudents] = useState([]);
+  const [qT, setQT] = useState("");
+  const [qS, setQS] = useState("");
 
   const [selectedTeacherIds, setSelectedTeacherIds] = useState([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState([]);
 
-  const loadAll = async () => {
-    if (!subjectId) return;
-    setLoading(true);
-    try {
-      const [{ data: tData }, { data: sData }, { data: aData }] = await Promise.all([
-        api.get("/allteachers"),
-        api.get("/allstudents"),
-        api.get(`/subject/${subjectId}/assignments`),
-      ]);
-      setTeachers(Array.isArray(tData) ? tData : []);
-      setStudents(Array.isArray(sData) ? sData : []);
-      setAssignedTeachers(aData?.teachers ?? []);
-      setAssignedStudents(aData?.students ?? []);
-      setSelectedTeacherIds((aData?.teachers ?? []).map((t) => t.id));
-      setSelectedStudentIds((aData?.students ?? []).map((s) => s.id));
-    } catch {
-      message.error("Failed to load assignments.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // load lists + current selections
   useEffect(() => {
-    if (open) loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!open || !subjectId) return;
+
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [{ data: tsRaw }, { data: ssRaw }] = await Promise.all([
+          api.get("/allteachers"),
+          api.get("/allstudents"),
+        ]);
+        const ts = Array.isArray(tsRaw) ? tsRaw : (tsRaw?.data ?? []);
+        const ss = Array.isArray(ssRaw) ? ssRaw : (ssRaw?.data ?? []);
+        setTeachers(ts);
+        setStudents(ss);
+
+        const current = getSubjectAssignment(subjectId);
+        setSelectedTeacherIds((current.teacherIds || []).map(String));
+        setSelectedStudentIds((current.studentIds || []).map(String));
+      } catch {
+        message.error("Failed to load people.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
   }, [open, subjectId]);
 
-  const teacherOptions = useMemo(
-    () => teachers.map((t) => ({ value: t.id, label: labelOfTeacher(t) })),
-    [teachers]
-  );
-  const studentOptions = useMemo(
-    () => students.map((s) => ({ value: s.id, label: labelOfStudent(s) })),
-    [students]
-  );
+  const filteredTeachers = useMemo(() => {
+    const q = qT.trim().toLowerCase();
+    if (!q) return teachers;
+    return teachers.filter((t) => {
+      const name = t.name || [t.first_name, t.last_name].filter(Boolean).join(" ");
+      return `${name} ${t.email || ""}`.toLowerCase().includes(q);
+    });
+  }, [teachers, qT]);
 
-  const saveTeachers = async () => {
-    setSaving(true);
-    try {
-      const toAdd = selectedTeacherIds.filter(
-        (id) => !(assignedTeachers || []).some((t) => String(t.id) === String(id))
-      );
-      const toRemove = (assignedTeachers || [])
-        .map((t) => t.id)
-        .filter((id) => !selectedTeacherIds.includes(id));
+  const filteredStudents = useMemo(() => {
+    const q = qS.trim().toLowerCase();
+    if (!q) return students;
+    return students.filter((s) => {
+      const name = s.name || [s.first_name, s.last_name].filter(Boolean).join(" ");
+      return `${name} ${s.email || ""}`.toLowerCase().includes(q);
+    });
+  }, [students, qS]);
 
-      await Promise.all([
-        ...toAdd.map((id) => api.post(`/subject/${subjectId}/assign/teacher`, { teacher_id: id })),
-        ...toRemove.map((id) => api.delete(`/subject/${subjectId}/assign/teacher/${id}`)),
-      ]);
-
-      message.success("Teacher assignments updated.");
-      await loadAll();
-    } catch {
-      message.error("Failed to update teacher assignments.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const saveStudents = async () => {
-    setSaving(true);
-    try {
-      const toAdd = selectedStudentIds.filter(
-        (id) => !(assignedStudents || []).some((s) => String(s.id) === String(id))
-      );
-      const toRemove = (assignedStudents || [])
-        .map((s) => s.id)
-        .filter((id) => !selectedStudentIds.includes(id));
-
-      await Promise.all([
-        ...toAdd.map((id) => api.post(`/subject/${subjectId}/assign/student`, { student_id: id })),
-        ...toRemove.map((id) => api.delete(`/subject/${subjectId}/assign/student/${id}`)),
-      ]);
-
-      message.success("Student assignments updated.");
-      await loadAll();
-    } catch {
-      message.error("Failed to update student assignments.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const removeTeacher = async (id) => {
-    try {
-      await api.delete(`/subject/${subjectId}/assign/teacher/${id}`);
-    } catch {}
-    setSelectedTeacherIds((prev) => prev.filter((x) => x !== id));
-    setAssignedTeachers((prev) => prev.filter((x) => x.id !== id));
-  };
-
-  const removeStudent = async (id) => {
-    try {
-      await api.delete(`/subject/${subjectId}/assign/student/${id}`);
-    } catch {}
-    setSelectedStudentIds((prev) => prev.filter((x) => x !== id));
-    setAssignedStudents((prev) => prev.filter((x) => x.id !== id));
+  const save = () => {
+    const map = readMap();
+    map[String(subjectId)] = {
+      teacherIds: selectedTeacherIds.map(String),
+      studentIds: selectedStudentIds.map(String),
+    };
+    writeMap(map);
+    message.success("Assignments saved.");
+    onClose?.();
+    onSaved?.({ subjectId, teacherIds: map[String(subjectId)].teacherIds, studentIds: map[String(subjectId)].studentIds });
   };
 
   return (
     <Modal
       open={open}
-      title={`Assign Subject #${subjectId}`}
       onCancel={onClose}
-      footer={null}
-      width={720}
-      confirmLoading={loading || saving}
-      destroyOnClose
+      width={880}
+      title={`Assign to Subject #${subjectId}`}
+      footer={
+        <Space>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="primary" icon={<SaveOutlined />} onClick={save}>
+            Save Assignments
+          </Button>
+        </Space>
+      }
     >
       <Tabs
-        defaultActiveKey="teachers"
         items={[
           {
             key: "teachers",
             label: "Teachers",
             children: (
-              <Space direction="vertical" className="w-full" size="large">
-                <div>
-                  <Text type="secondary">Select teachers to be assigned to this subject.</Text>
-                  <Select
-                    mode="multiple"
+              <>
+                <div className="mb-2">
+                  <Input
+                    placeholder="Search teachers by name or email…"
+                    value={qT}
+                    onChange={(e) => setQT(e.target.value)}
                     allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    placeholder="Pick teacher(s)…"
-                    options={teacherOptions}
-                    value={selectedTeacherIds}
-                    onChange={setSelectedTeacherIds}
-                    className="w-full mt-2"
                   />
                 </div>
-
-                <div>
-                  <div className="mb-2 text-sm text-gray-500">Currently assigned</div>
-                  <Space wrap>
-                    {(assignedTeachers || []).length === 0 && <Text type="secondary">None yet</Text>}
-                    {(assignedTeachers || []).map((t) => (
-                      <Tag key={t.id} closable onClose={() => removeTeacher(t.id)}>
-                        {labelOfTeacher(t)}
-                      </Tag>
-                    ))}
-                  </Space>
-                </div>
-
-                <div className="flex justify-end">
-                  <Button type="primary" loading={saving} onClick={saveTeachers}>
-                    Save Teacher Assignments
-                  </Button>
-                </div>
-              </Space>
+                <Table
+                  rowKey={(r) => String(r.id)}
+                  size="small"
+                  loading={loading}
+                  dataSource={filteredTeachers}
+                  pagination={{ pageSize: 8 }}
+                  rowSelection={{
+                    selectedRowKeys: selectedTeacherIds,
+                    onChange: (keys) => setSelectedTeacherIds(keys.map(String)),
+                  }}
+                  columns={[
+                    {
+                      title: "Name",
+                      dataIndex: "name",
+                      render: (_, r) =>
+                        r.name || [r.first_name, r.last_name].filter(Boolean).join(" ") || `#${r.id}`,
+                    },
+                    { title: "Email", dataIndex: "email" },
+                  ]}
+                />
+              </>
             ),
           },
           {
             key: "students",
             label: "Students",
             children: (
-              <Space direction="vertical" className="w-full" size="large">
-                <div>
-                  <Text type="secondary">Select students to be assigned to this subject.</Text>
-                  <Select
-                    mode="multiple"
+              <>
+                <div className="mb-2">
+                  <Input
+                    placeholder="Search students by name or email…"
+                    value={qS}
+                    onChange={(e) => setQS(e.target.value)}
                     allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    placeholder="Pick student(s)…"
-                    options={studentOptions}
-                    value={selectedStudentIds}
-                    onChange={setSelectedStudentIds}
-                    className="w-full mt-2"
                   />
                 </div>
-
-                <div>
-                  <div className="mb-2 text-sm text-gray-500">Currently assigned</div>
-                  <Space wrap>
-                    {(assignedStudents || []).length === 0 && <Text type="secondary">None yet</Text>}
-                    {(assignedStudents || []).map((s) => (
-                      <Tag key={s.id} closable onClose={() => removeStudent(s.id)}>
-                        {labelOfStudent(s)}
-                      </Tag>
-                    ))}
-                  </Space>
-                </div>
-
-                <div className="flex justify-end">
-                  <Button type="primary" loading={saving} onClick={saveStudents}>
-                    Save Student Assignments
-                  </Button>
-                </div>
-              </Space>
+                <Table
+                  rowKey={(r) => String(r.id)}
+                  size="small"
+                  loading={loading}
+                  dataSource={filteredStudents}
+                  pagination={{ pageSize: 8 }}
+                  rowSelection={{
+                    selectedRowKeys: selectedStudentIds,
+                    onChange: (keys) => setSelectedStudentIds(keys.map(String)),
+                  }}
+                  columns={[
+                    {
+                      title: "Name",
+                      dataIndex: "name",
+                      render: (_, r) =>
+                        r.name || [r.first_name, r.last_name].filter(Boolean).join(" ") || `#${r.id}`,
+                    },
+                    { title: "Email", dataIndex: "email" },
+                    { title: "Grade", dataIndex: "grade" },
+                  ]}
+                />
+              </>
             ),
           },
         ]}

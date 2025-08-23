@@ -1,4 +1,3 @@
-// src/pages/academics/AIAgent.jsx
 import { useEffect, useMemo, useState } from "react";
 import {
   Card,
@@ -465,7 +464,6 @@ export default function AIAgent() {
               <div>
                 <Text type="secondary">User Message Color</Text>
                 <div className="mt-2">
-                  {/* Ant v5 ColorPicker; fallback to input if unavailable */}
                   {ColorPicker ? (
                     <ColorPicker
                       value={state.settings.userMessageColor}
@@ -495,7 +493,7 @@ export default function AIAgent() {
         </Card>
       </Col>
 
-      {/* Live preview (same card as right pane for convenience) */}
+      {/* Live preview */}
       <Col xs={24} lg={12}>
         <Card
           className="rounded-xl h-full"
@@ -532,7 +530,6 @@ export default function AIAgent() {
             beforeUpload={() => false}
             showUploadList={true}
             onChange={async ({ fileList }) => {
-              // Calculate chars for text-like files; keep safe fallback
               let total = 0;
               const items = [];
               for (const f of fileList) {
@@ -623,8 +620,9 @@ export default function AIAgent() {
   return (
     <div className="max-w-[1400px] mx-auto px-3 md:px-4">
       <div className="flex items-center justify-between mb-3">
+        {/* 🔁 Renamed heading */}
         <Title level={3} className="!mb-0">
-          Manage & Train AI Agent
+          Kibundo (Manage & Train)
         </Title>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={refreshPreview}>

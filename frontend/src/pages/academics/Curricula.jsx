@@ -25,9 +25,11 @@ import {
   publishCurriculum,
   listVersions,
   restoreVersion,
-  searchQuizzes,
-  linkQuizzes,
-  unlinkQuiz,
+  // linking/search
+  searchQuizzes, linkQuizzes, unlinkQuiz,
+  searchWorksheets, linkWorksheets,
+  searchGames, linkGames,
+  searchReading, linkReading,
 } from "./_api";
 
 import ReactQuill from "react-quill";
@@ -35,59 +37,46 @@ import "react-quill/dist/quill.snow.css";
 
 const { useBreakpoint } = Grid;
 
-/** ---- Rich Text wrapper that plays nice with AntD Form ---- */
+/* ---------------- Rich Text wrapper (works with AntD Form) ---------------- */
 function RichTextArea({ value, onChange, onImageUpload }) {
   const quillRef = useRef(null);
-
   const handleImage = () => {
     if (!onImageUpload) return;
     const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
+    input.type = "file"; input.accept = "image/*";
     input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
+      const file = input.files?.[0]; if (!file) return;
       const quill = quillRef.current?.getEditor();
       const range = quill?.getSelection(true);
       try {
-        const url = await onImageUpload(file); // must return a URL
+        const url = await onImageUpload(file);
         if (range) {
           quill.insertEmbed(range.index, "image", url, "user");
           quill.setSelection(range.index + 1);
         }
-      } catch (e) {
-        // optionally show message.error(e.message)
-        console.error(e);
-      }
+      } catch {}
     };
     input.click();
   };
-
-  const modules = useMemo(
-    () => ({
-      toolbar: {
-        container: [
-          [{ header: [1, 2, 3, false] }],
-          ["bold", "italic", "underline", "strike"],
-          [{ color: [] }, { background: [] }],
-          [{ list: "ordered" }, { list: "bullet" }],
-          [{ align: [] }],
-          ["link", "image", "blockquote", "code-block"],
-          ["clean"],
-        ],
-        handlers: { image: handleImage },
-      },
-      clipboard: { matchVisual: false },
-    }),
-    []
-  );
-
+  const modules = useMemo(() => ({
+    toolbar: {
+      container: [
+        [{ header: [1, 2, 3, false] }],
+        ["bold", "italic", "underline", "strike"],
+        [{ color: [] }, { background: [] }],
+        [{ list: "ordered" }, { list: "bullet" }],
+        [{ align: [] }],
+        ["link", "image", "blockquote", "code-block"],
+        ["clean"],
+      ],
+      handlers: { image: handleImage },
+    },
+    clipboard: { matchVisual: false },
+  }), []);
   const formats = [
-    "header", "bold", "italic", "underline", "strike",
-    "color", "background", "list", "bullet", "align",
-    "link", "image", "blockquote", "code-block",
+    "header","bold","italic","underline","strike","color","background",
+    "list","bullet","align","link","image","blockquote","code-block"
   ];
-
   return (
     <div className="antd-quill">
       <ReactQuill
@@ -106,6 +95,7 @@ function RichTextArea({ value, onChange, onImageUpload }) {
   );
 }
 
+/* ================================== Page ================================== */
 export default function Curricula() {
   const [form] = Form.useForm();
   const qc = useQueryClient();
@@ -115,15 +105,11 @@ export default function Curricula() {
   const [pageSize, setPageSize] = useState(20);
   const filters = Form.useWatch([], form);
 
-  // QUIET fetching: swallow errors → return empty result
   const { data, isFetching, refetch } = useQuery({
     queryKey: ["curricula", { page, pageSize, ...filters }],
     queryFn: async () => {
-      try {
-        return await listCurricula({ page, pageSize, ...filters });
-      } catch {
-        return { items: [], total: 0 };
-      }
+      try { return await listCurricula({ page, pageSize, ...filters }); }
+      catch { return { items: [], total: 0 }; }
     },
     keepPreviousData: true
   });
@@ -137,9 +123,13 @@ export default function Curricula() {
   const [contentJson, setContentJson] = useState("{}");
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [detailId, setDetailId] = useState(null);
-  const [linkOpen, setLinkOpen] = useState(false);
 
-  const canWrite = true; // wire to RBAC if needed
+  const [linkQuizzesOpen, setLinkQuizzesOpen] = useState(false);
+  const [linkWorksheetsOpen, setLinkWorksheetsOpen] = useState(false);
+  const [linkGamesOpen, setLinkGamesOpen] = useState(false);
+  const [linkReadingOpen, setLinkReadingOpen] = useState(false);
+
+  const canWrite = true;
 
   const openCreate = () => {
     setEditId(null);
@@ -164,30 +154,24 @@ export default function Curricula() {
       });
       setContentJson(JSON.stringify(item.content ?? {}, null, 2));
       setDrawerOpen(true);
-    } catch {
-      // stay quiet; keep UI as-is
-    }
+    } catch {}
   };
 
   const createMut = useMutation({
     mutationFn: (payload) => createCurriculum(payload),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["curricula"] }); setDrawerOpen(false); },
-    onError: () => {}
   });
   const updateMut = useMutation({
     mutationFn: (payload) => updateCurriculum(editId, payload),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["curricula"] }); setDrawerOpen(false); },
-    onError: () => {}
   });
   const del = useMutation({
     mutationFn: (id) => deleteCurriculum(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["curricula"] }); },
-    onError: () => {}
   });
   const pub = useMutation({
     mutationFn: ({ id, publish }) => publishCurriculum(id, publish),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["curricula"] }); },
-    onError: () => {}
   });
 
   const confirmDelete = (id) => {
@@ -196,12 +180,7 @@ export default function Curricula() {
       content: "This action cannot be undone.",
       okType: "danger",
       okText: "Delete",
-      onOk: () =>
-        del.mutate(id, {
-          onSuccess: () => {
-            if (detailId === id) setDetailId(null);
-          }
-        })
+      onOk: () => del.mutate(id, { onSuccess: () => { if (detailId === id) setDetailId(null); } })
     });
   };
 
@@ -212,21 +191,16 @@ export default function Curricula() {
     { title: "Version", dataIndex: "version", width: 90, responsive: ["md"], render: (v) => <SafeText value={v} /> },
     {
       title: "Status", dataIndex: "status", width: 120,
-      render: (s) =>
-        s ? (
-          <Tag color={s === "published" ? "green" : s === "review" ? "geekblue" : s === "archived" ? "volcano" : "default"}>
-            {s}
-          </Tag>
-        ) : (
-          <SafeText value={s} />
-        )
+      render: (s) => s ? (
+        <Tag color={s === "published" ? "green" : s === "review" ? "geekblue" : s === "archived" ? "volcano" : "default"}>{s}</Tag>
+      ) : <SafeText value={s} />
     },
     { title: "Updated", dataIndex: "updated_at", responsive: ["lg"], render: (iso) => <SafeDate value={iso} /> },
     {
       title: "Actions",
       key: "actions",
       fixed: screens.md ? "right" : undefined,
-      width: 80,
+      width: 110,
       render: (_, r) => {
         const isPublished = r.status === "published";
         const menu = {
@@ -235,44 +209,37 @@ export default function Curricula() {
             { type: "divider" },
             ...(canWrite ? [{ key: "edit", label: "Edit" }] : []),
             ...(canWrite ? [{ key: "versions", label: "Versions" }] : []),
-            ...(canWrite ? [{ key: "link", label: "Link Quizzes" }] : []),
+            ...(canWrite ? [
+              { key: "link_quizzes", label: "Link Quizzes" },
+              { key: "link_worksheets", label: "Link Worksheets" },
+              { key: "link_games", label: "Link Games" },
+              { key: "link_reading", label: "Link Reading" },
+            ] : []),
             ...(canWrite ? [{ type: "divider" }] : []),
             ...(canWrite ? [{ key: "toggle", label: isPublished ? "Unpublish" : "Publish" }] : []),
             ...(canWrite ? [{ key: "delete", label: <span style={{ color: "#ff4d4f" }}>Delete</span> }] : []),
           ],
           onClick: ({ key, domEvent }) => {
             domEvent?.stopPropagation?.();
-            if (key === "view") {
-              setDetailId(r.id);
-            } else if (key === "edit") {
-              openEdit(r.id);
-            } else if (key === "versions") {
-              setDetailId(r.id);
-              setVersionsOpen(true);
-            } else if (key === "link") {
-              setDetailId(r.id);
-              setLinkOpen(true);
-            } else if (key === "toggle") {
-              pub.mutate({ id: r.id, publish: !isPublished });
-            } else if (key === "delete") {
-              confirmDelete(r.id);
-            }
+            if (key === "view") setDetailId(r.id);
+            else if (key === "edit") openEdit(r.id);
+            else if (key === "versions") { setDetailId(r.id); setVersionsOpen(true); }
+            else if (key === "link_quizzes") { setDetailId(r.id); setLinkQuizzesOpen(true); }
+            else if (key === "link_worksheets") { setDetailId(r.id); setLinkWorksheetsOpen(true); }
+            else if (key === "link_games") { setDetailId(r.id); setLinkGamesOpen(true); }
+            else if (key === "link_reading") { setDetailId(r.id); setLinkReadingOpen(true); }
+            else if (key === "toggle") pub.mutate({ id: r.id, publish: !isPublished });
+            else if (key === "delete") confirmDelete(r.id);
           }
         };
         return (
           <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
-            <Button
-              size="small"
-              type="text"
-              icon={<MoreOutlined />}
-              aria-label="More actions"
-              onClick={(e) => e.stopPropagation()}
-            />
+            <Button size="small" type="text" icon={<MoreOutlined />} onClick={(e) => e.stopPropagation()} />
           </Dropdown>
         );
       }
     }
-  ], [screens.md, pub.isPending, del.isPending]);
+  ], [screens.md, pub.isPending, del.isPending, canWrite]);
 
   const onExport = () => {
     const rows = (items ?? []).map((r) => ({
@@ -292,45 +259,36 @@ export default function Curricula() {
   const onSubmit = async () => {
     const values = await form.validateFields();
     let parsed = {};
-    try { parsed = contentJson ? JSON.parse(contentJson) : {}; }
-    catch { return; } // keep quiet if invalid JSON
-    // include notes_html in payload (backend can ignore if unused)
+    try { parsed = contentJson ? JSON.parse(contentJson) : {}; } catch { return; }
     const payload = { ...values, content: parsed, notes_html: values?.notes_html || "" };
     if (editId) updateMut.mutate(payload); else createMut.mutate(payload);
   };
 
   const beforeUpload = async (file) => {
     const text = await file.text();
-    try { JSON.parse(text); setContentJson(text); } catch { /* quiet */ }
+    try { JSON.parse(text); setContentJson(text); } catch {}
     return false;
   };
 
   // Detail (quiet)
   const { data: detailData, refetch: refetchDetail, isLoading: loadingDetail } = useQuery({
     queryKey: ["curriculum", detailId],
-    queryFn: async () => {
-      try { return await getCurriculum(detailId); } catch { return null; }
-    },
+    queryFn: async () => { try { return await getCurriculum(detailId); } catch { return null; } },
     enabled: !!detailId
   });
   const detail = detailData || null;
   useEffect(() => { if (detailId) refetchDetail(); }, [detailId, refetchDetail]);
 
-  // simple example uploader for images inside rich editor (replace with real API)
   const uploadImage = async (file) => {
-    // Example: upload to your server and return a URL
-    // const formData = new FormData(); formData.append("file", file);
-    // const { data } = await api.post("/upload", formData);
-    // return data.url;
     await new Promise(r => setTimeout(r, 300));
-    return URL.createObjectURL(file); // preview URL; replace in production
+    return URL.createObjectURL(file);
   };
 
   return (
     <div className="flex flex-col min-h-0">
       <PageHeader
         title="Curricula"
-        subtitle="Maintain curricula by state, subject, and grade. Link quizzes and manage versions."
+        subtitle="Maintain curricula by state, subject, and grade. Link quizzes, worksheets, games, and reading."
         extra={
           <Space wrap>
             <Button icon={<ReloadOutlined />} onClick={() => refetch()} />
@@ -412,7 +370,6 @@ export default function Curricula() {
 
           <Divider />
 
-          {/* NEW: Rich Text Notes field */}
           <Form.Item name="notes_html" label="Notes (Rich Text)">
             <RichTextArea
               value={Form.useWatch("notes_html", form)}
@@ -451,7 +408,10 @@ export default function Curricula() {
               <>
                 <Button onClick={() => openEdit(detailId)}>Edit</Button>
                 <Button onClick={() => setVersionsOpen(true)}>Versions</Button>
-                <Button onClick={() => setLinkOpen(true)}>Link Quizzes</Button>
+                <Button onClick={() => setLinkQuizzesOpen(true)}>Link Quizzes</Button>
+                <Button onClick={() => setLinkWorksheetsOpen(true)}>Link Worksheets</Button>
+                <Button onClick={() => setLinkGamesOpen(true)}>Link Games</Button>
+                <Button onClick={() => setLinkReadingOpen(true)}>Link Reading</Button>
               </>
             )}
           </Space>
@@ -478,20 +438,16 @@ export default function Curricula() {
               <Descriptions.Item label="Created By"><SafeText value={detail?.created_by?.name} /></Descriptions.Item>
             </Descriptions>
 
-            {/* Render the rich notes if present */}
             {detail?.notes_html ? (
               <>
                 <Divider />
                 <h3 className="font-semibold mb-2">Notes</h3>
-                <div
-                  className="prose max-w-none ql-editor"
-                  // You already sanitize text elsewhere; if notes_html comes from trusted source, this is ok.
-                  dangerouslySetInnerHTML={{ __html: detail.notes_html }}
-                />
+                <div className="prose max-w-none ql-editor" dangerouslySetInnerHTML={{ __html: detail.notes_html }} />
               </>
             ) : null}
 
             <Divider />
+
             <h3 className="font-semibold mb-2">Linked Quizzes</h3>
             {Array.isArray(detail?.quizzes) && detail.quizzes.length ? (
               <List
@@ -509,22 +465,54 @@ export default function Curricula() {
                   >
                     <List.Item.Meta
                       title={<SafeText value={q.title} />}
-                      description={
-                        <>
-                          <SafeText value={q.subject} /> • Grade <SafeText value={q.grade} /> •{" "}
-                          <SafeText value={q.bundesland} /> • <SafeTags value={q.tags} />
-                        </>
-                      }
+                      description={<>
+                        <SafeText value={q.subject} /> • Grade <SafeText value={q.grade} /> •{" "}
+                        <SafeText value={q.bundesland} /> • <SafeTags value={q.tags} />
+                      </>}
                     />
                   </List.Item>
                 )}
               />
             ) : <Empty description="No quizzes linked yet" />}
+
+            <Divider />
+
+            <h3 className="font-semibold mb-2">Linked Worksheets</h3>
+            {Array.isArray(detail?.worksheets) && detail.worksheets.length ? (
+              <List
+                dataSource={detail.worksheets}
+                renderItem={(w) => (
+                  <List.Item>
+                    <List.Item.Meta
+                      title={<SafeText value={w.title} />}
+                      description={<>
+                        <SafeText value={w.subject} /> • Grade <SafeText value={w.grade} /> •{" "}
+                        <SafeText value={w.bundesland} /> • <SafeTags value={w.tags} />
+                      </>}
+                    />
+                  </List.Item>
+                )}
+              />
+            ) : <Empty description="No worksheets linked yet" />}
+
+            <Divider />
+
+            <h3 className="font-semibold mb-2">Linked Games</h3>
+            {Array.isArray(detail?.games) && detail.games.length ? (
+              <List dataSource={detail.games} renderItem={(g) => (<List.Item><SafeText value={g.title} /></List.Item>)} />
+            ) : <Empty description="No games linked yet" />}
+
+            <Divider />
+
+            <h3 className="font-semibold mb-2">Linked Reading</h3>
+            {Array.isArray(detail?.reading) && detail.reading.length ? (
+              <List dataSource={detail.reading} renderItem={(r) => (<List.Item><SafeText value={r.title} /></List.Item>)} />
+            ) : <Empty description="No reading linked yet" />}
           </>
         )}
       </Drawer>
 
-      {/* Versions modal (quiet) */}
+      {/* Versions Modal */}
       <VersionsModal
         open={versionsOpen}
         onClose={() => setVersionsOpen(false)}
@@ -532,34 +520,46 @@ export default function Curricula() {
         afterRestore={() => { setVersionsOpen(false); refetch(); if (detailId) refetchDetail(); }}
       />
 
-      {/* Link quizzes drawer (quiet) */}
+      {/* Link drawers */}
       <LinkQuizzesDrawer
-        open={linkOpen}
-        onClose={() => setLinkOpen(false)}
+        open={linkQuizzesOpen}
+        onClose={() => setLinkQuizzesOpen(false)}
         curriculum={detail}
-        afterLink={() => { setLinkOpen(false); if (detailId) refetchDetail(); }}
+        afterLink={() => { setLinkQuizzesOpen(false); if (detailId) refetchDetail(); }}
+      />
+      <LinkWorksheetsDrawer
+        open={linkWorksheetsOpen}
+        onClose={() => setLinkWorksheetsOpen(false)}
+        curriculum={detail}
+        afterLink={() => { setLinkWorksheetsOpen(false); if (detailId) refetchDetail(); }}
+      />
+      <LinkGamesDrawer
+        open={linkGamesOpen}
+        onClose={() => setLinkGamesOpen(false)}
+        curriculum={detail}
+        afterLink={() => { setLinkGamesOpen(false); if (detailId) refetchDetail(); }}
+      />
+      <LinkReadingDrawer
+        open={linkReadingOpen}
+        onClose={() => setLinkReadingOpen(false)}
+        curriculum={detail}
+        afterLink={() => { setLinkReadingOpen(false); if (detailId) refetchDetail(); }}
       />
     </div>
   );
 }
 
+/* ================================ Helpers ================================ */
 function VersionsModal({ open, onClose, curriculumId, afterRestore }) {
   const { data = [], isFetching } = useQuery({
     queryKey: ["curriculum-versions", curriculumId],
-    queryFn: async () => {
-      try { return await listVersions(curriculumId); } catch { return []; }
-    },
+    queryFn: async () => { try { return await listVersions(curriculumId); } catch { return []; } },
     enabled: open && !!curriculumId
   });
   const qc = useQueryClient();
-
   const restore = useMutation({
     mutationFn: (versionId) => restoreVersion(curriculumId, versionId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["curricula"] });
-      if (afterRestore) afterRestore();
-    },
-    onError: () => {}
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["curricula"] }); afterRestore?.(); }
   });
 
   const columns = [
@@ -587,6 +587,7 @@ function VersionsModal({ open, onClose, curriculumId, afterRestore }) {
   );
 }
 
+/* -------------------------- Link drawers (4x) --------------------------- */
 function LinkQuizzesDrawer({ open, onClose, curriculum, afterLink }) {
   const [filters, setFilters] = useState({
     bundesland: curriculum?.bundesland || "",
@@ -595,21 +596,17 @@ function LinkQuizzesDrawer({ open, onClose, curriculum, afterLink }) {
     q: ""
   });
   const [selected, setSelected] = useState([]);
-
   useEffect(() => { if (open) setSelected([]); }, [open]);
 
   const { data = [], isFetching, refetch } = useQuery({
     queryKey: ["quiz-search", filters],
-    queryFn: async () => {
-      try { return await searchQuizzes(filters); } catch { return []; }
-    },
+    queryFn: async () => { try { return await searchQuizzes(filters); } catch { return []; } },
     enabled: open && !!curriculum?.id
   });
 
   const link = useMutation({
     mutationFn: () => linkQuizzes(curriculum.id, selected),
-    onSuccess: () => { if (afterLink) afterLink(); },
-    onError: () => {}
+    onSuccess: () => { afterLink?.(); }
   });
 
   return (
@@ -618,65 +615,191 @@ function LinkQuizzesDrawer({ open, onClose, curriculum, afterLink }) {
       onClose={onClose}
       title="Link Quizzes"
       width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 32 : 720)}
-      extra={
-        <Button type="primary" disabled={!selected.length} loading={link.isPending} onClick={() => link.mutate()}>
-          Link {selected.length ? `(${selected.length})` : ""}
-        </Button>
-      }
+      extra={<Button type="primary" disabled={!selected.length} loading={link.isPending} onClick={() => link.mutate()}>Link {selected.length ? `(${selected.length})` : ""}</Button>}
     >
-      <Space direction="vertical" style={{ width: "100%" }} size="large">
-        <ResponsiveFilters>
-          <Form.Item label="Bundesland">
-            <Select
-              placeholder="Any" style={{ minWidth: 180 }}
-              allowClear value={filters.bundesland}
-              onChange={(v) => setFilters(f => ({ ...f, bundesland: v }))}
-              options={[{ value: "", label: "Any" }, ...BUNDESLAENDER.map(b => ({ value: b, label: b }))]}
-            />
-          </Form.Item>
-          <Form.Item label="Subject">
-            <Input
-              placeholder="Subject" style={{ minWidth: 160 }}
-              value={filters.subject}
-              onChange={(e) => setFilters(f => ({ ...f, subject: e.target.value }))}
-            />
-          </Form.Item>
-          <Form.Item label="Grade">
-            <Select
-              placeholder="Any" style={{ minWidth: 120 }}
-              allowClear value={filters.grade}
-              onChange={(v) => setFilters(f => ({ ...f, grade: v }))}
-              options={GRADES.map(g => ({ value: g, label: `Grade ${g}` }))}
-            />
-          </Form.Item>
-          <Form.Item label="Search">
-            <Input
-              placeholder="Title/tags" style={{ minWidth: 180 }}
-              value={filters.q}
-              onChange={(e) => setFilters(f => ({ ...f, q: e.target.value }))}
-              onPressEnter={() => refetch()}
-            />
-          </Form.Item>
-          <Form.Item>
-            <Button onClick={() => refetch()} loading={isFetching}>Search</Button>
-          </Form.Item>
-        </ResponsiveFilters>
-
-        <FluidTable
-          rowKey="id"
-          dataSource={data || []}
-          loading={isFetching}
-          rowSelection={{ selectedRowKeys: selected, onChange: setSelected }}
-          columns={[
-            { title: "Title", dataIndex: "title", ellipsis: true, render: (v) => <SafeText value={v} /> },
-            { title: "Subject", dataIndex: "subject", width: 140, render: (v) => <SafeText value={v} /> },
-            { title: "Grade", dataIndex: "grade", width: 100, render: (v) => <SafeText value={v} /> },
-            { title: "Bundesland", dataIndex: "bundesland", width: 180, render: (v) => <SafeText value={v} /> },
-            { title: "Tags", dataIndex: "tags", render: (tags) => <SafeTags value={tags} /> }
-          ]}
-          pagination={{ pageSize: 10 }}
-        />
-      </Space>
+      <SearchFilters filters={filters} setFilters={setFilters} refetch={refetch} isFetching={isFetching} />
+      <FluidTable
+        rowKey="id"
+        dataSource={data || []}
+        loading={isFetching}
+        rowSelection={{ selectedRowKeys: selected, onChange: setSelected }}
+        columns={[
+          { title: "Title", dataIndex: "title", ellipsis: true, render: (v) => <SafeText value={v} /> },
+          { title: "Subject", dataIndex: "subject", width: 140, render: (v) => <SafeText value={v} /> },
+          { title: "Grade", dataIndex: "grade", width: 100, render: (v) => <SafeText value={v} /> },
+          { title: "Bundesland", dataIndex: "bundesland", width: 180, render: (v) => <SafeText value={v} /> },
+          { title: "Tags", dataIndex: "tags", render: (tags) => <SafeTags value={tags} /> }
+        ]}
+        pagination={{ pageSize: 10 }}
+      />
     </Drawer>
+  );
+}
+
+function LinkWorksheetsDrawer({ open, onClose, curriculum, afterLink }) {
+  const [filters, setFilters] = useState({
+    bundesland: curriculum?.bundesland || "",
+    subject: curriculum?.subject || "",
+    grade: curriculum?.grade || "",
+    q: ""
+  });
+  const [selected, setSelected] = useState([]);
+  useEffect(() => { if (open) setSelected([]); }, [open]);
+
+  const { data = [], isFetching, refetch } = useQuery({
+    queryKey: ["worksheet-search", filters],
+    queryFn: async () => { try { return await searchWorksheets(filters); } catch { return []; } },
+    enabled: open && !!curriculum?.id
+  });
+
+  const link = useMutation({
+    mutationFn: () => linkWorksheets(curriculum.id, selected),
+    onSuccess: () => { afterLink?.(); }
+  });
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Link Worksheets"
+      width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 32 : 720)}
+      extra={<Button type="primary" disabled={!selected.length} loading={link.isPending} onClick={() => link.mutate()}>Link {selected.length ? `(${selected.length})` : ""}</Button>}
+    >
+      <SearchFilters filters={filters} setFilters={setFilters} refetch={refetch} isFetching={isFetching} />
+      <FluidTable
+        rowKey="id"
+        dataSource={data || []}
+        loading={isFetching}
+        rowSelection={{ selectedRowKeys: selected, onChange: setSelected }}
+        columns={[
+          { title: "Title", dataIndex: "title", ellipsis: true, render: (v) => <SafeText value={v} /> },
+          { title: "Subject", dataIndex: "subject", width: 140, render: (v) => <SafeText value={v} /> },
+          { title: "Grade", dataIndex: "grade", width: 100, render: (v) => <SafeText value={v} /> },
+          { title: "Bundesland", dataIndex: "bundesland", width: 180, render: (v) => <SafeText value={v} /> },
+          { title: "Tags", dataIndex: "tags", render: (tags) => <SafeTags value={tags} /> }
+        ]}
+        pagination={{ pageSize: 10 }}
+      />
+    </Drawer>
+  );
+}
+
+function LinkGamesDrawer({ open, onClose, curriculum, afterLink }) {
+  const [selected, setSelected] = useState([]);
+  useEffect(() => { if (open) setSelected([]); }, [open]);
+
+  const { data = [], isFetching, refetch } = useQuery({
+    queryKey: ["games-search", curriculum?.id],
+    queryFn: async () => { try { return await searchGames({}); } catch { return []; } },
+    enabled: open && !!curriculum?.id
+  });
+
+  const link = useMutation({
+    mutationFn: () => linkGames(curriculum.id, selected),
+    onSuccess: () => { afterLink?.(); }
+  });
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Link Games (stub)"
+      width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 32 : 720)}
+      extra={<Button type="primary" disabled={!selected.length} loading={link.isPending} onClick={() => link.mutate()}>Link {selected.length ? `(${selected.length})` : ""}</Button>}
+    >
+      <p className="text-gray-500 mb-3">Search returns empty for now; this is a placeholder so UI compiles.</p>
+      <FluidTable
+        rowKey="id"
+        dataSource={data || []}
+        loading={isFetching}
+        rowSelection={{ selectedRowKeys: selected, onChange: setSelected }}
+        columns={[
+          { title: "Title", dataIndex: "title", render: (v) => <SafeText value={v} /> },
+        ]}
+        pagination={{ pageSize: 10 }}
+      />
+      <Button onClick={() => refetch()}>Refresh</Button>
+    </Drawer>
+  );
+}
+
+function LinkReadingDrawer({ open, onClose, curriculum, afterLink }) {
+  const [selected, setSelected] = useState([]);
+  useEffect(() => { if (open) setSelected([]); }, [open]);
+
+  const { data = [], isFetching, refetch } = useQuery({
+    queryKey: ["reading-search", curriculum?.id],
+    queryFn: async () => { try { return await searchReading({}); } catch { return []; } },
+    enabled: open && !!curriculum?.id
+  });
+
+  const link = useMutation({
+    mutationFn: () => linkReading(curriculum.id, selected),
+    onSuccess: () => { afterLink?.(); }
+  });
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Link Reading (stub)"
+      width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 32 : 720)}
+      extra={<Button type="primary" disabled={!selected.length} loading={link.isPending} onClick={() => link.mutate()}>Link {selected.length ? `(${selected.length})` : ""}</Button>}
+    >
+      <p className="text-gray-500 mb-3">Search returns empty for now; this is a placeholder so UI compiles.</p>
+      <FluidTable
+        rowKey="id"
+        dataSource={data || []}
+        loading={isFetching}
+        rowSelection={{ selectedRowKeys: selected, onChange: setSelected }}
+        columns={[
+          { title: "Title", dataIndex: "title", render: (v) => <SafeText value={v} /> },
+        ]}
+        pagination={{ pageSize: 10 }}
+      />
+      <Button onClick={() => refetch()}>Refresh</Button>
+    </Drawer>
+  );
+}
+
+/* ------------- common small filter strip used in link drawers ------------- */
+function SearchFilters({ filters, setFilters, refetch, isFetching }) {
+  return (
+    <ResponsiveFilters>
+      <Form.Item label="Bundesland">
+        <Select
+          placeholder="Any" style={{ minWidth: 180 }}
+          allowClear value={filters.bundesland}
+          onChange={(v) => setFilters(f => ({ ...f, bundesland: v || "" }))}
+          options={[{ value: "", label: "Any" }, ...BUNDESLAENDER.map(b => ({ value: b, label: b }))]}
+        />
+      </Form.Item>
+      <Form.Item label="Subject">
+        <Input
+          placeholder="Subject" style={{ minWidth: 160 }}
+          value={filters.subject}
+          onChange={(e) => setFilters(f => ({ ...f, subject: e.target.value }))}
+        />
+      </Form.Item>
+      <Form.Item label="Grade">
+        <Select
+          placeholder="Any" style={{ minWidth: 120 }}
+          allowClear value={filters.grade}
+          onChange={(v) => setFilters(f => ({ ...f, grade: v || "" }))}
+          options={GRADES.map(g => ({ value: g, label: `Grade ${g}` }))}
+        />
+      </Form.Item>
+      <Form.Item label="Search">
+        <Input
+          placeholder="Title/tags" style={{ minWidth: 180 }}
+          value={filters.q}
+          onChange={(e) => setFilters(f => ({ ...f, q: e.target.value }))}
+          onPressEnter={() => refetch()}
+        />
+      </Form.Item>
+      <Form.Item>
+        <Button onClick={() => refetch()} loading={isFetching}>Search</Button>
+      </Form.Item>
+    </ResponsiveFilters>
   );
 }
