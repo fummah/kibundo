@@ -114,9 +114,13 @@ export default function AdminDashboard() {
     const o = data?.overview || {};
     const deltas = o?.deltas || {};
     const counts = data?.counts || {};
-    const totalUsers = o.totalUsers ?? counts.users ?? FALLBACK.totalUsers;
-    const parents = o.parents ?? counts.parents ?? FALLBACK.parents;
-    const students = o.students ?? counts.students ?? FALLBACK.students;
+
+    // Resolve parts first
+    const parents = (o.parents ?? counts.parents ?? FALLBACK.parents) || 0;
+    const students = (o.students ?? counts.students ?? FALLBACK.students) || 0;
+
+    // Force totalUsers to be sum of parts
+    const totalUsers = parents + students;
 
     return {
       totalUsers,
@@ -168,9 +172,8 @@ export default function AdminDashboard() {
       icon: <DatabaseOutlined style={{ fontSize: 28, color: "#1677ff" }} />,
       title: "Database Management",
       desc: "Oversee and manage the platform's database.",
-      to: "/admin/analytics",
+      to: "/admin/database",
     },
-    // ❌ Educational Philosophy removed
   ];
 
   return (
@@ -193,53 +196,83 @@ export default function AdminDashboard() {
 
         <Row gutter={[16, 16]} className="mb-4">
           {/* Total Users + split (Parents + Students) */}
-          {/* Total Users + split (Parents + Students) */}
-<Col xs={24} sm={12} lg={6} style={{ display: "flex" }}>
-  <Card
-    {...kpiCardProps}
-    className={`${kpiCardProps.className} bg-gradient-to-br from-indigo-600 to-violet-600`}
-  >
-    <div className="w-full flex items-center justify-between">
-      <Space align="start">
-        <Avatar size="large" icon={<UserOutlined />} className="bg-white/20" />
-        <div>
-          <span className="text-white/80 text-sm">Total Users</span>
-          <div className="text-3xl font-bold leading-none">
-            {kpis.totalUsers ?? "-"}
-          </div>
+          <Col xs={24} sm={12} lg={6} style={{ display: "flex" }}>
+            <Card
+              {...kpiCardProps}
+              className={`${kpiCardProps.className} bg-gradient-to-br from-indigo-600 to-violet-600`}
+              onClick={() => navigate("/admin/users")}
+              style={{ cursor: "pointer" }}
+            >
+              <div className="w-full flex items-center justify-between">
+                <Space align="start">
+                  <Avatar size="large" icon={<UserOutlined />} className="bg-white/20" />
+                  <div>
+                    <span className="text-white/80 text-sm">Total Users</span>
+                    <div className="text-3xl font-bold leading-none">
+                      {kpis.totalUsers ?? "-"}
+                    </div>
 
-          {/* 👇 Aligned split */}
-          <div className="mt-2 flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <Tag color="blue" className="!m-0">Parents</Tag>
-              <Text className="text-white font-medium">{kpis.parents ?? "-"}</Text>
-            </div>
-            <div className="flex items-center gap-2">
-              <Tag color="green" className="!m-0">Students</Tag>
-              <Text className="text-white font-medium">{kpis.students ?? "-"}</Text>
-            </div>
-          </div>
-        </div>
-      </Space>
+                    {/* Clickable split with stopPropagation */}
+                    <div className="mt-2 flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <Tag
+                          color="blue"
+                          className="!m-0 cursor-pointer"
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => { e.stopPropagation(); navigate("/admin/parents"); }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.stopPropagation();
+                              navigate("/admin/parents");
+                            }
+                          }}
+                        >
+                          Parents
+                        </Tag>
+                        <Text className="text-white font-medium">{kpis.parents ?? "-"}</Text>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Tag
+                          color="green"
+                          className="!m-0 cursor-pointer"
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => { e.stopPropagation(); navigate("/admin/students"); }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.stopPropagation();
+                              navigate("/admin/students");
+                            }
+                          }}
+                        >
+                          Students
+                        </Tag>
+                        <Text className="text-white font-medium">{kpis.students ?? "-"}</Text>
+                      </div>
+                    </div>
+                  </div>
+                </Space>
 
-      <Statistic
-        value={kpis.usersMoM}
-        precision={1}
-        suffix="%"
-        valueStyle={{ color: "#fff" }}
-        prefix={kpis.usersMoM >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-        title={<span className="text-white/80">MoM</span>}
-      />
-    </div>
-  </Card>
-</Col>
-
+                <Statistic
+                  value={kpis.usersMoM}
+                  precision={1}
+                  suffix="%"
+                  valueStyle={{ color: "#fff" }}
+                  prefix={kpis.usersMoM >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+                  title={<span className="text-white/80">MoM</span>}
+                />
+              </div>
+            </Card>
+          </Col>
 
           {/* Parents */}
           <Col xs={24} sm={12} lg={6} style={{ display: "flex" }}>
             <Card
               {...kpiCardProps}
               className={`${kpiCardProps.className} bg-gradient-to-br from-sky-500 to-cyan-500`}
+              onClick={() => navigate("/admin/parents")}
+              style={{ cursor: "pointer" }}
             >
               <div className="w-full flex items-center justify-between">
                 <Space>
@@ -261,11 +294,13 @@ export default function AdminDashboard() {
             </Card>
           </Col>
 
-          {/* Students (replaces Reports) */}
+          {/* Students */}
           <Col xs={24} sm={12} lg={6} style={{ display: "flex" }}>
             <Card
               {...kpiCardProps}
               className={`${kpiCardProps.className} bg-gradient-to-br from-emerald-500 to-teal-500`}
+              onClick={() => navigate("/admin/students")}
+              style={{ cursor: "pointer" }}
             >
               <div className="w-full flex items-center justify-between">
                 <Space>
@@ -275,7 +310,6 @@ export default function AdminDashboard() {
                     <div className="text-3xl font-bold leading-none">{kpis.students ?? "-"}</div>
                   </div>
                 </Space>
-                {/* Optional MoM for students if provided */}
                 <Statistic
                   value={kpis.studentsMoM}
                   precision={1}
@@ -288,11 +322,13 @@ export default function AdminDashboard() {
             </Card>
           </Col>
 
-          {/* Active Contracts (unchanged) */}
+          {/* Active Contracts */}
           <Col xs={24} sm={12} lg={6} style={{ display: "flex" }}>
             <Card
               {...kpiCardProps}
               className={`${kpiCardProps.className} bg-gradient-to-br from-rose-500 to-orange-500`}
+              onClick={() => navigate("/admin/billing/contract")}
+              style={{ cursor: "pointer" }}
             >
               <div className="w-full flex items-center justify-between">
                 <Space>
@@ -323,7 +359,11 @@ export default function AdminDashboard() {
         <Row gutter={[16, 16]}>
           {features.map((item, index) => (
             <Col key={index} xs={24} sm={12} md={8} lg={6} style={{ display: "flex" }}>
-              <Card {...featureCardProps} onClick={() => item.to && navigate(item.to)}>
+              <Card
+                {...featureCardProps}
+                onClick={() => item.to && navigate(item.to)}
+                style={{ cursor: "pointer" }}
+              >
                 <div className="w-full flex flex-col items-center text-center gap-2">
                   {item.icon}
                   <p className="font-semibold mt-1">{item.title}</p>
