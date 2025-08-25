@@ -337,7 +337,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
             })}
           </nav>
 
-          {/* Footer: Collapse / Close */}
+          {/* Footer: Collapse / Close 
           <div className="border-t border-gray-200 dark:border-gray-700 p-2">
             <button
               onClick={() =>
@@ -347,7 +347,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
             >
               {isResponsive() ? "Close" : isCollapsed ? "Expand" : "Collapse"}
             </button>
-          </div>
+          </div>*/}
         </div>
       </aside>
     </>
