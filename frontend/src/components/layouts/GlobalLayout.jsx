@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { useLocation, Link, Outlet } from "react-router-dom";
+import { useLocation, Outlet } from "react-router-dom";
 import { Layout, Spin } from "antd";
 import { CloseOutlined } from "@ant-design/icons";
 
@@ -12,53 +12,13 @@ import ErrorBoundary from "@/components/ErrorBoundary.jsx";
 
 const { Content } = Layout;
 
-// one client scoped to admin layout
+// one client scoped to app layout
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 60_000 },
-    mutations: { retry: 0 }
-  }
+    mutations: { retry: 0 },
+  },
 });
-
-/** Map only the segments you actually use in your routes */
-const LABEL_MAP = {
-  admin: "Admin",
-  teacher: "Teacher",
-  student: "Student",
-  parent: "Parent",
-  dashboard: "Dashboard",
-  analytics: "Analytics",
-  statistics: "Statistics",
-  reports: "Reports",
-  generate: "Generate",
-  billing: "Billing",
-  products: "Products",
-  contracts: "Contracts",
-  content: "Content",
-  publish: "Publish",
-  academics: "Academics",
-  curricula: "Curricula",
-  worksheets: "Worksheets",
-  quizzes: "Quizzes",
-  games: "Games",
-  "ai-agent": "AI Agent",
-  scans: "Homework / Scans",
-  ocr: "OCR",
-  parents: "Parents",
-  teachers: "Teachers",
-  students: "Students",
-  new: "New",
-  edit: "Edit",
-  tickets: "Tickets",
-  tasks: "Tasks",
-  settings: "Settings",
-  roles: "Roles",
-};
-
-const pretty = (part) => {
-  if (/^\d+$/.test(part)) return `#${part}`;
-  return LABEL_MAP[part] || part.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-};
 
 export default function GlobalLayout() {
   const { user, isAuthenticated } = useAuthContext();
@@ -66,26 +26,20 @@ export default function GlobalLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
 
-  const breadcrumbs = useMemo(() => {
-    const parts = location.pathname.split("/").filter(Boolean);
-    return parts.map((part, idx) => ({
-      label: pretty(part),
-      path: "/" + parts.slice(0, idx + 1).join("/"),
-    }));
-  }, [location.pathname]);
-
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
         <div className="w-full min-h-screen flex flex-col bg-gradient-to-tr from-[#dbeafe] via-white to-[#ede9fe] text-gray-800 dark:text-white overflow-hidden">
-          {/* Top Navigation */}
-          <GlobalNavBar onToggleSidebar={() => setMenuOpen((v) => !v)} />
+          {/* Fixed Top Navigation — stays above modals/sidebars */}
+          <header className="global-header fixed top-0 left-0 right-0 z-[3000]">
+            <GlobalNavBar onToggleSidebar={() => setMenuOpen((v) => !v)} />
+          </header>
 
           <div className="flex flex-1 pt-16 min-h-0">
-            {/* Mobile Sidebar */}
+            {/* Mobile Sidebar (below header) */}
             {isAuthenticated && (
               <div
-                className={`fixed top-0 left-0 z-40 w-64 h-full bg-white dark:bg-gray-900 border-r shadow-lg transform transition-transform duration-300 ease-in-out ${
+                className={`fixed top-16 left-0 z-40 w-64 h-[calc(100vh-4rem)] bg-white dark:bg-gray-900 border-r shadow-lg transform transition-transform duration-300 ease-in-out ${
                   menuOpen ? "translate-x-0" : "-translate-x-full"
                 } md:hidden`}
               >
@@ -101,18 +55,18 @@ export default function GlobalLayout() {
               </div>
             )}
 
-            {/* Overlay */}
+            {/* Dim overlay for mobile sidebar (does NOT cover header) */}
             {menuOpen && (
               <div
-                className="fixed inset-0 z-30 bg-black/40 md:hidden"
+                className="fixed left-0 right-0 top-16 bottom-0 z-30 bg-black/40 md:hidden"
                 onClick={() => setMenuOpen(false)}
                 aria-hidden
               />
             )}
 
-            {/* Desktop Sidebar */}
+            {/* Desktop Sidebar (below header) */}
             {isAuthenticated && (
-              <aside className="hidden md:flex flex-col w-64 bg-white dark:bg-gray-900 border-r fixed top-0 left-0 h-full z-30 pt-16">
+              <aside className="hidden md:flex flex-col w-64 bg-white dark:bg-gray-900 border-r fixed top-16 left-0 h-[calc(100vh-4rem)] z-30">
                 <div className="px-6 py-4 font-bold text-blue-600 dark:text-blue-400 text-2xl border-b border-gray-200 dark:border-gray-700">
                   Kibundo
                 </div>
@@ -128,10 +82,14 @@ export default function GlobalLayout() {
                 isAuthenticated ? "md:ml-64" : ""
               } overflow-hidden`}
             >
-             
-              {/* Page Outlet */}
               <Content className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4">
-                <React.Suspense fallback={<div className="w-full py-10 flex justify-center"><Spin /></div>}>
+                <React.Suspense
+                  fallback={
+                    <div className="w-full py-10 flex justify-center">
+                      <Spin />
+                    </div>
+                  }
+                >
                   <Outlet />
                 </React.Suspense>
               </Content>

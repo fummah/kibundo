@@ -1,83 +1,83 @@
+// src/routes/AdminRoutes.jsx
 import { Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import GlobalLayout from "@/components/layouts/GlobalLayout.jsx";
 
 /* Dashboards (standalone items) */
 import AdminDashboard from "@/pages/admin/AdminDashboard.jsx";
-import AnalyticsDashboard from "@/pages/analytics/AnalyticsDashboard.jsx";
-import StatisticsDashboard from "@/pages/statistics/StatisticsDashboard.jsx";
+import AnalyticsDashboard from "@/pages/admin/analytics/AnalyticsDashboard.jsx";
+import StatisticsDashboard from "@/pages/admin/statistics/StatisticsDashboard.jsx";
 
 /* Reports */
-import ReportsOverview from "@/pages/reports/ReportsOverview.jsx";
-import GenerateReports from "@/pages/reports/GenerateReports.jsx";
+import ReportsOverview from "@/pages/admin/reports/ReportsOverview.jsx";
+import GenerateReports from "@/pages/admin/reports/GenerateReports.jsx";
 
 /* Billing */
-import BillingOverview from "@/pages/billing/BillingOverview.jsx";
-import Product from "@/pages/billing/Product.jsx";
-import Contract from "@/pages/billing/Contract.jsx";
-import Subscription from "@/pages/billing/Subscription.jsx";
-import Invoices from "@/pages/billing/Invoices.jsx";
-import Coupons from "@/pages/billing/Coupons.jsx";
+import BillingOverview from "@/pages/admin/billing/BillingOverview.jsx";
+import Product from "@/pages/admin/billing/Product.jsx";
+import Contract from "@/pages/admin/billing/Contract.jsx";
+import Subscription from "@/pages/admin/billing/Subscription.jsx";
+import Invoices from "@/pages/admin/billing/Invoices.jsx";
+import Coupons from "@/pages/admin/billing/Coupons.jsx";
 
 /* Content */
-import ContentOverview from "@/pages/content/ContentOverview.jsx";
-import PublishBlogPost from "@/pages/content/PublishBlogPost.jsx";
+import ContentOverview from "@/pages/admin/content/ContentOverview.jsx";
+import PublishBlogPost from "@/pages/admin/content/PublishBlogPost.jsx";
 
 /* Newsletter */
-import Newsletter from "@/pages/newsletter/Newsletter.jsx";
+import Newsletter from "@/pages/admin/newsletter/Newsletter.jsx";
 
 /* Academics */
-import AcademicsOverview from "@/pages/academics/AcademicsOverview.jsx";
-import Game from "@/pages/academics/Game.jsx";
-import Quiz from "@/pages/academics/Quiz.jsx";
-import Curricula from "@/pages/academics/Curricula.jsx";
-import Worksheet from "@/pages/academics/Worksheet.jsx";
-import AIAgent from "@/pages/academics/AIAgent.jsx";
-
+import AcademicsOverview from "@/pages/admin/academics/AcademicsOverview.jsx";
+import Game from "@/pages/admin/academics/Game.jsx";
+import Quiz from "@/pages/admin/academics/Quiz.jsx";
+import Curricula from "@/pages/admin/academics/Curricula.jsx";
+import Worksheet from "@/pages/admin/academics/Worksheet.jsx";
+import AIAgent from "@/pages/admin/academics/AIAgent.jsx";
+import OCRWorkspace from "@/pages/admin/academics/ocr/OCRWorkspace.jsx";
 
 /* Subjects (under Academics) */
-import SubjectsList from "@/pages/academics/subjects/SubjectsList.jsx";
-import SubjectForm from "@/pages/academics/subjects/SubjectForm.jsx";
-import SubjectDetail from "@/pages/academics/subjects/SubjectDetail.jsx";
+import SubjectsList from "@/pages/admin/academics/subjects/SubjectsList.jsx";
+import SubjectForm from "@/pages/admin/academics/subjects/SubjectForm.jsx";
+import SubjectDetail from "@/pages/admin/academics/subjects/SubjectDetail.jsx";
 
-/* Scans (moved under Academics) */
-import ScansOverview from "@/pages/ocr/ScansOverview.jsx";
+/* Scans (under Academics) */
+import ScansOverview from "@/pages/admin/academics/ocr/ScansOverview.jsx";
 
 /* Parents */
-import ParentsList from "@/pages/parents/ParentsList.jsx";
-import ParentForm from "@/pages/parents/ParentForm.jsx";
-import ParentDetail from "@/pages/parents/ParentDetail.jsx";
+import ParentsList from "@/pages/admin/parents/ParentsList.jsx";
+import ParentForm from "@/pages/admin/parents/ParentForm.jsx";
+import ParentDetail from "@/pages/admin/parents/ParentDetail.jsx";
 
 /* Teachers */
-import TeachersList from "@/pages/teachers/TeachersList.jsx";
-import TeacherForm from "@/pages/teachers/TeacherForm.jsx";
-import TeacherDetail from "@/pages/teachers/TeacherDetail.jsx";
+import TeachersList from "@/pages/admin/teachers/TeachersList.jsx";
+import TeacherForm from "@/pages/admin/teachers/TeacherForm.jsx";
+import TeacherDetail from "@/pages/admin/teachers/TeacherDetail.jsx";
 
 /* Students */
-import StudentsList from "@/pages/students/StudentsList.jsx";
-import StudentForm from "@/pages/students/StudentForm.jsx";
-import StudentDetail from "@/pages/students/StudentDetail.jsx";
+import StudentsList from "@/pages/admin/students/StudentsList.jsx";
+import StudentForm from "@/pages/admin/students/StudentForm.jsx";
+import StudentDetail from "@/pages/admin/students/StudentDetail.jsx";
 
 /* Settings & Roles */
-import SettingsOverview from "@/pages/settings/SettingsOverview.jsx";
-import RolesList from "@/pages/roles/RolesList.jsx";
-import RoleDetail from "@/pages/roles/RoleDetail.jsx";
-import RoleForm from "@/pages/roles/RoleForm.jsx";
+import SettingsOverview from "@/pages/admin/settings/SettingsOverview.jsx";
+import RolesList from "@/pages/admin/roles/RolesList.jsx";
+import RoleDetail from "@/pages/admin/roles/RoleDetail.jsx";
+import RoleForm from "@/pages/admin/roles/RoleForm.jsx";
 
 /* Tickets */
-import TicketsList from "@/pages/tickets/TicketsList.jsx";
-import TicketDetail from "@/pages/tickets/TicketDetail.jsx";
-import TicketForm from "@/pages/tickets/TicketForm.jsx";
+import TicketsList from "@/pages/admin/tickets/TicketsList.jsx";
+import TicketDetail from "@/pages/admin/tickets/TicketDetail.jsx";
+import TicketForm from "@/pages/admin/tickets/TicketForm.jsx";
 
 /* Tasks */
-import TasksList from "@/pages/tasks/TasksList.jsx";
-import TaskDetail from "@/pages/tasks/TaskDetail.jsx";
-import TaskForm from "@/pages/tasks/TaskForm.jsx";
+import TasksList from "@/pages/admin/tasks/TasksList.jsx";
+import TaskDetail from "@/pages/admin/tasks/TaskDetail.jsx";
+import TaskForm from "@/pages/admin/tasks/TaskForm.jsx";
 
-/* Philosophy & Database */
-import PhilosophyOverview from "@/pages/philosophy/PhilosophyOverview.jsx";
-import DatabaseOverview from "@/pages/database/DatabaseOverview.jsx";
-import DatabaseManagement from "@/pages/database/DatabaseManagement.jsx";
+/* Database */
+import DatabaseOverview from "@/pages/admin/database/DatabaseOverview.jsx";
+import DatabaseManagement from "@/pages/admin/database/DatabaseManagement.jsx";
 
 export default function AdminRoutes() {
   return (
@@ -122,23 +122,26 @@ export default function AdminRoutes() {
       </Route>
 
       {/* Newsletter */}
-      <Route path="newsletter">
-        <Route index element={<Newsletter />} />
-      </Route>
+      <Route path="newsletter" element={<Newsletter />} />
 
-      {/* Academics (now contains Scans) */}
+      {/* Academics */}
       <Route path="academics">
         <Route index element={<AcademicsOverview />} />
         <Route path="curricula" element={<Curricula />} />
         <Route path="worksheet" element={<Worksheet />} />
         <Route path="quiz" element={<Quiz />} />
         <Route path="game" element={<Game />} />
-        
 
-        {/* ✅ New canonical route name */}
+        {/* Canonical AI agent route */}
         <Route path="kibundo" element={<AIAgent />} />
-        {/* 🔁 Back-compat redirect from old path */}
+        {/* Back-compat redirect */}
         <Route path="ai-agent" element={<Navigate to="/admin/academics/kibundo" replace />} />
+
+        {/* OCR */}
+        <Route path="ocr" element={<OCRWorkspace />} />
+
+        {/* Scans */}
+        <Route path="ocr" element={<ScansOverview />} />
 
         {/* Subjects */}
         <Route path="subjects">
@@ -146,11 +149,6 @@ export default function AdminRoutes() {
           <Route path="new" element={<SubjectForm />} />
           <Route path=":id" element={<SubjectDetail />} />
           <Route path=":id/edit" element={<SubjectForm />} />
-        </Route>
-
-        {/* Scans nested under Academics */}
-        <Route path="scans">
-          <Route index element={<ScansOverview />} />
         </Route>
       </Route>
 
@@ -203,11 +201,6 @@ export default function AdminRoutes() {
         <Route path="new" element={<RoleForm />} />
         <Route path=":id" element={<RoleDetail />} />
         <Route path=":id/edit" element={<RoleForm />} />
-      </Route>
-
-      {/* Philosophy */}
-      <Route path="philosophy">
-        <Route index element={<PhilosophyOverview />} />
       </Route>
 
       {/* Database */}

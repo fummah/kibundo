@@ -1,30 +1,38 @@
 // src/routes/ParentRoutes.jsx
-import { Route } from "react-router-dom";
+import { Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
-import GlobalLayout from "@/components/layouts/GlobalLayout.jsx"; // ← change to layouts/ if that's your path
+import GlobalLayout from "@/components/layouts/GlobalLayout.jsx";
 
-// Minimal inline screens to avoid missing-file errors.
-// Replace these with real pages when you add them.
-const ParentDashboard = () => (
-  <div className="p-4">
-    <h2 className="text-lg">Parent Dashboard</h2>
-    <p className="text-gray-500">Overview of your account, children, and recent activity.</p>
-  </div>
-);
+/* Dashboard */
+import ParentHome from "@/pages/parent/ParentHome.jsx";
 
-const ParentChildren = () => (
-  <div className="p-4">
-    <h2 className="text-lg">My Children</h2>
-    <p className="text-gray-500">List and manage linked child profiles.</p>
-  </div>
-);
+/* My Family */
+import MyFamily from "@/pages/parent/myfamily/MyFamily.jsx";
+import Activity from "@/pages/parent/myfamily/Activity.jsx";
+import ParentStudentDetail from "@/pages/parent/myfamily/ParentStudentDetail.jsx";
 
-const ParentSettings = () => (
-  <div className="p-4">
-    <h2 className="text-lg">Account Settings</h2>
-    <p className="text-gray-500">Update email, password, preferences, and billing details.</p>
-  </div>
-);
+/* Learning */
+import Scans from "@/pages/parent/learning/Scans.jsx";
+import Resources from "@/pages/parent/learning/Resources.jsx";
+
+/* Billing */
+import BillingOverview from "@/pages/parent/billing/BillingOverview.jsx";
+import Subscriptions from "@/pages/parent/billing/Subscriptions.jsx";
+import Invoices from "@/pages/parent/billing/Invoices.jsx";
+import Coupons from "@/pages/parent/billing/Coupons.jsx";
+
+/* Communications */
+import Communications from "@/pages/parent/communications/Communications.jsx";
+import NewsFeed from "@/pages/parent/communications/NewsFeed.jsx";
+import Newsletter from "@/pages/parent/communications/Newsletter.jsx";
+import Notifications from "@/pages/parent/communications/Notifications.jsx";
+
+/* Helpdesk */
+import Tasks from "@/pages/parent/helpdesk/Tasks.jsx";
+import Tickets from "@/pages/parent/helpdesk/Tickets.jsx";
+
+/* Account */
+import Settings from "@/pages/parent/Settings.jsx";
 
 export default function ParentRoutes() {
   return (
@@ -36,13 +44,45 @@ export default function ParentRoutes() {
         </ProtectedRoute>
       }
     >
-      {/* Default landing */}
-      <Route index element={<ParentDashboard />} />
-      <Route path="dashboard" element={<ParentDashboard />} />
+      {/* Dashboard */}
+      <Route index element={<ParentHome />} />
+      <Route path="overview" element={<ParentHome />} />
 
-      {/* Core parent pages */}
-      <Route path="children" element={<ParentChildren />} />
-      <Route path="settings" element={<ParentSettings />} />
+      {/* My Family */}
+      <Route path="myfamily/family" element={<MyFamily />} />
+      <Route path="myfamily/activity" element={<Activity />} />
+      <Route path="myfamily/student/:id" element={<ParentStudentDetail />} />
+      {/* Back-compat: open AddStudent modal via query param */}
+      <Route
+        path="myfamily/add"
+        element={<Navigate to="/parent/myfamily/family?add=1" replace />}
+      />
+
+      {/* Learning */}
+      <Route path="learning/scans" element={<Scans />} />
+      <Route path="learning/resources" element={<Resources />} />
+
+      {/* Billing */}
+      <Route path="billing/overview" element={<BillingOverview />} />
+      <Route path="billing/subscription" element={<Subscriptions />} />
+      <Route path="billing/invoices" element={<Invoices />} />
+      <Route path="billing/coupons" element={<Coupons />} />
+
+      {/* Communications */}
+      <Route path="communications" element={<Communications />} />
+      <Route path="communications/news" element={<NewsFeed />} />
+      <Route path="communications/newsletter" element={<Newsletter />} />
+      <Route path="communications/notifications" element={<Notifications />} />
+
+      {/* Helpdesk */}
+      <Route path="helpdesk/tasks" element={<Tasks />} />
+      <Route path="helpdesk/tickets" element={<Tickets />} />
+
+      {/* Account */}
+      <Route path="settings" element={<Settings />} />
+
+      {/* Fallback → Overview */}
+      <Route path="*" element={<Navigate to="overview" replace />} />
     </Route>
   );
 }
