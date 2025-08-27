@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useLocation, Outlet } from "react-router-dom";
 import { Layout, Spin } from "antd";
 import { CloseOutlined } from "@ant-design/icons";
@@ -6,11 +6,41 @@ import { CloseOutlined } from "@ant-design/icons";
 import Sidebar from "@/components/sidebars/Sidebar";
 import GlobalNavBar from "@/components/layouts/GlobalNavBar.jsx";
 import { useAuthContext } from "@/context/AuthContext";
+import { ROLES } from "@/utils/roleMapper";               // ✅ needed to show student-only chip
+import GlobalFocusTimer from "@/components/student/GlobalFocusTimer.jsx"; // ✅ floating timer chip
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ErrorBoundary from "@/components/ErrorBoundary.jsx";
 
 const { Content } = Layout;
+
+/* ==================== Student Desktop Theme ==================== */
+const DESKTOP_BG = {
+  // layered bubbles + soft vertical blend (pine/sky/peach vibe)
+  background: `
+    radial-gradient(1000px 500px at -10% -10%, #eaf5ff 0%, rgba(234,245,255,0) 60%),
+    radial-gradient(1000px 500px at 110% -10%, #fff0e2 0%, rgba(255,240,226,0) 60%),
+    linear-gradient(180deg, #f6f9ff 0%, #ffffff 35%, #fff7ef 100%)
+  `,
+};
+
+// simple desktop breakpoint hook
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia("(min-width: 768px)").matches
+      : false
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const handler = (e) => setIsDesktop(e.matches);
+    mq.addEventListener ? mq.addEventListener("change", handler) : mq.addListener(handler);
+    return () => {
+      mq.removeEventListener ? mq.removeEventListener("change", handler) : mq.removeListener(handler);
+    };
+  }, []);
+  return isDesktop;
+}
 
 // one client scoped to app layout
 const queryClient = new QueryClient({
@@ -25,6 +55,15 @@ export default function GlobalLayout() {
   const roleId = user?.role_id ?? user?.role;
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+  const isDesktop = useIsDesktop();
+
+  // show student background only on /student/* routes and desktop
+  const showStudentDesktopBg = useMemo(
+    () => isDesktop && location.pathname.startsWith("/student"),
+    [isDesktop, location.pathname]
+  );
+
+  const isStudent = Number(roleId) === ROLES.STUDENT;
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -78,10 +117,19 @@ export default function GlobalLayout() {
 
             {/* Main Content */}
             <div
-              className={`flex-1 flex min-h-0 flex-col dark:text-white dark:bg-gray-900 ${
+              className={`relative flex-1 flex min-h-0 flex-col dark:text-white dark:bg-gray-900 ${
                 isAuthenticated ? "md:ml-64" : ""
               } overflow-hidden`}
             >
+              {/* >>> Student desktop background layer <<< */}
+              {showStudentDesktopBg && (
+                <div
+                  className="hidden md:block absolute inset-0 -z-10"
+                  style={DESKTOP_BG}
+                  aria-hidden
+                />
+              )}
+
               <Content className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4">
                 <React.Suspense
                   fallback={
@@ -92,6 +140,9 @@ export default function GlobalLayout() {
                 >
                   <Outlet />
                 </React.Suspense>
+
+                {/* Global focus timer chip (student-only, desktop by default) */}
+                {isStudent && <GlobalFocusTimer />}
               </Content>
             </div>
           </div>

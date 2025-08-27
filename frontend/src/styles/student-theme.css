@@ -1,0 +1,28 @@
+/* src/styles/student-theme.css */
+/* Base fallbacks */
+:root {
+  --student-bg-start: #cfe6eb;   /* soft sky */
+  --student-bg-end:   #f7d7c6;   /* warm peach */
+  --student-primary:  #ff7a1a;   /* bright orange (buttons) */
+  --student-secondary:#2f7d63;   /* spruce/evergreen */
+  --student-info:     #5ab0c2;   /* blue-teal accent */
+  --student-text:     #1f2937;   /* slate-800 */
+  --student-surface:  #ffffff;
+  --student-surface-2:#f6f7fb;   /* light card */
+  --student-border:   rgba(31,41,55,.12);
+  --student-ring:     rgba(255,122,26,.35);
+}
+
+/* You can swap palettes later by changing this data-attribute */
+:root[data-student-theme="buddy"] {
+  --student-bg-start: #cfe6eb;
+  --student-bg-end:   #f7d7c6;
+  --student-primary:  #ff7a1a;
+  --student-secondary:#2f7d63;
+  --student-info:     #6cc5c2;
+}
+
+/* Handy utility if you want a class instead of inline style */
+.student-bg {
+  background: linear-gradient(180deg, var(--student-bg-start) 0%, var(--student-bg-end) 100%);
+}

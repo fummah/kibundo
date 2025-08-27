@@ -1,241 +1,224 @@
-// src/components/student/MotivationTimer.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Card, Typography, Button, Segmented, message, Tooltip } from "antd";
+import { Card, Typography, Button, Segmented, message } from "antd";
 import { Play, Pause, RotateCw, Sparkles } from "lucide-react";
-import { useStudentApp } from "@/context/StudentAppContext.jsx";
 
 const { Title, Text } = Typography;
 
-function format(ms) {
+function fmt(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
+const KEY_DEFAULT = "student_focus_timer_v1";
 
-const THEME_HEX = {
-  indigo: "#6366F1",
-  emerald: "#10B981",
-  sky: "#0EA5E9",
-  rose: "#F43F5E",
-  amber: "#F59E0B",
-  violet: "#8B5CF6",
-};
-
+/**
+ * A global, persistent Pomodoro-style timer.
+ * - Persists to localStorage; resumes across pages.
+ * - Notifies on completion (“Time’s up—take a break!”).
+ *
+ * Props:
+ * - storageKey?: string
+ * - presets?: number[] (minutes)  default [10,15,20]
+ * - onComplete?: () => void
+ * - accent?: string (hex for primary btn)
+ * - variant?: "card" | "chip" (compact floating ui)
+ */
 export default function MotivationTimer({
-  presets = [5, 10, 15, 20],
+  storageKey = KEY_DEFAULT,
+  presets = [10, 15, 20],
   onComplete,
-  autoStart = false,
-  tts = false,
+  accent,
+  variant = "card",
 }) {
-  const { state } = useStudentApp?.() ?? { state: {} };
-  const theme = state?.colorTheme || "indigo";
-  const ringColor = THEME_HEX[theme] || THEME_HEX.indigo;
-  const ttsEnabled = state?.ttsEnabled ?? false;
+  const [mode, setMode] = useState("Focus"); // Focus | Break
+  const [minutes, setMinutes] = useState(presets[0] || 10);
+  const [running, setRunning] = useState(false);
+  const [endAt, setEndAt] = useState(null); // timestamp ms
+  const [remaining, setRemaining] = useState((presets[0] || 10) * 60 * 1000);
+  const tickRef = useRef(null);
 
-  const [minutes, setMinutes] = useState(presets[1] || 10);
-  const [running, setRunning] = useState(Boolean(autoStart));
-  const [endAt, setEndAt] = useState(null);
-  const [remaining, setRemaining] = useState(minutes * 60 * 1000);
-  const [mode, setMode] = useState("Focus"); // "Focus" | "Break"
-  const raf = useRef(null);
-
-  // ---- audio/voice ----
-  const audioCtxRef = useRef(null);
-  const beep = () => {
+  // ---- hydrate from localStorage ----
+  useEffect(() => {
     try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      const ctx = audioCtxRef.current || new Ctx();
-      audioCtxRef.current = ctx;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = 880;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      gain.gain.setValueAtTime(0.001, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.28);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.3);
+      const raw = JSON.parse(localStorage.getItem(storageKey) || "{}");
+      if (raw.mode) setMode(raw.mode);
+      if (raw.minutes) setMinutes(raw.minutes);
+      if (raw.endAt) setEndAt(raw.endAt);
+      if (typeof raw.running === "boolean") setRunning(raw.running);
+      const base = (raw.minutes || presets[0] || 10) * 60 * 1000;
+      const now = Date.now();
+      const rem = raw.running && raw.endAt ? Math.max(0, raw.endAt - now) : (raw.remaining ?? base);
+      setRemaining(rem);
+      // handle passed time while away
+      if (raw.running && raw.endAt && now >= raw.endAt) {
+        finishCycle(raw.mode || "Focus");
+      }
     } catch {}
-  };
-
-  const speak = (text) => {
-    if (!(tts && ttsEnabled && "speechSynthesis" in window)) return;
-    try {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = 1.05; u.pitch = 1.0;
-      window.speechSynthesis.speak(u);
-    } catch {}
-  };
-
-  useEffect(() => {
-    setRemaining(minutes * 60 * 1000);
-  }, [minutes]);
-
-  const total = useMemo(() => minutes * 60 * 1000, [minutes]);
-  const pct = useMemo(() => {
-    return Math.max(0, Math.min(100, Math.round(((total - remaining) / total) * 100)));
-  }, [total, remaining]);
-
-  const elapsed = Math.max(0, total - remaining);
-
-  // main loop
-  const tick = () => {
-    const now = Date.now();
-    const rem = Math.max(0, (endAt || now) - now);
-    setRemaining(rem);
-    if (rem <= 0) {
-      setRunning(false);
-      setEndAt(null);
-      beep();
-      const doneMsg =
-        mode === "Focus"
-          ? "Great focus! ⭐ Time for a short break?"
-          : "Nice break! Ready to learn again?";
-      message.success(doneMsg);
-      speak(doneMsg);
-      onComplete && onComplete();
-
-      // confetti
-      const el = document.createElement("div");
-      el.innerHTML = `<div class="fixed inset-0 pointer-events-none z-[9999]">
-        ${Array.from({length: 28})
-          .map(
-            (_, i) =>
-              `<span class="absolute -top-4 w-2 h-3 rounded-sm" style="left:${(i * 13) %
-                100}%; background:${["#ff6b6b","#ffd93d","#6bcb77","#4d96ff","#b892ff"][i % 5]}; animation:kib-pop 1200ms linear ${i *
-                30}ms forwards;"></span>`
-          )
-          .join("")}
-      </div>
-      <style>@keyframes kib-pop { to { transform: translateY(110vh) rotate(540deg); opacity:.9 } }</style>`;
-      document.body.appendChild(el);
-      setTimeout(() => el.remove(), 1400);
-    } else {
-      raf.current = requestAnimationFrame(tick);
-    }
-  };
-
-  useEffect(() => {
-    return () => cancelAnimationFrame(raf.current || 0);
-  }, []);
-
-  useEffect(() => {
-    if (autoStart && !running) {
-      setEndAt(Date.now() + remaining);
-      setRunning(true);
-      cancelAnimationFrame(raf.current || 0);
-      raf.current = requestAnimationFrame(tick);
-    }
+    // cross-tab/page sync
+    const onStorage = (e) => {
+      if (e.key !== storageKey) return;
+      try {
+        const raw = JSON.parse(e.newValue || "{}");
+        if (raw.mode !== undefined) setMode(raw.mode);
+        if (raw.minutes !== undefined) setMinutes(raw.minutes);
+        if (raw.endAt !== undefined) setEndAt(raw.endAt);
+        if (raw.running !== undefined) setRunning(raw.running);
+        if (raw.remaining !== undefined) setRemaining(raw.remaining);
+      } catch {}
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const start = () => {
-    setEndAt(Date.now() + remaining);
-    setRunning(true);
-    cancelAnimationFrame(raf.current || 0);
-    raf.current = requestAnimationFrame(tick);
-  };
+  // ---- tick loop ----
+  useEffect(() => {
+    if (!running) return;
+    tickRef.current = setInterval(() => {
+      const now = Date.now();
+      const rem = Math.max(0, (endAt || now) - now);
+      setRemaining(rem);
+      if (rem <= 0) {
+        finishCycle(mode);
+      }
+    }, 250);
+    return () => clearInterval(tickRef.current);
+  }, [running, endAt, mode]);
 
-  const pause = () => {
+  // ---- persist ----
+  useEffect(() => {
+    try {
+      const state = { mode, minutes, running, endAt, remaining };
+      localStorage.setItem(storageKey, JSON.stringify(state));
+    } catch {}
+  }, [mode, minutes, running, endAt, remaining, storageKey]);
+
+  const total = useMemo(() => minutes * 60 * 1000, [minutes]);
+  const pct = useMemo(() => {
+    const used = Math.max(0, total - remaining);
+    return total ? Math.round((used / total) * 100) : 0;
+  }, [total, remaining]);
+
+  function start() {
+    const nextEnd = Date.now() + remaining;
+    setEndAt(nextEnd);
+    setRunning(true);
+  }
+  function pause() {
+    if (!running) return;
+    const now = Date.now();
+    setRemaining(Math.max(0, (endAt || now) - now));
     setRunning(false);
     setEndAt(null);
-    cancelAnimationFrame(raf.current || 0);
-  };
-
-  const reset = () => {
-    pause();
-    setRemaining(minutes * 60 * 1000);
-  };
-
-  const switchMode = (val) => {
-    setMode(val);
-    pause();
-    const def = val === "Focus" ? (presets[1] || 10) : 5;
+  }
+  function reset(toMinutes = minutes) {
+    setRunning(false);
+    setEndAt(null);
+    setRemaining(toMinutes * 60 * 1000);
+  }
+  function switchMode(next) {
+    setMode(next);
+    const def = next === "Focus" ? (presets[0] || 10) : 5;
     setMinutes(def);
-    setRemaining(def * 60 * 1000);
-  };
+    reset(def);
+  }
 
-  // SVG ring math (fixed 120 viewBox, stroke scales via CSS size)
-  const CIRC = 2 * Math.PI * 54; // ~339
-  const dash = (pct / 100) * CIRC;
+  function finishCycle(currentMode) {
+    setRunning(false);
+    setEndAt(null);
+    setRemaining(0);
+    if (currentMode === "Focus") {
+      message.success("Great focus! ⭐ Time’s up — take a short break.");
+      setMode("Break");
+      const def = 5;
+      setMinutes(def);
+      setRemaining(def * 60 * 1000);
+    } else {
+      message.success("Break finished! Ready to learn again?");
+      setMode("Focus");
+      const def = presets[0] || 10;
+      setMinutes(def);
+      setRemaining(def * 60 * 1000);
+    }
+    // confetti (tiny)
+    const el = document.createElement("div");
+    el.innerHTML = `<div class="fixed inset-0 pointer-events-none z-[9999]">
+      ${Array.from({length: 28}).map((_,i)=>`<span class="absolute -top-4 w-2 h-3 rounded-sm" style="left:${(i*13)%100}%; background:${["#ff6b6b","#ffd93d","#6bcb77","#4d96ff","#b892ff"][i%5]}; animation:kib-pop 1200ms linear ${i*30}ms forwards;"></span>`).join("")}
+    </div>
+    <style>@keyframes kib-pop { to { transform: translateY(110vh) rotate(540deg); opacity:.9 } }</style>`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 1400);
 
+    onComplete && onComplete();
+  }
+
+  if (variant === "chip") {
+    // Compact floating chip (for global layout)
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 rounded-full shadow-md bg-white border border-neutral-200">
+        <span className="text-xs font-medium">{mode}</span>
+        <span className="text-sm font-bold tabular-nums">{fmt(remaining)}</span>
+        {!running ? (
+          <Button size="small" type="primary" onClick={start} style={accent ? { background: accent } : {}}>
+            Start
+          </Button>
+        ) : (
+          <Button size="small" onClick={pause}>Pause</Button>
+        )}
+        <Button size="small" onClick={() => reset()}>Reset</Button>
+      </div>
+    );
+  }
+
+  // Full card (page widget)
   return (
-    <Card className="rounded-2xl" bodyStyle={{ padding: 16 }}>
-      {/* Header */}
+    <Card className="rounded-2xl">
       <div className="flex items-center justify-between mb-3">
         <Title level={5} className="!mb-0 flex items-center gap-2">
           <Sparkles className="w-5 h-5" /> Motivation Timer
         </Title>
-        <Segmented value={mode} onChange={switchMode} options={["Focus", "Break"]} />
+        <Segmented
+          value={mode}
+          onChange={switchMode}
+          options={["Focus", "Break"]}
+        />
       </div>
 
-      {/* Responsive body: mobile stacked, desktop side-by-side */}
-      <div className="flex flex-col md:flex-row md:items-center md:gap-6">
+      <div className="flex items-center gap-4">
         {/* Progress ring */}
-        <div
-          className="relative w-28 h-28 md:w-36 md:h-36 mx-auto md:mx-0"
-          role="timer"
-          aria-live="off"
-          aria-label={`${mode} timer`}
-        >
-          <svg viewBox="0 0 120 120" className="w-full h-full">
+        <div className="relative w-36 h-36">
+          <svg viewBox="0 0 120 120" className="w-36 h-36">
             <circle cx="60" cy="60" r="54" stroke="#eee" strokeWidth="10" fill="none" />
             <circle
-              cx="60"
-              cy="60"
-              r="54"
-              stroke={mode === "Focus" ? ringColor : "#22C55E"}
-              strokeWidth="10"
-              fill="none"
-              strokeDasharray={`${dash} ${CIRC}`}
+              cx="60" cy="60" r="54"
+              stroke="currentColor" strokeWidth="10" fill="none"
+              strokeDasharray={`${(pct/100)*339} 339`}
               strokeLinecap="round"
               transform="rotate(-90 60 60)"
-              style={{ transition: "stroke-dasharray 300ms linear, stroke 200ms ease" }}
+              className="text-indigo-500 transition-all duration-300"
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className="text-xl md:text-2xl font-bold tabular-nums">
-              {format(remaining)}
-            </div>
-            <div className="text-[11px] text-neutral-500">{pct}%</div>
+            <div className="text-2xl font-bold tabular-nums">{fmt(remaining)}</div>
+            <div className="text-xs text-neutral-500">{pct}%</div>
           </div>
         </div>
 
-        {/* Right / below content */}
-        <div className="mt-3 md:mt-0 flex-1">
-          {/* Motivation line */}
-          <Text type="secondary" className="block text-center md:text-left">
+        {/* Controls & presets */}
+        <div className="flex-1">
+          <Text type="secondary">
             {mode === "Focus"
               ? "Stay calm and curious. Small steps add up!"
               : "Breathe, stretch, sip water. We’ll learn again soon."}
           </Text>
 
-          {/* Time rows: show running & remaining */}
-          <div className="mt-2 grid grid-cols-2 gap-2 text-center md:text-left">
-            <div className="bg-neutral-50 rounded-lg py-2">
-              <div className="text-[11px] text-neutral-500">Elapsed</div>
-              <div className="font-semibold tabular-nums">{format(elapsed)}</div>
-            </div>
-            <div className="bg-neutral-50 rounded-lg py-2">
-              <div className="text-[11px] text-neutral-500">Left</div>
-              <div className="font-semibold tabular-nums">{format(remaining)}</div>
-            </div>
-          </div>
-
-          {/* Presets */}
-          <div className="mt-2 flex flex-wrap justify-center md:justify-start gap-2">
+          <div className="mt-2 flex flex-wrap gap-2">
             {(mode === "Focus" ? presets : [3, 5, 7]).map((m) => (
               <Button
                 key={m}
                 size="small"
-                onClick={() => {
-                  setMinutes(m);
-                  setRemaining(m * 60 * 1000);
-                }}
+                onClick={() => { setMinutes(m); setRemaining(m * 60 * 1000); }}
                 className="rounded-full"
               >
                 {m} min
@@ -243,26 +226,25 @@ export default function MotivationTimer({
             ))}
           </div>
 
-          {/* Controls */}
-          <div className="mt-3 flex items-center justify-center md:justify-start gap-2">
+          <div className="mt-3 flex items-center gap-2">
             {!running ? (
-              <Tooltip title="Start">
-                <Button type="primary" onClick={start} className="rounded-xl" icon={<Play className="w-4 h-4" />}>
-                  <span className="hidden sm:inline">Start</span>
-                </Button>
-              </Tooltip>
-            ) : (
-              <Tooltip title="Pause">
-                <Button onClick={pause} className="rounded-xl" icon={<Pause className="w-4 h-4" />}>
-                  <span className="hidden sm:inline">Pause</span>
-                </Button>
-              </Tooltip>
-            )}
-            <Tooltip title="Reset">
-              <Button onClick={reset} className="rounded-xl" icon={<RotateCw className="w-4 h-4" />}>
-                <span className="hidden sm:inline">Reset</span>
+              <Button
+                type="primary"
+                onClick={start}
+                className="rounded-xl"
+                icon={<Play className="w-4 h-4" />}
+                style={accent ? { background: accent } : {}}
+              >
+                Start
               </Button>
-            </Tooltip>
+            ) : (
+              <Button onClick={pause} className="rounded-xl" icon={<Pause className="w-4 h-4" />}>
+                Pause
+              </Button>
+            )}
+            <Button onClick={() => reset()} className="rounded-xl" icon={<RotateCw className="w-4 h-4" />}>
+              Reset
+            </Button>
           </div>
         </div>
       </div>

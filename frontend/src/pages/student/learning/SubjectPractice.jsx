@@ -170,6 +170,7 @@ export default function SubjectPractice() {
   const { user } = useAuthContext();
 
   // Validate subject; default to math if invalid
+  const SUBJECT_KEYS = Object.keys(SUBJECT_META);
   const subject = SUBJECT_KEYS.includes(paramSubject || "") ? paramSubject : "math";
   const meta = SUBJECT_META[subject];
   const color = meta.color;
@@ -188,7 +189,6 @@ export default function SubjectPractice() {
   const [topic, setTopic] = useState(meta.topics?.[0] || "");
 
   useEffect(() => {
-    // when subject changes, re-hydrate prefs and reset local state safely
     const prefs = loadPrefs();
     const saved = prefs[subject] || {};
     const validTopic = (t) => (meta.topics || []).includes(t) ? t : (meta.topics?.[0] || "");
@@ -212,8 +212,6 @@ export default function SubjectPractice() {
 
   const startPractice = (it) => {
     message.success(`Starting: ${it.title}`);
-    // TODO: navigate to the real practice session
-    // navigate(`/student/learning/practice/start?subject=${subject}&topic=${it.topic}&level=${it.level}`);
   };
 
   return (
@@ -232,7 +230,6 @@ export default function SubjectPractice() {
 
       {/* Greeting + Buddy */}
       <div className="flex items-start gap-3 mb-4">
-        {/* ✅ Exact BuddyAvatar signature as requested */}
         <BuddyAvatar src={buddy?.avatar} size={96} className="md:size-[112px]" />
         <div className="pt-1">
           <Title level={4} className="!mb-1">Hello, {name}!</Title>
@@ -240,34 +237,22 @@ export default function SubjectPractice() {
         </div>
       </div>
 
-      {/* Subject switcher (acts like landing) */}
+      {/* Subject switcher (landing) */}
       <Card className="rounded-2xl border-0 shadow-sm mb-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          {/* Segmented for quick subject switch */}
-          <div className="shrink-0">
-            <Segmented
-              value={subject}
-              onChange={(val) => navigate(`/student/learning/subject/${val}`)}
-              options={SUBJECT_KEYS.map((key) => ({ label: SUBJECT_META[key].title, value: key }))}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {Object.keys(SUBJECT_META).map((code) => (
+            <SubjectTile
+              key={code}
+              code={code}
+              active={code === subject}
+              onClick={() => navigate(`/student/learning/subject/${code}`)}
             />
-          </div>
-
-          {/* Mini subjects grid (landing feel) */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full md:w-auto">
-            {SUBJECT_KEYS.map((code) => (
-              <SubjectTile
-                key={code}
-                code={code}
-                active={code === subject}
-                onClick={() => navigate(`/student/learning/subject/${code}`)}
-              />
-            ))}
-          </div>
+          ))}
         </div>
       </Card>
 
-      {/* Hero */}
-      <div className="rounded-2xl overflow-hidden mb-4">
+      {/* Hero — mobile only */}
+      <div className="rounded-2xl overflow-hidden mb-4 md:hidden">
         <img
           src={meta.hero || DUMMY_HERO}
           alt={`${meta.title} hero`}
