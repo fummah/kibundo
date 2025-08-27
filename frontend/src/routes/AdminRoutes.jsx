@@ -2,8 +2,9 @@
 import { Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import GlobalLayout from "@/components/layouts/GlobalLayout.jsx";
+import { ROLES } from "@/utils/roleMapper";
 
-/* Dashboards (standalone items) */
+/* Dashboards */
 import AdminDashboard from "@/pages/admin/AdminDashboard.jsx";
 import AnalyticsDashboard from "@/pages/admin/analytics/AnalyticsDashboard.jsx";
 import StatisticsDashboard from "@/pages/admin/statistics/StatisticsDashboard.jsx";
@@ -35,14 +36,12 @@ import Curricula from "@/pages/admin/academics/Curricula.jsx";
 import Worksheet from "@/pages/admin/academics/Worksheet.jsx";
 import AIAgent from "@/pages/admin/academics/AIAgent.jsx";
 import OCRWorkspace from "@/pages/admin/academics/ocr/OCRWorkspace.jsx";
+import ScansOverview from "@/pages/admin/academics/ocr/ScansOverview.jsx";
 
 /* Subjects (under Academics) */
 import SubjectsList from "@/pages/admin/academics/subjects/SubjectsList.jsx";
 import SubjectForm from "@/pages/admin/academics/subjects/SubjectForm.jsx";
 import SubjectDetail from "@/pages/admin/academics/subjects/SubjectDetail.jsx";
-
-/* Scans (under Academics) */
-import ScansOverview from "@/pages/admin/academics/ocr/ScansOverview.jsx";
 
 /* Parents */
 import ParentsList from "@/pages/admin/parents/ParentsList.jsx";
@@ -81,133 +80,131 @@ import DatabaseManagement from "@/pages/admin/database/DatabaseManagement.jsx";
 
 export default function AdminRoutes() {
   return (
-    <Route
-      path="/admin"
-      element={
-        <ProtectedRoute allowedRoles={[1]}>
-          <GlobalLayout />
-        </ProtectedRoute>
-      }
-    >
-      {/* Dashboards (standalone) */}
-      <Route index element={<AdminDashboard />} />
-      <Route path="dashboard" element={<AdminDashboard />} />
-      <Route path="analytics" element={<AnalyticsDashboard />} />
-      <Route path="statistics" element={<StatisticsDashboard />} />
+    <>
+      {/* Guard wraps the whole admin tree */}
+      <Route element={<ProtectedRoute allowedRoles={[ROLES.ADMIN]} />}>
+        <Route path="/admin" element={<GlobalLayout />}>
+          {/* Dashboards */}
+          <Route index element={<AdminDashboard />} />
+          <Route path="dashboard" element={<AdminDashboard />} />
+          <Route path="analytics" element={<AnalyticsDashboard />} />
+          <Route path="statistics" element={<StatisticsDashboard />} />
 
-      {/* Reports */}
-      <Route path="reports">
-        <Route index element={<ReportsOverview />} />
-        <Route path="generate" element={<GenerateReports />} />
-      </Route>
+          {/* Reports */}
+          <Route path="reports">
+            <Route index element={<ReportsOverview />} />
+            <Route path="generate" element={<GenerateReports />} />
+          </Route>
 
-      {/* Billing */}
-      <Route path="billing">
-        <Route index element={<BillingOverview />} />
-        <Route path="invoices" element={<Invoices />} />
-        <Route path="product" element={<Product />} />
-        <Route path="product/:id" element={<Product />} />
-        <Route path="contract" element={<Contract />} />
-        <Route path="contract/:id" element={<Contract />} />
-        <Route path="subscription" element={<Subscription />} />
-        <Route path="coupons" element={<Coupons />} />
-      </Route>
+          {/* Billing */}
+          <Route path="billing">
+            <Route index element={<BillingOverview />} />
+            <Route path="invoices" element={<Invoices />} />
+            <Route path="product" element={<Product />} />
+            <Route path="product/:id" element={<Product />} />
+            <Route path="contract" element={<Contract />} />
+            <Route path="contract/:id" element={<Contract />} />
+            <Route path="subscription" element={<Subscription />} />
+            <Route path="coupons" element={<Coupons />} />
+          </Route>
 
-      {/* Content */}
-      <Route path="content">
-        <Route index element={<ContentOverview />} />
-        <Route path="publish" element={<PublishBlogPost />} />
-        <Route path="publish/:id" element={<PublishBlogPost />} />
-        <Route path="new" element={<PublishBlogPost />} />
-      </Route>
+          {/* Content */}
+          <Route path="content">
+            <Route index element={<ContentOverview />} />
+            <Route path="publish" element={<PublishBlogPost />} />
+            <Route path="publish/:id" element={<PublishBlogPost />} />
+            <Route path="new" element={<PublishBlogPost />} />
+          </Route>
 
-      {/* Newsletter */}
-      <Route path="newsletter" element={<Newsletter />} />
+          {/* Newsletter */}
+          <Route path="newsletter" element={<Newsletter />} />
 
-      {/* Academics */}
-      <Route path="academics">
-        <Route index element={<AcademicsOverview />} />
-        <Route path="curricula" element={<Curricula />} />
-        <Route path="worksheet" element={<Worksheet />} />
-        <Route path="quiz" element={<Quiz />} />
-        <Route path="game" element={<Game />} />
+          {/* Academics */}
+          <Route path="academics">
+            <Route index element={<AcademicsOverview />} />
+            <Route path="curricula" element={<Curricula />} />
+            <Route path="worksheet" element={<Worksheet />} />
+            <Route path="quiz" element={<Quiz />} />
+            <Route path="game" element={<Game />} />
 
-        {/* Canonical AI agent route */}
-        <Route path="kibundo" element={<AIAgent />} />
-        {/* Back-compat redirect */}
-        <Route path="ai-agent" element={<Navigate to="/admin/academics/kibundo" replace />} />
+            {/* Canonical AI agent route */}
+            <Route path="kibundo" element={<AIAgent />} />
+            {/* Back-compat redirect */}
+            <Route path="ai-agent" element={<Navigate to="/admin/academics/kibundo" replace />} />
 
-        {/* OCR */}
-        <Route path="ocr" element={<OCRWorkspace />} />
+            {/* OCR */}
+            <Route path="ocr">
+              <Route index element={<ScansOverview />} />
+              <Route path="workspace" element={<OCRWorkspace />} />
+            </Route>
 
-        {/* Scans */}
-        <Route path="ocr" element={<ScansOverview />} />
+            {/* Subjects */}
+            <Route path="subjects">
+              <Route index element={<SubjectsList />} />
+              <Route path="new" element={<SubjectForm />} />
+              <Route path=":id" element={<SubjectDetail />} />
+              <Route path=":id/edit" element={<SubjectForm />} />
+            </Route>
+          </Route>
 
-        {/* Subjects */}
-        <Route path="subjects">
-          <Route index element={<SubjectsList />} />
-          <Route path="new" element={<SubjectForm />} />
-          <Route path=":id" element={<SubjectDetail />} />
-          <Route path=":id/edit" element={<SubjectForm />} />
+          {/* Parents */}
+          <Route path="parents">
+            <Route index element={<ParentsList />} />
+            <Route path="new" element={<ParentForm />} />
+            <Route path=":id" element={<ParentDetail />} />
+            <Route path=":id/edit" element={<ParentForm />} />
+          </Route>
+
+          {/* Teachers */}
+          <Route path="teachers">
+            <Route index element={<TeachersList />} />
+            <Route path="new" element={<TeacherForm />} />
+            <Route path=":id" element={<TeacherDetail />} />
+            <Route path=":id/edit" element={<TeacherForm />} />
+          </Route>
+
+          {/* Students */}
+          <Route path="students">
+            <Route index element={<StudentsList />} />
+            <Route path="new" element={<StudentForm />} />
+            <Route path=":id" element={<StudentDetail />} />
+            <Route path=":id/edit" element={<StudentForm />} />
+          </Route>
+
+          {/* Tickets */}
+          <Route path="tickets">
+            <Route index element={<TicketsList />} />
+            <Route path="new" element={<TicketForm />} />
+            <Route path=":id" element={<TicketDetail />} />
+            <Route path=":id/edit" element={<TicketForm />} />
+          </Route>
+
+          {/* Tasks */}
+          <Route path="tasks">
+            <Route index element={<TasksList />} />
+            <Route path="new" element={<TaskForm />} />
+            <Route path=":id" element={<TaskDetail />} />
+            <Route path=":id/edit" element={<TaskForm />} />
+          </Route>
+
+          {/* Settings */}
+          <Route path="settings" element={<SettingsOverview />} />
+
+          {/* Roles */}
+          <Route path="roles">
+            <Route index element={<RolesList />} />
+            <Route path="new" element={<RoleForm />} />
+            <Route path=":id" element={<RoleDetail />} />
+            <Route path=":id/edit" element={<RoleForm />} />
+          </Route>
+
+          {/* Database */}
+          <Route path="database">
+            <Route index element={<DatabaseOverview />} />
+            <Route path="management" element={<DatabaseManagement />} />
+          </Route>
         </Route>
       </Route>
-
-      {/* Parents */}
-      <Route path="parents">
-        <Route index element={<ParentsList />} />
-        <Route path="new" element={<ParentForm />} />
-        <Route path=":id" element={<ParentDetail />} />
-        <Route path=":id/edit" element={<ParentForm />} />
-      </Route>
-
-      {/* Teachers */}
-      <Route path="teachers">
-        <Route index element={<TeachersList />} />
-        <Route path="new" element={<TeacherForm />} />
-        <Route path=":id" element={<TeacherDetail />} />
-        <Route path=":id/edit" element={<TeacherForm />} />
-      </Route>
-
-      {/* Students */}
-      <Route path="students">
-        <Route index element={<StudentsList />} />
-        <Route path="new" element={<StudentForm />} />
-        <Route path=":id" element={<StudentDetail />} />
-        <Route path=":id/edit" element={<StudentForm />} />
-      </Route>
-
-      {/* Tickets */}
-      <Route path="tickets">
-        <Route index element={<TicketsList />} />
-        <Route path="new" element={<TicketForm />} />
-        <Route path=":id" element={<TicketDetail />} />
-        <Route path=":id/edit" element={<TicketForm />} />
-      </Route>
-
-      {/* Tasks */}
-      <Route path="tasks">
-        <Route index element={<TasksList />} />
-        <Route path="new" element={<TaskForm />} />
-        <Route path=":id" element={<TaskDetail />} />
-        <Route path=":id/edit" element={<TaskForm />} />
-      </Route>
-
-      {/* Settings */}
-      <Route path="settings" element={<SettingsOverview />} />
-
-      {/* Roles */}
-      <Route path="roles">
-        <Route index element={<RolesList />} />
-        <Route path="new" element={<RoleForm />} />
-        <Route path=":id" element={<RoleDetail />} />
-        <Route path=":id/edit" element={<RoleForm />} />
-      </Route>
-
-      {/* Database */}
-      <Route path="database">
-        <Route index element={<DatabaseOverview />} />
-        <Route path="management" element={<DatabaseManagement />} />
-      </Route>
-    </Route>
+    </>
   );
 }

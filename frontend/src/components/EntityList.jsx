@@ -1,3 +1,5 @@
+// Uses the required backend routes you posted (no REST refactor)
+// import path unchanged
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Card, Typography, Input, Select, Tag, Table, Button, Space,
@@ -28,8 +30,6 @@ const statusChip = (s) => (
     {s === "active" ? "Active" : s === "disabled" ? "Blocked" : s ? "Suspended" : "-"}
   </Tag>
 );
-
-/** safely read deep values from objects */
 const getByPath = (obj, path) => {
   if (!obj) return undefined;
   if (Array.isArray(path)) return path.reduce((acc, k) => (acc == null ? acc : acc[k]), obj);
@@ -39,14 +39,43 @@ const getByPath = (obj, path) => {
   return typeof path === "string" ? obj[path] : undefined;
 };
 
+/* ---------- Required routes map (matches your Express file) ---------- */
+const REQUIRED_LIST_PATHS = {
+  students: "/allstudents",
+  teachers: "/allteachers",
+  parents: "/parents",
+  subjects: "/allsubjects",
+  products: "/products",
+  subscriptions: "/subscriptions",
+  blogposts: "/blogposts",     // public in your router
+  invoices: "/invoices",
+  classes: "/allclasses",
+};
+
+// Only resources that HAVE delete endpoints in your router:
+const REQUIRED_REMOVE_PATH = {
+  parents: (id) => `/parent/${id}`,
+  subjects: (id) => `/subject/${id}`,
+  products: (id) => `/product/${id}`,
+  subscriptions: (id) => `/subscription/${id}`,
+  blogposts: (id) => `/blogpost/${id}`,
+  invoices: (id) => `/invoice/${id}`,
+  // NOTE: students, teachers, classes do NOT have delete routes in your list
+};
+
 /**
  * cfg = {
- *  entityKey: "parents"|"students"|"teachers"|...,
+ *  entityKey: "parents"|"students"|"teachers"|"subjects"|"products"|"subscriptions"|"blogposts"|"invoices"|"classes",
  *  titleSingular?: "Parent",
  *  titlePlural: "Parents",
- *  routeBase: "/parents",
+ *  routeBase: "/admin/parents" (frontend route base for view/edit),
  *  idField: "id",
- *  api: { listPath?, removePath(id)?, updateStatusPath(id)?, parseList?(raw) },
+ *  api: {
+ *    listPath?,          // optional override; defaults to REQUIRED_LIST_PATHS[entityKey]
+ *    removePath?(id)?,   // optional override; defaults to REQUIRED_REMOVE_PATH[entityKey]
+ *    updateStatusPath?(id)?, // optional; your backend doesn’t expose this by default
+ *    parseList?(raw)
+ *  },
  *  statusFilter: true|false,
  *  billingFilter: true|false,
  *  columnsMap: (navigate, helpers)=> ({ key -> antd column (optional: csv(row)) }),
@@ -67,16 +96,12 @@ export default function EntityList({ cfg }) {
     billingFilter = false,
     columnsMap,
     defaultVisible,
-    rowClassName, // optional override from cfg
+    rowClassName,
   } = cfg;
 
-  // Default endpoints for your backend (parents fixed to /parents)
-  const DEFAULT_LIST_PATHS = {
-    students: "/allstudents",
-    teachers: "/allteachers",
-    parents: "/parents",
-  };
-  const listPath = apiCfg.listPath || DEFAULT_LIST_PATHS[entityKey] || `/${entityKey}`;
+  // Lock to your required endpoints by default
+  const listPath = apiCfg.listPath || REQUIRED_LIST_PATHS[entityKey] || `/${entityKey}`;
+  const removePathBuilder = apiCfg.removePath || REQUIRED_REMOVE_PATH[entityKey] || null;
 
   const navigate = useNavigate();
 
@@ -160,6 +185,9 @@ export default function EntityList({ cfg }) {
     setLoading(true);
     try {
       const effectiveStatus = tab === "active" ? "active" : status;
+
+      // Your current backend doesn't document q/status/billing params,
+      // but keeping them as benign query params (backend can ignore).
       const { data } = await api.get(listPath, {
         params: {
           q,
@@ -168,7 +196,9 @@ export default function EntityList({ cfg }) {
           pageSize: 1000,
           sort: "createdAt:desc",
         },
+        withCredentials: true,
       });
+
       const rawList = data?.data ?? data;
       const list = typeof apiCfg.parseList === "function"
         ? (apiCfg.parseList(rawList) || [])
@@ -213,7 +243,8 @@ export default function EntityList({ cfg }) {
     columns = [{ title: "—", key: "__placeholder__", render: () => "-" }];
   }
 
-  // Actions column
+  // Actions column (delete only where allowed by your API list)
+  const canDelete = Boolean(removePathBuilder);
   columns.push({
     title: "",
     key: "actions",
@@ -226,7 +257,7 @@ export default function EntityList({ cfg }) {
           items: [
             { key: "view", label: "View" },
             { key: "edit", label: "Edit" },
-            ...(apiCfg.removePath ? [{ key: "delete", label: "Delete", danger: true }] : []),
+            ...(canDelete ? [{ key: "delete", label: "Delete", danger: true }] : []),
             ...(cfg.rowActions?.extraItems || []),
           ],
           onClick: async ({ key, domEvent }) => {
@@ -234,9 +265,9 @@ export default function EntityList({ cfg }) {
             if (key === "view") return goToDetail(r[idField]);
             if (key === "edit") return goToEdit(r[idField]);
 
-            if (key === "delete" && apiCfg.removePath) {
+            if (key === "delete" && canDelete) {
               Modal.confirm({
-                title: `Delete ${cfg.titleSingular || "record"}?`,
+                title: `Delete ${cfg.titleSingular || titleSingular || "record"}?`,
                 content: (
                   <>
                     Are you sure you want to delete{" "}
@@ -247,8 +278,10 @@ export default function EntityList({ cfg }) {
                 okButtonProps: { danger: true },
                 cancelText: "Cancel",
                 onOk: async () => {
-                  try { await api.delete(apiCfg.removePath(r[idField])); load(); }
-                  catch { /* silent */ }
+                  try {
+                    await api.delete(removePathBuilder(r[idField]), { withCredentials: true });
+                    load();
+                  } catch { /* silent */ }
                 },
               });
             }
@@ -260,7 +293,7 @@ export default function EntityList({ cfg }) {
     ),
   });
 
-  /* bulk actions */
+  /* bulk actions (status updates are optional; your API doesn't expose them by default) */
   const bulkMenu = {
     items: [
       ...(statusFilter
@@ -279,9 +312,7 @@ export default function EntityList({ cfg }) {
       if (key === "export_all") {
         const visible = columns.filter(Boolean).filter((c) => c.key !== "actions");
         const cellValue = (c, r) => {
-          try {
-            if (typeof c.csv === "function") return c.csv(r);
-          } catch {}
+          try { if (typeof c.csv === "function") return c.csv(r); } catch {}
           const di = c.dataIndex;
           let raw;
           if (Array.isArray(di) || typeof di === "string") raw = getByPath(r, di);
@@ -290,13 +321,11 @@ export default function EntityList({ cfg }) {
           if (typeof raw === "object") { try { return JSON.stringify(raw); } catch { return "-"; } }
           return String(raw);
         };
-
         const header = visible.length ? visible.map((c) => c.title || c.key) : ["-"];
         const safeRows = rows.length ? rows : [{}];
         const lines = safeRows.map((r) =>
           (visible.length ? visible : [{ key: "__placeholder__" }]).map((c) => dash(cellValue(c, r)))
         );
-
         const esc = (v) => `"${String(v ?? "-").replace(/"/g, '""')}"`;
         const csv = [header, ...lines].map((row) => row.map(esc).join(",")).join("\n") + "\n";
         const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
@@ -310,11 +339,12 @@ export default function EntityList({ cfg }) {
       }
       if (key === "reset") return resetAll();
 
-      if (!selectedRowKeys.length) return;
+      // status updates only if cfg provides an updateStatusPath
+      if (!selectedRowKeys.length || !apiCfg.updateStatusPath) return;
       const newStatus = key === "reactivate" ? "active" : key === "suspend" ? "suspended" : "disabled";
       try {
         await Promise.all(
-          selectedRowKeys.map((id) => api.patch(apiCfg.updateStatusPath(id), { status: newStatus }))
+          selectedRowKeys.map((id) => api.patch(apiCfg.updateStatusPath(id), { status: newStatus }, { withCredentials: true }))
         );
         setSelectedRowKeys([]);
         load();
@@ -347,7 +377,7 @@ export default function EntityList({ cfg }) {
     );
   }, [rows, billing, billingFilter]);
 
-  // Default full-row highlight by status
+  // highlight by status
   const defaultRowHighlight = (r) => {
     const s = String(r?.status || "").toLowerCase();
     return s === "active"
@@ -359,12 +389,8 @@ export default function EntityList({ cfg }) {
       : "";
   };
 
-  // ✅ Combine highlight + clickability (and optional custom class)
   const appliedRowClassName = (r) => {
-    const custom =
-      typeof rowClassName === "function"
-        ? rowClassName(r)
-        : (rowClassName || "");
+    const custom = typeof rowClassName === "function" ? rowClassName(r) : (rowClassName || "");
     const def = defaultRowHighlight(r);
     return [custom || def, "row-clickable"].filter(Boolean).join(" ");
   };
@@ -446,7 +472,6 @@ export default function EntityList({ cfg }) {
             sticky
             childrenColumnName="__none__"
             expandable={{ showExpandColumn: false, rowExpandable: () => false, expandIcon: () => null }}
-            // ✅ clickable full-row navigation + keyboard support
             onRow={(record) => ({
               onClick: () => goToDetail(record[idField]),
               tabIndex: 0,
@@ -516,33 +541,21 @@ export default function EntityList({ cfg }) {
         <Text type="secondary" className="block">“Actions” is always visible.</Text>
       </Modal>
 
-      {/* Full-row status highlight + clickable row visuals */}
-     <style>{`
--  .row-status-active    .ant-table-cell { background: #d9f7be !important; }
--  .row-status-suspended .ant-table-cell { background: #fff7e6 !important; }
--  .row-status-disabled  .ant-table-cell { background: #ffd6d6 !important; }
--  .row-status-active:hover    .ant-table-cell,
--  .row-status-suspended:hover .ant-table-cell,
--  .row-status-disabled:hover  .ant-table-cell { filter: brightness(0.98); }
--
--  /* clickable rows */
--  .row-clickable { cursor: pointer; }
--  .row-clickable:hover .ant-table-cell { background: rgba(0,0,0,0.02) !important; }
-+  .row-status-active    { background-color: #d9f7be !important; }
-+  .row-status-suspended { background-color: #fff7e6 !important; }
-+  .row-status-disabled  { background-color: #ffd6d6 !important; }
-+
-+  .row-status-active:hover,
-+  .row-status-suspended:hover,
-+  .row-status-disabled:hover {
-+    filter: brightness(0.97);
-+  }
-+
-+  /* clickable rows */
-+  .row-clickable { cursor: pointer; }
-+  .row-clickable:hover { background-color: rgba(0,0,0,0.03) !important; }
-`}</style>
+      {/* Row highlights + clickable row visuals */}
+      <style>{`
+        .row-status-active    { background-color: #d9f7be !important; }
+        .row-status-suspended { background-color: #fff7e6 !important; }
+        .row-status-disabled  { background-color: #ffd6d6 !important; }
 
+        .row-status-active:hover,
+        .row-status-suspended:hover,
+        .row-status-disabled:hover {
+          filter: brightness(0.97);
+        }
+
+        .row-clickable { cursor: pointer; }
+        .row-clickable:hover { background-color: rgba(0,0,0,0.03) !important; }
+      `}</style>
     </div>
   );
 }

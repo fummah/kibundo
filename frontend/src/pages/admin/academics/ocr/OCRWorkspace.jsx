@@ -1,5 +1,5 @@
 // src/pages/admin/academics/ocr/OCRWorkspace.jsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import {
   Typography,
   Card,
@@ -20,6 +20,7 @@ import {
   Tooltip,
   Empty,
   Badge,
+  Popconfirm,
 } from "antd";
 import {
   UploadOutlined,
@@ -33,15 +34,30 @@ import {
   EyeOutlined,
   SettingOutlined,
   HistoryOutlined,
+  RedoOutlined,
+  ClearOutlined,
+  StopOutlined,
 } from "@ant-design/icons";
 import api from "@/api/axios";
 
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
 
+const LS_HISTORY_KEY = "kibundo_ocr_history";
+const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10MB
+const ACCEPTED_MIME = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "application/pdf",
+];
+
 export default function OCRWorkspace() {
   // UI State
   const [uploading, setUploading] = useState(false);
+  const [abortCtrl, setAbortCtrl] = useState(null);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState(null);
   const [activeTab, setActiveTab] = useState("upload");
@@ -62,10 +78,9 @@ export default function OCRWorkspace() {
   // ------- Helpers -------
   const pushHistoryLocal = (item) => {
     try {
-      const key = "kibundo_ocr_history";
-      const current = JSON.parse(localStorage.getItem(key) || "[]");
+      const current = JSON.parse(localStorage.getItem(LS_HISTORY_KEY) || "[]");
       const next = [item, ...current].slice(0, 50);
-      localStorage.setItem(key, JSON.stringify(next));
+      localStorage.setItem(LS_HISTORY_KEY, JSON.stringify(next));
       setHistory(next);
     } catch {}
   };
@@ -78,12 +93,11 @@ export default function OCRWorkspace() {
       if (Array.isArray(data) && data.length) {
         setHistory(data);
       } else {
-        // Fallback to local
-        const local = JSON.parse(localStorage.getItem("kibundo_ocr_history") || "[]");
+        const local = JSON.parse(localStorage.getItem(LS_HISTORY_KEY) || "[]");
         setHistory(local);
       }
     } catch {
-      const local = JSON.parse(localStorage.getItem("kibundo_ocr_history") || "[]");
+      const local = JSON.parse(localStorage.getItem(LS_HISTORY_KEY) || "[]");
       setHistory(local);
     } finally {
       setHistoryLoading(false);
@@ -103,14 +117,18 @@ export default function OCRWorkspace() {
     }
   };
 
+  const baseFilename = useMemo(() => {
+    const raw = result?.meta?.filename || "ocr-result";
+    return raw.replace(/\.[^.]+$/, ""); // strip extension
+  }, [result]);
+
   const downloadText = () => {
     if (!result?.text) return;
     const blob = new Blob([result.text], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const base = result?.meta?.filename || "ocr-result";
-    a.download = `${base}.txt`;
+    a.download = `${baseFilename}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -121,18 +139,34 @@ export default function OCRWorkspace() {
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const base = result?.meta?.filename || "ocr-result";
     a.href = url;
-    a.download = `${base}.json`;
+    a.download = `${baseFilename}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   // ------- Upload ------
+  const beforeUpload = (file) => {
+    if (file.size > MAX_FILE_BYTES) {
+      message.error("File too large. Max 10MB.");
+      return Upload.LIST_IGNORE;
+    }
+    if (!ACCEPTED_MIME.includes(file.type)) {
+      if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+        message.warning("Unsupported file type. Try JPG/PNG/HEIC/PDF.");
+        return Upload.LIST_IGNORE;
+      }
+    }
+    return true;
+  };
+
   const customRequest = async ({ file, onProgress, onSuccess, onError }) => {
     setUploading(true);
     setProgress(0);
     setResult(null);
+
+    const controller = new AbortController();
+    setAbortCtrl(controller);
 
     try {
       const form = new FormData();
@@ -147,6 +181,7 @@ export default function OCRWorkspace() {
       const { data } = await api.post("/api/ocr/scan", form, {
         withCredentials: true,
         headers: { "Content-Type": "multipart/form-data" },
+        signal: controller.signal,
         onUploadProgress: (evt) => {
           if (!evt.total) return;
           const pct = Math.round((evt.loaded / evt.total) * 100);
@@ -175,12 +210,23 @@ export default function OCRWorkspace() {
       onSuccess?.(data);
       setActiveTab("result");
     } catch (err) {
-      console.error(err);
-      message.error(err?.response?.data?.message || "OCR failed");
-      onError?.(err);
+      if (controller.signal.aborted) {
+        message.info("Upload canceled");
+      } else {
+        const msg = err?.response?.data?.message || err?.message || "OCR failed";
+        message.error(msg);
+        onError?.(err);
+      }
     } finally {
       setUploading(false);
+      setAbortCtrl(null);
     }
+  };
+
+  const cancelUpload = () => {
+    try {
+      abortCtrl?.abort();
+    } catch {}
   };
 
   // ------- History Table -------
@@ -196,24 +242,34 @@ export default function OCRWorkspace() {
       dataIndex: ["meta", "subject"],
       key: "subject",
       render: (v) => (v ? <Tag color="blue">{v}</Tag> : <Tag>—</Tag>),
+      filters: [
+        { text: "Maths", value: "Maths" },
+        { text: "English", value: "English" },
+        { text: "Science", value: "Science" },
+        { text: "Social Studies", value: "Social Studies" },
+      ],
+      onFilter: (value, record) => (record?.meta?.subject || "") === value,
     },
     {
       title: "Grade",
       dataIndex: ["meta", "grade"],
       key: "grade",
       render: (v) => (v ? <Tag color="purple">{v}</Tag> : <Tag>—</Tag>),
+      filters: ["1", "2", "3", "4"].map((g) => ({ text: g, value: g })),
+      onFilter: (value, record) => (record?.meta?.grade || "") === value,
     },
     {
       title: "Lang",
       dataIndex: ["meta", "lang"],
       key: "lang",
-      width: 90,
+      width: 100,
     },
     {
       title: "Confidence",
       dataIndex: "confidence",
       key: "confidence",
       width: 140,
+      sorter: (a, b) => (a.confidence ?? -1) - (b.confidence ?? -1),
       render: (v) =>
         v == null ? (
           <Tag>—</Tag>
@@ -228,7 +284,7 @@ export default function OCRWorkspace() {
       title: "Date",
       dataIndex: ["meta", "createdAt"],
       key: "date",
-      width: 180,
+      width: 190,
       render: (v) => new Date(v).toLocaleString(),
       sorter: (a, b) =>
         new Date(a?.meta?.createdAt || 0) - new Date(b?.meta?.createdAt || 0),
@@ -237,9 +293,9 @@ export default function OCRWorkspace() {
     {
       title: "Actions",
       key: "actions",
-      width: 150,
+      width: 220,
       render: (_, row) => (
-        <Space>
+        <Space wrap>
           <Tooltip title="View">
             <Button
               size="small"
@@ -247,6 +303,17 @@ export default function OCRWorkspace() {
               onClick={() => {
                 setResult(row);
                 setActiveTab("result");
+              }}
+            />
+          </Tooltip>
+          <Tooltip title="Re-run OCR with current options">
+            <Button
+              size="small"
+              icon={<RedoOutlined />}
+              onClick={() => {
+                setResult(row);
+                setActiveTab("result");
+                message.info("Re-run from original file not implemented yet");
               }}
             />
           </Tooltip>
@@ -261,7 +328,7 @@ export default function OCRWorkspace() {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `${row?.meta?.filename || "ocr"}.json`;
+                a.download = `${(row?.meta?.filename || "ocr").replace(/\.[^.]+$/, "")}.json`;
                 a.click();
                 URL.revokeObjectURL(url);
               }}
@@ -273,10 +340,9 @@ export default function OCRWorkspace() {
               size="small"
               icon={<DeleteOutlined />}
               onClick={() => {
-                const key = "kibundo_ocr_history";
                 const next = (history || []).filter((h) => h.id !== row.id);
                 setHistory(next);
-                localStorage.setItem(key, JSON.stringify(next));
+                localStorage.setItem(LS_HISTORY_KEY, JSON.stringify(next));
               }}
             />
           </Tooltip>
@@ -306,13 +372,13 @@ export default function OCRWorkspace() {
                       value={lang}
                       onChange={setLang}
                       options={[
- { value: "deu", label: "German (deu)" },
- { value: "eng", label: "English (eng)" },
-   { value: "fra", label: "French (fra)" },
-  { value: "ita", label: "Italian (ita)" },
-  { value: "spa", label: "Spanish (spa)" },
-  { value: "nld", label: "Dutch (nld)" },
-]}
+                        { value: "eng", label: "English (eng)" },
+                        { value: "deu", label: "German (deu)" },
+                        { value: "fra", label: "French (fra)" },
+                        { value: "ita", label: "Italian (ita)" },
+                        { value: "spa", label: "Spanish (spa)" },
+                        { value: "nld", label: "Dutch (nld)" },
+                      ]}
                       showSearch
                     />
                   </div>
@@ -404,6 +470,7 @@ export default function OCRWorkspace() {
                   multiple={false}
                   showUploadList={false}
                   accept="image/*,.pdf"
+                  beforeUpload={beforeUpload}
                   customRequest={customRequest}
                   disabled={uploading}
                   style={{ padding: 16 }}
@@ -415,14 +482,18 @@ export default function OCRWorkspace() {
                     Click or drag file to this area to start OCR
                   </p>
                   <p className="ant-upload-hint">
-                    Supports JPG, PNG, HEIC, and PDF. Max ~10MB recommended.
+                    Supports JPG, PNG, HEIC/HEIF, and PDF. Max ~10MB recommended.
                   </p>
                 </Dragger>
 
                 {uploading && (
                   <div className="mt-4">
                     <Progress percent={progress} />
-                    <Text type="secondary">Processing…</Text>
+                    <Space className="mt-2">
+                      <Button icon={<StopOutlined />} danger onClick={cancelUpload}>
+                        Cancel
+                      </Button>
+                    </Space>
                   </div>
                 )}
 
@@ -480,6 +551,10 @@ export default function OCRWorkspace() {
                     Download .json
                   </Button>
                 </Space>
+
+                <div className="mt-2 text-xs text-gray-500">
+                  {`${(result?.text || "").split(/\s+/).filter(Boolean).length} words · ${(result?.text || "").length} chars`}
+                </div>
               </Col>
 
               <Col xs={24} md={8}>
@@ -498,7 +573,7 @@ export default function OCRWorkspace() {
                     <Space direction="vertical" style={{ width: "100%" }}>
                       {result.blocks.slice(0, 10).map((b, idx) => (
                         <Card
-                          key={idx}
+                          key={b?.id ?? idx}
                           size="small"
                           type="inner"
                           title={b?.type || `Block ${idx + 1}`}
@@ -543,6 +618,21 @@ export default function OCRWorkspace() {
       ),
       children: (
         <Card className="dark:bg-gray-800">
+          <Space className="mb-3" wrap>
+            <Popconfirm
+              title="Clear local history?"
+              okText="Clear"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => {
+                localStorage.setItem(LS_HISTORY_KEY, "[]");
+                setHistory([]);
+              }}
+            >
+              <Button icon={<ClearOutlined />} danger>
+                Clear All (local)
+              </Button>
+            </Popconfirm>
+          </Space>
           <Table
             loading={historyLoading}
             dataSource={history}

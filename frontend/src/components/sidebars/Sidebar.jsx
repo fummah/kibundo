@@ -1,5 +1,6 @@
+// src/components/Sidebar.jsx
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useLocation, Link, useNavigate } from "react-router-dom";
+import { useLocation, Link } from "react-router-dom";
 import { Tooltip } from "antd";
 import {
   DashboardOutlined,
@@ -28,50 +29,30 @@ import {
   GiftOutlined,
 } from "@ant-design/icons";
 import { useAuthContext } from "@/context/AuthContext";
+import { ROLES } from "@/utils/roleMapper";
 
-/**
- * Professional Sidebar Component
- */
 export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
   const location = useLocation();
-  const navigate = useNavigate();
   const { user } = useAuthContext();
   const roleId = Number(user?.role_id);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [openSubmenu, setOpenSubmenu] = useState(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    try {
+      const v = localStorage.getItem("sidebar_collapsed");
+      return v ? JSON.parse(v) : false;
+    } catch {
+      return false;
+    }
+  });
 
-  // Utility: detect responsive breakpoint
-  const isResponsive = () => window.matchMedia("(max-width: 1023px)").matches;
+  const isResponsive = useCallback(
+    () => window.matchMedia("(max-width: 1023px)").matches,
+    []
+  );
 
-  // Auto close on route change (for mobile drawer)
-  useEffect(() => {
-    if (isResponsive()) setMenuOpen(false);
-
-    // Auto-open submenu for current route
-    const current = location.pathname;
-    let opened = null;
-    baseMenuItems.forEach((item, idx) => {
-      if (Array.isArray(item.children) && item.children.some((c) => current.startsWith(c.href))) {
-        opened = idx;
-      }
-    });
-    setOpenSubmenu(opened);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname]);
-
-  // Close on ESC
-  useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && setMenuOpen(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [setMenuOpen]);
-
-  /* ------------------------------------------------------------------
-     MENUS
-  ------------------------------------------------------------------ */
-
+  /* ----------------------------- MENUS ------------------------------ */
   const adminMenu = [
     {
       label: "Dashboards",
@@ -100,9 +81,9 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
         { href: "/admin/academics/worksheet", label: "Worksheet", icon: FileTextOutlined },
         { href: "/admin/academics/quiz", label: "Quiz", icon: ExperimentOutlined },
         { href: "/admin/academics/game", label: "Game", icon: ProjectOutlined },
-        { href: "/admin/academics/ai-agent", label: "Kibundo AI", icon: RobotOutlined },
+        { href: "/admin/academics/kibundo", label: "Kibundo AI", icon: RobotOutlined },
         { href: "/admin/academics/subjects", label: "Subjects", icon: BookOutlined },
-        { href: "/admin/academics/scans", label: "Scans", icon: FileSearchOutlined },
+        { href: "/admin/academics/ocr/workspace", label: "OCR Workspace", icon: FileSearchOutlined },
       ],
     },
     {
@@ -199,34 +180,203 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
     },
   ];
 
-  const teacherMenu = [{ href: "/teacher", label: "Dashboard", icon: DashboardOutlined }];
-  const studentMenu = [{ href: "/student", label: "Dashboard", icon: DashboardOutlined }];
+  const teacherMenu = [
+    {
+      label: "Teacher",
+      icon: DashboardOutlined,
+      children: [
+        { href: "/teacher", label: "Dashboard", icon: DashboardOutlined },
+        { href: "/teacher/courses", label: "Courses", icon: ReadOutlined },
+        { href: "/teacher/assignments", label: "Assignments", icon: FileTextOutlined },
+        { href: "/teacher/students", label: "Students", icon: TeamOutlined },
+        { href: "/teacher/settings", label: "Settings", icon: SettingOutlined },
+      ],
+    },
+  ];
 
+ // 🔁 Replace your existing `studentMenu` with this:
+const studentMenu = [
+  // Home
+  {
+    label: "Student",
+    icon: DashboardOutlined,
+    children: [
+      { href: "/student/home", label: "Home", icon: DashboardOutlined },
+    ],
+  },
+
+  // Learning (with subject practice submenu)
+  {
+    label: "Learning",
+    icon: ReadOutlined,
+    children: [
+      { href: "/student/learning", label: "Overview", icon: ReadOutlined },
+      { href: "/student/learning/subject/math", label: "Math Practice", icon: BookOutlined },
+      { href: "/student/learning/subject/science", label: "Science Practice", icon: ExperimentOutlined },
+      { href: "/student/learning/subject/tech", label: "Technology Practice", icon: RobotOutlined },
+      { href: "/student/learning/subject/german", label: "German Practice", icon: ReadOutlined },
+    ],
+  },
+
+  // Reading (kept grouped for clarity)
+  {
+    label: "Reading",
+    icon: BookOutlined,
+    children: [
+      { href: "/student/reading", label: "Overview", icon: BookOutlined },
+      { href: "/student/reading/read-aloud", label: "Read Aloud", icon: FileTextOutlined },
+      { href: "/student/reading/ai-text", label: "AI Reading Text", icon: RobotOutlined },
+      { href: "/student/reading/quiz", label: "Reading Quiz", icon: ExperimentOutlined },
+    ],
+  },
+
+  // Homework (now with clear sub-items)
+  {
+    label: "Homework",
+    icon: FileSearchOutlined,
+    children: [
+      { href: "/student/homework", label: "Overview", icon: FileSearchOutlined },
+      { href: "/student/homework/interaction", label: "Interaction", icon: RobotOutlined },
+      { href: "/student/homework/tasks", label: "Task List", icon: ProfileOutlined },
+      { href: "/student/homework/review", label: "Review & Submit", icon: FileDoneOutlined },
+    ],
+  },
+
+  // Progress & Motivation
+  {
+    label: "Progress",
+    icon: ProjectOutlined,
+    children: [
+      { href: "/student/map", label: "Treasure Map", icon: ProjectOutlined },
+      { href: "/student/motivation", label: "Motivation Timer", icon: ExperimentOutlined },
+    ],
+  },
+
+  // Onboarding shortcuts
+  {
+    label: "Onboarding",
+    icon: RobotOutlined,
+    children: [
+      { href: "/student/onboarding/buddy", label: "Buddy Select", icon: RobotOutlined },
+      { href: "/student/onboarding/interests", label: "Interests Wizard", icon: ReadOutlined },
+    ],
+  },
+
+  // Settings
+  {
+    label: "Settings",
+    icon: SettingOutlined,
+    children: [
+      { href: "/student/settings", label: "Settings", icon: SettingOutlined },
+    ],
+  },
+];
+
+
+  // Map by canonical role constants
   const menuItemsByRole = useMemo(
     () => ({
-      1: adminMenu,
-      2: teacherMenu,
-      3: studentMenu,
-      4: parentMenu,
+      [ROLES.ADMIN]: adminMenu,
+      [ROLES.TEACHER]: teacherMenu,
+      [ROLES.STUDENT]: studentMenu,
+      [ROLES.PARENT]: parentMenu,
     }),
-    []
+    [] // static menus
   );
 
   const baseMenuItems = menuItemsByRole[roleId] || [];
 
-  /* ------------------------------------------------------------------
-     RENDER HELPERS
-  ------------------------------------------------------------------ */
+  /* ----------------------------- SEARCH FILTER ------------------------------ */
+  const normalizedQuery = searchTerm.trim().toLowerCase();
 
+  const filteredMenu = useMemo(() => {
+    if (!normalizedQuery) return baseMenuItems;
+
+    const match = (txt = "") => txt.toLowerCase().includes(normalizedQuery);
+
+    return baseMenuItems
+      .map((group) => {
+        if (!Array.isArray(group.children)) {
+          return match(group.label) ? group : null;
+        }
+        const keptChildren = group.children.filter(
+          (c) => match(c.label) || match(c.href)
+        );
+        if (keptChildren.length > 0 || match(group.label)) {
+          return { ...group, children: keptChildren.length ? keptChildren : group.children };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }, [baseMenuItems, normalizedQuery]);
+
+  /* ----------------------------- EFFECTS ------------------------------ */
+  useEffect(() => {
+    try {
+      localStorage.setItem("sidebar_collapsed", JSON.stringify(isCollapsed));
+    } catch {}
+  }, [isCollapsed]);
+
+  // Auto close on route change (mobile) + open current submenu
+  useEffect(() => {
+    if (isResponsive()) setMenuOpen(false);
+
+    const current = location.pathname;
+    let opened = null;
+
+    (baseMenuItems || []).forEach((item, idx) => {
+      if (Array.isArray(item.children) && item.children.some((c) => current.startsWith(c.href))) {
+        opened = idx;
+      }
+    });
+    setOpenSubmenu(opened);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  // Close on ESC
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && setMenuOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setMenuOpen]);
+
+  /* ----------------------------- RENDER HELPERS ------------------------------ */
   const currentPath = location.pathname;
-  const isActive = (href) =>
-    currentPath === href || currentPath.startsWith(href + "/");
+
+  const isActive = useCallback(
+    (href) => currentPath === href || currentPath.startsWith(href + "/"),
+    [currentPath]
+  );
+
+  const isGroupActive = useCallback(
+    (children = []) => children.some((c) => isActive(c.href)),
+    [isActive]
+  );
 
   const asideWidth = isCollapsed ? "w-16" : "w-64";
 
-  /* ------------------------------------------------------------------
-     RENDER
-  ------------------------------------------------------------------ */
+  const ItemLink = ({ to, Icon, label, active }) => {
+    const cls = active
+      ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-700 dark:text-white font-semibold"
+      : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800";
+
+    const content = (
+      <div className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition ${cls}`}>
+        <Icon />
+        {!isCollapsed && <span>{label}</span>}
+      </div>
+    );
+
+    return isCollapsed ? (
+      <Tooltip placement="right" title={label}>
+        <Link to={to}>{content}</Link>
+      </Tooltip>
+    ) : (
+      <Link to={to}>{content}</Link>
+    );
+  };
+
+  /* ----------------------------- RENDER ------------------------------ */
   return (
     <>
       {/* Overlay (for mobile drawer) */}
@@ -262,72 +412,63 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
 
           {/* Menu */}
           <nav className="flex-1 overflow-y-auto px-2 pt-4 pb-2 space-y-1">
-            {baseMenuItems.map((item, idx) => {
+            {filteredMenu.map((item, idx) => {
               const hasChildren = Array.isArray(item.children) && item.children.length > 0;
-              const isSubmenuOpen = openSubmenu === idx;
-              const Icon = item.icon;
+              const IconComp = item.icon;
 
-              // Single link
-              if (!hasChildren) {
+              if (!hasChildren && item.href) {
                 return (
-                  <Link
+                  <ItemLink
                     key={idx}
                     to={item.href}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition ${
-                      isActive(item.href)
-                        ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-700 dark:text-white font-semibold"
-                        : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-                    }`}
-                  >
-                    <Icon />
-                    {!isCollapsed && <span>{item.label}</span>}
-                  </Link>
+                    Icon={IconComp}
+                    label={item.label}
+                    active={isActive(item.href)}
+                  />
                 );
               }
 
-              // Submenu
+              const groupActive = isGroupActive(item.children);
+
               return (
                 <div key={idx}>
                   <button
-                    onClick={() => setOpenSubmenu(isSubmenuOpen ? null : idx)}
+                    onClick={() => setOpenSubmenu(openSubmenu === idx ? null : idx)}
                     className={`flex items-center justify-between w-full px-3 py-2 rounded-md text-sm transition ${
-                      isSubmenuOpen
+                      openSubmenu === idx || groupActive
                         ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-400"
                         : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
                     }`}
                   >
                     <span className="flex items-center gap-3">
-                      <Icon /> {!isCollapsed && item.label}
+                      <IconComp /> {!isCollapsed && item.label}
                     </span>
                     {!isCollapsed && (
                       <svg
                         className={`w-4 h-4 transform transition-transform ${
-                          isSubmenuOpen ? "rotate-90" : ""
+                          openSubmenu === idx || groupActive ? "rotate-90" : ""
                         }`}
                         viewBox="0 0 20 20"
                         fill="currentColor"
+                        aria-hidden="true"
                       >
                         <path d="M6 6l6 4-6 4V6z" />
                       </svg>
                     )}
                   </button>
-                  {isSubmenuOpen && (
+
+                  {(openSubmenu === idx || groupActive) && (
                     <div className="ml-5 mt-1 space-y-1">
                       {item.children.map((child, subIdx) => {
                         const ChildIcon = child.icon;
                         return (
-                          <Link
+                          <ItemLink
                             key={subIdx}
                             to={child.href}
-                            className={`flex items-center gap-2 px-3 py-2 text-sm rounded-md transition ${
-                              isActive(child.href)
-                                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-700 dark:text-white font-semibold"
-                                : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                            }`}
-                          >
-                            <ChildIcon />
-                            <span>{child.label}</span>
-                          </Link>
+                            Icon={ChildIcon}
+                            label={child.label}
+                            active={isActive(child.href)}
+                          />
                         );
                       })}
                     </div>
@@ -337,7 +478,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
             })}
           </nav>
 
-          {/* Footer: Collapse / Close 
+          {/* Footer: Collapse / Close */}
           <div className="border-t border-gray-200 dark:border-gray-700 p-2">
             <button
               onClick={() =>
@@ -347,7 +488,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
             >
               {isResponsive() ? "Close" : isCollapsed ? "Expand" : "Collapse"}
             </button>
-          </div>*/}
+          </div>
         </div>
       </aside>
     </>

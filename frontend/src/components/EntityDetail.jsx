@@ -1,7 +1,5 @@
-// src/components/EntityDetail.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-
 import {
   Card,
   Typography,
@@ -23,9 +21,10 @@ import {
   Tooltip,
   Popconfirm,
   Avatar,
+  Dropdown,
+  Grid,
 } from "antd";
 import { Comment } from "@ant-design/compatible";
-
 import {
   ArrowLeftOutlined,
   EditOutlined,
@@ -38,8 +37,8 @@ import {
   UploadOutlined,
   InboxOutlined,
   DeleteTwoTone,
+  MoreOutlined,
 } from "@ant-design/icons";
-
 import {
   ResponsiveContainer,
   AreaChart,
@@ -49,37 +48,16 @@ import {
   CartesianGrid,
   Tooltip as RTooltip,
 } from "recharts";
-
 import api from "@/api/axios";
 
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
 
-const dash = (v) =>
-  v === undefined || v === null || String(v).trim() === "" ? "-" : v;
-
+/* ---------------- helpers ---------------- */
+const dash = (v) => (v === undefined || v === null || String(v).trim() === "" ? "-" : v);
 const statusTag = (s) => (
-  <Tag color={s === "active" ? "green" : s === "suspended" ? "orange" : "red"}>
-    {s || "-"}
-  </Tag>
+  <Tag color={s === "active" ? "green" : s === "suspended" ? "orange" : "red"}>{s || "-"}</Tag>
 );
-
-function InfoRow({ label, value }) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-[220px,1fr] gap-2 items-center">
-      <div className="text-gray-500">{label}</div>
-      <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-800 px-3 py-2">
-        {Array.isArray(value)
-          ? value.length
-            ? value.join(", ")
-            : "-"
-          : value ?? "-"}
-      </div>
-    </div>
-  );
-}
-
-/** Safely read deep values from objects */
 const readPath = (obj, path) => {
   if (!obj) return undefined;
   if (Array.isArray(path)) return path.reduce((a, k) => (a == null ? a : a[k]), obj);
@@ -88,8 +66,6 @@ const readPath = (obj, path) => {
   }
   return typeof path === "string" ? obj[path] : undefined;
 };
-
-/** Pretty format date (DD/MM/YYYY) */
 const fmtDate = (d) => {
   if (!d) return "-";
   const dt = typeof d === "string" || typeof d === "number" ? new Date(d) : d;
@@ -99,17 +75,33 @@ const fmtDate = (d) => {
   const yyyy = dt.getFullYear();
   return `${dd}/${mm}/${yyyy}`;
 };
-
-/** Build initials for avatar: prefer user first/last, else first_name/last_name, else split `name` */
 const getInitials = (e) => {
   if (!e) return "";
-  const first =
-    e?.user?.first_name || e?.first_name || (e?.name ? String(e.name).trim().split(/\s+/)[0] : "") || "";
-  const last =
-    e?.user?.last_name || e?.last_name || (e?.name ? String(e.name).trim().split(/\s+/)[1] : "") || "";
-  const i1 = first?.charAt(0)?.toUpperCase() || "";
-  const i2 = last?.charAt(0)?.toUpperCase() || "";
-  return `${i1}${i2}`;
+  const first = e?.user?.first_name || e?.first_name || (e?.name ? String(e.name).trim().split(/\s+/)[0] : "") || "";
+  const last  = e?.user?.last_name  || e?.last_name  || (e?.name ? String(e.name).trim().split(/\s+/)[1] : "") || "";
+  return `${first.charAt(0).toUpperCase() || ""}${last.charAt(0).toUpperCase() || ""}`;
+};
+
+/* ---------- REQUIRED BACKEND ROUTES (from your Express router) ---------- */
+const REQUIRED_GET_PATH = {
+  students:      (id) => `/student/${id}`,
+  teachers:      (id) => `/teacher/${id}`,
+  parents:       (id) => `/parent/${id}`,
+  subjects:      (id) => `/subject/${id}`,
+  products:      (id) => `/product/${id}`,
+  subscriptions: (id) => `/subscription/${id}`,
+  blogposts:     (id) => `/blogpost/${id}`,   // public GET allowed
+  invoices:      (id) => `/invoice/${id}`,
+  // classes: no /class/:id route → leave undefined
+};
+const REQUIRED_REMOVE_PATH = {
+  parents:       (id) => `/parent/${id}`,
+  subjects:      (id) => `/subject/${id}`,
+  products:      (id) => `/product/${id}`,
+  subscriptions: (id) => `/subscription/${id}`,
+  blogposts:     (id) => `/blogpost/${id}`,
+  invoices:      (id) => `/invoice/${id}`,
+  // students/teachers/classes: not exposed in router → no delete
 };
 
 export default function EntityDetail({ cfg }) {
@@ -117,14 +109,26 @@ export default function EntityDetail({ cfg }) {
   const { id } = useParams();
   const location = useLocation();
   const [messageApi, ctx] = message.useMessage();
+  const screens = Grid.useBreakpoint();
 
   const safeCfg = cfg || {};
+  const entityKey = safeCfg.entityKey; // "students" | "teachers" | "parents" | ...
   const idField = safeCfg.idField || "id";
   const routeBase = safeCfg.routeBase || "";
   const apiObj = safeCfg.api || {};
-  const { getPath, updateStatusPath, removePath, relatedListPath, performancePath } = apiObj;
+  const {
+    getPath: getPathFromCfg,
+    updateStatusPath,
+    removePath: removePathFromCfg,
+    relatedListPath,
+    performancePath,
+  } = apiObj;
 
-  // Pre-fill support
+  // defaults to required routes if cfg.api doesn't provide them
+  const getPath    = getPathFromCfg    || (entityKey && REQUIRED_GET_PATH[entityKey]);
+  const removePath = removePathFromCfg || (entityKey && REQUIRED_REMOVE_PATH[entityKey]);
+
+  // Prefill support
   const rawPrefill = useMemo(
     () => safeCfg.initialEntity ?? location.state?.prefill ?? null,
     [safeCfg.initialEntity, location.state]
@@ -132,9 +136,7 @@ export default function EntityDetail({ cfg }) {
   const parsedPrefill = useMemo(() => {
     if (!rawPrefill) return null;
     try {
-      return typeof apiObj.parseEntity === "function"
-        ? apiObj.parseEntity(rawPrefill)
-        : rawPrefill;
+      return typeof apiObj.parseEntity === "function" ? apiObj.parseEntity(rawPrefill) : rawPrefill;
     } catch {
       return rawPrefill;
     }
@@ -146,38 +148,34 @@ export default function EntityDetail({ cfg }) {
   const [entity, setEntity] = useState(parsedPrefill || null);
   const [activeTab, setActiveTab] = useState("information");
 
-  // Related list
   const [relatedRows, setRelatedRows] = useState([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
 
-  // Performance
   const [perfRange, setPerfRange] = useState("30d");
   const [perfLoading, setPerfLoading] = useState(false);
   const [performance, setPerformance] = useState([]);
 
-  // Tasks
   const [tasks, setTasks] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(false);
 
-  // Comments
+  const commCfg = safeCfg?.tabs?.communication || {}; // ✅ declare BEFORE using it anywhere
   const [comments, setComments] = useState([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
 
-  // Documents + per-doc comments
+  const docsCfg = safeCfg?.tabs?.documents || {};
   const [documents, setDocuments] = useState([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [docCommentMap, setDocCommentMap] = useState({});
   const [docCommentLoadingId, setDocCommentLoadingId] = useState(null);
   const [docCommentModal, setDocCommentModal] = useState({ open: false, doc: null });
 
-  // StrictMode guard to avoid double fetch in dev
   const didInitRef = useRef(false);
 
   useEffect(() => {
     if (parsedPrefill) setEntity(parsedPrefill);
   }, [parsedPrefill]);
 
-  /** single-entity loader */
+  /* -------- load main entity -------- */
   const load = useCallback(async () => {
     if (!getPath && typeof apiObj.loader !== "function") {
       if (!entity) setEntity({ [idField]: id, name: "-", status: "active" });
@@ -190,25 +188,22 @@ export default function EntityDetail({ cfg }) {
       if (typeof apiObj.loader === "function") {
         obj = await apiObj.loader(id);
       } else {
-        const { data } = await api.get(getPath(id));
+        const { data } = await api.get(getPath(id), { withCredentials: true });
         const raw = data?.data ?? data ?? {};
         obj = typeof apiObj.parseEntity === "function" ? apiObj.parseEntity(raw) : raw;
       }
       setEntity((prev) => ({ ...(prev || {}), ...(obj || {}) }));
     } catch (err) {
       if (!entity) setEntity({ [idField]: id, name: "-", status: "active" });
-      const status = err?.response?.status;
-      if (status === 404) {
-        messageApi.error("Record not found (404)");
-      } else {
-        messageApi.warning("Could not load details. Showing cached row.");
-      }
+      const s = err?.response?.status;
+      if (s === 404) messageApi.error("Record not found (404)");
+      else messageApi.warning("Could not load details. Showing cached row.");
     } finally {
       setLoading(false);
     }
   }, [id, getPath, apiObj, messageApi, idField, entity]);
 
-  /** related */
+  /* -------- related -------- */
   const loadRelated = useCallback(async () => {
     if (!safeCfg?.tabs?.related?.enabled) return;
     const listFn = safeCfg?.tabs?.related?.listPath || relatedListPath;
@@ -218,7 +213,7 @@ export default function EntityDetail({ cfg }) {
     }
     setRelatedLoading(true);
     try {
-      const { data } = await api.get(listFn(id));
+      const { data } = await api.get(listFn(id), { withCredentials: true });
       const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
       setRelatedRows(list);
     } catch {
@@ -228,13 +223,13 @@ export default function EntityDetail({ cfg }) {
     }
   }, [safeCfg?.tabs?.related, id, relatedListPath]);
 
-  /** performance */
+  /* -------- performance -------- */
   const loadPerformance = useCallback(async () => {
     if (!performancePath) return;
     setPerfLoading(true);
     try {
       const path = typeof performancePath === "function" ? performancePath(id) : performancePath;
-      const { data } = await api.get(path, { params: { range: perfRange } });
+      const { data } = await api.get(path, { params: { range: perfRange }, withCredentials: true });
       const arr = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
       const norm = arr.map((it, i) => ({
         label: it.label ?? it.date ?? it.month ?? `P${i + 1}`,
@@ -248,14 +243,14 @@ export default function EntityDetail({ cfg }) {
     }
   }, [performancePath, id, perfRange]);
 
-  /** tasks */
+  /* -------- tasks (optional cfg) -------- */
   const tasksCfg = safeCfg?.tabs?.tasks || {};
   const loadTasks = useCallback(async () => {
     if (!tasksCfg.enabled) return;
     setTasksLoading(true);
     try {
       if (typeof tasksCfg.listPath === "function") {
-        const { data } = await api.get(tasksCfg.listPath(id));
+        const { data } = await api.get(tasksCfg.listPath(id), { withCredentials: true });
         const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
         setTasks(list);
       } else {
@@ -277,7 +272,7 @@ export default function EntityDetail({ cfg }) {
   const createTask = async (payload) => {
     try {
       if (typeof tasksCfg.createPath === "function") {
-        const { data } = await api.post(tasksCfg.createPath(id), payload);
+        const { data } = await api.post(tasksCfg.createPath(id), payload, { withCredentials: true });
         const created = data?.data ?? data ?? payload;
         setTasks((prev) => [created, ...prev]);
       } else {
@@ -292,7 +287,7 @@ export default function EntityDetail({ cfg }) {
   const updateTask = async (taskId, patch) => {
     try {
       if (typeof tasksCfg.updatePath === "function") {
-        await api.patch(tasksCfg.updatePath(id, taskId), patch);
+        await api.patch(tasksCfg.updatePath(id, taskId), patch, { withCredentials: true });
       }
       setTasks((prev) => prev.map((t) => (String(t.id) === String(taskId) ? { ...t, ...patch } : t)));
     } catch {
@@ -302,7 +297,7 @@ export default function EntityDetail({ cfg }) {
   const deleteTask = async (taskId) => {
     try {
       if (typeof tasksCfg.deletePath === "function") {
-        await api.delete(tasksCfg.deletePath(id, taskId));
+        await api.delete(tasksCfg.deletePath(id, taskId), { withCredentials: true });
       }
       setTasks((prev) => prev.filter((t) => String(t.id) !== String(taskId)));
       messageApi.success("Task deleted");
@@ -311,14 +306,13 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  /** comments (general) */
-  const commCfg = safeCfg?.tabs?.communication || {};
+  /* -------- comments (optional cfg) -------- */
   const loadComments = useCallback(async () => {
     if (!commCfg?.enabled) return;
     setCommentsLoading(true);
     try {
       if (typeof commCfg.listPath === "function") {
-        const { data } = await api.get(commCfg.listPath(id));
+        const { data } = await api.get(commCfg.listPath(id), { withCredentials: true });
         const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
         setComments(list);
       } else {
@@ -334,7 +328,7 @@ export default function EntityDetail({ cfg }) {
   const addComment = async (payload) => {
     try {
       if (typeof commCfg?.createPath === "function") {
-        const { data } = await api.post(commCfg.createPath(id), payload);
+        const { data } = await api.post(commCfg.createPath(id), payload, { withCredentials: true });
         const created = data?.data ?? data ?? payload;
         setComments((prev) => [created, ...prev]);
       } else {
@@ -347,14 +341,13 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  /** documents */
-  const docsCfg = safeCfg?.tabs?.documents || {};
+  /* -------- documents (optional cfg) -------- */
   const loadDocuments = useCallback(async () => {
     if (!docsCfg?.enabled) return;
     setDocsLoading(true);
     try {
       if (typeof docsCfg.listPath === "function") {
-        const { data } = await api.get(docsCfg.listPath(id));
+        const { data } = await api.get(docsCfg.listPath(id), { withCredentials: true });
         const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
         setDocuments(list);
       } else {
@@ -373,7 +366,9 @@ export default function EntityDetail({ cfg }) {
         const form = new FormData();
         form.append("file", fileObj);
         Object.entries(meta || {}).forEach(([k, v]) => form.append(k, v ?? ""));
-        const { data } = await api.post(docsCfg.uploadPath(id), form, { headers: { "Content-Type": "multipart/form-data" } });
+        const { data } = await api.post(docsCfg.uploadPath(id), form, {
+          headers: { "Content-Type": "multipart/form-data" }, withCredentials: true
+        });
         const created = data?.data ?? data ?? { ...meta, title: meta?.title || fileObj?.name, id: `d${id}-${Date.now()}` };
         setDocuments((prev) => [created, ...prev]);
       } else {
@@ -396,7 +391,7 @@ export default function EntityDetail({ cfg }) {
   const deleteDocument = async (docId) => {
     try {
       if (typeof docsCfg?.deletePath === "function") {
-        await api.delete(docsCfg.deletePath(id, docId));
+        await api.delete(docsCfg.deletePath(id, docId), { withCredentials: true });
       }
       setDocuments((prev) => prev.filter((d) => String(d.id) !== String(docId)));
       messageApi.success("Document removed");
@@ -405,13 +400,12 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  // Per-document comments
   const loadDocComments = async (doc) => {
     if (!doc) return;
     setDocCommentLoadingId(doc.id);
     try {
       if (typeof docsCfg?.commentListPath === "function") {
-        const { data } = await api.get(docsCfg.commentListPath(id, doc.id));
+        const { data } = await api.get(docsCfg.commentListPath(id, doc.id), { withCredentials: true });
         const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
         setDocCommentMap((m) => ({ ...m, [doc.id]: list }));
       } else {
@@ -435,7 +429,7 @@ export default function EntityDetail({ cfg }) {
     try {
       let created = { id: `dc-${doc.id}-${Date.now()}`, created_at: new Date().toISOString(), ...payload };
       if (typeof docsCfg?.commentCreatePath === "function") {
-        const { data } = await api.post(docsCfg.commentCreatePath(id, doc.id), payload);
+        const { data } = await api.post(docsCfg.commentCreatePath(id, doc.id), payload, { withCredentials: true });
         created = data?.data ?? data ?? created;
       }
       setDocCommentMap((m) => ({ ...m, [doc.id]: [created, ...(m[doc.id] || [])] }));
@@ -445,7 +439,7 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  // Effects
+  /* -------- effects -------- */
   useEffect(() => {
     if (didInitRef.current) return;
     didInitRef.current = true;
@@ -472,9 +466,10 @@ export default function EntityDetail({ cfg }) {
     if (activeTab === "documents" && docsCfg?.enabled) loadDocuments();
   }, [activeTab, docsCfg?.enabled, loadDocuments]);
 
-  // Actions
+  /* -------- actions -------- */
   const goBack = () => navigate(-1);
-  const goEdit = () => navigate(`${routeBase || location.pathname.replace(/\/[^/]+$/, "")}/${id}/edit`);
+  const goEdit = () =>
+    navigate(`${routeBase || location.pathname.replace(/\/[^/]+$/, "")}/${id}/edit`);
   const onDelete = () => {
     if (!removePath) return;
     Modal.confirm({
@@ -497,7 +492,7 @@ export default function EntityDetail({ cfg }) {
       cancelText: "Cancel",
       onOk: async () => {
         try {
-          await api.delete(removePath(id));
+          await api.delete(removePath(id), { withCredentials: true });
           messageApi.success("Deleted");
           navigate(routeBase || "/");
         } catch {
@@ -510,7 +505,7 @@ export default function EntityDetail({ cfg }) {
     if (!updateStatusPath) return;
     setSaving(true);
     try {
-      await api.patch(updateStatusPath(id), { status: next });
+      await api.patch(updateStatusPath(id), { status: next }, { withCredentials: true });
       messageApi.success(`Status → ${next}`);
       await load();
     } catch {
@@ -551,7 +546,32 @@ export default function EntityDetail({ cfg }) {
     return def.map((c) => ({ ...c }));
   }, [safeCfg.tabs]);
 
-  // Performance card
+  /* -------- responsive actions menu (mobile) -------- */
+  const actionsMenu = {
+    items: [
+      ...(updateStatusPath
+        ? [
+            { key: "activate", label: "Activate" },
+            { key: "suspend", label: "Suspend" },
+            { key: "block", label: "Block", danger: true },
+            { type: "divider" },
+          ]
+        : []),
+      { key: "refresh", label: "Refresh" },
+      { key: "edit", label: "Edit" },
+      ...(removePath ? [{ key: "delete", label: "Delete", danger: true }] : []),
+    ],
+    onClick: async ({ key }) => {
+      if (key === "activate") return setStatus("active");
+      if (key === "suspend") return setStatus("suspended");
+      if (key === "block") return setStatus("disabled");
+      if (key === "refresh") return load();
+      if (key === "edit") return goEdit();
+      if (key === "delete" && removePath) return onDelete();
+    },
+  };
+
+  /* ---------- Cards/Tab Panels ---------- */
   const PerformanceCard = performancePath ? (
     <Card
       className="!rounded-xl"
@@ -595,8 +615,6 @@ export default function EntityDetail({ cfg }) {
       ) : null}
     </Card>
   ) : null;
-
-  /* ---------- Tab Panels ---------- */
 
   const informationTab = (
     <div className="space-y-3">
@@ -659,7 +677,7 @@ export default function EntityDetail({ cfg }) {
         </div>
         <div className="px-3 pb-3">
           <Table
-            columns={relatedColumns}
+            columns={safeCfg.tabs.related.columns || []}
             dataSource={relatedRows}
             loading={relatedLoading}
             rowKey={safeCfg.tabs.related.idField || "id"}
@@ -847,85 +865,130 @@ export default function EntityDetail({ cfg }) {
     if (tasksCfg.enabled) items.push({ key: "tasks", label: tasksCfg.label || "Tasks", children: TasksTab });
     if (docsCfg?.enabled) items.push({ key: "documents", label: docsCfg.label || "Documents", children: DocumentsTab });
     if (commCfg?.enabled) items.push({ key: "communication", label: commCfg.label || "Comments", children: CommunicationTab });
-    if (safeCfg.tabs?.activity?.enabled) items.push({ key: "activity", label: safeCfg.tabs.activity.label || "Activity", children: (
-      <Card className="!rounded-xl" bodyStyle={{ padding: 0 }}>
-        <div className="p-3 flex items-center justify-between">
-          <Text strong>{safeCfg.tabs.activity.label || "Activity"}</Text>
-          <Space>
-            {typeof safeCfg.tabs.activity.toolbar === "function" ? safeCfg.tabs.activity.toolbar(entity) : null}
-            <Button icon={<ReloadOutlined />} onClick={() => { /* let toolbar handle refresh via event */ }} />
-          </Space>
-        </div>
-        <div className="px-3 pb-3">
-          <Table
-            columns={safeCfg.tabs.activity.columns || []}
-            dataSource={[]} // provide your own via cfg if needed
-            pagination={{ pageSize: 10 }}
-            scroll={{ x: 800 }}
-            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={safeCfg.tabs.activity.empty || "No activity."} /> }}
-          />
-        </div>
-      </Card>
-    )});
+    if (safeCfg.tabs?.activity?.enabled) {
+      items.push({
+        key: "activity",
+        label: safeCfg.tabs.activity.label || "Activity",
+        children: (
+          <Card className="!rounded-xl" bodyStyle={{ padding: 0 }}>
+            <div className="p-3 flex items-center justify-between">
+              <Text strong>{safeCfg.tabs.activity.label || "Activity"}</Text>
+              <Space>
+                {typeof safeCfg.tabs.activity.toolbar === "function" ? safeCfg.tabs.activity.toolbar(entity) : null}
+                <Button icon={<ReloadOutlined />} onClick={() => { /* external refresh via toolbar */ }} />
+              </Space>
+            </div>
+            <div className="px-3 pb-3">
+              <Table
+                columns={safeCfg.tabs.activity.columns || []}
+                dataSource={[]} // provide via cfg if needed
+                pagination={{ pageSize: 10 }}
+                scroll={{ x: 800 }}
+                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={safeCfg.tabs.activity.empty || "No activity."} /> }}
+              />
+            </div>
+          </Card>
+        ),
+      });
+    }
     return items;
-  }, [informationTab, relatedTab, billingTab, auditTab, tasksCfg.enabled, docsCfg?.enabled, commCfg?.enabled, safeCfg.tabs]);
+  }, [informationTab, relatedTab, billingTab, auditTab, tasksCfg.enabled, docsCfg?.enabled, commCfg?.enabled, safeCfg.tabs, entity]);
 
+  /* -------- render -------- */
   return (
     <div className="max-w-[1400px] mx-auto px-3 md:px-4">
       {ctx}
 
-      <div className="flex items-center justify-between mb-3">
-        <Space wrap>
-          <Button icon={<ArrowLeftOutlined />} onClick={goBack}>
-            Back
+      {/* Responsive header */}
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <Space wrap className="min-w-0">
+          <Button size={screens.md ? "middle" : "small"} icon={<ArrowLeftOutlined />} onClick={goBack}>
+            <span className="hidden sm:inline">Back</span>
           </Button>
-          {/* Built-in avatar (configurable) */}
+
           {safeCfg?.ui?.showAvatar !== false ? (
-            <Avatar size="large" style={{ backgroundColor: "#1677ff", fontWeight: 600 }}>
+            <Avatar size={screens.md ? "large" : "default"} style={{ backgroundColor: "#1677ff", fontWeight: 600 }}>
               {getInitials(entity) || "•"}
             </Avatar>
           ) : null}
-          <Title level={3} className="!mb-0">
-            {safeCfg.titleSingular || "Detail"} — <span className="font-normal">{titleName}</span>
-          </Title>
-          <span>{statusTag(entity?.status)}</span>
+
+          {/* smaller, friendlier title on mobile */}
+          <div className="min-w-0">
+            <div className="truncate font-semibold text-xl leading-6 md:text-2xl md:leading-7">
+              {safeCfg.titleSingular || "Detail"} — <span className="font-normal">{titleName}</span>
+            </div>
+            <div className="mt-0.5">{statusTag(entity?.status)}</div>
+          </div>
         </Space>
 
-        <Space wrap>
-          {updateStatusPath ? (
-            <>
-              <Button icon={<CheckCircleOutlined />} onClick={() => setStatus("active")} loading={saving}>
-                Activate
-              </Button>
-              <Button icon={<StopOutlined />} onClick={() => setStatus("suspended")} loading={saving}>
-                Suspend
-              </Button>
-              <Button danger icon={<CloseCircleOutlined />} onClick={() => setStatus("disabled")} loading={saving}>
-                Block
-              </Button>
-              <Divider type="vertical" />
-            </>
-          ) : null}
-          <Button icon={<ReloadOutlined />} onClick={load} />
-          <Button type="primary" icon={<EditOutlined />} onClick={goEdit}>
-            Edit
-          </Button>
-          {removePath ? (
-            <Button danger icon={<DeleteOutlined />} onClick={onDelete}>
-              Delete
+        {/* Desktop actions */}
+        {screens.md ? (
+          <Space wrap>
+            {updateStatusPath ? (
+              <>
+                <Button icon={<CheckCircleOutlined />} onClick={() => setStatus("active")} loading={saving}>
+                  Activate
+                </Button>
+                <Button icon={<StopOutlined />} onClick={() => setStatus("suspended")} loading={saving}>
+                  Suspend
+                </Button>
+                <Button danger icon={<CloseCircleOutlined />} onClick={() => setStatus("disabled")} loading={saving}>
+                  Block
+                </Button>
+                <Divider type="vertical" />
+              </>
+            ) : null}
+            <Button icon={<ReloadOutlined />} onClick={load}>
+              Refresh
             </Button>
-          ) : null}
-        </Space>
+            <Button type="primary" icon={<EditOutlined />} onClick={goEdit}>
+              Edit
+            </Button>
+            {removePath ? (
+              <Button danger icon={<DeleteOutlined />} onClick={onDelete}>
+                Delete
+              </Button>
+            ) : null}
+          </Space>
+        ) : (
+          // Mobile: vertical dotted (⋮) menu with all actions
+          <Dropdown menu={actionsMenu} trigger={["click"]} placement="bottomRight">
+            <Button
+              shape="circle"
+              aria-label="More actions"
+              className="!flex !items-center !justify-center"
+              icon={<MoreOutlined className="transform rotate-90" />}
+            />
+          </Dropdown>
+        )}
       </div>
 
-      <Card className="!rounded-2xl" loading={loading}>
-        <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
+      <Card className="!rounded-2xl" loading={loading} bodyStyle={{ padding: screens.md ? 24 : 16 }}>
+        <Tabs
+          size={screens.md ? "large" : "small"}
+          tabBarGutter={screens.md ? 24 : 8}
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={tabItems}
+          className="[&_.ant-tabs-tab-btn]:text-[13px] md:[&_.ant-tabs-tab-btn]:text-[14px]"
+        />
       </Card>
     </div>
   );
 }
 
 /* ---------- Small Forms (Tasks / Comments / Document Upload) ---------- */
+
+function InfoRow({ label, value }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-[220px,1fr] gap-2 items-center">
+      <div className="text-gray-500">{label}</div>
+      <div className="rounded-md border border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-800 px-3 py-2">
+        {Array.isArray(value) ? (value.length ? value.join(", ") : "-") : value ?? "-"}
+      </div>
+    </div>
+  );
+}
 
 function AddTaskForm({ onSubmit }) {
   const [form] = Form.useForm();
@@ -949,12 +1012,12 @@ function AddTaskForm({ onSubmit }) {
         form.resetFields();
       }}
     >
-      <Form.Item name="title" rules={[{ required: true, message: "Enter task title" }]} style={{ minWidth: 260 }}>
+      <Form.Item name="title" rules={[{ required: true, message: "Enter task title" }]} style={{ minWidth: 220 }}>
         <Input placeholder="Task title" />
       </Form.Item>
       <Form.Item name="priority" initialValue="medium">
         <Select
-          style={{ width: 130 }}
+          style={{ width: 120 }}
           options={[
             { value: "low", label: "Low" },
             { value: "medium", label: "Medium" },

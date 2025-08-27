@@ -13,6 +13,12 @@ export default defineConfig(({ mode }) => {
       alias: {
         "@": path.resolve(__dirname, "src"),
       },
+      // Ensure extension-less imports like "@/components/X" resolve to .jsx/.tsx too
+      extensions: [".mjs", ".js", ".ts", ".jsx", ".tsx", ".json"],
+    },
+    define: {
+      // Make VITE_* envs available at build time if you need them in code
+      "import.meta.env.VITE_BACKEND_URL": JSON.stringify(env.VITE_BACKEND_URL || ""),
     },
     server: {
       proxy: {

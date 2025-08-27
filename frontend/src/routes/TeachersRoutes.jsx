@@ -1,8 +1,10 @@
+// src/routes/TeacherRoutes.jsx
 import { Route } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
-import GlobalLayout from "@/components/layouts/GlobalLayout.jsx"; // change path if yours is /layouts/
+import GlobalLayout from "@/components/layouts/GlobalLayout.jsx";
+import { ROLES } from "@/utils/roleMapper"; // make sure TEACHER: 2
 
-// Lightweight placeholders — replace with real pages when ready.
+// Lightweight placeholders — replace with real pages
 const TeacherDashboard = () => (
   <div className="p-4">
     <h2 className="text-lg">Teacher Dashboard</h2>
@@ -36,20 +38,18 @@ const TeacherSettings = () => (
 
 export default function TeacherRoutes() {
   return (
-    <Route
-      path="/teacher"
-      element={
-        <ProtectedRoute allowedRoles={[3]}>
-          <GlobalLayout />
-        </ProtectedRoute>
-      }
-    >
-      <Route index element={<TeacherDashboard />} />
-      <Route path="dashboard" element={<TeacherDashboard />} />
-      <Route path="courses" element={<TeacherCourses />} />
-      <Route path="assignments" element={<TeacherAssignments />} />
-      <Route path="students" element={<TeacherStudents />} />
-      <Route path="settings" element={<TeacherSettings />} />
-    </Route>
+    <>
+      {/* Guard wraps the whole teacher tree */}
+      <Route element={<ProtectedRoute allowedRoles={[ROLES.TEACHER]} />}>
+        <Route path="/teacher" element={<GlobalLayout />}>
+          <Route index element={<TeacherDashboard />} />
+          <Route path="dashboard" element={<TeacherDashboard />} />
+          <Route path="courses" element={<TeacherCourses />} />
+          <Route path="assignments" element={<TeacherAssignments />} />
+          <Route path="students" element={<TeacherStudents />} />
+          <Route path="settings" element={<TeacherSettings />} />
+        </Route>
+      </Route>
+    </>
   );
 }
