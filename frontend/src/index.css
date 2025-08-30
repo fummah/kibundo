@@ -1,8 +1,49 @@
-/* index.css */
+/* Ant Design reset first */
 @import "antd/dist/reset.css";
 
-
-/* Then Tailwind */
+/* Tailwind */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---------- AntD rounding & soft UI ---------- */
+.ant-card { border-radius: 1rem !important; }
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-btn { border-radius: .9rem; }
+.ant-select .ant-select-selector { border-radius: .9rem !important; }
+.ant-modal-content { border-radius: 1rem; }
+
+/* ---------- Responsive helpers ---------- */
+.mobile-only { display: block; }
+.desktop-only { display: none; }
+
+@media (min-width: 700px) {
+  .mobile-only { display: none !important; }
+  .desktop-only { display: block !important; }
+}
+
+/* ---------- Bottom tab bar safe-area ---------- */
+.bottom-tabs {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0) + 0.5rem);
+}
+
+/* ---------- Keep header above modal ---------- */
+.global-header { position: sticky; top: 0; z-index: 3000; }
+
+/* ---------- Add Student modal (shown under header) ---------- */
+.add-student-modal .ant-modal      { top: 4rem !important; }
+.add-student-modal .ant-modal-mask { top: 4rem !important; }
+
+/* Not full height; compact with scroll if needed */
+.add-student-modal .ant-modal-content { 
+  max-height: calc(70vh - 4rem);
+}
+.add-student-modal .ant-modal-body {
+  max-height: calc(70vh - 4rem);
+  overflow-y: auto;
+}
+
+/* Clean hero look for the intro step */
+.add-student-intro .ant-modal-header { display: none; }
+.add-student-intro .ant-modal-body   { padding: 0; } /* edge-to-edge GradientShell */
