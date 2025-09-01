@@ -1,4 +1,5 @@
-// src/routes/AdminRoutes.jsx
+// // src/routes/AdminRoutes.jsx
+import React, { lazy } from "react";
 import { Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import GlobalLayout from "@/components/layouts/GlobalLayout.jsx";
@@ -78,6 +79,9 @@ import TaskForm from "@/pages/admin/tasks/TaskForm.jsx";
 import DatabaseOverview from "@/pages/admin/database/DatabaseOverview.jsx";
 import DatabaseManagement from "@/pages/admin/database/DatabaseManagement.jsx";
 
+/* Analytics: Student Analytics page (lazy) */
+const StudentAnalytics = lazy(() => import("@/pages/admin/analytics/StudentAnalytics.jsx"));
+
 export default function AdminRoutes() {
   return (
     <>
@@ -87,7 +91,13 @@ export default function AdminRoutes() {
           {/* Dashboards */}
           <Route index element={<AdminDashboard />} />
           <Route path="dashboard" element={<AdminDashboard />} />
-          <Route path="analytics" element={<AnalyticsDashboard />} />
+
+          {/* Analytics (nested) */}
+          <Route path="analytics">
+            <Route index element={<AnalyticsDashboard />} />
+            <Route path="students" element={<StudentAnalytics />} />
+          </Route>
+
           <Route path="statistics" element={<StatisticsDashboard />} />
 
           {/* Reports */}
