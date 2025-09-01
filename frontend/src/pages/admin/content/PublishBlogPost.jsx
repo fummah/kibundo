@@ -39,6 +39,9 @@ const { Title } = Typography;
 
 const LS_SHADOW_KEY = "kibundo.blogPost.lastSaved.v1";
 
+// ---------- helpers ----------
+const isNumericId = (v) => /^\d+$/.test(String(v || "").trim());
+
 // Auto-generate slug from title
 const slugify = (s) =>
   (s || "")
@@ -61,6 +64,9 @@ const stripHtml = (html) =>
 
 // -------------------- API Wrappers --------------------
 async function apiFetchOne(id) {
+  // guard against bad IDs
+  if (!id || id === "undefined" || id === "null" || !isNumericId(id)) return null;
+
   try {
     const { data } = await api.get(`/blogpost/${id}`);
     return data?.data ?? data ?? null;
@@ -88,6 +94,7 @@ async function apiCreate(payload) {
 }
 
 async function apiDelete(id) {
+  if (!id || !isNumericId(id)) return true; // nothing to do
   try {
     await api.delete(`/blogpost/${id}`);
     return true;
@@ -188,7 +195,13 @@ export default function PublishBlogPost() {
   const [form] = Form.useForm();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const editingId = params.get("id");
+
+  // sanitize the ?id= param
+  const rawId = params.get("id");
+  const editingId =
+    rawId && rawId !== "undefined" && rawId !== "null" && isNumericId(rawId)
+      ? rawId
+      : null;
 
   const [loading, setLoading] = useState(!!editingId);
   const [saving, setSaving] = useState(false);
@@ -269,17 +282,21 @@ export default function PublishBlogPost() {
     setThumbPreview("");
   };
 
-  // Save or Publish
+  // Save or Publish (returns the saved post)
   const onSave = async (statusOverride) => {
     setSaving(true);
     try {
       const v = await form.validateFields();
       if (!v.body_html || !stripHtml(v.body_html)) {
-        return message.error("Post body cannot be blank");
+        message.error("Post body cannot be blank");
+        return null;
       }
 
       const currentUser = JSON.parse(localStorage.getItem("user"));
-      if (!currentUser?.id) return message.error("No logged-in user found.");
+      if (!currentUser?.id) {
+        message.error("No logged-in user found.");
+        return null;
+      }
 
       let seoJson = {};
       if (v.seo) {
@@ -293,7 +310,8 @@ export default function PublishBlogPost() {
 
       // Default SEO if blank
       if (!seoJson.title) seoJson.title = v.title || "Untitled Post";
-      if (!seoJson.description) seoJson.description = stripHtml(v.body_html).slice(0, 160);
+      if (!seoJson.description)
+        seoJson.description = stripHtml(v.body_html).slice(0, 160);
       // If missing image and we have a thumbnail, set it
       if (!seoJson.image && v.thumbnail_url) {
         seoJson.image = v.thumbnail_url;
@@ -303,7 +321,7 @@ export default function PublishBlogPost() {
       const payload = {
         title: v.title?.trim() || "-",
         slug: v.slug?.trim() || slugify(v.title || ""),
-        body_html: v.body_html,       // Rich text HTML
+        body_html: v.body_html, // Rich text HTML
         body_md: stripHtml(v.body_html),
         audience: v.audience || "parents",
         status: statusOverride || v.status || "draft",
@@ -312,7 +330,7 @@ export default function PublishBlogPost() {
         author_id: currentUser.id,
         created_by: currentUser.email || currentUser.name || "system",
         scheduled_for: v.scheduled_for ? v.scheduled_for.toISOString() : null,
-        thumbnail_url: v.thumbnail_url || "",   // <-- NEW: send to backend
+        thumbnail_url: v.thumbnail_url || "", // <-- NEW: send to backend
         ...(editingId ? { id: Number(editingId) } : {}),
       };
 
@@ -321,10 +339,55 @@ export default function PublishBlogPost() {
         localStorage.setItem(LS_SHADOW_KEY, JSON.stringify(saved));
       } catch {}
 
-      if (!editingId) navigate(`/admin/content/publish?id=${saved.id}`);
+      // If this was a create, navigate to the new ID (only if it's a valid number)
+      if (!editingId) {
+        const newId = Number(saved?.id);
+        if (Number.isFinite(newId)) {
+          navigate(`/admin/content/publish?id=${newId}`);
+        } else {
+          message.warning("Saved, but no valid ID returned from server.");
+        }
+      }
+
       message.success(editingId ? "Post version updated" : "Post created");
+      return saved || null;
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Open preview/public view
+  const openPreviewOrPublic = async () => {
+    const values = form.getFieldsValue(true);
+    const localStatus = values?.status;
+    const localSlug = (values?.slug || "").trim();
+
+    // If we already have an editingId, we can open right away
+    if (editingId) {
+      if (localStatus === "published" && localSlug) {
+        window.open(`/blog/${localSlug}`, "_blank");
+      } else {
+        window.open(`/blog/preview/${editingId}`, "_blank");
+      }
+      return;
+    }
+
+    // Otherwise save first to get an ID, then open
+    const saved = await onSave(); // saves as draft (or current status)
+    if (!saved) return;
+
+    const id = Number(saved?.id);
+    const status = saved?.status || localStatus;
+    const slug = (saved?.slug || localSlug || "").trim();
+
+    if (Number.isFinite(id)) {
+      if (status === "published" && slug) {
+        window.open(`/blog/${slug}`, "_blank");
+      } else {
+        window.open(`/blog/preview/${id}`, "_blank");
+      }
+    } else {
+      message.error("Could not open preview: missing post ID.");
     }
   };
 
@@ -348,6 +411,14 @@ export default function PublishBlogPost() {
         </Space>
         <Space wrap>
           <Button onClick={() => navigate(-1)}>Back</Button>
+
+          {/* Preview (full page) */}
+          <Tooltip title="Open a full-page preview (or public page if published)">
+            <Button icon={<EyeOutlined />} onClick={openPreviewOrPublic}>
+              Preview Post
+            </Button>
+          </Tooltip>
+
           {editingId && (
             <Popconfirm title="Delete this post?" onConfirm={onDelete}>
               <Button danger icon={<DeleteOutlined />}>
@@ -399,10 +470,18 @@ export default function PublishBlogPost() {
                 title="Content"
                 extra={
                   <Space>
-                    <Button size="small" icon={<EyeOutlined />} onClick={() => setPreviewOn(true)}>
+                    <Button
+                      size="small"
+                      icon={<EyeOutlined />}
+                      onClick={() => setPreviewOn(true)}
+                    >
                       Preview
                     </Button>
-                    <Button size="small" icon={<ReloadOutlined />} onClick={() => setPreviewOn(false)}>
+                    <Button
+                      size="small"
+                      icon={<ReloadOutlined />}
+                      onClick={() => setPreviewOn(false)}
+                    >
                       Edit
                     </Button>
                   </Space>
@@ -486,7 +565,10 @@ export default function PublishBlogPost() {
                     label="SEO (JSON)"
                     tooltip='Optional JSON like {"title":"...","description":"...","image":"..."}'
                   >
-                    <Input.TextArea autoSize={{ minRows: 6, maxRows: 16 }} placeholder="{ }" />
+                    <Input.TextArea
+                      autoSize={{ minRows: 6, maxRows: 16 }}
+                      placeholder="{ }"
+                    />
                   </Form.Item>
                   <Form.Item
                     name="scheduled_for"
@@ -511,7 +593,11 @@ export default function PublishBlogPost() {
                   title="Thumbnail (Overview Card)"
                   extra={
                     thumbPreview ? (
-                      <Button type="text" icon={<CloseCircleFilled />} onClick={clearThumbnail}>
+                      <Button
+                        type="text"
+                        icon={<CloseCircleFilled />}
+                        onClick={clearThumbnail}
+                      >
                         Remove
                       </Button>
                     ) : null
@@ -540,7 +626,9 @@ export default function PublishBlogPost() {
                       <UploadOutlined />
                     </p>
                     <p className="ant-upload-text">Click or drag image to upload</p>
-                    <p className="ant-upload-hint">PNG/JPG/WebP. We’ll store the URL in the form.</p>
+                    <p className="ant-upload-hint">
+                      PNG/JPG/WebP. We’ll store the URL in the form.
+                    </p>
                   </Upload.Dragger>
 
                   {thumbPreview ? (

@@ -1,4 +1,4 @@
-// // src/routes/AdminRoutes.jsx
+// src/routes/AdminRoutes.jsx
 import React, { lazy } from "react";
 import { Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
@@ -25,6 +25,7 @@ import Coupons from "@/pages/admin/billing/Coupons.jsx";
 /* Content */
 import ContentOverview from "@/pages/admin/content/ContentOverview.jsx";
 import PublishBlogPost from "@/pages/admin/content/PublishBlogPost.jsx";
+import BlogPostEdit from "@/pages/admin/content/BlogPostEdit.jsx"; // <-- added
 
 /* Newsletter */
 import Newsletter from "@/pages/admin/newsletter/Newsletter.jsx";
@@ -121,9 +122,12 @@ export default function AdminRoutes() {
           {/* Content */}
           <Route path="content">
             <Route index element={<ContentOverview />} />
+            {/* Create / publish page (supports optional ?id for legacy edit) */}
             <Route path="publish" element={<PublishBlogPost />} />
             <Route path="publish/:id" element={<PublishBlogPost />} />
             <Route path="new" element={<PublishBlogPost />} />
+            {/* Dedicated edit page */}
+            <Route path="edit/:id" element={<BlogPostEdit />} />
           </Route>
 
           {/* Newsletter */}

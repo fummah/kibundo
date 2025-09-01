@@ -1,5 +1,4 @@
 // Uses the required backend routes you posted (no REST refactor)
-// import path unchanged
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Card, Typography, Input, Select, Tag, Table, Button, Space,
@@ -47,7 +46,7 @@ const REQUIRED_LIST_PATHS = {
   subjects: "/allsubjects",
   products: "/products",
   subscriptions: "/subscriptions",
-  blogposts: "/blogposts",     // public in your router
+  blogposts: "/blogposts",
   invoices: "/invoices",
   classes: "/allclasses",
 };
@@ -60,28 +59,21 @@ const REQUIRED_REMOVE_PATH = {
   subscriptions: (id) => `/subscription/${id}`,
   blogposts: (id) => `/blogpost/${id}`,
   invoices: (id) => `/invoice/${id}`,
-  // NOTE: students, teachers, classes do NOT have delete routes in your list
+  // students, teachers, classes: no delete routes listed
 };
 
 /**
  * cfg = {
- *  entityKey: "parents"|"students"|"teachers"|"subjects"|"products"|"subscriptions"|"blogposts"|"invoices"|"classes",
- *  titleSingular?: "Parent",
- *  titlePlural: "Parents",
- *  routeBase: "/admin/parents" (frontend route base for view/edit),
- *  idField: "id",
- *  api: {
- *    listPath?,          // optional override; defaults to REQUIRED_LIST_PATHS[entityKey]
- *    removePath?(id)?,   // optional override; defaults to REQUIRED_REMOVE_PATH[entityKey]
- *    updateStatusPath?(id)?, // optional; your backend doesn’t expose this by default
- *    parseList?(raw)
- *  },
- *  statusFilter: true|false,
- *  billingFilter: true|false,
+ *  entityKey: "...",
+ *  titleSingular?, titlePlural, routeBase, idField = "id",
+ *  api: { listPath?, removePath?(id)?, updateStatusPath?(id)?, parseList?(raw) },
+ *  statusFilter?: boolean,
+ *  billingFilter?: boolean,
  *  columnsMap: (navigate, helpers)=> ({ key -> antd column (optional: csv(row)) }),
- *  defaultVisible: [keys],
+ *  defaultVisible: string[],
  *  rowClassName?: (row)=>string,
- *  rowActions?: { extraItems?: [], onClick?: (key,row,ctx)=>void }
+ *  rowActions?: { extraItems?: [], onClick?: (key,row,ctx)=>void },
+ *  pathBuilders?: { view?: (id)=>string, edit?: (id)=>string }
  * }
  */
 export default function EntityList({ cfg }) {
@@ -97,13 +89,18 @@ export default function EntityList({ cfg }) {
     columnsMap,
     defaultVisible,
     rowClassName,
+    pathBuilders = {},
   } = cfg;
 
-  // Lock to your required endpoints by default
+  // Lock to required endpoints by default
   const listPath = apiCfg.listPath || REQUIRED_LIST_PATHS[entityKey] || `/${entityKey}`;
   const removePathBuilder = apiCfg.removePath || REQUIRED_REMOVE_PATH[entityKey] || null;
 
   const navigate = useNavigate();
+
+  // Path helpers (can be overridden per list)
+  const buildViewPath = pathBuilders.view || ((rid) => `${routeBase}/${rid}`);
+  const buildEditPath = pathBuilders.edit || ((rid) => `${routeBase}/${rid}/edit`);
 
   /* --------- persistence keys --------- */
   const COLS_LS_KEY = `${entityKey}.visibleCols.v1`;
@@ -157,7 +154,7 @@ export default function EntityList({ cfg }) {
     return () => clearTimeout(t);
   }, [typedQ]);
 
-  /* persist */
+  /* persist visible columns */
   useEffect(() => {
     try {
       const uniq = Array.from(new Set(visibleCols));
@@ -186,8 +183,7 @@ export default function EntityList({ cfg }) {
     try {
       const effectiveStatus = tab === "active" ? "active" : status;
 
-      // Your current backend doesn't document q/status/billing params,
-      // but keeping them as benign query params (backend can ignore).
+      // benign query params; backend can ignore
       const { data } = await api.get(listPath, {
         params: {
           q,
@@ -234,16 +230,15 @@ export default function EntityList({ cfg }) {
     ALL_COLUMNS_MAP = {};
   }
 
-  // Use the routeBase from props
-  const goToDetail = (rid) => navigate(`${routeBase}/${rid}`);
-  const goToEdit   = (rid) => navigate(`${routeBase}/${rid}/edit`);
+  const goToDetail = (rid) => navigate(buildViewPath(rid));
+  const goToEdit   = (rid) => navigate(buildEditPath(rid));
 
   let columns = [...visibleCols.map((k) => ALL_COLUMNS_MAP[k]).filter(Boolean)];
   if (!columns.length) {
     columns = [{ title: "—", key: "__placeholder__", render: () => "-" }];
   }
 
-  // Actions column (delete only where allowed by your API list)
+  // Actions column (delete only where allowed by your API)
   const canDelete = Boolean(removePathBuilder);
   columns.push({
     title: "",
@@ -285,6 +280,10 @@ export default function EntityList({ cfg }) {
                 },
               });
             }
+
+            if (typeof cfg.rowActions?.onClick === "function") {
+              cfg.rowActions.onClick(key, r, { reload: load, domEvent });
+            }
           },
         }}
       >
@@ -293,7 +292,7 @@ export default function EntityList({ cfg }) {
     ),
   });
 
-  /* bulk actions (status updates are optional; your API doesn't expose them by default) */
+  /* bulk actions (status updates optional; your API doesn't expose them by default) */
   const bulkMenu = {
     items: [
       ...(statusFilter
@@ -339,7 +338,6 @@ export default function EntityList({ cfg }) {
       }
       if (key === "reset") return resetAll();
 
-      // status updates only if cfg provides an updateStatusPath
       if (!selectedRowKeys.length || !apiCfg.updateStatusPath) return;
       const newStatus = key === "reactivate" ? "active" : key === "suspend" ? "suspended" : "disabled";
       try {
@@ -418,7 +416,7 @@ export default function EntityList({ cfg }) {
                 type="primary"
                 shape="circle"
                 icon={<PlusOutlined />}
-                onClick={() => navigate("new")}
+                onClick={() => navigate(`${routeBase}/new`)}
               />
             </Tooltip>
 
@@ -560,7 +558,7 @@ export default function EntityList({ cfg }) {
   );
 }
 
-/* ---------- Common column factories ---------- */
+/* ---------- Common column factories (KEEP EXPORT SHAPE STABLE) ---------- */
 export const columnFactories = {
   status: (dataIndex = "status") => ({
     title: "Status",
@@ -581,7 +579,9 @@ export const columnFactories = {
         type="link"
         className="!px-0"
         onClick={() =>
-          navigateFn ? navigateFn(`${r[idField]}`) : (window.location.href = `${routeBase}/${r[idField]}`)
+          navigateFn
+            ? navigateFn(`${r[idField]}`)
+            : (window.location.href = `${routeBase}/${r[idField]}`)
         }
       >
         {dash(v)}
