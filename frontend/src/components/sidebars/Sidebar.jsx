@@ -204,7 +204,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
       children: [{ href: "/student/home", label: "Home", icon: DashboardOutlined }],
     },
     {
-      label: "Learning",
+      label: "Learnin",
       icon: ReadOutlined,
       children: [
         { href: "/student/learning", label: "Overview", icon: ReadOutlined },
