@@ -207,7 +207,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
       label: "Learning",
       icon: ReadOutlined,
       children: [
-        
+        { href: "/student/learning", label: "Overview", icon: ReadOutlined },
         { href: "/student/learning/subject/math", label: "Math Practice", icon: BookOutlined },
         { href: "/student/learning/subject/science", label: "Science Practice", icon: ExperimentOutlined },
         { href: "/student/learning/subject/tech", label: "Technology Practice", icon: RobotOutlined },
