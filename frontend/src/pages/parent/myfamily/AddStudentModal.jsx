@@ -1,12 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Input, List, Avatar, Button, Tag, Typography, Empty, message } from "antd";
-import { UserOutlined, MailOutlined, NumberOutlined, PlusCircleFilled } from "@ant-design/icons";
+import {
+  Modal,
+  Input,
+  List,
+  Avatar,
+  Button,
+  Tag,
+  Typography,
+  Empty,
+  message,
+} from "antd";
+import {
+  UserOutlined,
+  MailOutlined,
+  NumberOutlined,
+  PlusCircleFilled,
+} from "@ant-design/icons";
 import dino from "@/assets/onboarding-dino.png";
 
 const { Text } = Typography;
 
 /** Persist linked student ids for the mock flow */
 const LS_KEY = "kib_parent_family_student_ids";
+
+/** 🔒 Spec gate: Parent v1 must NOT use ID/email search (B2B later) */
+const ALLOW_B2B_ID_SEARCH = false;
 
 /** Dummy pool (some already linked elsewhere and should be hidden) */
 export const DUMMY_STUDENTS = [
@@ -106,30 +124,32 @@ export default function AddStudentModal({ open, onClose, onSuccess }) {
       .map((x) => x.s);
 
     if (!ranked.length && isNumericId) {
-      const linked = DUMMY_STUDENTS.find((s) => String(s.student_id) === digits && (s.isLinked || linkedSet.has(Number(s.student_id))));
+      const linked = DUMMY_STUDENTS.find(
+        (s) =>
+          String(s.student_id) === digits &&
+          (s.isLinked || linkedSet.has(Number(s.student_id)))
+      );
       if (linked) setAlreadyLinkedMsg("This student is already linked to a family.");
     }
     return ranked.slice(0, 8);
   };
 
-  // Debounced typeahead
+  // Debounced typeahead (only used if search is enabled later)
   useEffect(() => {
+    if (!ALLOW_B2B_ID_SEARCH) return;
     const id = setTimeout(() => {
       if (!open) return;
       setResults(computeResults(q));
     }, 220);
     return () => clearTimeout(id);
-  }, [q, open, pool]); // re-compute if pool changes
+  }, [q, open, pool]);
 
   const linkAndClose = async (student_id) => {
     try {
       setSubmittingId(student_id);
       await new Promise((r) => setTimeout(r, 250)); // simulate API
-
-      // Persist in localStorage so refresh keeps the state
-      addLinked(student_id);
+      addLinked(student_id); // persist in localStorage to keep state
       setLinkedSet(getLinkedSet());
-
       message.success("Student added to your family.");
       onSuccess?.({ student_id });
       onClose?.();
@@ -142,11 +162,10 @@ export default function AddStudentModal({ open, onClose, onSuccess }) {
     <div className="rounded-2xl bg-gradient-to-b from-[#FAD6C7] via-[#F2E6D7] to-[#D3ECDC] p-4 text-center">
       <div className="text-lg font-extrabold text-neutral-800">Let’s get started</div>
       <img src={dino} alt="Mascot" className="w-40 h-40 object-contain mx-auto my-3 drop-shadow" />
-      <div className="text-xl font-extrabold text-lime-700">Add another child</div>
+      <div className="text-xl font-extrabold text-lime-700">Add another student</div>
       <p className="text-sm text-neutral-700 mt-1">
-        You can add multiple child accounts, and add more later anytime.
+        You can add multiple student accounts, and add more later anytime.
       </p>
-
       <div className="mt-4 flex flex-col gap-2">
         <Button
           type="primary"
@@ -155,7 +174,7 @@ export default function AddStudentModal({ open, onClose, onSuccess }) {
           onClick={() => setStep("search")}
           icon={<PlusCircleFilled />}
         >
-          Add child
+          Add student
         </Button>
         <Button size="large" className="rounded-xl" onClick={onClose}>
           Skip
@@ -164,7 +183,27 @@ export default function AddStudentModal({ open, onClose, onSuccess }) {
     </div>
   );
 
-  const SearchPanel = () => (
+  const DisabledSearchPanel = () => (
+    <div className="p-3 rounded-xl bg-neutral-50 border">
+      <Text strong>Adding students in this version</Text>
+      <p className="m-0 text-sm text-neutral-700">
+        Direct Student ID / Email search is disabled for Parent accounts in this release.
+        Please ask your student’s teacher/school to send you an invite link, or contact support.
+      </p>
+      <div className="mt-3 flex flex-col md:flex-row gap-6 text-sm">
+        <div>
+          <div className="font-semibold">Invite from school</div>
+          <div>Use the invite link you receive to link your student.</div>
+        </div>
+        <div>
+          <div className="font-semibold">Need help?</div>
+          <Button size="small" onClick={onClose}>Open Support</Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const EnabledSearchPanel = () => (
     <div className="space-y-3">
       <Input
         placeholder="Search by Student ID or Email"
@@ -226,6 +265,9 @@ export default function AddStudentModal({ open, onClose, onSuccess }) {
     </div>
   );
 
+  const SearchPanel = () =>
+    ALLOW_B2B_ID_SEARCH ? <EnabledSearchPanel /> : <DisabledSearchPanel />;
+
   return (
     <Modal
       open={open}
@@ -236,7 +278,13 @@ export default function AddStudentModal({ open, onClose, onSuccess }) {
       destroyOnClose
       maskClosable={false}
       rootClassName={`add-student-modal ${isMobile && step === "intro" ? "add-student-intro" : ""}`}
-      footer={step === "search" ? <div className="flex justify-end gap-2"><Button onClick={onClose}>Cancel</Button></div> : null}
+      footer={
+        step === "search" ? (
+          <div className="flex justify-end gap-2">
+            <Button onClick={onClose}>Close</Button>
+          </div>
+        ) : null
+      }
     >
       {isMobile && step === "intro" ? <IntroPanel /> : <SearchPanel />}
     </Modal>

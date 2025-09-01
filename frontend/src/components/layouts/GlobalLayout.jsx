@@ -7,11 +7,22 @@ import Sidebar from "@/components/sidebars/Sidebar.jsx";
 import GlobalNavBar from "@/components/layouts/GlobalNavBar.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import GradientShell from "@/components/GradientShell.jsx";
+import GlobalFocusTimer from "@/components/student/GlobalFocusTimer.jsx";
+import { ROLES } from "@/utils/roleMapper";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ErrorBoundary from "@/components/ErrorBoundary.jsx";
 
 const { Content } = Layout;
+
+/* ---------------- Student desktop background ---------------- */
+const DESKTOP_BG = {
+  background: `
+    radial-gradient(1000px 500px at -10% -10%, #eaf5ff 0%, rgba(234,245,255,0) 60%),
+    radial-gradient(1000px 500px at 110% -10%, #fff0e2 0%, rgba(255,240,226,0) 60%),
+    linear-gradient(180deg, #f6f9ff 0%, #ffffff 35%, #fff7ef 100%)
+  `,
+};
 
 /* ---------------- Topbar Context ---------------- */
 const TopbarContext = createContext(null);
@@ -32,6 +43,7 @@ export default function GlobalLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
+  // close mobile menu on route change & Escape
   useEffect(() => setMenuOpen(false), [location.pathname]);
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && setMenuOpen(false);
@@ -69,6 +81,9 @@ export default function GlobalLayout() {
   const contentMarginClass =
     isAuthenticated ? (collapsed ? "md:ml-20" : "md:ml-64") : "";
 
+  const isStudentRoute = location.pathname.startsWith("/student");
+  const isStudent = roleId === ROLES.STUDENT || isStudentRoute;
+
   /* ---------------- Shared inner layout ---------------- */
   const InnerLayout = (
     <>
@@ -95,12 +110,22 @@ export default function GlobalLayout() {
           />
         )}
 
+        {/* Main content area */}
         <div
           className={[
-            "flex-1 flex min-h-0 flex-col dark:text-white dark:bg-gray-900 overflow-hidden",
+            "relative flex-1 flex min-h-0 flex-col dark:text-white dark:bg-gray-900 overflow-hidden",
             contentMarginClass,
           ].join(" ")}
         >
+          {/* Student-only desktop background layer */}
+          {isStudent && (
+            <div
+              className="hidden md:block absolute inset-0 -z-10"
+              style={DESKTOP_BG}
+              aria-hidden
+            />
+          )}
+
           <Content className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4">
             <React.Suspense
               fallback={
@@ -111,6 +136,9 @@ export default function GlobalLayout() {
             >
               <Outlet />
             </React.Suspense>
+
+            {/* Global focus timer chip — student only, floats across pages */}
+            {isStudent && <GlobalFocusTimer />}
           </Content>
         </div>
       </div>
@@ -121,14 +149,14 @@ export default function GlobalLayout() {
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
         <TopbarContext.Provider value={topbarCtx}>
-          {/* ✅ Mobile (< md): wrap in GradientShell */}
+          {/* Mobile (< md): wrap in GradientShell */}
           <div className="md:hidden min-h-screen flex flex-col">
             <GradientShell className="flex flex-col min-h-screen">
               {InnerLayout}
             </GradientShell>
           </div>
 
-          {/* ✅ Desktop (>= md): plain layout */}
+          {/* Desktop (>= md): plain layout (with conditional student bg) */}
           <div className="hidden md:flex min-h-screen flex-col">
             {InnerLayout}
           </div>

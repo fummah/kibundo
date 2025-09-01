@@ -1,7 +1,6 @@
-// src/pages/student/learning/SubjectPractice.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Card, Typography, Segmented, Tag, Button, Empty, message } from "antd";
+import { Card, Typography, Tag, Button, Empty, message, Row, Col, Space } from "antd";
 import { ArrowLeft } from "lucide-react";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
@@ -9,26 +8,10 @@ import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
 
 const { Title, Text } = Typography;
 
-const LS_KEY = "student_learning_prefs_v1"; // { [subject]: { topic, difficulty } }
-const loadPrefs = () => {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-};
-const savePrefs = (prefs) => {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify(prefs));
-  } catch {}
-};
-
-// ✅ Dummy hero fallback (classroom vibe)
 const DUMMY_HERO =
   "https://images.unsplash.com/photo-1544717305-996b815c338c?auto=format&fit=crop&w=1200&q=80";
 
-// -------------------- Subject metadata + images --------------------
+/* ---------- Subject meta ---------- */
 const SUBJECT_META = {
   math: {
     title: "Math",
@@ -61,7 +44,7 @@ const SUBJECT_META = {
 };
 const SUBJECT_KEYS = Object.keys(SUBJECT_META);
 
-// ------------------------- Dummy practice bank -------------------------
+/* ---------- Dummy practice bank ---------- */
 const PRACTICE_BANK = {
   math: [
     { topic: "Addition", level: "Easy", est: 5, title: "Add to 20", desc: "Warm-up sums with number lines." },
@@ -105,9 +88,8 @@ function TopicChip({ label, active, onClick }) {
     <button
       onClick={onClick}
       className={`px-3 py-1.5 rounded-full text-sm transition border ${
-        active
-          ? "bg-indigo-600 text-white border-indigo-600"
-          : "bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50"
+        active ? "bg-indigo-600 text-white border-indigo-600"
+               : "bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50"
       }`}
     >
       {label}
@@ -123,18 +105,14 @@ function PracticeCard({ item, color = "indigo", onStart }) {
           <div className="text-sm text-neutral-500">
             {item.topic} • {item.level}
           </div>
-          <Title level={5} className="!mt-1 !mb-1">
-            {item.title}
-          </Title>
+          <Title level={5} className="!mt-1 !mb-1">{item.title}</Title>
           <Text type="secondary">{item.desc}</Text>
           <div className="mt-2 flex items-center gap-2">
             <Tag color="blue">{item.est} min</Tag>
             <Tag color="gold">⭐ Good practice</Tag>
           </div>
         </div>
-        <Button type="primary" onClick={onStart} className="rounded-xl">
-          Start
-        </Button>
+        <Button type="primary" onClick={onStart} className="rounded-xl">Start</Button>
       </div>
     </Card>
   );
@@ -163,14 +141,20 @@ function SubjectTile({ code, active, onClick }) {
   );
 }
 
+const LS_KEY = "student_learning_prefs_v1";
+const loadPrefs = () => {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); } catch { return {}; }
+};
+const savePrefs = (prefs) => {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(prefs)); } catch {}
+};
+
 export default function SubjectPractice() {
   const navigate = useNavigate();
   const { subject: paramSubject } = useParams();
   const { state } = useStudentApp();
   const { user } = useAuthContext();
 
-  // Validate subject; default to math if invalid
-  const SUBJECT_KEYS = Object.keys(SUBJECT_META);
   const subject = SUBJECT_KEYS.includes(paramSubject || "") ? paramSubject : "math";
   const meta = SUBJECT_META[subject];
   const color = meta.color;
@@ -184,8 +168,8 @@ export default function SubjectPractice() {
     return fromProfile || fromUser || "Student";
   }, [state?.profile?.name, user]);
 
-  // --- Restore persisted prefs (topic + difficulty) ---
-  const [difficulty, setDifficulty] = useState("Easy");
+  // prefs
+  const [difficulty, setDifficulty] = useState("Easy"); // keep difficulty (you can remove if desired)
   const [topic, setTopic] = useState(meta.topics?.[0] || "");
 
   useEffect(() => {
@@ -198,7 +182,6 @@ export default function SubjectPractice() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subject]);
 
-  // --- Persist on change ---
   useEffect(() => {
     const prefs = loadPrefs();
     prefs[subject] = { topic, difficulty };
@@ -206,16 +189,15 @@ export default function SubjectPractice() {
   }, [subject, topic, difficulty]);
 
   const bank = PRACTICE_BANK[subject] || [];
-  const filtered = bank.filter(
-    (it) => (!topic || it.topic === topic) && (!difficulty || it.level === difficulty)
-  );
+  const filtered = bank.filter((it) => (!topic || it.topic === topic) && (!difficulty || it.level === difficulty));
 
   const startPractice = (it) => {
     message.success(`Starting: ${it.title}`);
+    // navigate(`/student/learning/practice/start?subject=${subject}&topic=${it.topic}&level=${it.level}`);
   };
 
   return (
-    <div className="px-3 md:px-6 py-4">
+    <div className="px-3 md:px-6 py-4 mx-auto w-full max-w-6xl">
       {/* Back + Title */}
       <div className="flex items-center gap-2 mb-3">
         <button
@@ -237,21 +219,22 @@ export default function SubjectPractice() {
         </div>
       </div>
 
-      {/* Subject switcher (landing) */}
+      {/* Subject switcher */}
       <Card className="rounded-2xl border-0 shadow-sm mb-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {Object.keys(SUBJECT_META).map((code) => (
-            <SubjectTile
-              key={code}
-              code={code}
-              active={code === subject}
-              onClick={() => navigate(`/student/learning/subject/${code}`)}
-            />
+        <Row gutter={[12, 12]} align="middle">
+          {SUBJECT_KEYS.map((code) => (
+            <Col key={code} xs={12} md={6}>
+              <SubjectTile
+                code={code}
+                active={code === subject}
+                onClick={() => navigate(`/student/learning/subject/${code}`)}
+              />
+            </Col>
           ))}
-        </div>
+        </Row>
       </Card>
 
-      {/* Hero — mobile only */}
+      {/* Hero (mobile only) */}
       <div className="rounded-2xl overflow-hidden mb-4 md:hidden">
         <img
           src={meta.hero || DUMMY_HERO}
@@ -259,7 +242,7 @@ export default function SubjectPractice() {
           className="w-full h-40 object-cover"
           loading="eager"
           onError={(e) => {
-            e.currentTarget.onerror = null; // prevent loop
+            e.currentTarget.onerror = null;
             e.currentTarget.src = DUMMY_HERO;
           }}
         />
@@ -267,26 +250,30 @@ export default function SubjectPractice() {
 
       {/* Controls */}
       <Card className="rounded-2xl border-0 shadow-sm mb-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="flex flex-col gap-3">
           {/* Topics */}
           <div className="flex flex-wrap gap-2">
             {(meta.topics || []).map((t) => (
-              <TopicChip
-                key={t}
-                label={t}
-                active={t === topic}
-                onClick={() => setTopic(t)}
-              />
+              <TopicChip key={t} label={t} active={t === topic} onClick={() => setTopic(t)} />
             ))}
           </div>
 
-          {/* Difficulty */}
-          <div className="shrink-0">
-            <Segmented
-              value={difficulty}
-              onChange={(v) => setDifficulty(v)}
-              options={["Easy", "Medium", "Hard"]}
-            />
+          {/* (Optional) Difficulty — keep or remove as you wish */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Text type="secondary">Difficulty:</Text>
+            <Space wrap>
+              {["Easy", "Medium", "Hard"].map((lvl) => (
+                <Button
+                  key={lvl}
+                  size="small"
+                  type={difficulty === lvl ? "primary" : "default"}
+                  onClick={() => setDifficulty(lvl)}
+                  className="rounded-full"
+                >
+                  {lvl}
+                </Button>
+              ))}
+            </Space>
           </div>
         </div>
       </Card>
@@ -298,16 +285,13 @@ export default function SubjectPractice() {
           className="bg-white rounded-2xl border"
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Row gutter={[12, 12]}>
           {filtered.map((it, i) => (
-            <PracticeCard
-              key={`${it.title}-${i}`}
-              item={it}
-              color={color}
-              onStart={() => startPractice(it)}
-            />
+            <Col key={`${it.title}-${i}`} xs={24} md={12}>
+              <PracticeCard item={it} color={color} onStart={() => startPractice(it)} />
+            </Col>
           ))}
-        </div>
+        </Row>
       )}
     </div>
   );

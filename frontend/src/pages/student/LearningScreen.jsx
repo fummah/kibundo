@@ -1,5 +1,5 @@
 // src/pages/student/HomeScreen.jsx
-import { Typography, Card } from "antd";
+import { Typography, Card, Row, Col } from "antd";
 import { useNavigate } from "react-router-dom";
 import {
   BookOutlined,
@@ -27,14 +27,17 @@ const IMGS = {
   map:
     "https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=800&q=80",
 };
+const FALLBACK =
+  "https://via.placeholder.com/800x320.png?text=Kibundo";
 
 /* ------------------------ MOBILE image tile ------------------------ */
 function ImageTile({ img, title, onClick, cream = false }) {
   return (
     <button
       onClick={onClick}
-      className="block text-left rounded-2xl overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 active:scale-[0.98] transition"
+      className="block text-left rounded-2xl overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 active:scale-[0.98] transition w-full"
       aria-label={title}
+      type="button"
     >
       <Card
         hoverable
@@ -46,6 +49,10 @@ function ImageTile({ img, title, onClick, cream = false }) {
             alt={title}
             className="w-full h-28 object-cover"
             loading="eager"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = FALLBACK;
+            }}
           />
         }
       >
@@ -111,6 +118,7 @@ export default function HomeScreen() {
           className="p-2 rounded-full hover:bg-neutral-100 active:scale-95"
           onClick={() => navigate(-1)}
           aria-label="Back"
+          type="button"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -134,64 +142,82 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      {/* MOBILE: image tiles */}
-      <div className="grid grid-cols-2 gap-3 md:hidden">
-        <ImageTile
-          img={IMGS.homework}
-          title="Homework"
-          onClick={() => navigate("/student/homework")}
-        />
-       <ImageTile
-  img={IMGS.practice}
-  title="Subjects & Practice"
-  cream
-  onClick={() => navigate("/student/learning/subject/math")}
-/>
-
-        <ImageTile
-          img={IMGS.reading}
-          title="Reading"
-          onClick={() => navigate("/student/reading")}
-        />
-        <ImageTile
-          img={IMGS.map}
-          title="Treasure Map"
-          cream
-          onClick={() => navigate("/student/map")}
-        />
+      {/* MOBILE: image tiles (Row/Col for consistent gutters) */}
+      <div className="md:hidden">
+        <Row gutter={[12, 12]}>
+          <Col span={12}>
+            <ImageTile
+              img={IMGS.homework}
+              title="Homework"
+              onClick={() => navigate("/student/homework")}
+            />
+          </Col>
+          <Col span={12}>
+            <ImageTile
+              img={IMGS.practice}
+              title="Subjects & Practice"
+              cream
+              onClick={() => navigate("/student/learning/subject/math")}
+            />
+          </Col>
+          <Col span={12}>
+            <ImageTile
+              img={IMGS.reading}
+              title="Reading"
+              onClick={() => navigate("/student/reading")}
+            />
+          </Col>
+          <Col span={12}>
+            <ImageTile
+              img={IMGS.map}
+              title="Treasure Map"
+              cream
+              onClick={() => navigate("/student/map")}
+            />
+          </Col>
+        </Row>
       </div>
 
       {/* DESKTOP: icon cards (no images) */}
-      <div className="hidden md:grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <IconTile
-          icon={<FileSearchOutlined />}
-          title="Homework"
-          subtitle="Scan worksheet, get help"
-          tone="orange"
-          onClick={() => navigate("/student/homework")}
-        />
-        <IconTile
-          icon={<ReadOutlined />}
-          title="Reading"
-          subtitle="Read aloud, AI text, quiz"
-          tone="sky"
-          onClick={() => navigate("/student/reading")}
-        />
-       <IconTile
-  icon={<BookOutlined />}
-  title="Subjects & Practice"
-  subtitle="Pick a subject and practice"
-  tone="emerald"
-  onClick={() => navigate("/student/learning/subject/math")}
-/>
-
-        <IconTile
-          icon={<ProjectOutlined />}
-          title="Treasure Map"
-          subtitle="See your progress"
-          tone="indigo"
-          onClick={() => navigate("/student/map")}
-        />
+      <div className="hidden md:block">
+        <Row gutter={[16, 16]}>
+          <Col xs={24} md={12} lg={6}>
+            <IconTile
+              icon={<FileSearchOutlined />}
+              title="Homework"
+              subtitle="Scan worksheet, get help"
+              tone="orange"
+              onClick={() => navigate("/student/homework")}
+            />
+          </Col>
+          <Col xs={24} md={12} lg={6}>
+            <IconTile
+              icon={<ReadOutlined />}
+              title="Reading"
+              subtitle="Read aloud, AI text, quiz"
+              tone="sky"
+              onClick={() => navigate("/student/reading")}
+            />
+          </Col>
+          <Col xs={24} md={12} lg={6}>
+            <IconTile
+              icon={<BookOutlined />}
+              title="Subjects & Practice"
+              subtitle="Pick a subject and practice"
+              tone="emerald"
+              onClick={() => navigate("/student/learning/subject/math")}
+            />
+          </Col>
+          <Col xs={24} md={12} lg={6}>
+            <IconTile
+              icon={<ProjectOutlined />}
+              title="Treasure Map"
+              subtitle="See your progress"
+              tone="indigo"
+              onClick={() => navigate("/student/map")}
+            />
+          </Col>
+        </Row>
       </div>
 
       {/* Chat helper */}

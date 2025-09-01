@@ -1,11 +1,5 @@
 import { Link } from "react-router-dom";
-import {
-  HomeOutlined,
-  PlusCircleOutlined,
-  ReadOutlined,
-  MessageOutlined,
-  SettingOutlined,
-} from "@ant-design/icons";
+import { HomeOutlined, PlusCircleOutlined, ReadOutlined, MessageOutlined, SettingOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
 export default function BottomTabBar({
@@ -18,10 +12,8 @@ export default function BottomTabBar({
   },
 }) {
   const { t } = useTranslation();
-  const base =
-    "flex flex-col items-center justify-center gap-1 flex-1 py-2 text-[12px] font-semibold";
+  const base = "flex flex-col items-center justify-center gap-1 flex-1 py-2 text-[12px] font-semibold";
   const item = "text-lime-900/90 hover:text-lime-950 transition-colors";
-
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-lime-400/90 backdrop-blur border-t border-lime-500/30 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] bottom-tabs">
       <div className="mx-auto max-w-[720px] px-2 flex">

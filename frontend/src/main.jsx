@@ -1,4 +1,3 @@
-// src/main.jsx or src/index.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
@@ -15,7 +14,10 @@ import "antd/dist/reset.css";
 import "./index.css";
 
 import App from "./App";
-import ErrorBoundary from "./components/ErrorBoundary.jsx"; // ⬅️ add this file in step 2
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
+
+// 🌍 i18n
+import "./i18n"; // <-- 👈 add this line to initialize translations
 
 // 🌙 Dark mode persistence
 const theme = localStorage.getItem("theme");
