@@ -115,11 +115,8 @@ export default function AdminDashboard() {
     const deltas = o?.deltas || {};
     const counts = data?.counts || {};
 
-    // Resolve parts first
     const parents = (o.parents ?? counts.parents ?? FALLBACK.parents) || 0;
     const students = (o.students ?? counts.students ?? FALLBACK.students) || 0;
-
-    // Force totalUsers to be sum of parts
     const totalUsers = parents + students;
 
     return {
@@ -135,18 +132,19 @@ export default function AdminDashboard() {
     };
   }, [data]);
 
+  // ✅ AntD v5: use styles={{ body: {...} }} instead of bodyStyle
   const featureCardProps = {
     hoverable: true,
     className:
       "rounded-xl shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-[2px] cursor-pointer flex-1",
-    bodyStyle: { minHeight: 170, display: "flex", alignItems: "center" },
+    styles: { body: { minHeight: 170, display: "flex", alignItems: "center" } },
   };
 
   const kpiCardProps = {
     hoverable: true,
     className:
       "rounded-xl text-white transition-transform duration-200 hover:scale-[1.02] flex-1",
-    bodyStyle: { minHeight: 120, display: "flex", alignItems: "center" },
+    styles: { body: { minHeight: 120, display: "flex", alignItems: "center" } },
   };
 
   const features = [

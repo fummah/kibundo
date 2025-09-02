@@ -1,5 +1,5 @@
 // src/pages/content/PublishBlogPost.jsx
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, forwardRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Card,
@@ -32,7 +32,7 @@ import {
 import dayjs from "dayjs";
 import api from "@/api/axios";
 
-import ReactQuill from "react-quill";
+import ReactQuill from "react-quill";           // ✅ ReactQuill v2
 import "react-quill/dist/quill.snow.css";
 
 const { Title } = Typography;
@@ -64,7 +64,6 @@ const stripHtml = (html) =>
 
 // -------------------- API Wrappers --------------------
 async function apiFetchOne(id) {
-  // guard against bad IDs
   if (!id || id === "undefined" || id === "null" || !isNumericId(id)) return null;
 
   try {
@@ -94,7 +93,7 @@ async function apiCreate(payload) {
 }
 
 async function apiDelete(id) {
-  if (!id || !isNumericId(id)) return true; // nothing to do
+  if (!id || !isNumericId(id)) return true;
   try {
     await api.delete(`/blogpost/${id}`);
     return true;
@@ -109,9 +108,23 @@ async function apiDelete(id) {
   }
 }
 
-/** ---- Tiny wrapper to make ReactQuill play nicely with AntD Form ---- */
-function RichTextArea({ value, onChange, onImageUpload }) {
+/** ---- ReactQuill v2 wrapper (no findDOMNode) ---- */
+const RichTextArea = forwardRef(function RichTextArea(
+  { value, onChange, onImageUpload, placeholder = "Write something..." },
+  ref
+) {
   const quillRef = useRef(null);
+
+  // expose the editor to parent if needed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!ref) return;
+    if (typeof ref === "function") {
+      ref(quillRef.current);
+    } else {
+      ref.current = quillRef.current;
+    }
+  }, [ref]);
 
   const handleImage = () => {
     if (!onImageUpload) return;
@@ -121,7 +134,7 @@ function RichTextArea({ value, onChange, onImageUpload }) {
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
-      const quill = quillRef.current?.getEditor();
+      const quill = quillRef.current?.getEditor?.();
       const range = quill?.getSelection(true);
       try {
         const url = await onImageUpload(file); // must return a URL
@@ -175,12 +188,13 @@ function RichTextArea({ value, onChange, onImageUpload }) {
   return (
     <div className="antd-quill">
       <ReactQuill
-        ref={quillRef}
+        ref={quillRef}              // ✅ real ref directly to the component
         theme="snow"
-        value={value}
+        value={value || ""}
         onChange={(html) => onChange?.(html)}
         modules={modules}
         formats={formats}
+        placeholder={placeholder}
       />
       <style>{`
         .antd-quill .ql-container { min-height: 260px; }
@@ -188,7 +202,7 @@ function RichTextArea({ value, onChange, onImageUpload }) {
       `}</style>
     </div>
   );
-}
+});
 
 // -------------------- Component --------------------
 export default function PublishBlogPost() {
@@ -196,7 +210,6 @@ export default function PublishBlogPost() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
-  // sanitize the ?id= param
   const rawId = params.get("id");
   const editingId =
     rawId && rawId !== "undefined" && rawId !== "null" && isNumericId(rawId)
@@ -213,7 +226,6 @@ export default function PublishBlogPost() {
   const watchBodyHtml = Form.useWatch("body_html", form);
   const watchThumb = Form.useWatch("thumbnail_url", form);
 
-  // Keep local preview in sync (URL input or upload)
   useEffect(() => {
     setThumbPreview(watchThumb || "");
   }, [watchThumb]);
@@ -244,37 +256,29 @@ export default function PublishBlogPost() {
           seo: JSON.stringify(post.seo || {}, null, 2),
           scheduled_for: post.scheduled_for ? dayjs(post.scheduled_for) : null,
           published_at: post.published_at ? dayjs(post.published_at) : null,
-          // NEW: thumbnail field
           thumbnail_url: post.thumbnail_url || post.thumbnail || "",
         });
       }
       setLoading(false);
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [editingId, form]);
 
-  // Live Preview uses HTML directly
   const htmlPreview = useMemo(() => watchBodyHtml || "", [watchBodyHtml]);
 
-  // Simple example uploader for images inside rich editor (replace with your API)
+  // Editor image upload (replace with real API)
   const uploadImage = async (file) => {
-    // const fd = new FormData(); fd.append("file", file);
-    // const { data } = await api.post("/upload", fd);
-    // return data.url;
     await new Promise((r) => setTimeout(r, 300));
-    return URL.createObjectURL(file); // preview URL; replace in production
+    return URL.createObjectURL(file);
   };
 
   // Thumbnail uploader
   const handleThumbBeforeUpload = async (file) => {
-    // Replace with real upload API; set returned URL to the form field
     const url = URL.createObjectURL(file);
     form.setFieldsValue({ thumbnail_url: url });
     setThumbPreview(url);
     message.success(`Thumbnail loaded: ${file.name}`);
-    return false; // prevent auto upload
+    return false;
   };
 
   const clearThumbnail = () => {
@@ -282,7 +286,7 @@ export default function PublishBlogPost() {
     setThumbPreview("");
   };
 
-  // Save or Publish (returns the saved post)
+  // Save / Publish
   const onSave = async (statusOverride) => {
     setSaving(true);
     try {
@@ -308,11 +312,8 @@ export default function PublishBlogPost() {
         }
       }
 
-      // Default SEO if blank
       if (!seoJson.title) seoJson.title = v.title || "Untitled Post";
-      if (!seoJson.description)
-        seoJson.description = stripHtml(v.body_html).slice(0, 160);
-      // If missing image and we have a thumbnail, set it
+      if (!seoJson.description) seoJson.description = stripHtml(v.body_html).slice(0, 160);
       if (!seoJson.image && v.thumbnail_url) {
         seoJson.image = v.thumbnail_url;
         seoJson["og:image"] = v.thumbnail_url;
@@ -321,7 +322,7 @@ export default function PublishBlogPost() {
       const payload = {
         title: v.title?.trim() || "-",
         slug: v.slug?.trim() || slugify(v.title || ""),
-        body_html: v.body_html, // Rich text HTML
+        body_html: v.body_html,
         body_md: stripHtml(v.body_html),
         audience: v.audience || "parents",
         status: statusOverride || v.status || "draft",
@@ -330,16 +331,13 @@ export default function PublishBlogPost() {
         author_id: currentUser.id,
         created_by: currentUser.email || currentUser.name || "system",
         scheduled_for: v.scheduled_for ? v.scheduled_for.toISOString() : null,
-        thumbnail_url: v.thumbnail_url || "", // <-- NEW: send to backend
+        thumbnail_url: v.thumbnail_url || "",
         ...(editingId ? { id: Number(editingId) } : {}),
       };
 
       const saved = await apiCreate(payload);
-      try {
-        localStorage.setItem(LS_SHADOW_KEY, JSON.stringify(saved));
-      } catch {}
+      try { localStorage.setItem(LS_SHADOW_KEY, JSON.stringify(saved)); } catch {}
 
-      // If this was a create, navigate to the new ID (only if it's a valid number)
       if (!editingId) {
         const newId = Number(saved?.id);
         if (Number.isFinite(newId)) {
@@ -356,13 +354,12 @@ export default function PublishBlogPost() {
     }
   };
 
-  // Open preview/public view
+  // Preview/public view
   const openPreviewOrPublic = async () => {
     const values = form.getFieldsValue(true);
     const localStatus = values?.status;
     const localSlug = (values?.slug || "").trim();
 
-    // If we already have an editingId, we can open right away
     if (editingId) {
       if (localStatus === "published" && localSlug) {
         window.open(`/blog/${localSlug}`, "_blank");
@@ -372,8 +369,7 @@ export default function PublishBlogPost() {
       return;
     }
 
-    // Otherwise save first to get an ID, then open
-    const saved = await onSave(); // saves as draft (or current status)
+    const saved = await onSave();
     if (!saved) return;
 
     const id = Number(saved?.id);
@@ -391,7 +387,6 @@ export default function PublishBlogPost() {
     }
   };
 
-  // Delete post
   const onDelete = async () => {
     if (!editingId) return;
     await apiDelete(editingId);
@@ -412,7 +407,6 @@ export default function PublishBlogPost() {
         <Space wrap>
           <Button onClick={() => navigate(-1)}>Back</Button>
 
-          {/* Preview (full page) */}
           <Tooltip title="Open a full-page preview (or public page if published)">
             <Button icon={<EyeOutlined />} onClick={openPreviewOrPublic}>
               Preview Post
@@ -587,7 +581,7 @@ export default function PublishBlogPost() {
                   </Form.Item>
                 </Card>
 
-                {/* NEW: Thumbnail for overview */}
+                {/* Thumbnail for overview */}
                 <Card
                   className="rounded-xl"
                   title="Thumbnail (Overview Card)"
