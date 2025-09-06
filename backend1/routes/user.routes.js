@@ -4,7 +4,8 @@ const { getAllUsers, getAllRoles, addstudent, addteacher, addclass, addsubject, 
     getAllTeachers, getAllSubjects, getSubjectById, getStudentById, getTeacherById, deleteSubject, 
     getParentById, getAllParents, addparent, deleteParent, addproduct, getAllProducts, getProductById,
 deleteProduct, addsubscription, getAllSubscriptions, getSubscriptionById, deleteSubscription, addblogpost,getAllBlogPosts, 
-getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice } = require("../controllers/user.controller");
+getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice, addcoupon, 
+getAllCoupons, getCouponById,deleteCoupon, addrole } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
 
@@ -18,6 +19,7 @@ router.get("/admin/dashboard", verifyToken, getOverviewDashboard);
 router.post("/addteacher", verifyToken, addteacher);
 router.post("/addstudent", verifyToken, addstudent);
 router.get("/allroles", getAllRoles);
+router.post("/addrole", verifyToken, addrole);
 router.post("/addclass", verifyToken, addclass);
 router.post("/addsubject", verifyToken, addsubject);
 router.get("/allclasses", verifyToken, getAllClasses);
@@ -48,5 +50,9 @@ router.post("/addinvoice", verifyToken, addinvoice);
 router.get("/invoices", verifyToken, getAllInvoices);
 router.get('/invoice/:id', verifyToken,getInvoiceById);
 router.delete('/invoice/:id', verifyToken,deleteInvoice);
+router.post("/addcoupon", verifyToken, addcoupon);
+router.get("/coupons", verifyToken, getAllCoupons);
+router.get('/coupon/:id', verifyToken,getCouponById);
+router.delete('/coupon/:id', verifyToken,deleteCoupon);
 
 module.exports = router;

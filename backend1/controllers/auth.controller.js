@@ -34,6 +34,29 @@ exports.signup = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
+    if(role_id = 1)
+    {
+       const newStudent = await Student.create({
+      user_id:newUser.id,
+      created_by:newUser.id,
+    });
+    }
+    else if(role_id == 2)
+    {
+         const newParent = await Parent.create({
+      user_id:newUser.id,
+      class_id:1,
+      created_by:newUser.id,
+    });
+    }
+        else if(role_id == 3)
+    {
+         const newTeacher = await Teacher.create({
+      user_id:newUser.id,
+      class_id:1,
+      created_by:newUser.id,
+    });
+    }
 
     // 5. Return token and user info (excluding password)
     const userData = { ...newUser.toJSON() };

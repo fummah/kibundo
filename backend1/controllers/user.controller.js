@@ -1,4 +1,6 @@
 const db = require("../models");
+const Stripe = require("stripe");
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY); 
 const User = db.user;
 const Teacher = db.teacher;
 const Student = db.student;
@@ -10,6 +12,57 @@ const Product = db.product;
 const Subscription = db.subscription;
 const BlogPost = db.blogpost;
 const Invoice = db.invoice;
+const Coupon = db.coupon;
+
+exports.adduser = async (req, res) => {
+  try {
+    const { first_name, last_name, email, role_id, state } = req.body;
+
+
+    // 2. Check if user exists
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists" });
+    }
+    const created_by = req.user.id;
+    const newUser = await User.create({
+      role_id,
+      first_name,
+      last_name,
+      email,
+      state
+    });
+    if(role_id = 1)
+    {
+       const newStudent = await Student.create({
+      user_id:newUser.id,
+      created_by,
+    });
+    }
+    else if(role_id == 2)
+    {
+         const newParent = await Parent.create({
+      user_id:newUser.id,
+      class_id:1,
+      created_by,
+    });
+    }
+        else if(role_id == 3)
+    {
+         const newTeacher = await Teacher.create({
+      user_id:newUser.id,
+      class_id:1,
+      created_by,
+    });
+    }
+       
+
+    res.status(201).json({ message: "User registered", user: newUser });
+  } catch (err) {
+    console.error("Signup error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
 
 exports.getAllUsers = async (req, res) => {
   try {
@@ -432,21 +485,37 @@ exports.deleteParent = async (req, res) => {
 
 exports.addproduct = async (req, res) => {
   try {
-    const { stripe_product_id, name,description } = req.body;
-const created_by = req.user.id;
+    const { name, description } = req.body;
+    const created_by = req.user.id;
+
+    // 1️⃣ Create product in Stripe
+    const stripeProduct = await stripe.products.create({
+      name,
+      description,
+    });
+   
+
+    // 2️⃣ Save product to your DB with stripe product id
     const newProduct = await Product.create({
-      stripe_product_id, 
+      stripe_product_id: stripeProduct.id,
       name,
       description,
       created_by,
     });
 
-    res.status(201).json({ message: "New product registered", product: newProduct });
+    // 3️⃣ Return response
+    res.status(201).json({ 
+      message: "New product registered",
+      product: newProduct,
+      stripe_product: stripeProduct
+    });
+
   } catch (err) {
     console.error("New product registered error:", err);
-    res.status(500).json({ message: "Server error", error:err });
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
+
 exports.getAllProducts = async (req, res) => {
   try {
     const products = await Product.findAll({
@@ -788,3 +857,100 @@ exports.deleteInvoice = async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+// Coupon
+
+
+exports.addcoupon = async (req, res) => {
+  try {
+    const { stripe_coupon_id, name,percent_off,amount_off_cents,currency, valid, metadata } = req.body;
+const created_by = req.user.id;
+    const newCoupon = await Coupon.create({
+   stripe_coupon_id, 
+   name,
+   percent_off,
+   amount_off_cents,
+   currency, 
+   valid, 
+   metadata,
+    created_by,
+    });
+
+    res.status(201).json({ message: "New coupon created", coupon: newCoupon });
+  } catch (err) {
+    console.error("New coupon error:", err);
+    res.status(500).json({ message: "Server error", error:err });
+  }
+};
+exports.getAllCoupons= async (req, res) => {
+  try {
+    const coupons = await Coupon.findAll({
+      attributes: {
+        exclude: []
+      }
+   
+    });
+    res.json(coupons);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getCouponById = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const coupon = await Coupon.findOne({
+      where: { id }
+    });
+
+    if (!coupon) {
+      return res.status(404).json({ message: 'Coupon not found' });
+    }
+
+    return res.status(200).json(coupon);
+
+  } catch (error) {
+    console.error('Error fetching coupon by ID:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.deleteCoupon = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const coupon = await Coupon.findByPk(id);
+
+    if (!coupon) {
+      return res.status(404).json({ message: 'coupon not found' });
+    }
+
+    await coupon.destroy();
+
+    return res.status(200).json({ message: 'coupon deleted successfully' });
+
+  } catch (error) {
+    console.error('Error deleting coupon:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.addrole = async (req, res) => {
+  try {
+    const { role_name, permissions } = req.body;
+const created_by = req.user.id;
+    const newRole = await Role.create({
+   role_name, 
+   permissions,
+    created_by,
+    });
+
+    res.status(201).json({ message: "New role created", role: newRole });
+  } catch (err) {
+    console.error("New role error:", err);
+    res.status(500).json({ message: "Server error", error:err });
+  }
+};
+  

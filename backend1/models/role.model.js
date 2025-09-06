@@ -11,6 +11,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING, // includes time zone support
       allowNull: true
     }
+    ,
+     permissions: {
+      type: DataTypes.STRING, // includes time zone support
+      allowNull: true
+    }
   }, {
     tableName: 'roles',
     timestamps: false
