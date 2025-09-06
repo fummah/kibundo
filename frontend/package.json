@@ -2,8 +2,11 @@
   "name": "kibundo-vite-tailwind-router",
   "version": "0.0.1",
   "private": true,
+  
   "scripts": {
     "dev": "vite",
+    "dev:trace-dep": "cross-env NODE_OPTIONS=--trace-deprecation vite",
+    "dev:no-dep-warnings": "cross-env NODE_OPTIONS=--no-deprecation vite",
     "build": "vite build",
     "preview": "vite preview"
   },
