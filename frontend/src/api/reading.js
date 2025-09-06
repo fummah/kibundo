@@ -11,9 +11,13 @@ const shuffle = (arr) => {
   }
   return a;
 };
+const clampLevel = (lvl) => {
+  const n = Number(lvl) || 1;
+  return Math.min(3, Math.max(1, n));
+};
 
 // Text bank by level (1=beginner, 2=intermediate, 3=advanced)
-const BANK = {
+export const BANK = {
   1: [
     "The cat sits on the warm mat. It purrs softly and closes its eyes.",
     "A small red kite flies in the blue sky. Tim holds the string and smiles.",
@@ -33,11 +37,14 @@ const BANK = {
 /* ------------------------------------------------------------------ */
 export async function generateReadingText({ level = 1 } = {}) {
   await wait(150); // mock latency
-  const pool = BANK[level] || BANK[1];
+  const lvl = clampLevel(level);
+  const pool = BANK[lvl] || BANK[1];
   const text = pick(pool);
   try {
     localStorage.setItem("mock_reading_text", text);
-  } catch {}
+  } catch {
+    /* no-op */
+  }
   return text;
 }
 
@@ -59,7 +66,9 @@ export async function sttCaptureMock() {
   let base = "";
   try {
     base = localStorage.getItem("mock_reading_text") || "";
-  } catch {}
+  } catch {
+    /* no-op */
+  }
 
   if (!base) {
     return "The cat sits on the mat and purrs softly with closed eyes.";
@@ -71,17 +80,22 @@ export async function sttCaptureMock() {
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
     const r = Math.random();
+
     if (r < 0.06) {
       // omit a word
       continue;
     }
+
     if (r < 0.10) {
-      // subtle mismatch
-      out.push(
-        w.replace(/[a-z]/gi, (c, idx) => (idx % 2 ? c.toLowerCase() : c)).slice(0, Math.max(2, w.length - 1))
-      );
+      // subtle mismatch: tweak casing or trim one char
+      const mutated =
+        Math.random() < 0.5
+          ? w.replace(/[A-Za-z]/g, (c, idx) => (idx % 2 ? c.toLowerCase() : c.toUpperCase()))
+          : w.slice(0, Math.max(2, w.length - 1));
+      out.push(mutated);
       continue;
     }
+
     out.push(w);
   }
 
@@ -107,14 +121,16 @@ export async function ocrImage(file) {
     "Lara watched quietly and counted to five before it flew away again.";
   try {
     localStorage.setItem("mock_reading_text", sample);
-  } catch {}
+  } catch {
+    /* no-op */
+  }
   return sample;
 }
 
 /* ------------------------------------------------------------------ */
 /* Reading Quiz (used by ReadingQuizFlow)                             */
 /* ------------------------------------------------------------------ */
-const QUIZ_PASSAGES = {
+export const QUIZ_PASSAGES = {
   1: [
     {
       passage:
@@ -165,7 +181,8 @@ const QUIZ_PASSAGES = {
  */
 export async function fetchReadingQuiz({ level = 1 } = {}) {
   await wait(250); // mock latency
-  const pools = QUIZ_PASSAGES[level] || QUIZ_PASSAGES[1];
+  const lvl = clampLevel(level);
+  const pools = QUIZ_PASSAGES[lvl] || QUIZ_PASSAGES[1];
   const picked = pick(pools);
   const items = picked.questions.map(({ q, correct, distractors }) => {
     const options = shuffle([correct, ...distractors]);

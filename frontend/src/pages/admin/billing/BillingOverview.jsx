@@ -1,13 +1,15 @@
 // src/pages/billing/BillingHome.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Card, Row, Col, Typography, Statistic, Space, Button, List, Tag, Tooltip,
-  message, Skeleton, Empty, DatePicker, Select, Input, Table, Segmented, Badge
+  message, Skeleton, Empty, DatePicker, Select, Input, Segmented, Badge,
+  Descriptions, Drawer
 } from "antd";
 import {
   TeamOutlined, UsergroupAddOutlined, FileAddOutlined, SendOutlined,
   DollarCircleOutlined, CreditCardOutlined, FileDoneOutlined, FileSyncOutlined,
-  PieChartOutlined, SettingOutlined, ReloadOutlined, DownloadOutlined, SearchOutlined
+  PieChartOutlined, SettingOutlined, ReloadOutlined, DownloadOutlined, SearchOutlined,
+  FilePdfOutlined, EyeOutlined
 } from "@ant-design/icons";
 import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend, Tooltip as RTooltip
@@ -15,6 +17,10 @@ import {
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import api from "@/api/axios";
+
+import BillingEntityList from "@/components/billing/BillingEntityList";
+import MoneyText from "@/components/common/MoneyText";
+import useResponsiveDrawerWidth from "@/hooks/useResponsiveDrawerWidth";
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -46,6 +52,7 @@ const STATUS_COLORS = {
   void: "default",
   draft: "default",
 };
+const HEADER_OFFSET = 64;
 
 /* ---------- DUMMY FALLBACKS ---------- */
 const DUMMY_STUDENTS = [
@@ -62,7 +69,7 @@ const DUMMY_PARENTS = [
   { id: 13, name: "Ms. Ncube" }
 ];
 
-// Cents-based totals; created_at/due_at can be ISO strings or Date
+// Cents-based totals
 const now = dayjs();
 const DUMMY_INVOICES = [
   {
@@ -100,6 +107,7 @@ const DUMMY_INVOICES = [
 /* ---------- page ---------- */
 export default function BillingHome() {
   const navigate = useNavigate();
+  const drawerWidth = useResponsiveDrawerWidth();
 
   // controls
   const [currency, setCurrency] = useState("EUR");
@@ -113,6 +121,10 @@ export default function BillingHome() {
   const [parents, setParents] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [hasInvoices, setHasInvoices] = useState(false);
+
+  // drawer (recent invoices -> view)
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewRec, setViewRec] = useState(null);
 
   const load = async (signal) => {
     setLoading(true);
@@ -194,6 +206,8 @@ export default function BillingHome() {
         due_at: i.due_at ?? i.due_date ?? null,
         customer: i.customer_email || read(i, "raw.customer_email") || "",
         is_credit_note: Boolean(i.is_credit_note || i.credit_note),
+        pdf_url: i.pdf_url || read(i, "raw.invoice_pdf") || "",
+        notes_html: i.notes_html || "",
       })),
     [invoices, currency]
   );
@@ -206,8 +220,10 @@ export default function BillingHome() {
   }, [normInvoices, search]);
 
   const filteredInvoices = useMemo(() => {
-    if (statusFilter === "paid") return searchedInvoices.filter((i) => i.status === "paid" && !i.is_credit_note);
-    if (statusFilter === "unpaid") return searchedInvoices.filter((i) => UNPAID.has(i.status) && !i.is_credit_note);
+    if (statusFilter === "paid")
+      return searchedInvoices.filter((i) => i.status === "paid" && !i.is_credit_note);
+    if (statusFilter === "unpaid")
+      return searchedInvoices.filter((i) => UNPAID.has(i.status) && !i.is_credit_note);
     return searchedInvoices;
   }, [searchedInvoices, statusFilter]);
 
@@ -270,7 +286,6 @@ export default function BillingHome() {
     { label: "Billing Services", icon: <SettingOutlined />, onClick: () => navigate("/billing/services"), color: "blue" },
   ];
 
-  /* ---------- actions ---------- */
   const refresh = () => load();
 
   const exportCSV = () => {
@@ -299,24 +314,51 @@ export default function BillingHome() {
     URL.revokeObjectURL(url);
   };
 
-  /* ---------- table columns ---------- */
-  const invoiceCols = [
-    {
+  /* ---------- open drawer for recent invoice ---------- */
+  const openView = useCallback(
+    (idOrRecord) => {
+      const id = typeof idOrRecord === "object" ? idOrRecord.id : idOrRecord;
+      const rec = normInvoices.find((x) => String(x.id) === String(id));
+      if (!rec) return message.error("Invoice not found.");
+      setViewRec(rec);
+      setViewOpen(true);
+    },
+    [normInvoices]
+  );
+  const closeView = () => {
+    setViewOpen(false);
+    setViewRec(null);
+  };
+
+  /* ---------- columns map for BillingEntityList (Recent Invoices) ---------- */
+  const COLUMNS_MAP = useMemo(() => {
+    const invoice = {
       title: "Invoice",
       dataIndex: "id",
+      key: "id",
+      width: 240,
+      ellipsis: true,
       render: (v, r) => (
         <Space direction="vertical" size={0}>
-          <Text strong>{v}</Text>
+          <Button type="link" className="!px-0" onClick={() => openView(r.id)}>
+            <Text strong>{v}</Text>
+          </Button>
           <Text type="secondary" style={{ fontSize: 12 }}>{r.customer || "—"}</Text>
         </Space>
       ),
-      width: 220,
-      ellipsis: true,
-    },
-    {
+      sorter: (a, b) => String(a.id || "").localeCompare(String(b.id || "")),
+    };
+    const status = {
       title: "Status",
       dataIndex: "status",
-      width: 120,
+      key: "status",
+      width: 150,
+      render: (s, r) => (
+        <Space>
+          <Tag color={STATUS_COLORS[s] || "default"}>{s || "—"}</Tag>
+          {r.is_credit_note ? <Badge color="magenta" text="credit note" /> : null}
+        </Space>
+      ),
       filters: [
         { text: "Paid", value: "paid" },
         { text: "Open", value: "open" },
@@ -324,25 +366,21 @@ export default function BillingHome() {
         { text: "Uncollectible", value: "uncollectible" },
       ],
       onFilter: (val, rec) => rec.status === val,
-      render: (s, r) => (
-        <Space>
-          <Tag color={STATUS_COLORS[s] || "default"}>{s || "—"}</Tag>
-          {r.is_credit_note ? <Badge color="magenta" text="credit note" /> : null}
-        </Space>
-      ),
-    },
-    {
+    };
+    const total = {
       title: "Total",
       dataIndex: "total_cents",
+      key: "total",
       align: "right",
-      render: (c, r) => money((c || 0) / 100, r.currency || cur),
-      sorter: (a, b) => (a.total_cents || 0) - (b.total_cents || 0),
       width: 140,
-    },
-    {
+      render: (c, r) => <MoneyText amount={(c || 0) / 100} currency={r.currency || cur} />,
+      sorter: (a, b) => (a.total_cents || 0) - (b.total_cents || 0),
+    };
+    const due = {
       title: "Due",
       dataIndex: "due_at",
-      width: 150,
+      key: "due",
+      width: 160,
       render: (v, r) => {
         if (!v) return "—";
         const isOverdue = UNPAID.has(r.status) && new Date(v) < new Date();
@@ -354,16 +392,18 @@ export default function BillingHome() {
         );
       },
       sorter: (a, b) => new Date(a.due_at || 0) - new Date(b.due_at || 0),
-    },
-    {
+    };
+    const created = {
       title: "Created",
       dataIndex: "created_at",
+      key: "created",
       width: 180,
       render: (v) => (v ? new Date(v).toLocaleString() : "—"),
       sorter: (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0),
       defaultSortOrder: "descend",
-    },
-  ];
+    };
+    return { invoice, status, total, due, created };
+  }, [openView, cur]);
 
   /* ---------- UI ---------- */
   return (
@@ -572,30 +612,36 @@ export default function BillingHome() {
         </Col>
       </Row>
 
-      {/* Bottom row: Recent invoices + Legend */}
+      {/* Bottom row: Recent invoices (using BillingEntityList) + Legend */}
       <Row gutter={[16, 16]} className="mt-4">
         <Col xs={24} lg={16}>
-          <Card
-            hoverable
-            variant="outlined"
+          <BillingEntityList
             title="Recent Invoices"
-            extra={<Text type="secondary">{filteredInvoices.length} shown</Text>}
-          >
-            <Table
-              rowKey="id"
-              size="middle"
-              dataSource={[...filteredInvoices]
-                .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
-                .slice(0, 12)}
-              columns={invoiceCols}
-              pagination={{ pageSize: 12, showSizeChanger: false }}
-              loading={loading}
-              onRow={(r) => ({
-                onClick: () => navigate(`/admin/billing/invoices/${encodeURIComponent(r.id)}`),
-                style: { cursor: "pointer" },
-              })}
-            />
-          </Card>
+            data={[...filteredInvoices]
+              .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+              .slice(0, 12)}
+            loading={loading}
+            columnsMap={COLUMNS_MAP}
+            storageKey="billinghome.recent.visibleCols.v1"
+            defaultVisible={["invoice", "status", "total", "due", "created"]}
+            actionsRender={(r) => (
+              <Space>
+                {r.pdf_url ? (
+                  <Button size="small" icon={<FilePdfOutlined />} onClick={() => window.open(r.pdf_url, "_blank", "noopener,noreferrer")}>
+                    PDF
+                  </Button>
+                ) : null}
+                <Button size="small" icon={<EyeOutlined />} onClick={() => openView(r.id)}>
+                  View
+                </Button>
+              </Space>
+            )}
+            onRefresh={refresh}
+            toolbarRight={<Text type="secondary">{filteredInvoices.length} shown</Text>}
+            pageSize={12}
+            scrollX={900}
+            onRowClick={(r) => openView(r.id)}
+          />
         </Col>
 
         <Col xs={24} lg={8}>
@@ -610,6 +656,61 @@ export default function BillingHome() {
           </Card>
         </Col>
       </Row>
+
+      {/* View Drawer (invoice details) */}
+      <Drawer
+        title="Invoice"
+        open={viewOpen}
+        onClose={closeView}
+        width={drawerWidth}
+        style={{ top: HEADER_OFFSET }}
+        maskStyle={{ top: HEADER_OFFSET }}
+        extra={
+          viewRec ? (
+            <Space>
+              {viewRec?.pdf_url ? (
+                <Button icon={<FilePdfOutlined />} onClick={() => window.open(viewRec.pdf_url, "_blank", "noopener,noreferrer")}>
+                  PDF
+                </Button>
+              ) : null}
+              <Button onClick={() => navigate(`/admin/billing/invoices/${encodeURIComponent(viewRec.id)}`)}>
+                Open page
+              </Button>
+            </Space>
+          ) : null
+        }
+      >
+        {viewRec ? (
+          <Descriptions bordered column={1} size="middle">
+            <Descriptions.Item label="ID">{viewRec.id}</Descriptions.Item>
+            <Descriptions.Item label="Customer">{viewRec.customer || "—"}</Descriptions.Item>
+            <Descriptions.Item label="Status">
+              <Tag color={STATUS_COLORS[viewRec.status] || "default"}>
+                {viewRec.status || "—"}
+              </Tag>
+              {viewRec.is_credit_note ? <Badge color="magenta" text="credit note" style={{ marginLeft: 8 }} /> : null}
+            </Descriptions.Item>
+            <Descriptions.Item label="Total">
+              <MoneyText amount={(viewRec.total_cents || 0) / 100} currency={viewRec.currency || cur} />
+            </Descriptions.Item>
+            <Descriptions.Item label="Due">
+              {viewRec.due_at ? new Date(viewRec.due_at).toLocaleString() : "—"}
+            </Descriptions.Item>
+            <Descriptions.Item label="Created">
+              {viewRec.created_at ? new Date(viewRec.created_at).toLocaleString() : "—"}
+            </Descriptions.Item>
+            {viewRec?.pdf_url ? (
+              <Descriptions.Item label="PDF">
+                <Button size="small" icon={<FilePdfOutlined />} onClick={() => window.open(viewRec.pdf_url, "_blank", "noopener,noreferrer")}>
+                  Open PDF
+                </Button>
+              </Descriptions.Item>
+            ) : null}
+          </Descriptions>
+        ) : (
+          <Text type="secondary">No data.</Text>
+        )}
+      </Drawer>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import api from "@/api/axios";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -14,9 +14,9 @@ import {
   Space,
   Tooltip,
   message,
-  Badge,
   Input,
   Spin,
+  Empty,
 } from "antd";
 
 import {
@@ -25,7 +25,6 @@ import {
   BarChartOutlined,
   DownloadOutlined,
   ReloadOutlined,
-  BellOutlined,
   RiseOutlined,
   LineChartOutlined,
 } from "@ant-design/icons";
@@ -39,6 +38,7 @@ import {
   YAxis,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
+  CartesianGrid,
 } from "recharts";
 
 const { Title, Text } = Typography;
@@ -52,30 +52,48 @@ const tabItems = [
 export default function StatisticsDashboard() {
   const [activeTab, setActiveTab] = useState("30");
   const [loading, setLoading] = useState(true);
-  const [chartData, setChartData] = useState([]);
+
+  // CHANGED: chartData is now an object with 3 series
+  const [chartData, setChartData] = useState({
+    byPackage: [],
+    byMarketplace: [],
+    byClientType: [],
+  });
+
   const [stats, setStats] = useState({});
   const [insights, setInsights] = useState({});
   const [subscriptions, setSubscriptions] = useState([]);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const numberFmt = useMemo(() => new Intl.NumberFormat(), []);
 
-  const fetchData = () => {
+  useEffect(() => {
+    fetchData(activeTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  const fetchData = (rangeKey = "30") => {
     setLoading(true);
     api
-      .get("/statistics/dashboard")
+      .get("/statistics/dashboard", { params: { range: rangeKey } })
       .then((res) => {
-        console.log("✅ API Response:", res.data);
-        const responseData = res.data.data || res.data;
+        const responseData = res?.data?.data || res?.data || {};
+        const {
+          chartData: cd,
+          stats: st,
+          insights: ins,
+          subscriptions: subs,
+        } = responseData;
 
-        const { chartData, stats, insights, subscriptions } = responseData;
+        setChartData({
+          byPackage: cd?.byPackage ?? [],
+          byMarketplace: cd?.byMarketplace ?? [],
+          byClientType: cd?.byClientType ?? [],
+        });
 
-        setChartData(chartData || []);
-        setStats(stats || {});
-        setInsights(insights || {});
+        setStats(st || {});
+        setInsights(ins || {});
         setSubscriptions(
-          (subscriptions || []).map((item, i) => ({
+          (subs || []).map((item, i) => ({
             key: i.toString(),
             ...item,
           }))
@@ -90,7 +108,7 @@ export default function StatisticsDashboard() {
 
   const handleRefresh = () => {
     message.success("Dashboard refreshed");
-    fetchData();
+    fetchData(activeTab);
   };
 
   const handleExportPDF = async () => {
@@ -107,11 +125,10 @@ export default function StatisticsDashboard() {
   };
 
   const handleExportCSV = () => {
+    // Keeping your stub — you can wire a real CSV from subscriptions or stats later
     message.info("Exporting CSV...");
     setTimeout(() => message.success("CSV export completed"), 1000);
   };
-
- 
 
   const columns = [
     {
@@ -122,7 +139,7 @@ export default function StatisticsDashboard() {
         { text: "Premium", value: "Premium" },
         { text: "Enterprise", value: "Enterprise" },
       ],
-      onFilter: (value, record) => record.package.includes(value),
+      onFilter: (value, record) => (record.package || "").includes(value),
     },
     { title: "Total Subscriptions", dataIndex: "total" },
     { title: "Active Subscriptions", dataIndex: "active" },
@@ -146,7 +163,7 @@ export default function StatisticsDashboard() {
         </div>
       ),
       onFilter: (value, record) =>
-        record.renewal.toLowerCase().includes(value.toLowerCase()),
+        String(record.renewal || "").toLowerCase().includes(String(value).toLowerCase()),
     },
   ];
 
@@ -183,7 +200,6 @@ export default function StatisticsDashboard() {
             <Tooltip title="Export CSV">
               <Button shape="circle" icon={<DollarOutlined />} onClick={handleExportCSV} />
             </Tooltip>
-            
           </Space>
         </Col>
       </Row>
@@ -192,7 +208,8 @@ export default function StatisticsDashboard() {
         activeKey={activeTab}
         onChange={(key) => {
           setActiveTab(key);
-          message.success(`Showing: ${tabItems.find((t) => t.key === key).label}`);
+          const label = tabItems.find((t) => t.key === key)?.label || key;
+          message.success(`Showing: ${label}`);
         }}
         items={tabItems}
         className="my-4"
@@ -206,7 +223,7 @@ export default function StatisticsDashboard() {
                 <UserOutlined style={{ fontSize: 20, color: "#1677ff" }} />
                 <Text>Total Users</Text>
               </Space>
-              <Title level={2}>{stats.totalUsers}</Title>
+              <Title level={2}>{numberFmt.format(stats.totalUsers ?? 0)}</Title>
             </Card>
           </Col>
           <Col xs={24} sm={12}>
@@ -215,81 +232,95 @@ export default function StatisticsDashboard() {
                 <DollarOutlined style={{ fontSize: 20, color: "#52c41a" }} />
                 <Text>Active Subscriptions</Text>
               </Space>
-              <Title level={2}>{stats.activeSubscriptions}</Title>
+              <Title level={2}>
+                {numberFmt.format(stats.activeSubscriptions ?? 0)}
+              </Title>
             </Card>
           </Col>
         </Row>
 
-       <Row gutter={[16, 16]} className="mt-4">
-  <Col xs={24} sm={8}>
-    <Card title="B2B vs B2C" hoverable>
-      <Text>{insights.b2bB2c}</Text>
-    </Card>
-  </Col>
-  <Col xs={24} sm={8}>
-    <Card title="Device Usage" hoverable>
-      {/* ❌ OLD */}
-      {/* <Text>{insights.deviceUsage}</Text> */}
-      {/* ✅ NEW */}
-      <Text>
-        {Object.entries(insights.deviceUsage || {}).map(
-          ([key, value]) => `${key}: ${value}% `
-        ).join(" | ")}
-      </Text>
-    </Card>
-  </Col>
-  <Col xs={24} sm={8}>
-    <Card title="Engagement" hoverable>
-      {/* ❌ OLD */}
-      {/* <Text>{insights.engagement}</Text> */}
-      {/* ✅ NEW */}
-      <Text>
-        {Object.entries(insights.engagement || {}).map(
-          ([key, value]) => `${key}: ${value} `
-        ).join(" | ")}
-      </Text>
-    </Card>
-  </Col>
-</Row>
+        <Row gutter={[16, 16]} className="mt-4">
+          <Col xs={24} sm={8}>
+            <Card title="B2B vs B2C" hoverable>
+              <Text>{insights.b2bB2c || "—"}</Text>
+            </Card>
+          </Col>
+          <Col xs={24} sm={8}>
+            <Card title="Device Usage" hoverable>
+              <Text>
+                {Object.entries(insights.deviceUsage || {}).map(
+                  ([key, value]) => `${key}: ${value}% `
+                ).join(" | ") || "—"}
+              </Text>
+            </Card>
+          </Col>
+          <Col xs={24} sm={8}>
+            <Card title="Engagement" hoverable>
+              <Text>
+                {Object.entries(insights.engagement || {}).map(
+                  ([key, value]) => `${key}: ${value} `
+                ).join(" | ") || "—"}
+              </Text>
+            </Card>
+          </Col>
+        </Row>
 
         <Title level={4} className="mt-6">
           Revenue & Subscription Analytics
         </Title>
+
         <Row gutter={[16, 16]}>
           <Col xs={24} md={8}>
             <Card title="Revenue by Package" extra={<RiseOutlined />} hoverable>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={chartData}>
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <RechartsTooltip />
-                  <Bar dataKey="value" fill="#1890ff" />
-                </BarChart>
-              </ResponsiveContainer>
+              {chartData.byPackage.length ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={chartData.byPackage}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <RechartsTooltip />
+                    <Bar dataKey="value" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
             </Card>
           </Col>
+
           <Col xs={24} md={8}>
             <Card title="Revenue by Marketplace" extra={<LineChartOutlined />} hoverable>
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={chartData}>
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <RechartsTooltip />
-                  <Line type="monotone" dataKey="value" stroke="#52c41a" />
-                </LineChart>
-              </ResponsiveContainer>
+              {chartData.byMarketplace.length ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={chartData.byMarketplace}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <RechartsTooltip />
+                    <Line type="monotone" dataKey="value" />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
             </Card>
           </Col>
+
           <Col xs={24} md={8}>
             <Card title="Revenue by Client Type" extra={<DollarOutlined />} hoverable>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={chartData}>
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <RechartsTooltip />
-                  <Bar dataKey="value" fill="#faad14" />
-                </BarChart>
-              </ResponsiveContainer>
+              {chartData.byClientType.length ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={chartData.byClientType}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <RechartsTooltip />
+                    <Bar dataKey="value" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              )}
             </Card>
           </Col>
         </Row>
@@ -301,6 +332,7 @@ export default function StatisticsDashboard() {
           pagination={false}
           bordered
           scroll={{ x: true }}
+          locale={{ emptyText: <Empty /> }}
         />
       </div>
     </div>

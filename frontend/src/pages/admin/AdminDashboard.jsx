@@ -198,7 +198,7 @@ export default function AdminDashboard() {
             <Card
               {...kpiCardProps}
               className={`${kpiCardProps.className} bg-gradient-to-br from-indigo-600 to-violet-600`}
-              onClick={() => navigate("/admin/users")}
+              onClick={() => navigate("")}
               style={{ cursor: "pointer" }}
             >
               <div className="w-full flex items-center justify-between">

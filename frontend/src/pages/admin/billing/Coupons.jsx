@@ -1,12 +1,6 @@
 // src/pages/billing/Coupons.jsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
-  Card,
-  Table,
-  Tag,
-  Segmented,
-  Button,
-  Space,
   Modal,
   Form,
   Input,
@@ -21,11 +15,13 @@ import {
   Col,
   Dropdown,
   Tooltip,
-  Checkbox,
-  Divider,
+  Space,
+  Button,
   Drawer,
   Descriptions,
+  Segmented,
   DatePicker,
+  Tag,
 } from "antd";
 import {
   PlusOutlined,
@@ -33,9 +29,7 @@ import {
   DeleteOutlined,
   MoreOutlined,
   DownloadOutlined,
-  ReloadOutlined,
   SearchOutlined,
-  SettingOutlined,
   EyeOutlined,
   SafetyOutlined,
   MailOutlined,
@@ -43,8 +37,16 @@ import {
 import dayjs from "dayjs";
 import api from "@/api/axios";
 
+import BillingEntityList from "@/components/billing/BillingEntityList";
+import ConfirmDrawer from "@/components/common/ConfirmDrawer";
+import StatusTag from "@/components/common/StatusTag";
+import useResponsiveDrawerWidth from "@/hooks/useResponsiveDrawerWidth";
+
 const { Text, Paragraph } = Typography;
 const { useBreakpoint } = Grid;
+
+/* keep drawers under fixed header */
+const HEADER_OFFSET = 64;
 
 /* ----------------------------- helpers ----------------------------- */
 const isCanceled = (err) =>
@@ -65,18 +67,17 @@ const toISOorNull = (v) => (v ? dayjs(v).toISOString() : null);
 const validEmail = (s) => /\S+@\S+\.\S+/.test(String(s || "").trim());
 
 /* ------------------------ adapters (API ↔ form) ------------------------ */
-// Expecting backend fields similar to:
-// { id, code, description, trialDays, scope: "general"|"email", emails: [], affiliate: true|false,
-//   active: true|false, maxRedemptions, redemptionsCount, startAt, endAt, createdAt }
 function toFormValues(apiCoupon) {
   if (!apiCoupon) return {};
   return {
     code: apiCoupon.code || "",
     description: apiCoupon.description || "",
     trialDays: apiCoupon.trialDays ?? 0,
-    scope: apiCoupon.scope || (Array.isArray(apiCoupon.emails) && apiCoupon.emails.length ? "email" : "general"),
+    scope:
+      apiCoupon.scope ||
+      (Array.isArray(apiCoupon.emails) && apiCoupon.emails.length ? "email" : "general"),
     emails: Array.isArray(apiCoupon.emails) ? apiCoupon.emails : [],
-    affiliate: !!apiCoupon.affiliate, // new users only
+    affiliate: !!apiCoupon.affiliate,
     active: !!apiCoupon.active,
     maxRedemptions: apiCoupon.maxRedemptions ?? null,
     range: [
@@ -94,7 +95,7 @@ function toApiPayload(form, id) {
     description: form.description || "",
     trialDays: Number(form.trialDays || 0),
     scope: form.scope || "general",
-    emails: (form.scope === "email" ? (form.emails || []).filter(Boolean) : []),
+    emails: form.scope === "email" ? (form.emails || []).filter(Boolean) : [],
     affiliate: !!form.affiliate,
     active: !!form.active,
     maxRedemptions:
@@ -104,7 +105,6 @@ function toApiPayload(form, id) {
     startAt: start ? toISOorNull(start) : null,
     endAt: end ? toISOorNull(end) : null,
   };
-  // strip empties
   Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
   return payload;
 }
@@ -113,7 +113,8 @@ function toApiPayload(form, id) {
 export default function Coupons() {
   const screens = useBreakpoint();
   const isMdUp = screens.md;
-  const isSmDown = !screens.sm;
+
+  const drawerWidth = useResponsiveDrawerWidth();
 
   const [coupons, setCoupons] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -121,6 +122,7 @@ export default function Coupons() {
   const [q, setQ] = useState("");
   const [loadingTable, setLoadingTable] = useState(false);
 
+  // Add/Edit modal
   const [open, setOpen] = useState(false);
   const [modalTitle, setModalTitle] = useState("Add Coupon");
   const [saving, setSaving] = useState(false);
@@ -128,37 +130,26 @@ export default function Coupons() {
   const [loadingForm, setLoadingForm] = useState(false);
   const [form] = Form.useForm();
 
+  // selection
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
 
-  /* -------- Show/Hide Columns (persisted) -------- */
-  const COLS_LS_KEY = "coupons.visibleCols.v1";
-  const DEFAULT_VISIBLE = ["id", "code", "type", "trial", "window", "limits", "status"];
-  const readCols = () => {
-    try {
-      const raw = localStorage.getItem(COLS_LS_KEY);
-      const parsed = JSON.parse(raw || "null");
-      if (Array.isArray(parsed) && parsed.length) return parsed;
-    } catch {}
-    return DEFAULT_VISIBLE.slice();
-  };
-  const [visibleCols, setVisibleCols] = useState(readCols);
-  const [colModalOpen, setColModalOpen] = useState(false);
-  useEffect(() => {
-    try {
-      const uniq = Array.from(new Set(visibleCols));
-      localStorage.setItem(COLS_LS_KEY, JSON.stringify(uniq));
-    } catch {}
-  }, [visibleCols]);
-
-  /* -------- View drawer state -------- */
+  // View drawer
   const [viewOpen, setViewOpen] = useState(false);
   const [viewLoading, setViewLoading] = useState(false);
   const [viewRec, setViewRec] = useState(null);
 
+  // Confirm drawers
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+
   const fetchCoupons = async () => {
     try {
       setLoadingTable(true);
-      const res = await api.get("/coupons"); // <-- backend: add GET /coupons
+      const res = await api.get("/coupons");
       setCoupons(res.data || []);
     } catch (err) {
       console.error("Failed to load coupons", err);
@@ -193,23 +184,26 @@ export default function Coupons() {
   }, [coupons, statusFilter, scopeFilter, q]);
 
   /* ------------------------------ View logic ------------------------------ */
-  const openView = useCallback(async (idOrRecord) => {
-    const id = typeof idOrRecord === "object" ? idOrRecord.id : idOrRecord;
-    setViewOpen(true);
-    setViewLoading(true);
-    try {
-      const { data } = await api.get(`/coupon/${id}`); // <-- backend: GET /coupon/:id
-      setViewRec(data || null);
-    } catch (err) {
-      if (!isCanceled(err)) {
-        const fallback = (coupons || []).find((p) => String(p.id) === String(id));
-        setViewRec(fallback || null);
-        if (!fallback) message.error("Failed to load coupon.");
+  const openView = useCallback(
+    async (idOrRecord) => {
+      const id = typeof idOrRecord === "object" ? idOrRecord.id : idOrRecord;
+      setViewOpen(true);
+      setViewLoading(true);
+      try {
+        const { data } = await api.get(`/coupon/${id}`);
+        setViewRec(data || null);
+      } catch (err) {
+        if (!isCanceled(err)) {
+          const fallback = (coupons || []).find((p) => String(p.id) === String(id));
+          setViewRec(fallback || null);
+          if (!fallback) message.error("Failed to load coupon.");
+        }
+      } finally {
+        setViewLoading(false);
       }
-    } finally {
-      setViewLoading(false);
-    }
-  }, [coupons]);
+    },
+    [coupons]
+  );
 
   const closeView = () => {
     setViewOpen(false);
@@ -235,7 +229,7 @@ export default function Coupons() {
       trialDays: 14,
       scope: "general",
       emails: [],
-      affiliate: false, // new users only (enforced server-side)
+      affiliate: false,
       active: true,
       maxRedemptions: null,
       range: [null, null],
@@ -248,7 +242,7 @@ export default function Coupons() {
     setOpen(true);
     setLoadingForm(true);
     try {
-      const { data } = await api.get(`/coupon/${id}`); // <-- backend: GET /coupon/:id
+      const { data } = await api.get(`/coupon/${id}`);
       form.setFieldsValue(toFormValues(data));
     } catch (err) {
       if (!isCanceled(err)) {
@@ -273,7 +267,7 @@ export default function Coupons() {
       }
       const payload = toApiPayload(values, editingId || undefined);
       setSaving(true);
-      await api.post("/addcoupon", payload); // <-- backend: POST /addcoupon (create or update if id present)
+      await api.post("/addcoupon", payload);
       message.success(editingId ? "Coupon saved." : "Coupon created.");
       setOpen(false);
       fetchCoupons();
@@ -293,8 +287,9 @@ export default function Coupons() {
 
   const onDelete = async (id) => {
     try {
-      await api.delete(`/coupon/${id}`); // <-- backend: DELETE /coupon/:id
+      await api.delete(`/coupon/${id}`);
       message.success("Coupon deleted.");
+      setSelectedRowKeys((ks) => ks.filter((k) => k !== id));
       fetchCoupons();
       if (viewOpen && viewRec?.id === id) closeView();
     } catch (err) {
@@ -307,73 +302,50 @@ export default function Coupons() {
 
   const onBulkDelete = async () => {
     if (!selectedRowKeys.length) return;
-    Modal.confirm({
-      title: `Delete ${selectedRowKeys.length} coupon(s)?`,
-      okText: "Delete",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await Promise.all(selectedRowKeys.map((id) => api.delete(`/coupon/${id}`)));
-          message.success("Selected coupons deleted.");
-          setSelectedRowKeys([]);
-          fetchCoupons();
-        } catch (e) {
-          console.error(e);
-          message.error("Bulk delete failed.");
-        }
-      },
-    });
+    try {
+      await Promise.all(selectedRowKeys.map((id) => api.delete(`/coupon/${id}`)));
+      message.success("Selected coupons deleted.");
+      setSelectedRowKeys([]);
+      fetchCoupons();
+      if (viewOpen && viewRec && selectedRowKeys.includes(viewRec.id)) closeView();
+    } catch (e) {
+      console.error(e);
+      message.error("Bulk delete failed.");
+    }
   };
 
-  const exportCsv = () => {
-    const rows = [
-      ["ID", "Code", "Active", "Affiliate", "Scope", "Emails", "Trial Days", "Start", "End", "Max Redemptions", "Used", "Created"],
-      ...filteredCoupons.map((c) => [
-        c.id, c.code || "", String(!!c.active), String(!!c.affiliate),
-        c.scope || (Array.isArray(c.emails) && c.emails.length ? "email" : "general"),
-        (c.emails || []).join("|"),
-        c.trialDays ?? "",
-        c.startAt ? dayjs(c.startAt).format("YYYY-MM-DD") : "",
-        c.endAt ? dayjs(c.endAt).format("YYYY-MM-DD") : "",
-        c.maxRedemptions ?? "",
-        c.redemptionsCount ?? 0,
-        c.createdAt ? dayjs(c.createdAt).format("YYYY-MM-DD HH:mm") : "",
-      ]),
-    ];
-    const csv = rows.map((r) => r.map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "coupons.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+  const askDelete = (record) => {
+    setConfirmTarget(record);
+    setConfirmOpen(true);
   };
 
-  const renderActions = (record) => {
-    const items = [
-      { key: "view", label: "View", icon: <EyeOutlined /> },
-      { key: "edit", label: "Edit", icon: <EditOutlined /> },
-      { key: "delete", label: <span className="text-red-600">Delete</span>, icon: <DeleteOutlined /> },
-    ];
-    const onMenuClick = ({ key }) => {
-      if (key === "view") return openView(record.id);
-      if (key === "edit") return openEdit(record.id);
-      if (key === "delete") {
-        Modal.confirm({
-          title: "Delete coupon?",
-          content: "This will permanently remove the coupon.",
-          okText: "Delete",
-          okButtonProps: { danger: true },
-          onOk: () => onDelete(record.id),
-        });
-      }
-    };
-    return (
-      <Dropdown menu={{ items, onClick: onMenuClick }} trigger={["click"]}>
-        <Button size="small" icon={<MoreOutlined />} />
-      </Dropdown>
-    );
+  const handleConfirmDelete = async () => {
+    if (!confirmTarget?.id) return;
+    try {
+      setConfirmLoading(true);
+      await onDelete(confirmTarget.id);
+      setConfirmOpen(false);
+      setConfirmTarget(null);
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  const handleConfirmBulk = async () => {
+    try {
+      setBulkLoading(true);
+      await onBulkDelete();
+      setBulkOpen(false);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const resetFilters = () => {
+    setStatusFilter("all");
+    setScopeFilter("all");
+    setQ("");
+    fetchCoupons();
   };
 
   /* ----------------------------- columns map ----------------------------- */
@@ -409,11 +381,16 @@ export default function Coupons() {
         const scope = r.scope || (Array.isArray(r.emails) && r.emails.length ? "email" : "general");
         return (
           <Space size="small" wrap>
-            <Tag icon={scope === "email" ? <MailOutlined /> : undefined} color={scope === "email" ? "gold" : "blue"}>
+            <Tag
+              icon={scope === "email" ? <MailOutlined /> : undefined}
+              color={scope === "email" ? "gold" : "blue"}
+            >
               {scope === "email" ? "Per Email" : "General"}
             </Tag>
             {r.affiliate ? (
-              <Tag icon={<SafetyOutlined />} color="purple" title="Affiliate: new users only">Affiliate</Tag>
+              <Tag icon={<SafetyOutlined />} color="purple" title="Affiliate: new users only">
+                Affiliate
+              </Tag>
             ) : null}
           </Space>
         );
@@ -425,7 +402,8 @@ export default function Coupons() {
       key: "trialDays",
       width: 120,
       sorter: (a, b) => (a.trialDays || 0) - (b.trialDays || 0),
-      render: (v) => (v != null ? <Tag color="green">{v} day{v !== 1 ? "s" : ""}</Tag> : "—"),
+      render: (v) =>
+        v != null ? <Tag color="green">{v} day{v !== 1 ? "s" : ""}</Tag> : "—",
     };
     const windowCol = {
       title: "Validity",
@@ -455,129 +433,138 @@ export default function Coupons() {
       title: "Status",
       key: "status",
       width: 130,
-      filters: [
-        { text: "Active", value: "active" },
-        { text: "Inactive", value: "inactive" },
-      ],
-      onFilter: (val, r) => (!!r.active ? "active" : "inactive") === val,
-      render: (_, r) => <Tag color={r.active ? "green" : "default"}>{r.active ? "Active" : "Inactive"}</Tag>,
+      render: (_, r) => <StatusTag value={r.active ? "active" : "inactive"} />,
     };
 
     return { id: idCol, code: codeCol, type: typeCol, trial: trialCol, window: windowCol, limits: limitsCol, status: statusCol };
   }, [openView]);
 
-  let columns = visibleCols.map((k) => COLUMNS_MAP[k]).filter(Boolean);
-  columns.push({
-    title: "Actions",
-    key: "actions",
-    fixed: isSmDown ? "right" : undefined,
-    width: 100,
-    render: (_, record) => renderActions(record),
-  });
+  // actions menu
+  const actionsRender = (record) => (
+    <Dropdown
+      menu={{
+        items: [
+          { key: "view", label: "View", icon: <EyeOutlined /> },
+          { key: "edit", label: "Edit", icon: <EditOutlined /> },
+          { key: "delete", label: <span className="text-red-600">Delete</span>, icon: <DeleteOutlined /> },
+        ],
+        onClick: ({ key }) => {
+          if (key === "view") return openView(record.id);
+          if (key === "edit") return openEdit(record.id);
+          if (key === "delete") return askDelete(record);
+        },
+      }}
+      trigger={["click"]}
+    >
+      <Button size="small" icon={<MoreOutlined />} />
+    </Dropdown>
+  );
 
-  const resetFilters = () => {
-    setStatusFilter("all");
-    setScopeFilter("all");
-    setQ("");
-    fetchCoupons();
-  };
+  // toolbars
+  const toolbarLeft = (
+    <Space wrap>
+      <Input
+        allowClear
+        prefix={<SearchOutlined />}
+        placeholder="Search code, description or email…"
+        onChange={(e) => debouncedSetQ(e.target.value)}
+        style={{ width: 260 }}
+      />
+      <Segmented
+        options={[
+          { label: "All", value: "all" },
+          { label: "Active", value: "active" },
+          { label: "Inactive", value: "inactive" },
+        ]}
+        value={statusFilter}
+        onChange={setStatusFilter}
+        size={isMdUp ? "middle" : "small"}
+      />
+      <Segmented
+        options={[
+          { label: "General", value: "general" },
+          { label: "Per Email", value: "email" },
+        ]}
+        value={scopeFilter}
+        onChange={setScopeFilter}
+        size={isMdUp ? "middle" : "small"}
+      />
+    </Space>
+  );
+
+  const toolbarRight = (
+    <Space wrap>
+      {selectedRowKeys.length > 0 && (
+        <Button danger onClick={() => setBulkOpen(true)} icon={<DeleteOutlined />}>
+          Delete selected
+        </Button>
+      )}
+      <Tooltip title="Export current view">
+        <Button
+          icon={<DownloadOutlined />}
+          onClick={() => {
+            const rows = [
+              ["ID", "Code", "Active", "Affiliate", "Scope", "Emails", "Trial Days", "Start", "End", "Max Redemptions", "Used", "Created"],
+              ...filteredCoupons.map((c) => [
+                c.id,
+                c.code || "",
+                String(!!c.active),
+                String(!!c.affiliate),
+                c.scope || (Array.isArray(c.emails) && c.emails.length ? "email" : "general"),
+                (c.emails || []).join("|"),
+                c.trialDays ?? "",
+                c.startAt ? dayjs(c.startAt).format("YYYY-MM-DD") : "",
+                c.endAt ? dayjs(c.endAt).format("YYYY-MM-DD") : "",
+                c.maxRedemptions ?? "",
+                c.redemptionsCount ?? 0,
+                c.createdAt ? dayjs(c.createdAt).format("YYYY-MM-DD HH:mm") : "",
+              ]),
+            ];
+            const csv = rows
+              .map((r) => r.map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(","))
+              .join("\n");
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "coupons.csv";
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+        />
+      </Tooltip>
+      <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>
+        <span className="hidden sm:inline">Add Coupon</span>
+      </Button>
+    </Space>
+  );
 
   /* ---------------------------------- UI ---------------------------------- */
   return (
     <div className="space-y-4 sm:space-y-6 p-4 md:p-6 max-w-[1600px] mx-auto">
-      {/* Header */}
-      <Card
-        bordered={false}
-        style={{
-          background:
-            "linear-gradient(135deg, rgba(22,119,255,0.12) 0%, rgba(114,46,209,0.12) 100%)",
-        }}
-        bodyStyle={{ padding: 16 }}
-      >
-        <Row gutter={[16, 16]} align="middle" justify="space-between">
-          <Col xs={24} md={8}>
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl sm:text-2xl font-semibold m-0">Coupons</h1>
-            </div>
-          </Col>
-          <Col xs={24} md={16}>
-            <Row gutter={[16, 16]} justify="end">
-              <Col>
-                <Space wrap>
-                  <Input
-                    allowClear
-                    prefix={<SearchOutlined />}
-                    placeholder="Search code, description or email…"
-                    onChange={(e) => debouncedSetQ(e.target.value)}
-                    style={{ width: 260 }}
-                  />
-                  <Segmented
-                    options={[
-                      { label: "All", value: "all" },
-                      { label: "Active", value: "active" },
-                      { label: "Inactive", value: "inactive" },
-                    ]}
-                    value={statusFilter}
-                    onChange={setStatusFilter}
-                    size={isMdUp ? "middle" : "small"}
-                  />
-                  <Segmented
-                    options={[
-                      { label: "All types", value: "all" },
-                      { label: "General", value: "general" },
-                      { label: "Per Email", value: "email" },
-                    ]}
-                    value={scopeFilter}
-                    onChange={setScopeFilter}
-                    size={isMdUp ? "middle" : "small"}
-                  />
-                  <Tooltip title="Show / Hide columns">
-                    <Button icon={<SettingOutlined />} onClick={() => setColModalOpen(true)} />
-                  </Tooltip>
-                  <Tooltip title="Export current view">
-                    <Button icon={<DownloadOutlined />} onClick={exportCsv} />
-                  </Tooltip>
-                  <Tooltip title="Reset filters & refresh">
-                    <Button icon={<ReloadOutlined />} onClick={resetFilters} />
-                  </Tooltip>
-                  <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>
-                    <span className="hidden sm:inline">Add Coupon</span>
-                  </Button>
-                </Space>
-              </Col>
-            </Row>
-          </Col>
-        </Row>
-      </Card>
-
-      {/* Coupons table */}
-      <Card>
-        <Table
-          loading={loadingTable}
-          columns={columns}
-          dataSource={filteredCoupons}
-          rowKey="id"
-          size={isMdUp ? "middle" : "small"}
-          scroll={{ x: 1000 }}
-          pagination={{ pageSize: 20, showSizeChanger: false, size: isMdUp ? "default" : "small" }}
-          rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
-          title={() => (
-            <Space>
-              <Button danger disabled={!selectedRowKeys.length} onClick={onBulkDelete} icon={<DeleteOutlined />}>
-                Delete selected
-              </Button>
-              <Text type="secondary">
-                {selectedRowKeys.length ? `${selectedRowKeys.length} selected` : ""}
-              </Text>
-            </Space>
-          )}
-          rowClassName={(_, idx) =>
+      <BillingEntityList
+        title="Coupons"
+        data={filteredCoupons}
+        loading={loadingTable}
+        columnsMap={COLUMNS_MAP}
+        storageKey="coupons.visibleCols.v2"
+        defaultVisible={["id", "code", "type", "trial", "window", "limits", "status"]}
+        actionsRender={actionsRender}
+        onRefresh={resetFilters}
+        toolbarLeft={toolbarLeft}
+        toolbarRight={toolbarRight}
+        selection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
+        pageSize={20}
+        scrollX={1000}
+        onRowClick={(r) => openView(r.id)}
+        tableProps={{
+          size: isMdUp ? "middle" : "small",
+          rowClassName: (_, idx) =>
             idx % 2 === 0
               ? "bg-[rgba(0,0,0,0.02)] hover:bg-[rgba(24,144,255,0.06)]"
-              : "hover:bg-[rgba(24,144,255,0.06)]"
-          }
-        />
-      </Card>
+              : "hover:bg-[rgba(24,144,255,0.06)]",
+        }}
+      />
 
       {/* Modal: Add/Edit */}
       <Modal
@@ -680,11 +667,7 @@ export default function Coupons() {
               </Col>
 
               <Col xs={24} md={12}>
-                <Form.Item
-                  label="Scope"
-                  name="scope"
-                  tooltip="General (any user) or per-email (allowed list)"
-                >
+                <Form.Item label="Scope" name="scope" tooltip="General (any user) or per-email (allowed list)">
                   <Select
                     options={[
                       { label: "General", value: "general" },
@@ -705,10 +688,7 @@ export default function Coupons() {
               </Col>
 
               <Col span={24}>
-                <Form.Item
-                  noStyle
-                  shouldUpdate={(p, c) => p.scope !== c.scope}
-                >
+                <Form.Item noStyle shouldUpdate={(p, c) => p.scope !== c.scope}>
                   {({ getFieldValue }) =>
                     getFieldValue("scope") === "email" ? (
                       <Form.Item
@@ -727,11 +707,7 @@ export default function Coupons() {
                           },
                         ]}
                       >
-                        <Select
-                          mode="tags"
-                          tokenSeparators={[",", " "]}
-                          placeholder="Type emails and press Enter"
-                        />
+                        <Select mode="tags" tokenSeparators={[",", " "]} placeholder="Type emails and press Enter" />
                       </Form.Item>
                     ) : null
                   }
@@ -742,58 +718,23 @@ export default function Coupons() {
         )}
       </Modal>
 
-      {/* Columns Modal */}
-      <Modal
-        title="Show / Hide columns"
-        open={colModalOpen}
-        onCancel={() => setColModalOpen(false)}
-        onOk={() => setColModalOpen(false)}
-        okText="Done"
-      >
-        <div className="mb-2">
-          <Space wrap>
-            <Button onClick={() => setVisibleCols(Object.keys(COLUMNS_MAP))}>Select all</Button>
-            <Button onClick={() => setVisibleCols(DEFAULT_VISIBLE.slice())}>Reset</Button>
-          </Space>
-        </div>
-
-        {(() => {
-          const entries = Object.keys(COLUMNS_MAP).map((k) => ({
-            value: k,
-            label: COLUMNS_MAP[k]?.title || k,
-          }));
-          return (
-            <Checkbox.Group
-              value={Array.from(new Set(visibleCols))}
-              onChange={(vals) => setVisibleCols(Array.from(new Set(vals)))}
-              className="grid grid-cols-1 sm:grid-cols-2 gap-y-2"
-              options={entries}
-            />
-          );
-        })()}
-
-        <Divider />
-        <Text type="secondary" className="block">“Actions” is always visible.</Text>
-      </Modal>
-
-      {/* View Drawer */}
+      {/* View Drawer (offset under header) */}
       <Drawer
         title="Coupon"
         open={viewOpen}
         onClose={closeView}
-        width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 48 : 720)}
+        width={drawerWidth}
+        style={{ top: HEADER_OFFSET }}
+        maskStyle={{ top: HEADER_OFFSET }}
         extra={
           viewRec ? (
             <Space>
-              <Button onClick={() => openEdit(viewRec.id)} icon={<EditOutlined />}>Edit</Button>
-              <Button danger onClick={() => {
-                Modal.confirm({
-                  title: "Delete coupon?",
-                  okText: "Delete",
-                  okButtonProps: { danger: true },
-                  onOk: () => onDelete(viewRec.id),
-                });
-              }} icon={<DeleteOutlined />}>Delete</Button>
+              <Button onClick={() => openEdit(viewRec.id)} icon={<EditOutlined />}>
+                Edit
+              </Button>
+              <Button danger onClick={() => askDelete(viewRec)} icon={<DeleteOutlined />}>
+                Delete
+              </Button>
             </Space>
           ) : null
         }
@@ -805,14 +746,27 @@ export default function Coupons() {
             <Descriptions.Item label="ID">{viewRec.id}</Descriptions.Item>
             <Descriptions.Item label="Code">{viewRec.code || "—"}</Descriptions.Item>
             <Descriptions.Item label="Status">
-              <Tag color={viewRec.active ? "green" : "default"}>{viewRec.active ? "Active" : "Inactive"}</Tag>
+              <StatusTag value={viewRec.active ? "active" : "inactive"} />
             </Descriptions.Item>
             <Descriptions.Item label="Type">
               <Space size="small" wrap>
-                <Tag color={(viewRec.scope || (viewRec.emails?.length ? "email" : "general")) === "email" ? "gold" : "blue"}>
-                  {(viewRec.scope || (viewRec.emails?.length ? "email" : "general")) === "email" ? "Per Email" : "General"}
+                <Tag
+                  color={
+                    (viewRec.scope || (viewRec.emails?.length ? "email" : "general")) === "email"
+                      ? "gold"
+                      : "blue"
+                  }
+                  icon={
+                    (viewRec.scope || (viewRec.emails?.length ? "email" : "general")) === "email"
+                      ? <MailOutlined />
+                      : undefined
+                  }
+                >
+                  {(viewRec.scope || (viewRec.emails?.length ? "email" : "general")) === "email"
+                    ? "Per Email"
+                    : "General"}
                 </Tag>
-                {viewRec.affiliate ? <Tag color="purple">Affiliate (new users only)</Tag> : null}
+                {viewRec.affiliate ? <Tag color="purple" icon={<SafetyOutlined />}>Affiliate (new users only)</Tag> : null}
               </Space>
             </Descriptions.Item>
             <Descriptions.Item label="Trial Days">
@@ -820,8 +774,12 @@ export default function Coupons() {
             </Descriptions.Item>
             <Descriptions.Item label="Validity Window">
               <div className="leading-tight">
-                <div><Text type="secondary">Start:</Text> {fmtDT(viewRec.startAt)}</div>
-                <div><Text type="secondary">End:</Text> {fmtDT(viewRec.endAt)}</div>
+                <div>
+                  <Text type="secondary">Start:</Text> {fmtDT(viewRec.startAt)}
+                </div>
+                <div>
+                  <Text type="secondary">End:</Text> {fmtDT(viewRec.endAt)}
+                </div>
               </div>
             </Descriptions.Item>
             <Descriptions.Item label="Limits / Usage">
@@ -830,11 +788,9 @@ export default function Coupons() {
                 <Tag color="geekblue">Used {viewRec.redemptionsCount ?? 0}</Tag>
               </Space>
             </Descriptions.Item>
-            {((viewRec.scope || (viewRec.emails?.length ? "email" : "general")) === "email") && (
+            {(viewRec.scope || (viewRec.emails?.length ? "email" : "general")) === "email" && (
               <Descriptions.Item label="Allowed Emails">
-                {Array.isArray(viewRec.emails) && viewRec.emails.length
-                  ? viewRec.emails.join(", ")
-                  : "—"}
+                {Array.isArray(viewRec.emails) && viewRec.emails.length ? viewRec.emails.join(", ") : "—"}
               </Descriptions.Item>
             )}
             <Descriptions.Item label="Description">
@@ -846,6 +802,47 @@ export default function Coupons() {
           <Text type="secondary">No data.</Text>
         )}
       </Drawer>
+
+      {/* Confirm Drawer: Single delete (header Close; footer cancel hidden) */}
+      <ConfirmDrawer
+        open={confirmOpen}
+        title="Delete coupon?"
+        description={
+          <>
+            This will permanently delete coupon{" "}
+            <Text strong>#{confirmTarget?.id ?? "—"}</Text>. This action cannot be undone.
+          </>
+        }
+        loading={confirmLoading}
+        confirmText="Delete"
+        showCloseButton
+        cancelText=""
+        topOffset={HEADER_OFFSET}
+        onConfirm={handleConfirmDelete}
+        onClose={() => {
+          setConfirmOpen(false);
+          setConfirmTarget(null);
+        }}
+      />
+
+      {/* Confirm Drawer: Bulk delete */}
+      <ConfirmDrawer
+        open={bulkOpen}
+        title="Delete selected coupons?"
+        description={
+          <>
+            You are about to delete <Text strong>{selectedRowKeys.length}</Text>{" "}
+            coupon{selectedRowKeys.length === 1 ? "" : "s"}. This action cannot be undone.
+          </>
+        }
+        loading={bulkLoading}
+        confirmText="Delete all"
+        showCloseButton
+        cancelText=""
+        topOffset={HEADER_OFFSET}
+        onConfirm={handleConfirmBulk}
+        onClose={() => setBulkOpen(false)}
+      />
     </div>
   );
 }

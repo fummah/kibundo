@@ -1,4 +1,3 @@
-// src/routes/AdminRoutes.jsx
 import React, { lazy } from "react";
 import { Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
@@ -25,7 +24,8 @@ import Coupons from "@/pages/admin/billing/Coupons.jsx";
 /* Content */
 import ContentOverview from "@/pages/admin/content/ContentOverview.jsx";
 import PublishBlogPost from "@/pages/admin/content/PublishBlogPost.jsx";
-import BlogPostEdit from "@/pages/admin/content/BlogPostEdit.jsx"; // <-- added
+import BlogPostEdit from "@/pages/admin/content/BlogPostEdit.jsx";
+import BlogPreviewPage from "@/pages/admin/content/BlogPreviewPage.jsx";
 
 /* Newsletter */
 import Newsletter from "@/pages/admin/newsletter/Newsletter.jsx";
@@ -126,6 +126,10 @@ export default function AdminRoutes() {
             <Route path="publish" element={<PublishBlogPost />} />
             <Route path="publish/:id" element={<PublishBlogPost />} />
             <Route path="new" element={<PublishBlogPost />} />
+
+            {/* ✅ FIX: use a RELATIVE child path here */}
+            <Route path="blog/preview/:id" element={<BlogPreviewPage />} />
+
             {/* Dedicated edit page */}
             <Route path="edit/:id" element={<BlogPostEdit />} />
           </Route>

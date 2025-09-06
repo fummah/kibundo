@@ -1,10 +1,13 @@
 // src/pages/student/StudentSettings.jsx
 import { useMemo, useState } from "react";
 import { Card, Typography, Input, Button, Space, Tag, Switch, Radio, Modal, message } from "antd";
-import { ArrowLeft, Wand2 } from "lucide-react";
+import { Wand2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+
+import BackButton from "@/components/student/common/BackButton.jsx";
 import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
+import { useAuthContext } from "@/context/AuthContext.jsx";
 
 const { Title, Text } = Typography;
 
@@ -27,14 +30,28 @@ const THEMES = [
 
 export default function StudentSettings() {
   const navigate = useNavigate();
+
   const {
     buddy, setBuddy,
     interests, setInterests,
     profile, setProfile, // { name, ttsEnabled, theme }
   } = useStudentApp();
 
+  // Logged-in user (to prefill and show name)
+  const { user, logout, signOut } = (useAuthContext?.() ?? {});
+
+  const defaultName = useMemo(() => {
+    return (
+      profile?.name ||
+      user?.first_name ||
+      user?.name ||
+      (user?.email ? user.email.split("@")[0] : "") ||
+      ""
+    );
+  }, [profile?.name, user]);
+
   // local working copies (optimistic UI)
-  const [name, setName] = useState(profile?.name || "");
+  const [name, setName] = useState(defaultName);
   const [ttsEnabled, setTTSEnabled] = useState(Boolean(profile?.ttsEnabled));
   const [theme, setTheme] = useState(profile?.theme || "indigo");
   const [interestDraft, setInterestDraft] = useState("");
@@ -42,7 +59,6 @@ export default function StudentSettings() {
   const [pendingBuddy, setPendingBuddy] = useState(buddy || BUDDIES[0]);
 
   const themePreview = useMemo(() => {
-    // simple mapping for a header gradient preview
     const map = {
       indigo: "from-indigo-50 to-indigo-100",
       emerald: "from-emerald-50 to-emerald-100",
@@ -85,7 +101,6 @@ export default function StudentSettings() {
       localStorage.removeItem("kibundo_interests");
       localStorage.removeItem("kibundo_profile");
     } catch {}
-    // reset in context too
     setBuddy(null);
     setInterests([]);
     setProfile({ name: "", ttsEnabled: false, theme: "indigo" });
@@ -95,23 +110,33 @@ export default function StudentSettings() {
     message.success("All student data reset on this device.");
   };
 
+  const doLogout = async () => {
+    try {
+      if (logout) await logout();
+      else if (signOut) await signOut();
+    } catch {}
+    navigate("/signin");
+  };
+
   return (
-    <div className="px-3 md:px-6 py-4 bg-gradient-to-b from-white to-neutral-50 min-h-[100dvh]">
+    // Scrollable; no FooterChat here so nothing overlaps
+    <div className="relative px-3 md:px-6 py-4 bg-gradient-to-b from-white to-neutral-50 min-h-[100svh] lg:h-full overflow-y-auto">
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">
-        <button className="p-2 rounded-full hover:bg-neutral-100" onClick={() => navigate(-1)} aria-label="Back">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
+        <BackButton
+          className="p-2 rounded-full hover:bg-neutral-100 active:scale-95"
+          aria-label="Back"
+        />
         <Title level={4} className="!mb-0">Student Settings</Title>
       </div>
 
-      {/* Theme preview strip */}
+      {/* Theme preview strip (shows logged-in user's name) */}
       <div className={`rounded-2xl p-3 mb-4 bg-gradient-to-br ${themePreview}`}>
         <div className="flex items-center gap-3">
-          <BuddyAvatar src={(buddy?.img) || "https://placekitten.com/200/206"} size={72} />
+          <BuddyAvatar src={buddy?.img || "https://placekitten.com/200/206"} size={72} />
           <div>
             <div className="text-sm text-neutral-600">Theme preview</div>
-            <div className="font-semibold">{name || "Your Name"}</div>
+            <div className="font-semibold">{name || defaultName || "Student"}</div>
           </div>
         </div>
       </div>
@@ -164,7 +189,7 @@ export default function StudentSettings() {
       <Card className="rounded-2xl mb-3">
         <Title level={5} className="!mb-2">Buddy</Title>
         <div className="flex items-center gap-3">
-          <BuddyAvatar src={(buddy?.img) || "https://placekitten.com/200/207"} size={64} />
+          <BuddyAvatar src={buddy?.img || "https://placekitten.com/200/207"} size={64} />
           <div className="flex-1">
             <div className="font-semibold">{buddy?.name || "No buddy selected yet"}</div>
             <Text type="secondary">Pick a monster friend to guide you.</Text>
@@ -216,6 +241,15 @@ export default function StudentSettings() {
         </Space.Compact>
       </Card>
 
+      {/* Account / Logout Card */}
+      <Card className="rounded-2xl mb-3">
+        <Title level={5} className="!mb-2">Account</Title>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <Text type="secondary">Sign out from this device.</Text>
+          <Button danger onClick={doLogout} className="rounded-xl">Log out</Button>
+        </div>
+      </Card>
+
       {/* Danger zone */}
       <Card className="rounded-2xl border-red-200">
         <Title level={5} className="!mb-2 text-red-600">Danger Zone</Title>
@@ -239,7 +273,11 @@ export default function StudentSettings() {
             <button
               key={b.id}
               onClick={() => setPendingBuddy(b)}
-              className={`text-left rounded-xl border-2 p-2 transition ${pendingBuddy?.id === b.id ? "border-blue-500" : "border-transparent hover:border-neutral-200"}`}
+              className={`text-left rounded-xl border-2 p-2 transition ${
+                pendingBuddy?.id === b.id
+                  ? "border-blue-500"
+                  : "border-transparent hover:border-neutral-200"
+              }`}
             >
               <div className="flex items-center gap-3">
                 <BuddyAvatar src={b.img} size={56} />

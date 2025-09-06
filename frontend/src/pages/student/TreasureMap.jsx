@@ -1,9 +1,13 @@
 // src/pages/student/TreasureMap.jsx
 import { useMemo, useState } from "react";
-import { Card, Typography, Tag, Modal, Progress, Button } from "antd";
-import { Crown, Lock, Map as MapIcon, Trophy } from "lucide-react";
+import { Card, Typography, Tag, Modal, Button } from "antd";
+import { Crown, Lock, Trophy } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+
+import BackButton from "@/components/student/common/BackButton.jsx";
+import GreetingBanner from "@/components/student/common/GreetingBanner.jsx";
 import StudentStatsCard from "@/components/student/StudentStatsCard.jsx";
+import { ChatStripSpacer } from "@/components/student/mobile/FooterChat";
 
 const { Title, Text } = Typography;
 
@@ -11,7 +15,7 @@ const { Title, Text } = Typography;
 const mockProfile = {
   stars: 27,
   xp: 1240,
-  unlockedIds: ["island-1", "island-2", "island-3"], // gate by length
+  unlockedIds: ["island-1", "island-2", "island-3"],
 };
 
 const ALL_AREAS = [
@@ -76,12 +80,6 @@ export default function TreasureMap() {
     });
   }, []);
 
-  const unlockedCount = areas.filter((a) => a.unlocked).length;
-  const overallPct = Math.min(
-    100,
-    Math.round((unlockedCount / ALL_AREAS.length) * 100)
-  );
-
   const startSuggested = (taskText = "") => {
     const t = taskText.toLowerCase();
     if (t.includes("ai reading") || t.includes("ai reading text")) {
@@ -93,54 +91,42 @@ export default function TreasureMap() {
     } else if (t.includes("word problem") || t.includes("math")) {
       navigate("/student/learning/subject/math");
     } else if (t.includes("timer") || t.includes("focus")) {
-      navigate("/student/motivation"); // your focus timer page
+      navigate("/student/motivation");
     } else {
-      // fallback to learning hub
       navigate("/student/learning");
     }
   };
 
   return (
-    <div className="px-3 md:px-6 py-4 bg-gradient-to-b from-white to-neutral-50 min-h-[100dvh]">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <MapIcon className="w-6 h-6 opacity-70" />
-          <Title level={4} className="!mb-0">
-            Treasure Map
-          </Title>
+    // Scrollable in all views; soft gradient; space reserved for chat footer
+    <div className="relative px-3 md:px-6 py-4 bg-gradient-to-b from-white to-neutral-50 min-h-[100svh] lg:h-full overflow-y-auto">
+      {/* Header: back + banner + badges; wraps on small screens */}
+      <div className="flex items-center gap-3 pt-6 mb-4 flex-wrap">
+        <BackButton
+          className="p-2 rounded-full hover:bg-neutral-100 active:scale-95"
+          aria-label="Back"
+        />
+        <div className="flex-1 min-w-[240px]">
+          <GreetingBanner
+            title="Treasure Map"
+            subtitle="Pick an area to explore and unlock rewards."
+            className="!bg-white"
+            translucent={false}
+          />
         </div>
-        <div className="flex items-center gap-2">
-          <Tag color="gold">
-            <Crown className="inline w-4 h-4 mr-1" /> {mockProfile.stars} stars
+        <div className="flex items-center gap-2 ml-auto">
+          <Tag color="gold" className="flex items-center gap-1">
+            <Crown className="inline w-4 h-4" /> {mockProfile.stars} stars
           </Tag>
-          <Tag color="blue">
-            <Trophy className="inline w-4 h-4 mr-1" /> {mockProfile.xp} XP
+          <Tag color="blue" className="flex items-center gap-1">
+            <Trophy className="inline w-4 h-4" /> {mockProfile.xp} XP
           </Tag>
         </div>
       </div>
 
-      {/* Top row: Student stats + overall progress */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-        {/* Lightweight student stats (today time, streak, last subject) */}
+      {/* Top section: just student stats now (clean single column layout for mobile & desktop) */}
+      <div className="grid grid-cols-1 gap-4 mb-4">
         <StudentStatsCard />
-
-        {/* Overall progress card */}
-        <Card className="rounded-2xl border-0 shadow-md lg:col-span-2">
-          <div className="flex flex-col md:flex-row md:items-center gap-3">
-            <div className="flex-1">
-              <Text type="secondary">Overall progress</Text>
-              <Progress percent={overallPct} className="!mb-0" />
-            </div>
-            <Button
-              type="primary"
-              className="rounded-xl self-start md:self-auto"
-              onClick={() => navigate("/student/learning")}
-            >
-              Continue Learning
-            </Button>
-          </div>
-        </Card>
       </div>
 
       {/* Map grid */}
@@ -152,6 +138,7 @@ export default function TreasureMap() {
             onClick={() => a.unlocked && setActive(a)}
             disabled={!a.unlocked}
             aria-label={a.name}
+            aria-disabled={!a.unlocked}
           >
             <Card
               hoverable={a.unlocked}
@@ -235,7 +222,6 @@ export default function TreasureMap() {
                 type="primary"
                 className="rounded-xl"
                 onClick={() => {
-                  // pick the first suggested task to route
                   const first = active.tasks?.[0] || "";
                   setActive(null);
                   startSuggested(first);
@@ -250,6 +236,9 @@ export default function TreasureMap() {
           </div>
         )}
       </Modal>
+
+      {/* Ensure content never hides behind the chat footer */}
+      <ChatStripSpacer />
     </div>
   );
 }

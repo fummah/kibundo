@@ -1,42 +1,16 @@
 // src/pages/student/ReadingScreen.jsx
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, Typography } from "antd";
-import { ArrowLeft } from "lucide-react";
-import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
+import { Typography } from "antd";
+import BackButton from "@/components/student/common/BackButton.jsx";
+import CardTile from "@/components/student/common/CardTile.jsx";
+import GreetingBanner from "@/components/student/common/GreetingBanner.jsx";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 
-function Tile({ img, title, onClick }) {
-  return (
-    <button onClick={onClick} className="w-full text-left" aria-label={title}>
-      <Card
-        hoverable
-        className="rounded-2xl border-0 !p-0 overflow-hidden shadow-sm"
-        bodyStyle={{ padding: 0 }}
-      >
-        <img
-          src={img}
-          alt={title}
-          className="w-full h-36 object-cover"
-          loading="eager"
-          onError={(e) => {
-            e.currentTarget.onerror = null;
-            e.currentTarget.src =
-              "https://via.placeholder.com/800x360.png?text=Reading";
-          }}
-        />
-        <div className="px-3 py-3">
-          <div className="font-semibold">{title}</div>
-        </div>
-      </Card>
-    </button>
-  );
-}
-
-const stock = {
+const STOCK = {
   camera:
     "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&q=80&auto=format&fit=crop",
   book:
@@ -45,7 +19,12 @@ const stock = {
     "https://images.unsplash.com/photo-1512758017271-d7b84c2113f1?w=800&q=80&auto=format&fit=crop",
 };
 
-// simple student-tone → gradient classes for mobile hero
+const OPTIONS = [
+  { key: "read-aloud", title: "Read Aloud", img: STOCK.camera, to: "/student/reading/read-aloud" },
+  { key: "ai-text", title: "AI Reading Text", img: STOCK.book, to: "/student/reading/ai-text" },
+  { key: "quiz", title: "Reading Quiz", img: STOCK.quiz, to: "/student/reading/quiz" },
+];
+
 const HERO_GRAD_BY_TONE = {
   indigo: "from-indigo-50 to-sky-100",
   sky: "from-sky-100 to-indigo-100",
@@ -75,48 +54,35 @@ export default function ReadingScreen() {
 
   return (
     <div className="px-3 md:px-6 py-4">
-      {/* ============ Mobile hero (client style) ============ */}
+      {/* ============ Mobile hero ============ */}
       <div className="md:hidden mb-4">
-        <div className={`rounded-3xl overflow-hidden bg-gradient-to-b ${heroGrad} p-5`}>
-          <div className="flex items-center gap-3 mb-3">
-            <button
-              className="p-2 rounded-full hover:bg-white/60 active:scale-95"
-              onClick={() => navigate(-1)}
-              aria-label="Back"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <Title level={4} className="!mb-0">
-              Reading Practice
-            </Title>
+        <div className={`rounded-3xl overflow-hidden p-5`}>
+          <div className="relative mb-3">
+            <BackButton className="absolute left-0 top-0 p-2 rounded-full hover:bg-white/60 active:scale-95" />
+            <Title level={4} className="!mb-0 text-center">Reading Practice</Title>
           </div>
 
-          <div className="rounded-2xl bg-white/70 p-3 flex items-center gap-3 mb-4">
-            <BuddyAvatar src={buddy?.avatar} size={56} />
-            <div className="min-w-0">
-              <div className="font-semibold truncate">Hello, {name}! 👋</div>
-              <Text type="secondary" className="block">
-                Choose an activity to improve your reading.
-              </Text>
-            </div>
-          </div>
+          <GreetingBanner
+            title={`Hello, ${name}! 👋`}
+            subtitle="Choose an activity to improve your reading."
+            className="mb-4"
+            translucent
+          />
 
           <div className="grid grid-cols-2 gap-3 mt-2">
-            <Tile
-              img={stock.camera}
-              title="Read Aloud"
-              onClick={() => navigate("/student/reading/read-aloud")}
-            />
-            <Tile
-              img={stock.book}
-              title="AI Reading Text"
-              onClick={() => navigate("/student/reading/ai-text")}
-            />
+            {OPTIONS.slice(0, 2).map((opt) => (
+              <CardTile
+                key={opt.key}
+                img={opt.img}
+                title={opt.title}
+                onClick={() => navigate(opt.to)}
+              />
+            ))}
             <div className="col-span-2">
-              <Tile
-                img={stock.quiz}
-                title="Reading Quiz"
-                onClick={() => navigate("/student/reading/quiz")}
+              <CardTile
+                img={OPTIONS[2].img}
+                title={OPTIONS[2].title}
+                onClick={() => navigate(OPTIONS[2].to)}
               />
             </div>
           </div>
@@ -125,32 +91,34 @@ export default function ReadingScreen() {
 
       {/* ============ Desktop: header + clean card grid ============ */}
       <div className="hidden md:block">
-        <div className="flex items-center gap-3 mb-4">
-          <BuddyAvatar src={buddy?.avatar} size={56} />
-          <div>
-            <Title level={4} className="!mb-0">
-              Reading Practice
-            </Title>
-            <Text type="secondary">Pick an activity to begin.</Text>
+        <div className="flex items-center gap-3 pt-6 mb-4">
+          <div className="shrink-0">
+            <BackButton
+              className="p-2 rounded-full hover:bg-black/5 active:scale-95"
+              aria-label="Back"
+            />
           </div>
+
+          <div className="flex-1">
+      <GreetingBanner
+        title="Reading Practice"                 // ✅ fix: was invalid JSX
+        subtitle="Pick an activity to begin."
+        className="!bg-white"
+        translucent={false}
+        
+      />
+    </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4 max-w-4xl">
-          <Tile
-            img={stock.camera}
-            title="Read Aloud"
-            onClick={() => navigate("/student/reading/read-aloud")}
-          />
-          <Tile
-            img={stock.book}
-            title="AI Reading Text"
-            onClick={() => navigate("/student/reading/ai-text")}
-          />
-          <Tile
-            img={stock.quiz}
-            title="Reading Quiz"
-            onClick={() => navigate("/student/reading/quiz")}
-          />
+          {OPTIONS.map((opt) => (
+            <CardTile
+              key={opt.key}
+              img={opt.img}
+              title={opt.title}
+              onClick={() => navigate(opt.to)}
+            />
+          ))}
         </div>
       </div>
     </div>

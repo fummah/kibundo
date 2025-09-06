@@ -19,6 +19,7 @@ import {
   Popconfirm,
   Upload,
   Image,
+  Empty,
 } from "antd";
 import {
   SaveOutlined,
@@ -28,14 +29,16 @@ import {
   DeleteOutlined,
   UploadOutlined,
   CloseCircleFilled,
+  ArrowLeftOutlined,
+  TagOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import api from "@/api/axios";
 
-import ReactQuill from "react-quill";           // ✅ ReactQuill v2
+import ReactQuill from "react-quill"; // ✅ ReactQuill v2
 import "react-quill/dist/quill.snow.css";
 
-const { Title } = Typography;
+const { Title, Paragraph, Text } = Typography;
 
 const LS_SHADOW_KEY = "kibundo.blogPost.lastSaved.v1";
 
@@ -116,7 +119,6 @@ const RichTextArea = forwardRef(function RichTextArea(
   const quillRef = useRef(null);
 
   // expose the editor to parent if needed
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!ref) return;
     if (typeof ref === "function") {
@@ -188,7 +190,7 @@ const RichTextArea = forwardRef(function RichTextArea(
   return (
     <div className="antd-quill">
       <ReactQuill
-        ref={quillRef}              // ✅ real ref directly to the component
+        ref={quillRef} // ✅ real ref directly to the component
         theme="snow"
         value={value || ""}
         onChange={(html) => onChange?.(html)}
@@ -204,6 +206,78 @@ const RichTextArea = forwardRef(function RichTextArea(
   );
 });
 
+/** ---- Simple in-page Blog preview (no external imports) ----
+ *  Renders a clean preview using current form values.
+ */
+function BlogPreviewCard({ values }) {
+  const {
+    title,
+    subtitle,
+    body_html,
+    tags = [],
+    thumbnail_url,
+  } = values || {};
+
+  const hasBody = !!stripHtml(body_html || "");
+  const hasHero = !!thumbnail_url;
+
+  return (
+    <Card bordered={false} className="rounded-2xl">
+      {/* Header: Back + Share (dummy for now) */}
+      <div className="flex items-center justify-between mb-4">
+        <Space>
+          <Button type="text" icon={<ArrowLeftOutlined />}>Back</Button>
+        </Space>
+        <Space>
+          <Tooltip title="Share">
+            <Button type="primary" icon={<EyeOutlined />}>Share</Button>
+          </Tooltip>
+        </Space>
+      </div>
+
+      {/* Hero */}
+      {hasHero && (
+        <Card
+          bodyStyle={{ padding: 0 }}
+          bordered={false}
+          className="overflow-hidden rounded-2xl shadow-sm mb-6"
+          cover={<img src={thumbnail_url} alt={title} className="w-full object-cover max-h-[420px]" />}
+        />
+      )}
+
+      {/* Title + subtitle + tags */}
+      <div className="max-w-3xl">
+        <Title level={1} className="!mb-2 leading-tight">{title || "Untitled post"}</Title>
+        {subtitle ? <Paragraph className="text-lg text-gray-600 !mt-0">{subtitle}</Paragraph> : null}
+
+        <div className="mt-3">
+          <Space size={[8,8]} wrap>
+            {Array.isArray(tags) && tags.length > 0
+              ? tags.map((t) => (
+                  <Tag key={t} icon={<TagOutlined />} className="rounded-full px-2">
+                    {t}
+                  </Tag>
+                ))
+              : <Text type="secondary">No tags</Text>
+            }
+          </Space>
+        </div>
+      </div>
+
+      <Divider className="my-6" />
+
+      {/* Body */}
+      {hasBody ? (
+        <div className="prose max-w-none">
+          <div dangerouslySetInnerHTML={{ __html: body_html }} />
+        </div>
+      ) : (
+        <Empty description="Nothing to preview yet. Add content in the editor." />
+      )}
+    </Card>
+  );
+}
+
 // -------------------- Component --------------------
 export default function PublishBlogPost() {
   const [form] = Form.useForm();
@@ -218,13 +292,15 @@ export default function PublishBlogPost() {
 
   const [loading, setLoading] = useState(!!editingId);
   const [saving, setSaving] = useState(false);
-  const [previewOn, setPreviewOn] = useState(true);
+  const [previewOn, setPreviewOn] = useState(false);
 
   const [thumbPreview, setThumbPreview] = useState("");
 
+  // ✅ All hooks at top-level (no conditional calls)
   const watchTitle = Form.useWatch("title", form);
   const watchBodyHtml = Form.useWatch("body_html", form);
   const watchThumb = Form.useWatch("thumbnail_url", form);
+  const values = Form.useWatch([], form) || {};
 
   useEffect(() => {
     setThumbPreview(watchThumb || "");
@@ -234,6 +310,7 @@ export default function PublishBlogPost() {
   useEffect(() => {
     const t = form.getFieldValue("title");
     const s = form.getFieldValue("slug");
+    // only regenerate when slug is empty or matches its own slugified version (user hasn't customized)
     if (!s || s === slugify(s)) form.setFieldsValue({ slug: slugify(t || "") });
   }, [watchTitle]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -248,6 +325,7 @@ export default function PublishBlogPost() {
       if (post) {
         form.setFieldsValue({
           title: post.title || "",
+          subtitle: post.subtitle || "",
           slug: post.slug || "",
           body_html: post.body_html || post.body_md || "",
           audience: post.audience || "parents",
@@ -321,6 +399,7 @@ export default function PublishBlogPost() {
 
       const payload = {
         title: v.title?.trim() || "-",
+        subtitle: v.subtitle?.trim() || "",
         slug: v.slug?.trim() || slugify(v.title || ""),
         body_html: v.body_html,
         body_md: stripHtml(v.body_html),
@@ -364,7 +443,8 @@ export default function PublishBlogPost() {
       if (localStatus === "published" && localSlug) {
         window.open(`/blog/${localSlug}`, "_blank");
       } else {
-        window.open(`/blog/preview/${editingId}`, "_blank");
+        // ✅ match nested route in AdminRoutes.jsx
+        window.open(`/admin/content/blog/preview/${editingId}`, "_blank");
       }
       return;
     }
@@ -380,7 +460,8 @@ export default function PublishBlogPost() {
       if (status === "published" && slug) {
         window.open(`/blog/${slug}`, "_blank");
       } else {
-        window.open(`/blog/preview/${id}`, "_blank");
+        // ✅ match nested route in AdminRoutes.jsx
+        window.open(`/admin/content/blog/preview/${id}`, "_blank");
       }
     } else {
       message.error("Could not open preview: missing post ID.");
@@ -466,6 +547,7 @@ export default function PublishBlogPost() {
                   <Space>
                     <Button
                       size="small"
+                      type={previewOn ? "primary" : "default"}
                       icon={<EyeOutlined />}
                       onClick={() => setPreviewOn(true)}
                     >
@@ -473,6 +555,7 @@ export default function PublishBlogPost() {
                     </Button>
                     <Button
                       size="small"
+                      type={!previewOn ? "primary" : "default"}
                       icon={<ReloadOutlined />}
                       onClick={() => setPreviewOn(false)}
                     >
@@ -481,50 +564,52 @@ export default function PublishBlogPost() {
                   </Space>
                 }
               >
-                <Form.Item
-                  name="title"
-                  label="Title"
-                  rules={[{ required: true, message: "Please enter a title" }]}
-                >
-                  <Input placeholder="Post title" />
-                </Form.Item>
-
-                <Form.Item
-                  name="slug"
-                  label="Slug"
-                  tooltip="Auto-generated from title"
-                  rules={[{ required: true }, { pattern: /^[a-z0-9-]+$/ }]}
-                >
-                  <Input placeholder="e.g., how-to-study-math" />
-                </Form.Item>
-
-                {/* RICH TEXT EDITOR */}
-                <Form.Item
-                  name="body_html"
-                  label="Body (Rich Text)"
-                  rules={[{ required: true, message: "Post body cannot be blank" }]}
-                  valuePropName="value"
-                  getValueFromEvent={(v) => v}
-                >
-                  <RichTextArea
-                    value={Form.useWatch("body_html", form)}
-                    onChange={(html) => form.setFieldsValue({ body_html: html })}
-                    onImageUpload={uploadImage}
-                  />
-                </Form.Item>
-
-                {previewOn && (
+                {!previewOn ? (
                   <>
-                    <Divider />
+                    <Form.Item
+                      name="title"
+                      label="Title"
+                      rules={[{ required: true, message: "Please enter a title" }]}
+                    >
+                      <Input placeholder="Post title" />
+                    </Form.Item>
+
+                    <Form.Item name="subtitle" label="Subtitle">
+                      <Input placeholder="Optional subtitle" />
+                    </Form.Item>
+
+                    <Form.Item
+                      name="slug"
+                      label="Slug"
+                      tooltip="Auto-generated from title"
+                      rules={[{ required: true }, { pattern: /^[a-z0-9-]+$/ }]}
+                    >
+                      <Input placeholder="e.g., how-to-study-math" />
+                    </Form.Item>
+
+                    {/* RICH TEXT EDITOR */}
+                    <Form.Item
+                      name="body_html"
+                      label="Body (Rich Text)"
+                      rules={[{ required: true, message: "Post body cannot be blank" }]}
+                      valuePropName="value"
+                      getValueFromEvent={(v) => v}
+                    >
+                   
+<RichTextArea
+  value={watchBodyHtml}
+  onChange={(html) => form.setFieldsValue({ body_html: html })}
+  onImageUpload={uploadImage}
+/>
+
+                    </Form.Item>
+                  </>
+                ) : (
+                  <>
                     <Title level={5} className="!mb-2">
-                      Live Preview (HTML)
+                      Live Preview
                     </Title>
-                    <div
-                      className="prose max-w-none border rounded-lg p-4 bg-white"
-                      dangerouslySetInnerHTML={{
-                        __html: htmlPreview || "<p>-</p>",
-                      }}
-                    />
+                    <BlogPreviewCard values={values} />
                   </>
                 )}
               </Card>
@@ -584,7 +669,7 @@ export default function PublishBlogPost() {
                 {/* Thumbnail for overview */}
                 <Card
                   className="rounded-xl"
-                  title="Thumbnail (Overview Card)"
+                  title="Thumbnail (Overview / Hero)"
                   extra={
                     thumbPreview ? (
                       <Button
@@ -599,8 +684,8 @@ export default function PublishBlogPost() {
                 >
                   <Form.Item
                     name="thumbnail_url"
-                    label="Thumbnail URL"
-                    tooltip="Shown on blog overview cards (recommended 1200×630). You can paste a URL or upload below."
+                    label="Image URL"
+                    tooltip="Shown on blog overview and used as hero in preview (recommended 1200×630)."
                   >
                     <Input
                       placeholder="https://…/image.jpg"
@@ -643,6 +728,26 @@ export default function PublishBlogPost() {
               </Space>
             </Col>
           </Row>
+
+          {/* Inline quick HTML preview (kept, hidden when big preview is on) */}
+          {!previewOn && (
+            <>
+              <Divider />
+              <Title level={5} className="!mb-2">
+                Quick HTML Preview
+              </Title>
+              {stripHtml(htmlPreview) ? (
+                <div
+                  className="prose max-w-none border rounded-lg p-4 bg-white"
+                  dangerouslySetInnerHTML={{
+                    __html: htmlPreview,
+                  }}
+                />
+              ) : (
+                <Empty description="Nothing to preview yet. Add content in the editor." />
+              )}
+            </>
+          )}
         </Form>
       </Card>
     </div>

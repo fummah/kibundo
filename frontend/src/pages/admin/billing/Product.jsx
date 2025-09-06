@@ -1,12 +1,6 @@
 // src/pages/billing/Product.jsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
-  Card,
-  Table,
-  Tag,
-  Segmented,
-  Button,
-  Space,
   Modal,
   Form,
   Input,
@@ -21,10 +15,11 @@ import {
   Col,
   Dropdown,
   Tooltip,
-  Checkbox,
-  Divider,
+  Space,
+  Button,
   Drawer,
   Descriptions,
+  Segmented,
 } from "antd";
 import {
   PlusOutlined,
@@ -32,64 +27,42 @@ import {
   DeleteOutlined,
   MoreOutlined,
   DownloadOutlined,
-  ReloadOutlined,
   SearchOutlined,
-  CheckCircleTwoTone,
-  CloseCircleTwoTone,
-  SettingOutlined,
   EyeOutlined,
 } from "@ant-design/icons";
 import api from "@/api/axios";
 
+import BillingEntityList from "@/components/billing/BillingEntityList";
+import ConfirmDrawer from "@/components/common/ConfirmDrawer";
+import StatusTag from "@/components/common/StatusTag";
+import MoneyText from "@/components/common/MoneyText";
+import useResponsiveDrawerWidth from "@/hooks/useResponsiveDrawerWidth";
+
 const { Text, Paragraph } = Typography;
 const { useBreakpoint } = Grid;
 
+/* Offset for fixed top nav/header so drawers sit below it */
+const HEADER_OFFSET = 64;
+
 /* ----------------------------- helpers ----------------------------- */
 const CURRENCY_OPTIONS = [
-  { label: "EUR (€)", value: "EUR" },
+  { label: "EUR (€)", value: "EUR" }, // Germany currency
   { label: "USD ($)", value: "USD" },
-  { label: "ZAR (R)", value: "ZAR" },
 ];
-const CURRENCY_SYMBOL = { EUR: "€", USD: "$", ZAR: "R" };
 
-const COUNTRY_VAT = {
-  DE: 0.19, FR: 0.20, ES: 0.21, IT: 0.22, NL: 0.21, BE: 0.21, AT: 0.20,
-  IE: 0.23, PT: 0.23, PL: 0.23, UK: 0.20, US: 0.0, ZA: 0.15,
-};
-const COUNTRY_OPTIONS = Object.entries(COUNTRY_VAT).map(([cc, rate]) => ({
-  value: cc, label: `${cc} (${Math.round(rate * 100)}% VAT)`,
-}));
+const CURRENCY_SYMBOL = { EUR: "€", USD: "$", ZAR: "R" };
 
 const isCanceled = (err) =>
   err?.code === "ERR_CANCELED" ||
   err?.name === "CanceledError" ||
   (typeof api.isCancel === "function" && api.isCancel(err));
 
-const statusColor = (statusRaw) => {
-  const s = String(statusRaw || "").toLowerCase();
-  const map = {
-    active: "green",
-    inactive: "default",
-    draft: "default",
-    archived: "default",
-    trialing: "blue",
-    past_due: "orange",
-    pastdue: "orange",
-    canceled: "red",
-    cancelled: "red",
-    unpaid: "magenta",
-    incomplete: "volcano",
-    incomplete_expired: "volcano",
-  };
-  return map[s] || "default";
-};
-
 const titleCase = (s) =>
   String(s || "")
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
-const debounce = (fn, ms = 300) => {
+const debounce = (fn, ms = 250) => {
   let t;
   return (...args) => {
     clearTimeout(t);
@@ -103,22 +76,17 @@ const money = (n, currency = "EUR") => {
   return `${n.toFixed(2)} ${sym || currency}`;
 };
 
-const inclVat = (base, vatRate) =>
-  base == null ? null : base * (1 + (Number(vatRate) || 0));
-
 /* ------------------------ adapters (API ↔ form) ------------------------ */
 function toFormValues(apiProduct) {
   if (!apiProduct) return {};
-  const monthlyCents =
-    apiProduct.priceMonthlyCents ??
-    (String(apiProduct.interval || "").toLowerCase() === "monthly"
-      ? apiProduct.priceCents
-      : undefined);
-  const annualCents =
-    apiProduct.priceYearlyCents ??
-    (String(apiProduct.interval || "").toLowerCase() === "yearly"
-      ? apiProduct.priceCents
-      : undefined);
+  const price =
+    apiProduct.price != null
+      ? Number(apiProduct.price)
+      : apiProduct.priceCents != null
+        ? Number(apiProduct.priceCents) / 100
+        : apiProduct.amountCents != null
+          ? Number(apiProduct.amountCents) / 100
+          : undefined;
 
   return {
     name: apiProduct.name || apiProduct.nickname || "",
@@ -128,13 +96,7 @@ function toFormValues(apiProduct) {
         ? apiProduct.active
         : String(apiProduct.status || "").toLowerCase() === "active",
     currency: apiProduct.currency || "EUR",
-    country: apiProduct.country || apiProduct.marketCountry || "DE",
-    vatPercent:
-      apiProduct.vatPercent != null
-        ? apiProduct.vatPercent
-        : Math.round(((COUNTRY_VAT[apiProduct.country || "DE"] ?? 0) * 100)),
-    price_monthly: monthlyCents != null ? monthlyCents / 100 : undefined,
-    price_annual: annualCents != null ? annualCents / 100 : undefined,
+    price,
     freeTrialDays: apiProduct.freeTrialDays ?? 0,
     trialOncePerUser:
       apiProduct.trialOncePerUser != null
@@ -144,7 +106,6 @@ function toFormValues(apiProduct) {
 }
 
 function toApiPayload(form, id) {
-  const vatPercent = form.vatPercent ?? Math.round((COUNTRY_VAT[form.country] ?? 0) * 100);
   const payload = {
     id,
     name: form.name?.trim(),
@@ -152,12 +113,8 @@ function toApiPayload(form, id) {
     description: form.description || "",
     active: Boolean(form.active),
     currency: form.currency || "EUR",
-    country: form.country || "DE",
-    vatPercent,
-    priceMonthlyCents:
-      form.price_monthly != null ? Math.round(Number(form.price_monthly) * 100) : undefined,
-    priceYearlyCents:
-      form.price_annual != null ? Math.round(Number(form.price_annual) * 100) : undefined,
+    priceCents:
+      form.price != null ? Math.round(Number(form.price) * 100) : undefined,
     freeTrialDays:
       form.freeTrialDays != null ? Number(form.freeTrialDays) : 0,
     trialOncePerUser:
@@ -171,13 +128,15 @@ function toApiPayload(form, id) {
 export default function Product() {
   const screens = useBreakpoint();
   const isMdUp = screens.md;
-  const isSmDown = !screens.sm;
+
+  const drawerWidth = useResponsiveDrawerWidth();
 
   const [products, setProducts] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [q, setQ] = useState("");
   const [loadingTable, setLoadingTable] = useState(false);
 
+  // Add/Edit modal
   const [open, setOpen] = useState(false);
   const [modalTitle, setModalTitle] = useState("Add Product");
   const [saving, setSaving] = useState(false);
@@ -185,32 +144,21 @@ export default function Product() {
   const [loadingForm, setLoadingForm] = useState(false);
   const [form] = Form.useForm();
 
+  // selection
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
 
-  /* -------- Show/Hide Columns (persisted) -------- */
-  const COLS_LS_KEY = "products.visibleCols.v1";
-  const DEFAULT_VISIBLE = ["id", "name", "description", "region", "pricing", "trial", "status"];
-  const readCols = () => {
-    try {
-      const raw = localStorage.getItem(COLS_LS_KEY);
-      const parsed = JSON.parse(raw || "null");
-      if (Array.isArray(parsed) && parsed.length) return parsed;
-    } catch {}
-    return DEFAULT_VISIBLE.slice();
-  };
-  const [visibleCols, setVisibleCols] = useState(readCols);
-  const [colModalOpen, setColModalOpen] = useState(false);
-  useEffect(() => {
-    try {
-      const uniq = Array.from(new Set(visibleCols));
-      localStorage.setItem(COLS_LS_KEY, JSON.stringify(uniq));
-    } catch {}
-  }, [visibleCols]);
-
-  /* -------- View drawer state -------- */
+  // View drawer
   const [viewOpen, setViewOpen] = useState(false);
   const [viewLoading, setViewLoading] = useState(false);
   const [viewRec, setViewRec] = useState(null);
+
+  // Confirm drawers (single & bulk)
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   const fetchProducts = async () => {
     try {
@@ -255,8 +203,8 @@ export default function Product() {
     });
     const opts = [
       { label: "All", value: "all" },
-      { label: <span><CheckCircleTwoTone twoToneColor="#52c41a" /> Active</span>, value: "active" },
-      { label: <span><CloseCircleTwoTone twoToneColor="#bfbfbf" /> Inactive</span>, value: "inactive" },
+      { label: "Active", value: "active" },
+      { label: "Inactive", value: "inactive" },
     ];
     Array.from(setVals)
       .filter((s) => !opts.find((o) => o.value === s))
@@ -285,7 +233,6 @@ export default function Product() {
       setViewRec(data || null);
     } catch (err) {
       if (!isCanceled(err)) {
-        // fallback to local row if exists
         const fallback = (products || []).find((p) => String(p.id) === String(id));
         setViewRec(fallback || null);
         if (!fallback) message.error("Failed to load product.");
@@ -310,10 +257,7 @@ export default function Product() {
     form.setFieldsValue({
       active: true,
       currency: "EUR",
-      country: "DE",
-      vatPercent: Math.round((COUNTRY_VAT.DE || 0) * 100),
-      price_monthly: undefined,
-      price_annual: undefined,
+      price: undefined,
       freeTrialDays: 0,
       trialOncePerUser: true,
     });
@@ -347,7 +291,6 @@ export default function Product() {
       message.success(editingId ? "Product saved." : "Product created.");
       setOpen(false);
       fetchProducts();
-      // Refresh view if it's open on the same item
       if (viewOpen && viewRec?.id && viewRec?.id === editingId) {
         openView(viewRec.id);
       }
@@ -368,6 +311,7 @@ export default function Product() {
       message.success("Product deleted.");
       fetchProducts();
       if (viewOpen && viewRec?.id === id) closeView();
+      setSelectedRowKeys((ks) => ks.filter((k) => k !== id));
     } catch (err) {
       if (!isCanceled(err)) {
         console.error(err);
@@ -378,78 +322,51 @@ export default function Product() {
 
   const onBulkDelete = async () => {
     if (!selectedRowKeys.length) return;
-    Modal.confirm({
-      title: `Delete ${selectedRowKeys.length} product(s)?`,
-      okText: "Delete",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await Promise.all(selectedRowKeys.map((id) => api.delete(`/product/${id}`)));
-          message.success("Selected products deleted.");
-          setSelectedRowKeys([]);
-          fetchProducts();
-        } catch (e) {
-          console.error(e);
-          message.error("Bulk delete failed.");
-        }
-      },
-    });
-  };
-
-  const exportCsv = () => {
-    const rows = [
-      [
-        "ID","Name","Description","Active","Currency","Country","VAT %",
-        "Monthly (ex VAT)","Monthly (incl VAT)","Annual (ex VAT)","Annual (incl VAT)",
-        "Free Trial Days","Trial Once/Usr",
-      ],
-      ...filteredProducts.map((p) => {
-        const f = toFormValues(p);
-        const vat = (f.vatPercent ?? 0) / 100;
-        const mEx = f.price_monthly ?? null;
-        const aEx = f.price_annual ?? null;
-        const mIn = mEx != null ? inclVat(mEx, vat) : null;
-        const aIn = aEx != null ? inclVat(aEx, vat) : null;
-        return [
-          p.id, p.name || "", (p.description || "").replace(/\n/g, " "),
-          String(!!f.active), f.currency || "EUR", f.country || "DE",
-          f.vatPercent ?? "", mEx ?? "", mIn ?? "", aEx ?? "", aIn ?? "",
-          f.freeTrialDays ?? 0, String(!!f.trialOncePerUser),
-        ];
-      }),
-    ];
-    const csv = rows.map((r) => r.map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "products.csv"; a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const renderActions = (record) => {
-    const items = [
-      { key: "view", label: "View", icon: <EyeOutlined /> },
-      { key: "edit", label: "Edit", icon: <EditOutlined /> },
-      { key: "delete", label: <span className="text-red-600">Delete</span>, icon: <DeleteOutlined /> },
-    ];
-    const onMenuClick = ({ key }) => {
-      if (key === "view") return openView(record.id);
-      if (key === "edit") return openEdit(record.id);
-      if (key === "delete") {
-        Modal.confirm({
-          title: "Delete product?",
-          content: "This will permanently remove the product.",
-          okText: "Delete",
-          okButtonProps: { danger: true },
-          onOk: () => onDelete(record.id),
-        });
+    try {
+      await Promise.all(selectedRowKeys.map((id) => api.delete(`/product/${id}`)));
+      message.success("Selected products deleted.");
+      setSelectedRowKeys([]);
+      fetchProducts();
+      if (viewOpen && viewRec && selectedRowKeys.includes(viewRec.id)) {
+        closeView();
       }
-    };
-    return (
-      <Dropdown menu={{ items, onClick: onMenuClick }} trigger={["click"]}>
-        <Button size="small" icon={<MoreOutlined />} />
-      </Dropdown>
-    );
+    } catch (e) {
+      console.error(e);
+      message.error("Bulk delete failed.");
+    }
+  };
+
+  const askDelete = (record) => {
+    setConfirmTarget(record);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!confirmTarget?.id) return;
+    try {
+      setConfirmLoading(true);
+      await onDelete(confirmTarget.id);
+      setConfirmOpen(false);
+      setConfirmTarget(null);
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  const handleConfirmBulk = async () => {
+    try {
+      setBulkLoading(true);
+      await onBulkDelete();
+      setBulkOpen(false);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const resetFilters = () => {
+    setStatusFilter("all");
+    setQ("");
+    fetchProducts();
   };
 
   /* ----------------------------- columns map ----------------------------- */
@@ -488,52 +405,16 @@ export default function Product() {
         </Paragraph>
       ),
     };
-    const regionCol = {
-      title: "Region",
-      key: "region",
-      width: 160,
-      render: (_, record) => {
-        const f = toFormValues(record);
-        const vatP = f.vatPercent ?? Math.round((COUNTRY_VAT[f.country || "DE"] || 0) * 100);
-        return (
-          <Space size="small">
-            <Tag>{f.country || "DE"}</Tag>
-            <Tag color="blue">{vatP}% VAT</Tag>
-          </Space>
-        );
-      },
-      responsive: ["sm"],
-    };
     const pricingCol = {
-      title: "Pricing (ex / incl. VAT)",
+      title: "Price",
       key: "pricing",
-      width: 280,
+      width: 200,
       render: (_, record) => {
         const f = toFormValues(record);
-        const vatRate = (f.vatPercent ?? 0) / 100;
-        const mEx = f.price_monthly;
-        const aEx = f.price_annual;
-        const mIn = inclVat(mEx, vatRate);
-        const aIn = inclVat(aEx, vatRate);
-        return (
-          <div className="leading-tight">
-            <div>
-              <Text type="secondary">Monthly:</Text>{" "}
-              <Text>
-                {mEx != null ? money(mEx, f.currency) : "—"}{" "}
-                <span className="text-gray-500">/</span>{" "}
-                <strong>{mIn != null ? money(mIn, f.currency) : "—"}</strong>
-              </Text>
-            </div>
-            <div>
-              <Text type="secondary">Annual:</Text>{" "}
-              <Text>
-                {aEx != null ? money(aEx, f.currency) : "—"}{" "}
-                <span className="text-gray-500">/</span>{" "}
-                <strong>{aIn != null ? money(aIn, f.currency) : "—"}</strong>
-              </Text>
-            </div>
-          </div>
+        return f.price != null ? (
+          <MoneyText amount={f.price} currency={f.currency} />
+        ) : (
+          <Text type="secondary">—</Text>
         );
       },
     };
@@ -546,8 +427,10 @@ export default function Product() {
         const days = Number(f.freeTrialDays || 0);
         return days > 0 ? (
           <Space size="small">
-            <Tag color="green">{days} day{days !== 1 ? "s" : ""}</Tag>
-            {f.trialOncePerUser ? <Tag color="purple">1x/user</Tag> : null}
+            <span className="inline-flex items-center">
+              <Text strong>{days}</Text>&nbsp;<Text type="secondary">day{days !== 1 ? "s" : ""}</Text>
+            </span>
+            {f.trialOncePerUser ? <Text type="secondary">(1x/user)</Text> : null}
           </Space>
         ) : (
           <Text type="secondary">—</Text>
@@ -559,159 +442,131 @@ export default function Product() {
       title: "Status",
       key: "status",
       width: 170,
-      filters: [
-        { text: "Active", value: "active" },
-        { text: "Inactive", value: "inactive" },
-      ],
-      onFilter: (val, r) => getStatusKey(r) === val,
-      render: (_, record) => {
-        const raw =
-          record?.status ?? record?.active ?? record?.is_active ?? record?.product_status ?? record?.state;
-
-        let isBool = null;
-        if (typeof raw === "boolean") isBool = raw;
-        else if (typeof raw === "number") isBool = raw === 1;
-        else if (typeof raw === "string") {
-          const s = raw.trim().toLowerCase();
-          if (["true", "1", "active"].includes(s)) isBool = true;
-          else if (["false", "0", "inactive"].includes(s)) isBool = false;
-        }
-
-        if (isBool !== null) {
-          return (
-            <Tag
-              color={isBool ? "green" : "default"}
-              icon={isBool ? <CheckCircleTwoTone twoToneColor="#52c41a" /> : <CloseCircleTwoTone twoToneColor="#bfbfbf" />}
-            >
-              {isBool ? "Active" : "Inactive"}
-            </Tag>
-          );
-        }
-        if (typeof raw === "string" && raw.trim()) {
-          return <Tag color={statusColor(raw)}>{titleCase(raw)}</Tag>;
-        }
-        return <Text type="secondary">—</Text>;
-      },
+      render: (_, record) => <StatusTag value={getStatusKey(record)} />,
     };
 
     return {
       id: idCol,
       name: nameCol,
       description: descCol,
-      region: regionCol,
       pricing: pricingCol,
       trial: trialCol,
       status: statusCol,
     };
   }, [openView]);
 
-  // Build visible columns + always-on Actions
-  let columns = visibleCols.map((k) => COLUMNS_MAP[k]).filter(Boolean);
-  columns.push({
-    title: "Actions",
-    key: "actions",
-    fixed: isSmDown ? "right" : undefined,
-    width: 100,
-    render: (_, record) => renderActions(record),
-  });
+  // actions menu
+  const actionsRender = (record) => (
+    <Dropdown
+      menu={{
+        items: [
+          { key: "view", label: "View", icon: <EyeOutlined /> },
+          { key: "edit", label: "Edit", icon: <EditOutlined /> },
+          { key: "delete", label: <span className="text-red-600">Delete</span>, icon: <DeleteOutlined /> },
+        ],
+        onClick: ({ key }) => {
+          if (key === "view") return openView(record.id);
+          if (key === "edit") return openEdit(record.id);
+          if (key === "delete") return askDelete(record);
+        },
+      }}
+      trigger={["click"]}
+    >
+      <Button size="small" icon={<MoreOutlined />} />
+    </Dropdown>
+  );
 
-  const resetFilters = () => {
-    setStatusFilter("all");
-    setQ("");
-    fetchProducts();
-  };
-
-  /* ---------------------------------- UI ---------------------------------- */
-  return (
-    <div className="space-y-4 sm:space-y-6 p-4 md:p-6 max-w-[1600px] mx-auto">
-      {/* Header */}
-      <Card
-        bordered={false}
-        style={{
-          background:
-            "linear-gradient(135deg, rgba(22,119,255,0.12) 0%, rgba(82,196,26,0.12) 100%)",
-        }}
-        bodyStyle={{ padding: 16 }}
-      >
-        <Row gutter={[16, 16]} align="middle" justify="space-between">
-          <Col xs={24} md={8}>
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl sm:text-2xl font-semibold m-0">Products</h1>
-            </div>
-          </Col>
-          <Col xs={24} md={16}>
-            <Row gutter={[16, 16]} justify="end">
-              <Col>
-                <Space wrap>
-                  <Input
-                    allowClear
-                    prefix={<SearchOutlined />}
-                    placeholder="Search name or description…"
-                    onChange={(e) => debouncedSetQ(e.target.value)}
-                    style={{ width: 240 }}
-                  />
-                  <Tooltip title="Show / Hide columns">
-                    <Button icon={<SettingOutlined />} onClick={() => setColModalOpen(true)} />
-                  </Tooltip>
-                  <Tooltip title="Export current view">
-                    <Button icon={<DownloadOutlined />} onClick={exportCsv} />
-                  </Tooltip>
-                  <Tooltip title="Reset filters & refresh">
-                    <Button icon={<ReloadOutlined />} onClick={resetFilters} />
-                  </Tooltip>
-                  <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>
-                    <span className="hidden sm:inline">Add Product</span>
-                  </Button>
-                </Space>
-              </Col>
-            </Row>
-          </Col>
-        </Row>
-      </Card>
-
-      {/* Status segmented */}
+  // toolbars
+  const toolbarLeft = (
+    <Space wrap>
+      <Input
+        allowClear
+        prefix={<SearchOutlined />}
+        placeholder="Search name or description…"
+        onChange={(e) => debouncedSetQ(e.target.value)}
+        style={{ width: 240 }}
+      />
       <Segmented
         options={statusOptions}
         value={statusFilter}
         onChange={setStatusFilter}
         size={isMdUp ? "middle" : "small"}
-        className="w-full sm:w-auto"
-        block={isSmDown}
       />
+    </Space>
+  );
 
-      {/* Products table */}
-      <Card>
-        <Table
-          loading={loadingTable}
-          columns={columns}
-          dataSource={filteredProducts}
-          rowKey="id"
-          size={isMdUp ? "middle" : "small"}
-          scroll={{ x: 1000 }}
-          pagination={{
-            pageSize: 20,
-            showSizeChanger: false,
-            size: isMdUp ? "default" : "small",
+  const toolbarRight = (
+    <Space wrap>
+      {selectedRowKeys.length > 0 && (
+        <Button
+          danger
+          onClick={() => setBulkOpen(true)}
+          icon={<DeleteOutlined />}
+        >
+          Delete selected
+        </Button>
+      )}
+      <Tooltip title="Export current view">
+        <Button
+          icon={<DownloadOutlined />}
+          onClick={() => {
+            const rows = [
+              ["ID", "Name", "Description", "Active", "Currency", "Price", "Free Trial Days", "Trial Once/Usr"],
+              ...filteredProducts.map((p) => {
+                const f = toFormValues(p);
+                return [
+                  p.id,
+                  p.name || "",
+                  (p.description || "").replace(/\n/g, " "),
+                  String(!!f.active),
+                  f.currency || "EUR",
+                  f.price != null ? f.price : "",
+                  f.freeTrialDays ?? 0,
+                  String(!!f.trialOncePerUser),
+                ];
+              }),
+            ];
+            const csv = rows.map((r) => r.map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = "products.csv"; a.click();
+            URL.revokeObjectURL(url);
           }}
-          rowSelection={{
-            selectedRowKeys,
-            onChange: setSelectedRowKeys,
-          }}
-          title={() => (
-            <Space>
-              <Button danger disabled={!selectedRowKeys.length} onClick={onBulkDelete} icon={<DeleteOutlined />}>
-                Delete selected
-              </Button>
-              <Text type="secondary">
-                {selectedRowKeys.length ? `${selectedRowKeys.length} selected` : ""}
-              </Text>
-            </Space>
-          )}
-          rowClassName={(_, idx) =>
-            idx % 2 === 0 ? "bg-[rgba(0,0,0,0.02)] hover:bg-[rgba(24,144,255,0.06)]" : "hover:bg-[rgba(24,144,255,0.06)]"
-          }
         />
-      </Card>
+      </Tooltip>
+      <Button type="primary" icon={<PlusOutlined />} onClick={openAdd}>
+        <span className="hidden sm:inline">Add Product</span>
+      </Button>
+    </Space>
+  );
+
+  /* ---------------------------------- UI ---------------------------------- */
+  return (
+    <div className="space-y-4 sm:space-y-6 p-4 md:p-6 max-w-[1600px] mx-auto">
+      <BillingEntityList
+        title="Products"
+        data={filteredProducts}
+        loading={loadingTable}
+        columnsMap={COLUMNS_MAP}
+        storageKey="products.visibleCols.v2"
+        defaultVisible={["id", "name", "description", "pricing", "trial", "status"]}
+        actionsRender={actionsRender}
+        onRefresh={resetFilters}
+        toolbarLeft={toolbarLeft}
+        toolbarRight={toolbarRight}
+        selection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
+        pageSize={20}
+        scrollX={800}
+        onRowClick={(r) => openView(r.id)}
+        tableProps={{
+          size: isMdUp ? "middle" : "small",
+          rowClassName: (_, idx) =>
+            idx % 2 === 0
+              ? "bg-[rgba(0,0,0,0.02)] hover:bg-[rgba(24,144,255,0.06)]"
+              : "hover:bg-[rgba(24,144,255,0.06)]",
+        }}
+      />
 
       {/* Modal: Add/Edit */}
       <Modal
@@ -727,7 +582,7 @@ export default function Product() {
         bodyStyle={isMdUp ? {} : { paddingInline: 12 }}
       >
         {loadingForm ? (
-          <Skeleton active paragraph={{ rows: 8 }} />
+          <Skeleton active paragraph={{ rows: 6 }} />
         ) : (
           <Form
             form={form}
@@ -735,8 +590,7 @@ export default function Product() {
             initialValues={{
               active: true,
               currency: "EUR",
-              country: "DE",
-              vatPercent: Math.round((COUNTRY_VAT.DE || 0) * 100),
+              price: undefined,
               freeTrialDays: 0,
               trialOncePerUser: true,
             }}
@@ -766,54 +620,13 @@ export default function Product() {
                   <Select options={CURRENCY_OPTIONS} />
                 </Form.Item>
               </Col>
-              <Col xs={24} md={12}>
-                <Form.Item
-                  label="Country (VAT region)"
-                  name="country"
-                  rules={[{ required: true, message: "Country is required" }]}
-                >
-                  <Select
-                    options={COUNTRY_OPTIONS}
-                    onChange={(cc) => {
-                      const rate = COUNTRY_VAT[cc] ?? 0;
-                      const current = form.getFieldValue("vatPercent");
-                      if (current == null || current === 0) {
-                        form.setFieldsValue({ vatPercent: Math.round(rate * 100) });
-                      }
-                    }}
-                    showSearch
-                    optionFilterProp="label"
-                  />
-                </Form.Item>
-              </Col>
 
               <Col xs={24} md={12}>
                 <Form.Item
-                  label="VAT %"
-                  name="vatPercent"
-                  tooltip="Used to compute displayed price incl. VAT"
-                  rules={[
-                    { required: true, message: "VAT % required" },
-                    {
-                      validator: (_, v) => {
-                        const n = Number(v);
-                        if (Number.isFinite(n) && n >= 0 && n <= 30) return Promise.resolve();
-                        return Promise.reject(new Error("Enter a VAT % between 0 and 30"));
-                      },
-                    },
-                  ]}
+                  label="Price"
+                  name="price"
+                  rules={[{ required: true, message: "Price is required" }]}
                 >
-                  <InputNumber min={0} max={30} step={1} style={{ width: "100%" }} />
-                </Form.Item>
-              </Col>
-
-              <Col xs={24} md={12}>
-                <Form.Item label="Monthly Price (ex VAT)" name="price_monthly">
-                  <InputNumber min={0} step={0.01} style={{ width: "100%" }} placeholder="e.g., 9.99" />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item label="Annual Price (ex VAT)" name="price_annual">
                   <InputNumber min={0} step={0.01} style={{ width: "100%" }} placeholder="e.g., 99.00" />
                 </Form.Item>
               </Col>
@@ -844,58 +657,19 @@ export default function Product() {
         )}
       </Modal>
 
-      {/* Columns Modal */}
-      <Modal
-        title="Show / Hide columns"
-        open={colModalOpen}
-        onCancel={() => setColModalOpen(false)}
-        onOk={() => setColModalOpen(false)}
-        okText="Done"
-      >
-        <div className="mb-2">
-          <Space wrap>
-            <Button onClick={() => setVisibleCols(Object.keys(COLUMNS_MAP))}>Select all</Button>
-            <Button onClick={() => setVisibleCols(DEFAULT_VISIBLE.slice())}>Reset</Button>
-          </Space>
-        </div>
-
-        {(() => {
-          const entries = Object.keys(COLUMNS_MAP).map((k) => ({
-            value: k,
-            label: COLUMNS_MAP[k]?.title || k,
-          }));
-          return (
-            <Checkbox.Group
-              value={Array.from(new Set(visibleCols))}
-              onChange={(vals) => setVisibleCols(Array.from(new Set(vals)))}
-              className="grid grid-cols-1 sm:grid-cols-2 gap-y-2"
-              options={entries}
-            />
-          );
-        })()}
-
-        <Divider />
-        <Text type="secondary" className="block">“Actions” is always visible.</Text>
-      </Modal>
-
-      {/* View Drawer */}
+      {/* View Drawer (offset under header) */}
       <Drawer
         title="Product"
         open={viewOpen}
         onClose={closeView}
-        width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 48 : 720)}
+        width={drawerWidth}
+        style={{ top: HEADER_OFFSET }}
+        maskStyle={{ top: HEADER_OFFSET }}
         extra={
           viewRec ? (
             <Space>
               <Button onClick={() => openEdit(viewRec.id)} icon={<EditOutlined />}>Edit</Button>
-              <Button danger onClick={() => {
-                Modal.confirm({
-                  title: "Delete product?",
-                  okText: "Delete",
-                  okButtonProps: { danger: true },
-                  onOk: () => onDelete(viewRec.id),
-                });
-              }} icon={<DeleteOutlined />}>Delete</Button>
+              <Button danger onClick={() => askDelete(viewRec)} icon={<DeleteOutlined />}>Delete</Button>
             </Space>
           ) : null
         }
@@ -905,53 +679,26 @@ export default function Product() {
         ) : viewRec ? (
           (() => {
             const f = toFormValues(viewRec);
-            const vatRate = (f.vatPercent ?? 0) / 100;
-            const mEx = f.price_monthly;
-            const aEx = f.price_annual;
-            const mIn = inclVat(mEx, vatRate);
-            const aIn = inclVat(aEx, vatRate);
-
             return (
               <Descriptions bordered column={1} size="middle">
                 <Descriptions.Item label="ID">{viewRec.id}</Descriptions.Item>
                 <Descriptions.Item label="Name">{viewRec.name || "—"}</Descriptions.Item>
                 <Descriptions.Item label="Status">
-                  {f.active ? (
-                    <Tag color="green" icon={<CheckCircleTwoTone twoToneColor="#52c41a" />}>Active</Tag>
-                  ) : (
-                    <Tag icon={<CloseCircleTwoTone twoToneColor="#bfbfbf" />}>Inactive</Tag>
-                  )}
-                </Descriptions.Item>
-                <Descriptions.Item label="Region / VAT">
-                  <Space size="small">
-                    <Tag>{f.country || "DE"}</Tag>
-                    <Tag color="blue">{f.vatPercent ?? Math.round((COUNTRY_VAT[f.country || "DE"] || 0) * 100)}% VAT</Tag>
-                  </Space>
+                  <StatusTag value={f.active ? "active" : "inactive"} />
                 </Descriptions.Item>
                 <Descriptions.Item label="Currency">{f.currency || "EUR"}</Descriptions.Item>
-
-                <Descriptions.Item label="Monthly (ex / incl. VAT)">
-                  <Space split={<span>/</span>}>
-                    <Text>{mEx != null ? money(mEx, f.currency) : "—"}</Text>
-                    <Text strong>{mIn != null ? money(mIn, f.currency) : "—"}</Text>
-                  </Space>
+                <Descriptions.Item label="Price">
+                  {f.price != null ? <MoneyText amount={f.price} currency={f.currency} /> : "—"}
                 </Descriptions.Item>
-                <Descriptions.Item label="Annual (ex / incl. VAT)">
-                  <Space split={<span>/</span>}>
-                    <Text>{aEx != null ? money(aEx, f.currency) : "—"}</Text>
-                    <Text strong>{aIn != null ? money(aIn, f.currency) : "—"}</Text>
-                  </Space>
-                </Descriptions.Item>
-
                 <Descriptions.Item label="Free Trial">
                   {Number(f.freeTrialDays || 0) > 0 ? (
                     <Space>
-                      <Tag color="green">{f.freeTrialDays} day{f.freeTrialDays !== 1 ? "s" : ""}</Tag>
-                      {f.trialOncePerUser ? <Tag color="purple">1x per user</Tag> : null}
+                      <Text strong>{f.freeTrialDays}</Text>
+                      <Text type="secondary">day{f.freeTrialDays !== 1 ? "s" : ""}</Text>
+                      {f.trialOncePerUser ? <Text type="secondary">(1x per user)</Text> : null}
                     </Space>
                   ) : "—"}
                 </Descriptions.Item>
-
                 <Descriptions.Item label="Description">
                   <Paragraph className="!mb-0">{viewRec.description || "—"}</Paragraph>
                 </Descriptions.Item>
@@ -962,6 +709,48 @@ export default function Product() {
           <Text type="secondary">No data.</Text>
         )}
       </Drawer>
+
+      {/* Confirm Drawer: Single delete (header Close; footer cancel hidden) */}
+      <ConfirmDrawer
+        open={confirmOpen}
+        title="Delete product?"
+        description={
+          <>
+            This will permanently delete product{" "}
+            <Text strong>#{confirmTarget?.id ?? "—"}</Text>. This action cannot be undone.
+          </>
+        }
+        loading={confirmLoading}
+        confirmText="Delete"
+        showCloseButton
+        cancelText=""
+        topOffset={HEADER_OFFSET}
+        onConfirm={handleConfirmDelete}
+        onClose={() => {
+          setConfirmOpen(false);
+          setConfirmTarget(null);
+        }}
+      />
+
+      {/* Confirm Drawer: Bulk delete (header Close; footer cancel hidden) */}
+      <ConfirmDrawer
+        open={bulkOpen}
+        title="Delete selected products?"
+        description={
+          <>
+            You are about to delete{" "}
+            <Text strong>{selectedRowKeys.length}</Text>{" "}
+            product{selectedRowKeys.length === 1 ? "" : "s"}. This action cannot be undone.
+          </>
+        }
+        loading={bulkLoading}
+        confirmText="Delete all"
+        showCloseButton
+        cancelText=""
+        topOffset={HEADER_OFFSET}
+        onConfirm={handleConfirmBulk}
+        onClose={() => setBulkOpen(false)}
+      />
     </div>
   );
 }

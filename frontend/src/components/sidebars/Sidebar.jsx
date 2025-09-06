@@ -62,7 +62,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
         { href: "/admin/analytics", label: "Analytics", icon: BarChartOutlined },
         { href: "/admin/statistics", label: "Statistics", icon: LineChartOutlined },
         // 👇 added Student Analytics link
-        { href: "/admin/analytics/students", label: "Student Analytics", icon: BarChartOutlined },
+        //{ href: "/admin/analytics/students", label: "Student Analytics", icon: BarChartOutlined },
       ],
     },
     {

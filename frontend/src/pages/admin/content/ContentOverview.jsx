@@ -1,4 +1,4 @@
-import { Tag, Space, Button, message } from "antd";
+import { Tag, Button, message } from "antd"; // removed Space
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import EntityList, { columnFactories as CF } from "@/components/EntityList.jsx";
@@ -45,7 +45,10 @@ export default function ContentOverview() {
         if (Array.isArray(data)) {
           const map = {};
           data.forEach((u) => {
-            map[u.id] = u.name || u.email || `#${u.id}`;
+            const first = u.first_name || "";
+            const last = u.last_name || "";
+            const full = (first + " " + last).trim();
+            map[u.id] = full || u.email || `#${u.id}`;
           });
           setUsersMap(map);
         }
@@ -59,25 +62,27 @@ export default function ContentOverview() {
     id: CF.idLink("ID", "/admin/content/edit", "id", (id) =>
       navigate(`/admin/content/edit/${id}`)
     ),
-    title: {
-      title: "Title",
-      dataIndex: "title",
-      key: "title",
-      render: (v, r) =>
-        v ? (
-          <Button
-            type="link"
-            className="!px-0"
-            onClick={() => navigate(`/admin/content/edit/${r.id}`)}
-          >
-            {v}
-          </Button>
-        ) : (
-          "-"
-        ),
-      sorter: (a, b) =>
-        String(a.title || "").localeCompare(String(b.title || "")),
-    },
+   title: {
+  title: "Title",
+  dataIndex: "title",
+  key: "title",
+  render: (v, r) =>
+    v ? (
+      <Button
+        type="link"
+        className="!px-0 whitespace-normal break-words text-left"
+        style={{ whiteSpace: "normal", wordBreak: "break-word", maxWidth: 250 }}
+        onClick={() => navigate(`/admin/content/edit/${r.id}`)}
+      >
+        {v}
+      </Button>
+    ) : (
+      "-"
+    ),
+  sorter: (a, b) =>
+    String(a.title || "").localeCompare(String(b.title || "")),
+},
+
     slug: CF.text("Slug", "slug"),
     author_id: {
       title: "Author",
@@ -109,22 +114,7 @@ export default function ContentOverview() {
       sorter: (a, b) =>
         String(a.status || "").localeCompare(String(b.status || "")),
     },
-    tags: {
-      title: "Tags",
-      dataIndex: "tags",
-      key: "tags",
-      render: (arr) =>
-        Array.isArray(arr) && arr.length ? (
-          <Space wrap size={[4, 4]}>
-            {arr.map((t, i) => (
-              <Tag key={i}>{t}</Tag>
-            ))}
-          </Space>
-        ) : (
-          "-"
-        ),
-      csv: (r) => (Array.isArray(r.tags) ? r.tags.join("|") : "-"),
-    },
+    // ⬇️ Tags column removed (hidden for now)
     scheduled_for: {
       title: "Scheduled",
       dataIndex: "scheduled_for",
@@ -162,63 +152,57 @@ export default function ContentOverview() {
   };
 
   return (
-<EntityList
-  cfg={{
-    entityKey: "blogposts",
-    titlePlural: "Blog Posts",
-    titleSingular: "Blog Post",
-    routeBase: "/admin/content/edit", // base reflects the edit route
-    idField: "id",
-    api: {
-      listPath: "/blogposts",
-      removePath: (id) => `/blogpost/${id}`,
-      parseList: (raw) => (Array.isArray(raw) ? raw : []),
-    },
-    // force where row click & default "View" go:
-    pathBuilders: {
-      view: (id) => `/admin/content/edit/${id}`,
-      edit: (id) => `/admin/content/edit/${id}`,
-    },
-    statusFilter: true,
-    billingFilter: false,
-    columnsMap,
-    defaultVisible: ["id", "title", "slug", "author_id", "audience", "status", "tags"],
-    rowClassName: () => "",
-    rowActions: {
-      extraItems: [
-        
-        { key: "mark-published", label: "Mark as Published" },
-      ],
-      onClick: (key, row, ctx) => {
-        // Stop the row's own click/navigation from firing
-        const ev = ctx?.domEvent || ctx?.event;
-        if (ev && typeof ev.stopPropagation === "function") {
-          ev.preventDefault?.();
-          ev.stopPropagation();
-        }
+    <EntityList
+      cfg={{
+        entityKey: "blogposts",
+        titlePlural: "Blog Posts",
+        titleSingular: "Blog Post",
+        routeBase: "/admin/content/edit",
+        idField: "id",
+        api: {
+          listPath: "/blogposts",
+          removePath: (id) => `/blogpost/${id}`,
+          parseList: (raw) => (Array.isArray(raw) ? raw : []),
+        },
+        pathBuilders: {
+          view: (id) => `/admin/content/edit/${id}`,
+          edit: (id) => `/admin/content/edit/${id}`,
+        },
+        statusFilter: true,
+        billingFilter: false,
+        columnsMap,
+        // removed "tags" from defaults
+        defaultVisible: ["id", "title", "slug", "author_id", "audience", "status"],
+        rowClassName: () => "",
+        rowActions: {
+          extraItems: [{ key: "mark-published", label: "Mark as Published" }],
+          onClick: (key, row, ctx) => {
+            const ev = ctx?.domEvent || ctx?.event;
+            if (ev && typeof ev.stopPropagation === "function") {
+              ev.preventDefault?.();
+              ev.stopPropagation();
+            }
 
-        if (key === "view-post") {
-          if (isPublished(row) && hasSlug(row)) {
-            window.location.href = `/blog/${row.slug}`;
-          } else {
-            window.location.href = `/blog/preview/${row.id}`;
-          }
-          return;
-        }
+            if (key === "view-post") {
+              if (isPublished(row) && hasSlug(row)) {
+                window.location.href = `/blog/${row.slug}`;
+              } else {
+                window.location.href = `/blog/preview/${row.id}`;
+              }
+              return;
+            }
 
-        if (key === "open-editor") {
-          // explicit edit action (same as pathBuilders, but explicit here)
-          window.location.href = `/admin/content/edit/${row.id}`;
-          return;
-        }
+            if (key === "open-editor") {
+              window.location.href = `/admin/content/edit/${row.id}`;
+              return;
+            }
 
-        if (key === "mark-published") {
-          markAsPublished(row.id).then(() => ctx?.reload?.());
-        }
-      },
-    },
-  }}
-/>
-
+            if (key === "mark-published") {
+              markAsPublished(row.id).then(() => ctx?.reload?.());
+            }
+          },
+        },
+      }}
+    />
   );
 }

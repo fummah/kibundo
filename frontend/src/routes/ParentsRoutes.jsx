@@ -13,6 +13,7 @@ import ParentHome from "@/pages/parent/ParentHome.jsx";
 import MyFamily from "@/pages/parent/myfamily/MyFamily.jsx";
 import Activity from "@/pages/parent/myfamily/Activity.jsx";
 import ParentStudentDetail from "@/pages/parent/myfamily/ParentStudentDetail.jsx";
+import AddStudentFlow from "@/pages/parent/myfamily/AddStudentFlow";
 
 /* Learning (Scans removed per spec; Resources behind flag) */
 // import Scans from "@/pages/parent/learning/Scans.jsx";
@@ -27,10 +28,12 @@ import Coupons from "@/pages/parent/billing/Coupons.jsx";
 /* Communication */
 import Communications from "@/pages/parent/communications/Communications.jsx";
 import NewsFeed from "@/pages/parent/communications/NewsFeed.jsx";
+import NewsArticle from "@/pages/parent/communications/NewsArticle.jsx";
 import Newsletter from "@/pages/parent/communications/Newsletter.jsx";
 import Notifications from "@/pages/parent/communications/Notifications.jsx";
+
+/* Achievements */
 import AchievementsPage from "@/pages/parent/AchievementsPage";
-import AddStudentFlow from "@/pages/parent/myfamily/AddStudentFlow";
 
 /* Feedback (Helpdesk → Feedback) */
 // import Tasks from "@/pages/parent/helpdesk/Tasks.jsx";
@@ -59,21 +62,20 @@ export default function ParentRoutes() {
       <Route path="myfamily/activity" element={<Activity />} />
       <Route path="myfamily/student/:id" element={<ParentStudentDetail />} />
 
-      {/* New clean route → open AddStudentModal via query param */}
+      {/* Open Add Student modal via query param (new + back-compat) */}
       <Route
         path="myfamily/add-student"
         element={<Navigate to="/parent/myfamily/family?add-student=1" replace />}
       />
-      {/* Back-compat: /add → modal */}
       <Route
         path="myfamily/add"
         element={<Navigate to="/parent/myfamily/family?add-student=1" replace />}
       />
+      {/* Full-screen add student flow (if you need a page, keep this) */}
+      <Route path="myfamily/add-student-flow" element={<AddStudentFlow />} />
 
       {/* ===== Learning (Parent) ===== */}
-      {/* Scans removed entirely for Parent */}
       {/* <Route path="learning/scans" element={<Scans />} /> */}
-      {/* Resources hidden in Phase 1 via feature flag */}
       {FLAGS.parentResources && (
         <Route path="learning/resources" element={<Resources />} />
       )}
@@ -82,8 +84,10 @@ export default function ParentRoutes() {
         path="learning/scans"
         element={<Navigate to="/parent/myfamily/activity" replace />}
       />
-<Route path="/parent/achievements" element={<AchievementsPage />} />
-<Route path="/parent/myfamily/add-student" element={<AddStudentFlow />} />
+
+      {/* ===== Achievements ===== */}
+      {/* FIX: use relative path (no leading /parent) */}
+      <Route path="achievements" element={<AchievementsPage />} />
 
       {/* ===== Billing ===== */}
       <Route path="billing/overview" element={<BillingOverview />} />
@@ -92,25 +96,33 @@ export default function ParentRoutes() {
       <Route path="billing/coupons" element={<Coupons />} />
 
       {/* ===== Communication ===== */}
+      {/* You can keep a hub page at /parent/communications if it renders an <Outlet /> or a dashboard */}
       <Route path="communications" element={<Communications />} />
-      <Route path="communications/news" element={<NewsFeed />} />
+
+      {/* News list + detail (slug or id) */}
+      <Route path="communications/news">
+        <Route index element={<NewsFeed />} />
+        <Route path="preview/:id" element={<NewsArticle />} />
+        <Route path=":slug" element={<NewsArticle />} />
+      </Route>
+
+      {/* Other comms */}
       <Route path="communications/newsletter" element={<Newsletter />} />
       <Route path="communications/notifications" element={<Notifications />} />
 
       {/* ===== Feedback (Helpdesk → Feedback) ===== */}
-      {/* Old Helpdesk routes redirect to new Feedback paths */}
       <Route
         path="helpdesk/tasks"
         element={<Navigate to="/parent/feedback" replace />}
       />
-      
       <Route
         path="helpdesk/tickets"
         element={<Navigate to="/parent/feedback/tickets" replace />}
       />
-
-      {/* Feedback entry (no Tasks in this version) */}
-      <Route path="feedback" element={<Navigate to="/parent/feedback/tickets" replace />} />
+      <Route
+        path="feedback"
+        element={<Navigate to="/parent/feedback/tickets" replace />}
+      />
       <Route path="feedback/tickets" element={<Tickets />} />
 
       {/* ===== Settings ===== */}
@@ -121,5 +133,3 @@ export default function ParentRoutes() {
     </Route>
   );
 }
-
-

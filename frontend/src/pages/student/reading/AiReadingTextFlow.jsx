@@ -1,7 +1,13 @@
+// src/pages/student/reading/AiReadingTextFlow.jsx
 import { useEffect, useRef, useState } from "react";
-import { Card, Typography, Button, Space, Alert, Segmented } from "antd";
-import { Mic, ArrowLeft, RefreshCw, Sparkles } from "lucide-react";
+import { Card, Typography, Button, Alert, Segmented, message } from "antd";
+import { Mic, RefreshCw, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+
+import BackButton from "@/components/student/common/BackButton.jsx";
+import GreetingBanner from "@/components/student/common/GreetingBanner.jsx";
+import { ChatStripSpacer } from "@/components/student/mobile/FooterChat";
+
 import { generateReadingText, sttCaptureMock } from "@/api/reading.js";
 import { diffTranscript } from "@/utils/diffTranscript.js";
 import { useTaskTimer } from "@/hooks/useTaskTimer.js";
@@ -26,7 +32,11 @@ export default function AiReadingTextFlow() {
     true
   );
 
-  useEffect(() => { regenerateText(level); /* eslint-disable-next-line */ }, []);
+  useEffect(() => {
+    // initial load
+    regenerateText(level);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -39,42 +49,67 @@ export default function AiReadingTextFlow() {
   }, [level]);
 
   const regenerateText = async (lvl) => {
-    setLoadingText(true);
-    setText(""); setSpoken(""); setResult(null);
-    const t = await generateReadingText({ level: Number(lvl) || 1 });
-    setText(t);
-    setLoadingText(false);
+    try {
+      setLoadingText(true);
+      setText("");
+      setSpoken("");
+      setResult(null);
+      const t = await generateReadingText({ level: Number(lvl) || 1 });
+      setText(t || "");
+    } catch (e) {
+      message.error("Could not generate text, please try again.");
+    } finally {
+      setLoadingText(false);
+    }
   };
 
   const handleRecord = async () => {
     setRecording(true);
     const transcript = await sttCaptureMock();
     setRecording(false);
-    setSpoken(transcript);
-    setResult(diffTranscript(text, transcript));
+    setSpoken(transcript || "");
+    if (text) setResult(diffTranscript(text || "", transcript || ""));
+    else setResult(null);
   };
 
-  const resetAll = () => { setSpoken(""); setResult(null); reset(); };
+  const resetAll = () => {
+    setSpoken("");
+    setResult(null);
+    reset();
+  };
 
   const finish = () => {
     const accuracy = result?.score ?? 0;
     flush("completed", { accuracy, level, elapsedMs });
     flushedRef.current = true;
     pause();
+    message.success("Great work! Saved your time & accuracy.");
   };
 
   const accuracyPct = result ? Math.round((result.score || 0) * 100) : null;
+  const hhmmss = new Date(elapsedMs).toISOString().substr(11, 8);
 
   return (
-    <div className="px-3 md:px-6 py-4">
-      <div className="flex items-center gap-2 mb-3">
-        <button className="p-2 rounded-full hover:bg-neutral-100" onClick={() => navigate(-1)} aria-label="Back">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <Title level={4} className="!mb-0">AI Reading Text</Title>
-        <div className="ml-auto text-xs text-neutral-500">⏱ {new Date(elapsedMs).toISOString().substr(11, 8)}</div>
+    // Scrollable in ALL views; keeps content above the chat strip
+    <div className="relative mx-auto w-full max-w-5xl px-3 md:px-6 py-4 overflow-y-auto min-h-[100svh] lg:min-h-0 lg:h-full">
+      {/* Header with Back + Greeting + Timer */}
+      <div className="flex items-center gap-3 pt-6 mb-4">
+        <BackButton
+          className="p-2 rounded-full hover:bg-neutral-100 active:scale-95"
+          aria-label="Back"
+        />
+        <div className="flex-1">
+          <GreetingBanner
+            title="AI Reading Text"
+            subtitle="Generate a passage and read it aloud."
+            className="!bg-white"
+            translucent={false}
+          />
+        </div>
+        <div className="text-xs text-neutral-500 whitespace-nowrap">⏱ {hhmmss}</div>
       </div>
 
+      {/* Difficulty + regenerate */}
       <Card className="rounded-2xl mb-3" bodyStyle={{ padding: 14 }}>
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-3">
@@ -86,24 +121,34 @@ export default function AiReadingTextFlow() {
                 { label: "Advanced", value: 3 },
               ]}
               value={level}
-              onChange={(val) => { setLevel(val); regenerateText(val); }}
+              onChange={(val) => {
+                setLevel(val);
+                regenerateText(val);
+              }}
             />
           </div>
-          <Button icon={<Sparkles className="w-4 h-4" />} onClick={() => regenerateText(level)} className="rounded-xl">
+          <Button
+            icon={<Sparkles className="w-4 h-4" />}
+            onClick={() => regenerateText(level)}
+            className="rounded-xl"
+          >
             New text
           </Button>
         </div>
       </Card>
 
+      {/* Passage */}
       <Card className="rounded-2xl mb-3">
         <Title level={5} className="!mb-2">Read this aloud</Title>
-        <div className="text-sm leading-7 bg-neutral-50 rounded-xl p-3 min-h-[64px]">
+        <div className="text-sm leading-7 bg-neutral-50 rounded-xl p-3 min-h-[64px] max-h-[45vh] overflow-auto">
           {loadingText ? "Loading..." : text}
         </div>
       </Card>
 
+      {/* Controls + transcript */}
       <Card className="rounded-2xl mb-3">
-        <Space wrap>
+        {/* Responsive controls: stack on mobile, inline on md+ */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <Button
             type="primary"
             size="large"
@@ -111,29 +156,42 @@ export default function AiReadingTextFlow() {
             onClick={handleRecord}
             loading={recording || loadingText}
             disabled={loadingText}
+            className="rounded-xl w-full sm:w-auto"
+          >
+            {recording ? "Listening..." : "Start"}
+          </Button>
+
+          {!running ? (
+            <Button onClick={start} className="rounded-xl">Resume</Button>
+          ) : (
+            <Button onClick={pause} className="rounded-xl">Pause</Button>
+          )}
+
+          <Button
+            icon={<RefreshCw className="w-4 h-4" />}
+            onClick={resetAll}
+            disabled={!spoken && !result}
             className="rounded-xl"
           >
-            {recording ? "Listening..." : "Start Microphone (mock)"}
-          </Button>
-          {!running
-            ? <Button onClick={start} className="rounded-xl">Resume</Button>
-            : <Button onClick={pause} className="rounded-xl">Pause</Button>}
-          <Button icon={<RefreshCw className="w-4 h-4" />} onClick={resetAll} disabled={!spoken && !result} className="rounded-xl">
             Reset
           </Button>
-          <Button onClick={finish} disabled={!result} className="rounded-xl">Finish</Button>
-        </Space>
+
+          <Button onClick={finish} disabled={!result} className="rounded-xl">
+            Finish
+          </Button>
+        </div>
 
         {spoken && (
           <div className="mt-3">
             <Text strong>Your reading (transcript):</Text>
-            <div className="mt-1 text-sm leading-6 whitespace-pre-wrap bg-white rounded-xl p-3 border">
+            <div className="mt-1 text-sm leading-6 whitespace-pre-wrap bg-white rounded-xl p-3 border max-h-56 overflow-auto">
               {spoken}
             </div>
           </div>
         )}
       </Card>
 
+      {/* Feedback / diff */}
       {result && (
         <Card className="rounded-2xl">
           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -144,22 +202,51 @@ export default function AiReadingTextFlow() {
           </div>
 
           {result.score >= 0.9 ? (
-            <Alert type="success" message="Great reading! ⭐ Keep that smooth pace." showIcon className="rounded-xl" />
+            <Alert
+              type="success"
+              message="Great reading! ⭐ Keep that smooth pace."
+              showIcon
+              className="rounded-xl"
+            />
           ) : (
-            <Alert type="warning" message="Almost there! Try again and watch the highlighted parts." showIcon className="rounded-xl" />
+            <Alert
+              type="warning"
+              message="Almost there! Try again and watch the highlighted parts."
+              showIcon
+              className="rounded-xl"
+            />
           )}
 
-          <div className="mt-3 text-sm leading-7 bg-white rounded-xl p-3 border">
+          {/* Safe wrapping + scrolling for long diffs */}
+          <div className="mt-3 text-sm leading-7 bg-white rounded-xl p-3 border whitespace-pre-wrap break-words hyphens-auto max-h-72 overflow-auto">
             {result.tokens.map((t, i) => {
-              if (t.type === "missing") return <mark key={i} className="bg-red-200 rounded px-0.5">{t.text}</mark>;
-              if (t.type === "mismatch") return <span key={i} className="bg-amber-200 rounded px-1">{t.text}</span>;
-              return <span key={i}>{t.text}</span>;
-            }).map((el, idx, arr) => (
-              <span key={`w-${idx}`}>{el}{idx < arr.length - 1 ? " " : ""}</span>
-            ))}
+              const base = "align-baseline rounded px-0.5 py-[1px]";
+              if (t.type === "missing") {
+                return (
+                  <span key={i} className={`${base} bg-red-200/90`} data-token-type="missing">
+                    {t.text}
+                  </span>
+                );
+              }
+              if (t.type === "mismatch") {
+                return (
+                  <span key={i} className={`${base} bg-amber-200`} data-token-type="mismatch">
+                    {t.text}
+                  </span>
+                );
+              }
+              return (
+                <span key={i} className="align-baseline" data-token-type="ok">
+                  {t.text}
+                </span>
+              );
+            })}
           </div>
         </Card>
       )}
+
+      {/* Reserve space so the footer chat never overlaps content */}
+      <ChatStripSpacer />
     </div>
   );
 }

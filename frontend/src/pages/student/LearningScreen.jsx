@@ -1,106 +1,50 @@
-// src/pages/student/HomeScreen.jsx
-import { Typography, Card, Row, Col } from "antd";
+// src/pages/student/LearningScreen.jsx
+import React, { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  BookOutlined,
-  ReadOutlined,
-  ProjectOutlined,
-  FileSearchOutlined,
-} from "@ant-design/icons";
-import { ArrowLeft } from "lucide-react";
-import { useMemo } from "react";
+
+import BackButton from "@/components/student/common/BackButton.jsx";
+import GreetingBanner from "@/components/student/common/GreetingBanner.jsx";
+import CardTile from "@/components/student/common/CardTile.jsx";
+import { ChatStripSpacer } from "@/components/student/mobile/FooterChat";
+
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
-import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
-import ChatLayer from "@/components/student/ChatLayer.jsx";
 
-const { Title, Text } = Typography;
+const SUBJECTS = [
+  {
+    key: "math",
+    title: "Math",
+    img: "https://images.unsplash.com/photo-1517971071642-34a2d3ecc9cd?q=80&w=800&auto=format&fit=crop",
+    to: "/student/learning/subject/math",
+  },
+  {
+    key: "science",
+    title: "Science",
+    img: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=800&auto=format&fit=crop",
+    to: "/student/learning/subject/science",
+  },
+  {
+    key: "tech",
+    title: "Technology & Programming",
+    img: "https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=800&auto=format&fit=crop",
+    to: "/student/learning/subject/technology",
+  },
+  {
+    key: "german",
+    title: "German Language",
+    img: "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?q=80&w=800&auto=format&fit=crop",
+    to: "/student/learning/subject/german",
+  },
+];
 
-/** Static, stable images (mobile only) */
-const IMGS = {
-  homework:
-    "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&q=80",
-  practice:
-    "https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=800&q=80",
-  reading:
-    "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?q=80&w=800&auto=format&fit=crop",
-  map:
-    "https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=800&q=80",
-};
-const FALLBACK =
-  "https://via.placeholder.com/800x320.png?text=Kibundo";
-
-/* ------------------------ MOBILE image tile ------------------------ */
-function ImageTile({ img, title, onClick, cream = false }) {
-  return (
-    <button
-      onClick={onClick}
-      className="block text-left rounded-2xl overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 active:scale-[0.98] transition w-full"
-      aria-label={title}
-      type="button"
-    >
-      <Card
-        hoverable
-        className={`rounded-2xl border-0 !shadow-none ${cream ? "bg-amber-50" : "bg-neutral-100"}`}
-        bodyStyle={{ padding: 0 }}
-        cover={
-          <img
-            src={img}
-            alt={title}
-            className="w-full h-28 object-cover"
-            loading="eager"
-            onError={(e) => {
-              e.currentTarget.onerror = null;
-              e.currentTarget.src = FALLBACK;
-            }}
-          />
-        }
-      >
-        <div className="px-3 py-3">
-          <div className="font-semibold text-neutral-900">{title}</div>
-        </div>
-      </Card>
-    </button>
-  );
-}
-
-/* ------------------------ DESKTOP icon card ------------------------ */
-function IconTile({ icon, title, subtitle, onClick, tone = "indigo" }) {
-  const tones = {
-    indigo: "bg-indigo-100 text-indigo-700",
-    sky: "bg-sky-100 text-sky-700",
-    emerald: "bg-emerald-100 text-emerald-700",
-    orange: "bg-orange-100 text-orange-700",
-  };
-  const chip = tones[tone] || tones.indigo;
-  return (
-    <button type="button" onClick={onClick} aria-label={title} className="text-left w-full">
-      <Card
-        hoverable
-        className="rounded-2xl overflow-hidden border-0 shadow-md bg-white/90 hover:shadow-lg transition"
-        bodyStyle={{ padding: 0 }}
-      >
-        <div className="p-4 flex items-center gap-3 min-h-[108px]">
-          <div className={`w-12 h-12 rounded-xl grid place-items-center text-xl shrink-0 ${chip}`}>
-            {icon}
-          </div>
-          <div className="flex-1">
-            <div className="font-semibold text-neutral-900">{title}</div>
-            {subtitle && <div className="text-xs text-neutral-500 mt-0.5">{subtitle}</div>}
-          </div>
-        </div>
-      </Card>
-    </button>
-  );
-}
-
-export default function HomeScreen() {
+export default function LearningScreen() {
   const navigate = useNavigate();
+
+  // contexts for name + avatar (same pattern as ReadingScreen)
   const { state } = useStudentApp();
   const { user } = useAuthContext();
 
   const buddy = state?.buddy;
-
   const name = useMemo(() => {
     const fromProfile = state?.profile?.name;
     const fromUser =
@@ -111,119 +55,36 @@ export default function HomeScreen() {
   }, [state?.profile?.name, user]);
 
   return (
-    <div className="px-3 md:px-6 py-4 bg-gradient-to-b from-white to-neutral-50 min-h-[100dvh]">
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-3">
-        <button
-          className="p-2 rounded-full hover:bg-neutral-100 active:scale-95"
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          type="button"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <Title
-          level={4}
-          onClick={() => navigate("/student/learning")}
-          className="!mb-0 cursor-pointer hover:text-indigo-600 transition-colors"
-          role="button"
-          aria-label="Go to Learning"
-        >
-          Learn
-        </Title>
-      </div>
-
-      {/* Buddy greeting */}
-      <div className="flex items-start gap-3 mb-4">
-        <BuddyAvatar src={buddy?.avatar} size={96} className="md:size-[112px]" />
-        <div className="pt-1">
-          <Title level={4} className="!mb-1">Hello, {name}!</Title>
-          <Text className="text-neutral-600">What would you like to do today?</Text>
+    // Scrollable in all views and safe with chat footer
+    <div className="relative px-3 md:px-6 py-4 mx-auto w-full max-w-5xl min-h-[100svh] lg:h-full overflow-y-auto">
+      {/* Header: Back + Greeting */}
+      <div className="flex items-center gap-3 pt-6 mb-4">
+        <BackButton className="p-2 rounded-full hover:bg-neutral-100 active:scale-95" />
+        <div className="flex-1">
+          <GreetingBanner
+            avatarSrc={buddy?.avatar}
+            title="Learning"
+            subtitle={`Hello, ${name}! What would you like to learn today?`}
+            className="!bg-white"
+            translucent={false}
+          />
         </div>
       </div>
 
-      {/* MOBILE: image tiles (Row/Col for consistent gutters) */}
-      <div className="md:hidden">
-        <Row gutter={[12, 12]}>
-          <Col span={12}>
-            <ImageTile
-              img={IMGS.homework}
-              title="Homework"
-              onClick={() => navigate("/student/homework")}
-            />
-          </Col>
-          <Col span={12}>
-            <ImageTile
-              img={IMGS.practice}
-              title="Subjects & Practice"
-              cream
-              onClick={() => navigate("/student/learning/subject/math")}
-            />
-          </Col>
-          <Col span={12}>
-            <ImageTile
-              img={IMGS.reading}
-              title="Reading"
-              onClick={() => navigate("/student/reading")}
-            />
-          </Col>
-          <Col span={12}>
-            <ImageTile
-              img={IMGS.map}
-              title="Treasure Map"
-              cream
-              onClick={() => navigate("/student/map")}
-            />
-          </Col>
-        </Row>
+      {/* Subjects grid (responsive) */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-3xl mx-auto">
+        {SUBJECTS.map((s) => (
+          <CardTile
+            key={s.key}
+            img={s.img}
+            title={s.title}
+            onClick={() => navigate(s.to)}
+          />
+        ))}
       </div>
 
-      {/* DESKTOP: icon cards (no images) */}
-      <div className="hidden md:block">
-        <Row gutter={[16, 16]}>
-          <Col xs={24} md={12} lg={6}>
-            <IconTile
-              icon={<FileSearchOutlined />}
-              title="Homework"
-              subtitle="Scan worksheet, get help"
-              tone="orange"
-              onClick={() => navigate("/student/homework")}
-            />
-          </Col>
-          <Col xs={24} md={12} lg={6}>
-            <IconTile
-              icon={<ReadOutlined />}
-              title="Reading"
-              subtitle="Read aloud, AI text, quiz"
-              tone="sky"
-              onClick={() => navigate("/student/reading")}
-            />
-          </Col>
-          <Col xs={24} md={12} lg={6}>
-            <IconTile
-              icon={<BookOutlined />}
-              title="Subjects & Practice"
-              subtitle="Pick a subject and practice"
-              tone="emerald"
-              onClick={() => navigate("/student/learning/subject/math")}
-            />
-          </Col>
-          <Col xs={24} md={12} lg={6}>
-            <IconTile
-              icon={<ProjectOutlined />}
-              title="Treasure Map"
-              subtitle="See your progress"
-              tone="indigo"
-              onClick={() => navigate("/student/map")}
-            />
-          </Col>
-        </Row>
-      </div>
-
-      {/* Chat helper */}
-      <div className="mt-3">
-        <ChatLayer message="Tip: Try a quick practice set in your favorite subject!" tts={false} />
-      </div>
+      {/* Keep content above chat footer */}
+      <ChatStripSpacer />
     </div>
   );
 }

@@ -1,46 +1,76 @@
 // src/pages/billing/Invoices.jsx
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import {
-  Card, Table, Tag, Space, Button, Input, DatePicker, Tooltip, message,
-  Dropdown, Modal, Form, InputNumber, Select, Empty, Divider, Descriptions, Grid, Badge
+  Card,
+  Tag,
+  Space,
+  Button,
+  Input,
+  DatePicker,
+  Tooltip,
+  message,
+  Dropdown,
+  Modal,
+  Form,
+  InputNumber,
+  Select,
+  Descriptions,
+  Grid,
+  Badge,
+  Drawer,
+  Divider,
+  Typography,
 } from "antd";
 import {
-  ReloadOutlined, DownloadOutlined, SendOutlined, FilePdfOutlined, SearchOutlined, EllipsisOutlined,
-  PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined
+  ReloadOutlined,
+  DownloadOutlined,
+  SendOutlined,
+  FilePdfOutlined,
+  SearchOutlined,
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  EyeOutlined,
+  MoreOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import api from "@/api/axios";
 
+import BillingEntityList from "@/components/billing/BillingEntityList";
+import ConfirmDrawer from "@/components/common/ConfirmDrawer";
+import useResponsiveDrawerWidth from "@/hooks/useResponsiveDrawerWidth";
+import MoneyText from "@/components/common/MoneyText";
+
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 
-// Optional: npm i dompurify (recommended)
+const { RangePicker } = DatePicker;
+const { useBreakpoint } = Grid;
+const { Text } = Typography;
+
+/* keep drawers under fixed header */
+const HEADER_OFFSET = 64;
+
 let DOMPurify;
 try {
-  // If available at runtime, use it; otherwise fall back to a simple strip
   DOMPurify = require("dompurify");
 } catch {}
 
-const { RangePicker } = DatePicker;
-const { useBreakpoint } = Grid;
-
-const UNPAID = new Set(["open","past_due","uncollectible"]);
+/* ---------------- constants ---------------- */
+const UNPAID = new Set(["open", "past_due", "uncollectible"]);
 const STATUS_OPTIONS = [
   { value: "open", label: "open" },
   { value: "paid", label: "paid" },
   { value: "past_due", label: "past_due" },
-  { value: "uncollectible", label: "uncollectible" }
+  { value: "uncollectible", label: "uncollectible" },
 ];
 const CURRENCY_OPTIONS = [
   { value: "EUR", label: "EUR" },
   { value: "USD", label: "USD" },
-  { value: "ZAR", label: "ZAR" }
+  { value: "ZAR", label: "ZAR" },
 ];
 
-const fmtMoney = (amount, currency="EUR") =>
-  Number(amount ?? 0).toLocaleString(undefined, { style: "currency", currency });
-
-/* ---------------- DUMMY HELPERS ---------------- */
+/* ---------------- dummy helpers (fallback) ---------------- */
 function buildDummyInvoices(range) {
   const [start, end] = range || [dayjs().startOf("month"), dayjs().endOf("month")];
   const mid = start.add(10, "day");
@@ -55,7 +85,7 @@ function buildDummyInvoices(range) {
       created_at: start.add(2, "day").toISOString(),
       parent: { name: "Family One" },
       pdf_url: "#",
-      notes_html: "<p>Thank you for your payment.</p>"
+      notes_html: "<p>Thank you for your payment.</p>",
     },
     {
       id: "INV-1002",
@@ -66,7 +96,7 @@ function buildDummyInvoices(range) {
       created_at: start.add(8, "day").toISOString(),
       parent: { name: "Family Two" },
       pdf_url: "#",
-      notes_html: "<p>Please settle within 14 days.</p>"
+      notes_html: "<p>Please settle within 14 days.</p>",
     },
     {
       id: "INV-1003",
@@ -77,7 +107,7 @@ function buildDummyInvoices(range) {
       created_at: start.subtract(5, "day").toISOString(),
       parent: { name: "Family Overdue" },
       pdf_url: "#",
-      notes_html: "<p>Overdue. Contact support.</p>"
+      notes_html: "<p>Overdue. Contact support.</p>",
     },
     {
       id: "INV-1004",
@@ -87,7 +117,7 @@ function buildDummyInvoices(range) {
       due_at: end.add(3, "day").toISOString(),
       created_at: end.subtract(2, "day").toISOString(),
       parent: { name: "Family Recent" },
-      pdf_url: "#"
+      pdf_url: "#",
     },
     {
       id: "INV-1005",
@@ -97,11 +127,10 @@ function buildDummyInvoices(range) {
       due_at: start.add(1, "day").toISOString(),
       created_at: start.add(1, "day").toISOString(),
       parent: { name: "Family Edge" },
-      pdf_url: "#"
+      pdf_url: "#",
     },
   ];
 }
-
 const genId = () => `INV-${Math.floor(1000 + Math.random() * 9000)}`;
 
 /** Small wrapper so ReactQuill plays nicely with Form */
@@ -146,7 +175,7 @@ function RichTextArea({ value, onChange, onImageUpload }) {
     clipboard: { matchVisual: false },
   };
 
-  const formats = ["header","bold","italic","underline","list","bullet","align","link","image"];
+  const formats = ["header", "bold", "italic", "underline", "list", "bullet", "align", "link", "image"];
 
   return (
     <div className="antd-quill">
@@ -166,21 +195,41 @@ function RichTextArea({ value, onChange, onImageUpload }) {
   );
 }
 
+/* ---------------- component ---------------- */
 export default function Invoices() {
   const screens = useBreakpoint();
+  const drawerWidth = useResponsiveDrawerWidth();
+
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [range, setRange] = useState([dayjs().startOf("month"), dayjs().endOf("month")]);
   const [q, setQ] = useState("");
   const qTimer = useRef(null);
 
-  // modal state
+  // selection
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+
+  // add/edit modal
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form] = Form.useForm();
 
-  // preview
-  const [previewRow, setPreviewRow] = useState(null);
+  // detail drawer
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewRec, setViewRec] = useState(null);
+
+  // confirm drawers
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  const sanitize = (html) => {
+    if (DOMPurify?.sanitize) return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+    return String(html || "").replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
+  };
 
   const load = async () => {
     setLoading(true);
@@ -206,26 +255,32 @@ export default function Invoices() {
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return data;
-    return data.filter(i =>
-      `${i.id||i.stripe_invoice_id} ${i?.parent?.name||""}`.toLowerCase().includes(s)
+    return data.filter((i) =>
+      `${i.id || i.stripe_invoice_id} ${i?.parent?.name || ""}`.toLowerCase().includes(s)
     );
   }, [data, q]);
 
   const exportCsv = () => {
-    const rows = [["ID","Status","Total","Currency","Due","Created","Parent"]];
-    filtered.forEach(i => rows.push([
-      i.id || i.stripe_invoice_id,
-      i.status,
-      (i.total_cents||0)/100,
-      i.currency || "EUR",
-      i.due_at || "",
-      i.created_at || "",
-      i?.parent?.name || ""
-    ]));
-    const csv = rows.map(r => r.map(x => `"${String(x??"").replace(/"/g,'""')}"`).join(",")).join("\n");
+    const rows = [["ID", "Status", "Total", "Currency", "Due", "Created", "Parent"]];
+    filtered.forEach((i) =>
+      rows.push([
+        i.id || i.stripe_invoice_id,
+        i.status,
+        (i.total_cents || 0) / 100,
+        i.currency || "EUR",
+        i.due_at || "",
+        i.created_at || "",
+        i?.parent?.name || "",
+      ])
+    );
+    const csv = rows.map((r) => r.map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob); const a = document.createElement("a");
-    a.href = url; a.download = "invoices.csv"; a.click(); URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "invoices.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const resend = async (id) => {
@@ -237,7 +292,7 @@ export default function Invoices() {
     }
   };
 
-  // ------- Add / Edit / Delete -------
+  /* ------------ CRUD helpers ------------ */
   const openAdd = (prefill) => {
     setEditingId(null);
     form.resetFields();
@@ -251,7 +306,7 @@ export default function Invoices() {
       created_at: now,
       parent_name: "",
       notes_html: "",
-      ...prefill
+      ...prefill,
     });
     setModalOpen(true);
   };
@@ -272,24 +327,55 @@ export default function Invoices() {
     setModalOpen(true);
   };
 
-  const handleDelete = (row) => {
-    Modal.confirm({
-      title: `Delete invoice ${row.id || row.stripe_invoice_id}?`,
-      okType: "danger",
-      onOk: async () => {
-        try {
-          if (row.id) await api.delete(`/invoice/${row.id}`);
-        } catch {}
-        setData((prev) => prev.filter(x => (x.id || x.stripe_invoice_id) !== (row.id || row.stripe_invoice_id)));
-        message.success("Deleted");
-      }
-    });
+  const handleDelete = async (row) => {
+    try {
+      if (row.id) await api.delete(`/invoice/${row.id}`);
+    } catch {}
+    setData((prev) =>
+      prev.filter((x) => (x.id || x.stripe_invoice_id) !== (row.id || row.stripe_invoice_id))
+    );
+    setSelectedRowKeys((ks) => ks.filter((k) => k !== (row.id || row.stripe_invoice_id)));
+    if (viewRec && (viewRec.id || viewRec.stripe_invoice_id) === (row.id || row.stripe_invoice_id)) {
+      closeView();
+    }
+    message.success("Deleted");
   };
 
-  const sanitize = (html) => {
-    if (DOMPurify?.sanitize) return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
-    // minimal fallback: strip script tags
-    return String(html || "").replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
+  const askDelete = (row) => {
+    setConfirmTarget(row);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!confirmTarget) return;
+    try {
+      setConfirmLoading(true);
+      await handleDelete(confirmTarget);
+      setConfirmOpen(false);
+      setConfirmTarget(null);
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    try {
+      setBulkLoading(true);
+      // simulate API deletes
+      setData((prev) =>
+        prev.filter(
+          (x) => !selectedRowKeys.includes(x.id || x.stripe_invoice_id)
+        )
+      );
+      if (viewRec && selectedRowKeys.includes(viewRec.id || viewRec.stripe_invoice_id)) {
+        closeView();
+      }
+      setSelectedRowKeys([]);
+      message.success("Selected invoices deleted");
+      setBulkOpen(false);
+    } finally {
+      setBulkLoading(false);
+    }
   };
 
   const submitModal = async () => {
@@ -308,53 +394,83 @@ export default function Invoices() {
     };
 
     if (editingId) {
-      try { await api.put(`/invoice/${editingId}`, payload); } catch {}
-      setData(prev => prev.map(x =>
-        (x.id || x.stripe_invoice_id) === editingId ? { ...x, ...payload } : x
-      ));
+      try {
+        await api.put(`/invoice/${editingId}`, payload);
+      } catch {}
+      setData((prev) =>
+        prev.map((x) =>
+          (x.id || x.stripe_invoice_id) === editingId ? { ...x, ...payload } : x
+        )
+      );
       message.success("Invoice updated");
     } else {
-      try { await api.post(`/invoices`, payload); } catch {}
-      setData(prev => [{ ...payload }, ...prev]);
+      try {
+        await api.post(`/invoices`, payload);
+      } catch {}
+      setData((prev) => [{ ...payload }, ...prev]);
       message.success("Invoice added");
     }
     setModalOpen(false);
   };
 
   const uploadImage = async (file) => {
-    // Replace with your real upload endpoint
-    await new Promise(r => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, 250));
     return URL.createObjectURL(file);
   };
 
-  // memoized columns for perf + responsiveness
-  const columns = useMemo(() => [
-    {
+  /* ------------ view / drawer ------------ */
+  const openView = useCallback(
+    (idOrRecord) => {
+      const id =
+        typeof idOrRecord === "object"
+          ? idOrRecord.id || idOrRecord.stripe_invoice_id
+          : idOrRecord;
+      const rec =
+        data.find((x) => String(x.id || x.stripe_invoice_id) === String(id)) || null;
+      if (!rec) return message.error("Invoice not found.");
+      setViewRec(rec);
+      setViewOpen(true);
+    },
+    [data]
+  );
+
+  const closeView = () => {
+    setViewOpen(false);
+    setViewRec(null);
+  };
+
+  /* ------------ columns map for BillingEntityList ------------ */
+  const COLUMNS_MAP = useMemo(() => {
+    const id = {
       title: "ID",
       dataIndex: "id",
       key: "id",
       ellipsis: true,
       width: 180,
-      render: (v, r) => v || r.stripe_invoice_id
-    },
-    {
+      sorter: (a, b) =>
+        String(a.id || a.stripe_invoice_id).localeCompare(String(b.id || b.stripe_invoice_id)),
+      render: (v, r) => {
+        const label = v || r.stripe_invoice_id;
+        return label ? (
+          <Button type="link" className="!px-0" onClick={() => openView(r.id || r.stripe_invoice_id)}>
+            <Text strong>{label}</Text>
+          </Button>
+        ) : (
+          <Text type="secondary">—</Text>
+        );
+      },
+    };
+    const parent = {
       title: "Parent",
       key: "parent",
       ellipsis: true,
-      render: (_, r) => r?.parent?.name || "—"
-    },
-    {
+      render: (_, r) => r?.parent?.name || "—",
+    };
+    const status = {
       title: "Status",
       dataIndex: "status",
       key: "status",
       width: 130,
-      filters: [
-        { text: "Paid", value: "paid" },
-        { text: "Open", value: "open" },
-        { text: "Past due", value: "past_due" },
-        { text: "Uncollectible", value: "uncollectible" },
-      ],
-      onFilter: (val, rec) => (rec.status || "").toLowerCase() === val,
       render: (v) =>
         UNPAID.has(String(v).toLowerCase()) ? (
           <Tag color="orange">{v}</Tag>
@@ -363,45 +479,52 @@ export default function Invoices() {
         ) : (
           <Tag>{v || "—"}</Tag>
         ),
-    },
-    {
+    };
+    const total = {
       title: "Total",
       key: "total",
       width: 160,
       align: "right",
-      sorter: (a, b) => (a.total_cents||0) - (b.total_cents||0),
-      render: (_, r) => fmtMoney((r.total_cents||0)/100, r.currency||"EUR")
-    },
-    {
+      sorter: (a, b) => (a.total_cents || 0) - (b.total_cents || 0),
+      render: (_, r) => <MoneyText amount={(r.total_cents || 0) / 100} currency={r.currency || "EUR"} />,
+    };
+    const due = {
       title: "Due",
       dataIndex: "due_at",
-      key: "due_at",
-      width: 150,
-      sorter: (a, b) => new Date(a.due_at||0) - new Date(b.due_at||0),
-      render: (v, r) => v ? (
-        <Space size={4}>
-          <span>{new Date(v).toLocaleDateString()}</span>
-          {UNPAID.has(String(r.status).toLowerCase()) && new Date(v) < new Date() ? <Tag color="red">overdue</Tag> : null}
-        </Space>
-      ) : "—"
-    },
-    {
+      key: "due",
+      width: 160,
+      sorter: (a, b) => new Date(a.due_at || 0) - new Date(b.due_at || 0),
+      render: (v, r) =>
+        v ? (
+          <Space size={4}>
+            <span>{new Date(v).toLocaleDateString()}</span>
+            {UNPAID.has(String(r.status).toLowerCase()) && new Date(v) < new Date() ? (
+              <Tag color="red">overdue</Tag>
+            ) : null}
+          </Space>
+        ) : (
+          "—"
+        ),
+    };
+    const created = {
       title: "Created",
       dataIndex: "created_at",
-      key: "created_at",
+      key: "created",
       width: 180,
-      sorter: (a, b) => new Date(a.created_at||0) - new Date(b.created_at||0),
-      defaultSortOrder: "descend",
-      render: v => v ? new Date(v).toLocaleString() : "—"
-    },
-    {
-      title: "Actions",
-      key: "actions",
-      fixed: screens.md ? "right" : undefined,
-      width: 90,
-      render: (_, r) => {
-        const items = [
-          { key: "preview", icon: <EyeOutlined />, label: "Preview" },
+      sorter: (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0),
+      render: (v) => (v ? new Date(v).toLocaleString() : "—"),
+    };
+
+    return { id, parent, status, total, due, created };
+  }, [openView]);
+
+  /* ------------ dotted actions menu ------------ */
+  const actionsRender = (r) => (
+    <Dropdown
+      trigger={["click"]}
+      menu={{
+        items: [
+          { key: "view", icon: <EyeOutlined />, label: "View" },
           { key: "edit", icon: <EditOutlined />, label: "Edit" },
           { key: "delete", icon: <DeleteOutlined />, label: <span style={{ color: "#ff4d4f" }}>Delete</span> },
           { type: "divider" },
@@ -409,113 +532,112 @@ export default function Invoices() {
           { key: "resend", icon: <SendOutlined />, label: "Resend Email" },
           { type: "divider" },
           { key: "add", icon: <PlusOutlined />, label: "Add Invoice (prefill)" },
-        ];
+        ],
+        onClick: ({ key }) => {
+          if (key === "view") openView(r.id || r.stripe_invoice_id);
+          if (key === "edit") openEdit(r);
+          if (key === "delete") askDelete(r);
+          if (key === "pdf" && r.pdf_url) window.open(r.pdf_url, "_blank", "noopener,noreferrer");
+          if (key === "resend") resend(r.id || r.stripe_invoice_id);
+          if (key === "add")
+            openAdd({ parent_name: r?.parent?.name || "", currency: r.currency || "EUR" });
+        },
+      }}
+      placement="bottomRight"
+    >
+      <Button size="small" icon={<MoreOutlined />} />
+    </Dropdown>
+  );
 
-        return (
-          <Dropdown
-            trigger={["click"]}
-            menu={{
-              items,
-              onClick: ({ key }) => {
-                if (key === "pdf" && r.pdf_url) window.open(r.pdf_url, "_blank", "noopener,noreferrer");
-                if (key === "resend") resend(r.id || r.stripe_invoice_id);
-                if (key === "edit") openEdit(r);
-                if (key === "delete") handleDelete(r);
-                if (key === "add") openAdd({ parent_name: r?.parent?.name || "", currency: r.currency || "EUR" });
-                if (key === "preview") setPreviewRow(r);
-              }
-            }}
-          >
-            <Tooltip title="Actions">
-              <Button type="text" icon={<EllipsisOutlined />} />
-            </Tooltip>
-          </Dropdown>
-        );
-      }
-    },
-  ], [screens.md]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* ------------ toolbars for BillingEntityList ------------ */
+  const toolbarLeft = (
+    <Space wrap>
+      <Input
+        allowClear
+        prefix={<SearchOutlined />}
+        placeholder="Search ID or parent…"
+        onChange={(e) => {
+          const v = e.target.value;
+          if (qTimer.current) clearTimeout(qTimer.current);
+          qTimer.current = setTimeout(() => setQ(v), 250);
+        }}
+        style={{ width: 260 }}
+      />
+      <RangePicker value={range} onChange={setRange} />
+      <Badge color="blue" count={filtered.length} offset={[6, -2]}>
+        <span style={{ display: "inline-block", width: 1 }} />
+      </Badge>
+    </Space>
+  );
 
-  // quick KPIs
+  const toolbarRight = (
+    <Space wrap>
+      {selectedRowKeys.length > 0 && (
+        <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+          Delete selected
+        </Button>
+      )}
+      <Button icon={<ReloadOutlined />} onClick={load} />
+      <Button icon={<DownloadOutlined />} onClick={exportCsv}>
+        Export
+      </Button>
+      <Button type="primary" icon={<PlusOutlined />} onClick={() => openAdd()}>
+        Add Invoice
+      </Button>
+    </Space>
+  );
+
+  /* ------------ KPIs ------------ */
   const kpis = useMemo(() => {
     const total = filtered.reduce((acc, r) => acc + (r.total_cents || 0), 0) / 100;
-    const unpaidCount = filtered.filter(r => UNPAID.has(String(r.status).toLowerCase())).length;
-    const paidCount = filtered.filter(r => String(r.status).toLowerCase() === "paid").length;
+    const unpaidCount = filtered.filter((r) => UNPAID.has(String(r.status).toLowerCase())).length;
+    const paidCount = filtered.filter((r) => String(r.status).toLowerCase() === "paid").length;
     const cur = filtered[0]?.currency || "EUR";
     return { total, unpaidCount, paidCount, cur };
   }, [filtered]);
 
   return (
-    <>
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-semibold m-0">Invoices</h2>
-            <Badge color="blue" count={filtered.length} offset={[6, -2]}>
-              <span />
-            </Badge>
+    <div className="space-y-4 sm:space-y-6 p-4 md:p-6 max-w-[1600px] mx-auto">
+      {/* KPI strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card size="small" className="rounded-xl">
+          <div className="text-xs text-gray-500">Total Amount (filtered)</div>
+          <div className="text-lg font-semibold">
+            <MoneyText amount={kpis.total} currency={kpis.cur} />
           </div>
-          <Space wrap>
-            <Input
-              allowClear
-              prefix={<SearchOutlined />}
-              placeholder="Search ID or parent…"
-              onChange={(e) => {
-                const v = e.target.value;
-                if (qTimer.current) clearTimeout(qTimer.current);
-                qTimer.current = setTimeout(() => setQ(v), 250);
-              }}
-              style={{ width: screens.xs ? 220 : 260 }}
-            />
-            <RangePicker value={range} onChange={setRange} />
-            <Button icon={<ReloadOutlined />} onClick={load} />
-            <Button icon={<DownloadOutlined />} onClick={exportCsv}>Export</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => openAdd()}>
-              Add Invoice
-            </Button>
-          </Space>
-        </div>
-
-        {/* KPI strip */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Card size="small" className="rounded-xl">
-            <div className="text-xs text-gray-500">Total Amount (filtered)</div>
-            <div className="text-lg font-semibold">{fmtMoney(kpis.total, kpis.cur)}</div>
-          </Card>
-          <Card size="small" className="rounded-xl">
-            <div className="text-xs text-gray-500">Paid</div>
-            <div className="text-lg font-semibold">{kpis.paidCount}</div>
-          </Card>
-          <Card size="small" className="rounded-xl">
-            <div className="text-xs text-gray-500">Unpaid</div>
-            <div className="text-lg font-semibold">{kpis.unpaidCount}</div>
-          </Card>
-        </div>
-
-        <Card bodyStyle={{ padding: 0 }} className="rounded-2xl overflow-hidden">
-          <Table
-            size="middle"
-            rowKey={(r)=>r.id || r.stripe_invoice_id}
-            columns={columns}
-            dataSource={filtered}
-            loading={loading}
-            pagination={{ pageSize: 12, showSizeChanger: true }}
-            scroll={{ x: 900 }}
-            sticky
-            locale={{
-              emptyText: (
-                <Empty description={
-                  <div className="space-y-2">
-                    <div>No invoices found</div>
-                    <div className="text-xs text-gray-500">Try adjusting filters or add a new invoice</div>
-                  </div>
-                }>
-                  <Button type="primary" icon={<PlusOutlined />} onClick={() => openAdd()}>Add Invoice</Button>
-                </Empty>
-              )
-            }}
-          />
+        </Card>
+        <Card size="small" className="rounded-xl">
+          <div className="text-xs text-gray-500">Paid</div>
+          <div className="text-lg font-semibold">{kpis.paidCount}</div>
+        </Card>
+        <Card size="small" className="rounded-xl">
+          <div className="text-xs text-gray-500">Unpaid</div>
+          <div className="text-lg font-semibold">{kpis.unpaidCount}</div>
         </Card>
       </div>
+
+      {/* Entity list */}
+      <BillingEntityList
+        title="Invoices"
+        data={filtered}
+        loading={loading}
+        columnsMap={COLUMNS_MAP}
+        storageKey="invoices.visibleCols.v1"
+        defaultVisible={["id", "parent", "status", "total", "due", "created"]}
+        actionsRender={actionsRender}
+        onRefresh={load}
+        toolbarLeft={toolbarLeft}
+        toolbarRight={toolbarRight}
+        selection={{
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys),
+          // important: rowKey is id or stripe_invoice_id
+          rowKeyFn: (r) => r.id || r.stripe_invoice_id,
+        }}
+        pageSize={12}
+        scrollX={900}
+        onRowClick={(r) => openView(r.id || r.stripe_invoice_id)}
+      />
 
       {/* Add/Edit Modal */}
       <Modal
@@ -525,6 +647,7 @@ export default function Invoices() {
         onOk={submitModal}
         okText={editingId ? "Save" : "Create"}
         width={screens.md ? 720 : "90%"}
+        destroyOnClose
       >
         <Form form={form} layout="vertical" initialValues={{ notes_html: "" }}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -541,7 +664,9 @@ export default function Invoices() {
 
             <Form.Item name="total" label="Total Amount" rules={[{ required: true }]}>
               <InputNumber
-                min={0} step={0.01} style={{ width: "100%" }}
+                min={0}
+                step={0.01}
+                style={{ width: "100%" }}
                 addonAfter={
                   <Form.Item noStyle name="currency" initialValue="EUR">
                     <Select bordered={false} options={CURRENCY_OPTIONS} style={{ width: 80 }} />
@@ -573,72 +698,137 @@ export default function Invoices() {
         </Form>
       </Modal>
 
-      {/* Preview Modal */}
-      <Modal
-        open={!!previewRow}
-        onCancel={() => setPreviewRow(null)}
-        footer={null}
-        title={`Invoice ${previewRow?.id || previewRow?.stripe_invoice_id || ""}`}
-        width={screens.lg ? 760 : "90%"}
+      {/* View Drawer */}
+      <Drawer
+        title="Invoice"
+        open={viewOpen}
+        onClose={closeView}
+        width={drawerWidth}
+        style={{ top: HEADER_OFFSET }}
+        maskStyle={{ top: HEADER_OFFSET }}
+        extra={
+          viewRec ? (
+            <Space>
+              {viewRec?.pdf_url ? (
+                <Button icon={<FilePdfOutlined />} onClick={() => window.open(viewRec.pdf_url, "_blank", "noopener,noreferrer")}>
+                  PDF
+                </Button>
+              ) : null}
+              <Button icon={<SendOutlined />} onClick={() => resend(viewRec.id || viewRec.stripe_invoice_id)}>
+                Resend
+              </Button>
+              <Button icon={<EditOutlined />} onClick={() => openEdit(viewRec)}>
+                Edit
+              </Button>
+              <Button danger icon={<DeleteOutlined />} onClick={() => askDelete(viewRec)}>
+                Delete
+              </Button>
+            </Space>
+          ) : null
+        }
       >
-        {previewRow && (
+        {viewRec ? (
           <>
-            <Descriptions column={1} size="middle" bordered className="mb-3">
-              <Descriptions.Item label="Parent">{previewRow?.parent?.name || "—"}</Descriptions.Item>
+            <Descriptions bordered column={1} size="middle">
+              <Descriptions.Item label="ID">
+                {viewRec.id || viewRec.stripe_invoice_id || "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Parent">
+                {viewRec?.parent?.name || "—"}
+              </Descriptions.Item>
               <Descriptions.Item label="Status">
-                {UNPAID.has(String(previewRow.status).toLowerCase()) ? (
-                  <Tag color="orange">{previewRow.status}</Tag>
-                ) : String(previewRow.status).toLowerCase() === "paid" ? (
+                {UNPAID.has(String(viewRec.status).toLowerCase()) ? (
+                  <Tag color="orange">{viewRec.status}</Tag>
+                ) : String(viewRec.status).toLowerCase() === "paid" ? (
                   <Tag color="green">paid</Tag>
-                ) : (<Tag>{previewRow.status || "—"}</Tag>)}
+                ) : (
+                  <Tag>{viewRec.status || "—"}</Tag>
+                )}
               </Descriptions.Item>
               <Descriptions.Item label="Total">
-                {fmtMoney((previewRow.total_cents||0)/100, previewRow.currency || "EUR")}
+                <MoneyText
+                  amount={(viewRec.total_cents || 0) / 100}
+                  currency={viewRec.currency || "EUR"}
+                />
               </Descriptions.Item>
               <Descriptions.Item label="Due">
-                {previewRow.due_at ? new Date(previewRow.due_at).toLocaleString() : "—"}
+                {viewRec.due_at ? new Date(viewRec.due_at).toLocaleString() : "—"}
               </Descriptions.Item>
               <Descriptions.Item label="Created">
-                {previewRow.created_at ? new Date(previewRow.created_at).toLocaleString() : "—"}
+                {viewRec.created_at ? new Date(viewRec.created_at).toLocaleString() : "—"}
               </Descriptions.Item>
-              {previewRow?.pdf_url ? (
+              {viewRec?.pdf_url ? (
                 <Descriptions.Item label="PDF">
-                  <Button size="small" icon={<FilePdfOutlined />} onClick={() => window.open(previewRow.pdf_url, "_blank", "noopener,noreferrer")}>
+                  <Button
+                    size="small"
+                    icon={<FilePdfOutlined />}
+                    onClick={() => window.open(viewRec.pdf_url, "_blank", "noopener,noreferrer")}
+                  >
                     Open PDF
                   </Button>
                 </Descriptions.Item>
               ) : null}
             </Descriptions>
 
-            {previewRow?.notes_html ? (
+            {viewRec?.notes_html ? (
               <>
-                <Divider className="my-3" />
+                <Divider className="my-4" />
                 <h4 className="font-semibold mb-2">Notes / Terms</h4>
                 <div
                   className="prose max-w-none ql-editor border rounded-md p-3 bg-white"
-                  dangerouslySetInnerHTML={{ __html: sanitize(previewRow.notes_html) }}
+                  dangerouslySetInnerHTML={{ __html: sanitize(viewRec.notes_html) }}
                 />
               </>
             ) : null}
-
-            <Divider className="my-3" />
-            <Space wrap>
-              <Button icon={<EditOutlined />} onClick={() => { setPreviewRow(null); openEdit(previewRow); }}>
-                Edit
-              </Button>
-              <Button icon={<SendOutlined />} onClick={() => resend(previewRow.id || previewRow.stripe_invoice_id)}>
-                Resend Email
-              </Button>
-              <Button
-                danger icon={<DeleteOutlined />}
-                onClick={() => { setPreviewRow(null); handleDelete(previewRow); }}
-              >
-                Delete
-              </Button>
-            </Space>
           </>
+        ) : (
+          <Text type="secondary">No data.</Text>
         )}
-      </Modal>
-    </>
+      </Drawer>
+
+      {/* Confirm Drawer: single delete */}
+      <ConfirmDrawer
+        open={confirmOpen}
+        title="Delete invoice?"
+        description={
+          <>
+            This will permanently delete{" "}
+            <Text strong>
+              {confirmTarget?.id || confirmTarget?.stripe_invoice_id || "—"}
+            </Text>
+            . This action cannot be undone.
+          </>
+        }
+        loading={confirmLoading}
+        confirmText="Delete"
+        showCloseButton
+        cancelText=""
+        topOffset={HEADER_OFFSET}
+        onConfirm={handleConfirmDelete}
+        onClose={() => {
+          setConfirmOpen(false);
+          setConfirmTarget(null);
+        }}
+      />
+
+      {/* Confirm Drawer: bulk delete */}
+      <ConfirmDrawer
+        open={bulkOpen}
+        title="Delete selected invoices?"
+        description={
+          <>
+            You are about to delete <Text strong>{selectedRowKeys.length}</Text>{" "}
+            invoice{selectedRowKeys.length === 1 ? "" : "s"}. This action cannot be undone.
+          </>
+        }
+        loading={bulkLoading}
+        confirmText="Delete all"
+        showCloseButton
+        cancelText=""
+        topOffset={HEADER_OFFSET}
+        onConfirm={handleBulkDelete}
+        onClose={() => setBulkOpen(false)}
+      />
+    </div>
   );
 }

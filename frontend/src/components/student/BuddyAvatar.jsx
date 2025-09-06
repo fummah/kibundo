@@ -1,10 +1,37 @@
-export default function BuddyAvatar({ src, size = 112, ring = true, alt = "Buddy" }) {
+// src/components/student/BuddyAvatar.jsx
+import React from "react";
+import clsx from "clsx";
+import defaultBuddy from "@/assets/buddies/kibundo-buddy.png";
+
+export default function BuddyAvatar({
+  src,
+  size = 72,
+  alt = "Buddy",
+  className = "",
+  ring = true,
+}) {
+  const [imgSrc, setImgSrc] = React.useState(src || defaultBuddy);
+
+  React.useEffect(() => {
+    setImgSrc(src || defaultBuddy);
+  }, [src]);
+
   return (
     <img
-      src={src}
+      src={imgSrc}
       alt={alt}
-      style={{ width: size, height: size }}
-      className={`rounded-full object-cover ${ring ? "ring-4 ring-white shadow" : ""}`}
+      width={size}
+      height={size}
+      className={clsx(
+        "",
+        ring ? "" : "",
+        className
+      )}
+      onError={(e) => {
+        // prevent loop if default also fails
+        if (imgSrc !== defaultBuddy) setImgSrc(defaultBuddy);
+      }}
+      draggable={false}
     />
   );
 }

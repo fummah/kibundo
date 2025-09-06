@@ -1,47 +1,49 @@
-// src/pages/billing/Subscriptions.jsx
-import { useEffect, useMemo, useState } from "react";
+// src/pages/admin/billing/Subscriptions.jsx
+import { useEffect, useMemo, useState, useCallback } from "react";
 import {
-  Card,
-  Table,
-  Tag,
   Segmented,
   Button,
   Space,
-  Modal,
   Form,
   Select,
   DatePicker,
-  Dropdown,
-  Menu,
   Typography,
   message,
   Skeleton,
-  Empty,
-  Tooltip,
+  Dropdown,
+  Drawer,
+  Descriptions,
 } from "antd";
 import {
-  PlusOutlined,
   MoreOutlined,
   DeleteOutlined,
   EyeOutlined,
-  ReloadOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
-import dayjs from "dayjs";
 import { useNavigate } from "react-router-dom";
 import api from "@/api/axios";
 
-const { Text, Title } = Typography;
+import BillingEntityList from "@/components/billing/BillingEntityList";
+import ConfirmDrawer from "@/components/common/ConfirmDrawer";
+import StatusTag from "@/components/common/StatusTag";
+import MoneyText from "@/components/common/MoneyText";
+import useResponsiveDrawerWidth from "@/hooks/useResponsiveDrawerWidth";
 
-/* ----------------------------- helpers ---------------------------- */
-const money = (n, currency = "EUR") =>
-  n == null
-    ? "-"
-    : Number(n).toLocaleString(undefined, {
-        style: "currency",
-        currency,
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+const { Text } = Typography;
+
+const BASE = "";
+const API_ROUTES = {
+  SUBSCRIPTIONS: `${BASE}/subscriptions`,
+  SUBSCRIPTION_ID: (id) => `${BASE}/subscriptions/${id}`,
+  PARENTS: `${BASE}/parents`,
+  PRODUCTS: `${BASE}/products`,
+};
+
+/* ----------------------------- helpers ----------------------------- */
+const isCanceled = (err) =>
+  err?.code === "ERR_CANCELED" ||
+  err?.name === "CanceledError" ||
+  (typeof api.isCancel === "function" && api.isCancel(err));
 
 const read = (obj, path) => {
   if (!obj) return undefined;
@@ -50,6 +52,19 @@ const read = (obj, path) => {
   if (typeof path === "string" && path.includes("."))
     return path.split(".").reduce((a, k) => (a == null ? a : a[k]), obj);
   return obj[path];
+};
+
+const toArray = (payload) => {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  return (
+    payload.rows ||
+    payload.data ||
+    payload.items ||
+    payload.results ||
+    payload.list ||
+    []
+  );
 };
 
 const normalizeStatus = (raw) => {
@@ -64,72 +79,70 @@ const normalizeStatus = (raw) => {
   return "";
 };
 
-const statusColorMap = {
-  active: "green",
-  trialing: "blue",
-  past_due: "orange",
-  unpaid: "volcano",
-  canceled: "red",
-  cancelled: "red",
-  incomplete: "geekblue",
-  incomplete_expired: "magenta",
-  paused: "gold",
-  inactive: "default",
-};
-
-const renderStatusTag = (raw) => {
-  const val = normalizeStatus(raw);
-  if (!val) return <Tag color="default">-</Tag>;
-  const color = statusColorMap[val] || "default";
-  const label = val.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  return <Tag color={color}>{label}</Tag>;
+const parentFullName = (pLike) => {
+  if (!pLike) return "";
+  const p = pLike.raw || pLike;
+  const u = p.user || {};
+  return (
+    u.name ||
+    [u.first_name, u.last_name].filter(Boolean).join(" ").trim() ||
+    p.name ||
+    ""
+  );
 };
 
 const SUB_STATUS_OPTIONS = [
   { label: "All", value: "all" },
   { label: "Active", value: "active" },
   { label: "Trialing", value: "trialing" },
-  { label: "Past Due", value: "past_due" },
   { label: "Canceled", value: "canceled" },
-  { label: "Incomplete", value: "incomplete" },
-  { label: "Unpaid", value: "unpaid" },
 ];
 
-/* ---------------------------------- page ---------------------------------- */
+/* --------------------------------- page --------------------------------- */
 export default function Subscriptions() {
   const navigate = useNavigate();
+  const drawerWidth = useResponsiveDrawerWidth();
 
-  // ui & filters
   const [loading, setLoading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState("active");
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  // data
   const [subs, setSubs] = useState([]);
   const [parents, setParents] = useState([]);
   const [products, setProducts] = useState([]);
 
-  // modal
-  const [open, setOpen] = useState(false);
+  // Create Drawer
+  const [createOpen, setCreateOpen] = useState(false);
   const [form] = Form.useForm();
 
-  /* ------------------------------- load data ------------------------------ */
+  // selection
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+
+  // View Drawer
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewLoading, setViewLoading] = useState(false);
+  const [viewRec, setViewRec] = useState(null);
+
+  // Delete confirm (reusable)
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteRec, setDeleteRec] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
   const loadAll = async (signal) => {
     try {
       setLoading(true);
       const [sRes, pRes, prRes] = await Promise.all([
-        api.get("/subscriptions", { signal }),
-        api.get("/parents", { signal }),
-        api.get("/products", { signal }),
+        api.get(API_ROUTES.SUBSCRIPTIONS, { signal }),
+        api.get(API_ROUTES.PARENTS, { signal }),
+        api.get(API_ROUTES.PRODUCTS, { signal }),
       ]);
-      setSubs(sRes?.data || []);
-      setParents(pRes?.data || []);
-      setProducts(prRes?.data || []);
+      setSubs(toArray(sRes?.data));
+      setParents(toArray(pRes?.data));
+      setProducts(toArray(prRes?.data));
+      setSelectedRowKeys([]);
     } catch (err) {
-      const canceled = err?.name === "AbortError" || err?.code === "ERR_CANCELED";
-      if (!canceled) {
-        console.error(err);
-        message.error("Failed to load subscriptions.");
-      }
+      if (isCanceled(err)) return;
+      console.error("Load error:", err);
+      message.error("Failed to load subscriptions data.");
     } finally {
       setLoading(false);
     }
@@ -141,29 +154,54 @@ export default function Subscriptions() {
     return () => ctrl.abort();
   }, []);
 
-  /* ----------------------------- derived maps ----------------------------- */
+  /* Build maps */
   const parentMap = useMemo(() => {
     const m = new Map();
-    (parents || []).forEach((p) => m.set(p.id ?? p.parent_id, p));
+    (parents || []).forEach((p) => m.set(p.id ?? p.parent_id, { raw: p }));
     return m;
   }, [parents]);
 
   const productMap = useMemo(() => {
     const m = new Map();
-    (products || []).forEach((p) => m.set(p.id ?? p.product_id ?? p.stripe_product_id, p));
+    (products || []).forEach((p) =>
+      m.set(p.id ?? p.product_id ?? p.stripe_product_id, p)
+    );
     return m;
   }, [products]);
 
-  // ensure parent is present in each row for display
+  /* Enriched rows */
   const rows = useMemo(() => {
     return (subs || []).map((s) => {
-      const parent = s.parent || parentMap.get(s.parent_id) || null;
+      const parent =
+        s.parent ||
+        parentMap.get(s.parent_id) ||
+        parentMap.get(s.parent_ids) ||
+        null;
+
       const product =
         s.product ||
         productMap.get(s.product_id) ||
-        productMap.get(s.plan_id) || // some payloads store plan_id referencing product
+        productMap.get(s.plan_id) ||
         null;
-      return { ...s, parent, product };
+
+      const cents =
+        read(s, "price.unit_amount_cents") ??
+        read(s, "product.unit_amount_cents") ??
+        read(s, "plan.priceCents");
+
+      const currency =
+        read(s, "price.currency") ||
+        read(s, "product.currency") ||
+        "EUR";
+
+      return {
+        ...s,
+        parent,
+        product,
+        _parentName: parentFullName(parent),
+        _amount: cents != null ? Number(cents) / 100 : null,
+        _currency: currency,
+      };
     });
   }, [subs, parentMap, productMap]);
 
@@ -172,158 +210,51 @@ export default function Subscriptions() {
     return rows.filter((r) => normalizeStatus(r.status) === statusFilter);
   }, [rows, statusFilter]);
 
-  /* -------------------------------- columns ------------------------------- */
-  const columns = [
-    {
-      title: "Plan ID",
-      key: "plan_id",
-      width: 160,
-      render: (_, r) => r.plan_id || r.product_id || read(r, "product.id") || "-",
-      sorter: (a, b) =>
-        String(a.plan_id || a.product_id || "").localeCompare(String(b.plan_id || b.product_id || "")),
+  /* ------------------------------ view logic ----------------------------- */
+  const openView = useCallback(
+    async (idOrRecord) => {
+      const id = typeof idOrRecord === "object" ? idOrRecord.id : idOrRecord;
+      setViewOpen(true);
+      setViewLoading(true);
+      try {
+        const { data } = await api.get(API_ROUTES.SUBSCRIPTION_ID(id));
+        setViewRec(data || null);
+      } catch (err) {
+        if (isCanceled(err)) return;
+        const fallback = (rows || []).find((r) => String(r.id) === String(id));
+        setViewRec(fallback || null);
+        if (!fallback) message.error("Failed to load subscription.");
+      } finally {
+        setViewLoading(false);
+      }
     },
-    {
-      title: "Plan / Product",
-      key: "plan_name",
-      render: (_, r) =>
-        read(r, "price.nickname") ||
-        read(r, "product.name") ||
-        read(r, "plan.name") ||
-        "-",
-      ellipsis: true,
-    },
-    {
-      title: "Parent",
-      key: "parent",
-      render: (_, r) => read(r, "parent.name") || `#${r.parent_id}`,
-      sorter: (a, b) =>
-        String(read(a, "parent.name") || "").localeCompare(String(read(b, "parent.name") || "")),
-    },
-    {
-      title: "Interval",
-      key: "interval",
-      width: 110,
-      render: (_, r) =>
-        read(r, "price.interval") ||
-        read(r, "product.interval") ||
-        read(r, "plan.interval") ||
-        "-",
-    },
-    {
-      title: "Amount",
-      key: "amount",
-      width: 150,
-      render: (_, r) => {
-        const cents =
-          read(r, "price.unit_amount_cents") ??
-          read(r, "product.unit_amount_cents") ??
-          read(r, "plan.priceCents") ??
-          0;
-        const currency =
-          read(r, "price.currency") ||
-          read(r, "product.currency") ||
-          "EUR";
-        return money((cents || 0) / 100, currency);
-      },
-      sorter: (a, b) => {
-        const aC =
-          read(a, "price.unit_amount_cents") ??
-          read(a, "product.unit_amount_cents") ??
-          read(a, "plan.priceCents") ??
-          0;
-        const bC =
-          read(b, "price.unit_amount_cents") ??
-          read(b, "product.unit_amount_cents") ??
-          read(b, "plan.priceCents") ??
-          0;
-        return aC - bC;
-      },
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      key: "status",
-      width: 130,
-      render: (s) => renderStatusTag(s),
-      filters: SUB_STATUS_OPTIONS.filter((o) => o.value !== "all").map((o) => ({
-        text: o.label,
-        value: o.value,
-      })),
-      onFilter: (val, r) => normalizeStatus(r.status) === val,
-    },
-    {
-      title: "Renews",
-      dataIndex: "current_period_end",
-      key: "renews",
-      width: 170,
-      render: (v) =>
-        v
-          ? new Date(v).toLocaleDateString(undefined, {
-              year: "numeric",
-              month: "short",
-              day: "2-digit",
-            })
-          : "-",
-      sorter: (a, b) =>
-        new Date(a.current_period_end || 0) - new Date(b.current_period_end || 0),
-    },
-    {
-      title: "Actions",
-      key: "actions",
-      fixed: "right",
-      width: 80,
-      render: (_, r) => {
-        const menu = (
-          <Menu
-            items={[
-              {
-                key: "view",
-                icon: <EyeOutlined />,
-                label: "View",
-                onClick: () => navigate(`/billing/subscriptions/${r.id}`),
-              },
-              {
-                key: "delete",
-                icon: <DeleteOutlined />,
-                danger: true,
-                label: "Delete",
-                onClick: () => onDelete(r),
-              },
-            ]}
-          />
-        );
-        return (
-          <Dropdown overlay={menu} trigger={["click"]}>
-            <Button icon={<MoreOutlined />} />
-          </Dropdown>
-        );
-      },
-    },
-  ];
+    [rows]
+  );
 
-  /* --------------------------------- CRUD --------------------------------- */
-  const onDelete = async (row) => {
-    Modal.confirm({
-      title: "Delete subscription?",
-      content: `This will permanently delete subscription #${row?.id}.`,
-      okText: "Delete",
-      okType: "danger",
-      onOk: async () => {
-        try {
-          await api.delete(`/subscription/${row.id}`);
-          message.success("Subscription deleted.");
-          setSubs((prev) => prev.filter((s) => s.id !== row.id));
-        } catch (err) {
-          console.error(err);
-          message.error("Delete failed.");
-        }
-      },
-    });
+  const closeView = () => {
+    setViewOpen(false);
+    setViewRec(null);
   };
 
-  const openCreate = () => {
-    form.resetFields();
-    setOpen(true);
+  /* ------------------------------- actions ------------------------------- */
+  const handleDelete = async () => {
+    if (!deleteRec?.id) return;
+    try {
+      setDeleting(true);
+      await api.delete(API_ROUTES.SUBSCRIPTION_ID(deleteRec.id));
+      message.success("Subscription deleted.");
+      setSubs((prev) => prev.filter((s) => s.id !== deleteRec.id));
+      if (viewOpen && viewRec?.id === deleteRec.id) closeView();
+      setSelectedRowKeys((ks) => ks.filter((k) => k !== deleteRec.id));
+      setDeleteOpen(false);
+      setDeleteRec(null);
+    } catch (err) {
+      if (isCanceled(err)) return;
+      console.error(err);
+      message.error("Delete failed.");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleCreate = async () => {
@@ -331,86 +262,201 @@ export default function Subscriptions() {
       const values = await form.validateFields();
       const payload = {
         parent_id: values.parent_id,
-        plan_id: values.plan_id, // you asked for plan_id FIRST
+        plan_id: values.plan_id,
         status: values.status,
         current_period_end: values.current_period_end
-          ? values.current_period_end.toISOString()
+          ? values.current_period_end.startOf("day").toISOString()
           : null,
       };
-      await api.post("/addsubscription", payload);
+      await api.post(API_ROUTES.SUBSCRIPTIONS, payload);
       message.success("Subscription created.");
-      setOpen(false);
-      // reload list (or optimistic append if your API returns the new record)
-      const res = await api.get("/subscriptions");
-      setSubs(res?.data || []);
+      setCreateOpen(false);
+      const res = await api.get(API_ROUTES.SUBSCRIPTIONS);
+      setSubs(toArray(res?.data));
     } catch (err) {
-      if (err?.errorFields) return; // form error, already shown
+      if (err?.errorFields || isCanceled(err)) return;
       console.error(err);
       message.error("Create failed.");
     }
   };
 
-  /* --------------------------------- UI ---------------------------------- */
-  return (
-    <div className="p-4 md:p-6 max-w-[1700px] mx-auto">
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <Title level={3} className="!mb-0">Billing / Subscriptions</Title>
-        <Space wrap>
-          <Segmented
-            options={SUB_STATUS_OPTIONS}
-            value={statusFilter}
-            onChange={setStatusFilter}
-          />
-          <Tooltip title="Refresh">
-            <Button icon={<ReloadOutlined />} onClick={() => loadAll()} />
-          </Tooltip>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            New Subscription
+  /* ------------------------------- columns ------------------------------ */
+  const COLUMNS_MAP = useMemo(() => {
+    const id = {
+      title: "ID",
+      dataIndex: "id",
+      key: "id",
+      width: 90,
+      sorter: (a, b) => (a.id || 0) - (b.id || 0),
+      render: (val, record) =>
+        val ? (
+          <Button type="link" className="!px-0" onClick={() => openView(record.id)}>
+            <Text strong>{val}</Text>
           </Button>
-        </Space>
-      </div>
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
+    };
 
-      <Card
-        hoverable
-        variant="outlined"
-        styles={{ body: { padding: 0 } }}
-      >
-        <Table
-          locale={{ emptyText: loading ? <Skeleton active /> : <Empty /> }}
-          rowKey={(r) => r.id}
-          loading={loading}
-          dataSource={filtered}
-          columns={columns}
-          size="middle"
-          pagination={{ pageSize: 10, showSizeChanger: false }}
-          scroll={{ x: 1100 }}
-          onRow={(record) => ({
-            onDoubleClick: () => {
-              if (record?.id) navigate(`/billing/subscriptions/${record.id}`);
-            },
-          })}
-        />
-      </Card>
+    const plan = {
+      title: "Plan / Product",
+      key: "plan",
+      render: (_, r) =>
+        read(r, "price.nickname") ||
+        read(r, "product.name") ||
+        read(r, "plan.name") ||
+        "—",
+    };
 
-      {/* Create Subscription Modal */}
-      <Modal
+    const parent = {
+      title: "Parent",
+      key: "parent",
+      ellipsis: true,
+      render: (_, r) => {
+        const label = r._parentName || "—";
+        const id = r.parent?.raw?.id ?? r.parent?.id ?? r.parent_id;
+        return id ? (
+          <a
+            href={`/admin/parents/${id}`}
+            onClick={(e) => {
+              e.preventDefault();
+              navigate(`/admin/parents/${id}`, {
+                state: { prefill: r.parent?.raw || r.parent || null },
+              });
+            }}
+          >
+            {label}
+          </a>
+        ) : (
+          label
+        );
+      },
+      sorter: (a, b) => (a._parentName || "").localeCompare(b._parentName || ""),
+    };
+
+    const stripeId = {
+      title: "Stripe Sub ID",
+      key: "stripeId",
+      render: (_, r) =>
+        r.stripe_subscription_id || <Text type="secondary">—</Text>,
+      responsive: ["lg"],
+    };
+
+    const interval = {
+      title: "Interval",
+      key: "interval",
+      render: (_, r) =>
+        read(r, "price.interval") ||
+        read(r, "product.interval") ||
+        read(r, "plan.interval") ||
+        "—",
+      width: 110,
+    };
+
+    const amount = {
+      title: "Amount",
+      key: "amount",
+      render: (_, r) =>
+        r._amount != null ? <MoneyText amount={r._amount} currency={r._currency} /> : "—",
+      width: 140,
+    };
+
+    const status = {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
+      render: (s) => <StatusTag value={s} />,
+      width: 130,
+    };
+
+    const renews = {
+      title: "Renews",
+      dataIndex: "current_period_end",
+      key: "renews",
+      render: (v) =>
+        v
+          ? new Date(v).toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "short",
+              day: "2-digit",
+            })
+          : "—",
+      width: 150,
+    };
+
+    return { id, plan, parent, stripeId, interval, amount, status, renews };
+  }, [navigate, openView]);
+
+  const actionsRender = (r) => (
+    <Dropdown
+      menu={{
+        items: [
+          { key: "view", icon: <EyeOutlined />, label: "View" },
+          { key: "delete", icon: <DeleteOutlined />, label: "Delete", danger: true },
+        ],
+        onClick: ({ key }) => {
+          if (key === "view") openView(r.id);
+          if (key === "delete") {
+            setDeleteRec(r);
+            setDeleteOpen(true);
+          }
+        },
+      }}
+      trigger={["click"]}
+    >
+      <Button icon={<MoreOutlined />} />
+    </Dropdown>
+  );
+
+  const toolbarLeft = (
+    <Segmented
+      options={SUB_STATUS_OPTIONS}
+      value={statusFilter}
+      onChange={setStatusFilter}
+      className="w-full sm:w-auto"
+    />
+  );
+
+  /* ---------------------------------- UI ---------------------------------- */
+  return (
+    <div className="space-y-4 sm:space-y-6 p-4 md:p-6 max-w-[1700px] mx-auto">
+      <BillingEntityList
+        title="Subscriptions"
+        data={filtered}
+        loading={loading}
+        columnsMap={COLUMNS_MAP}
+        storageKey="subscriptions.visibleCols.v2"
+        defaultVisible={["id", "plan", "parent", "interval", "amount", "status", "renews"]}
+        actionsRender={actionsRender}
+        onRefresh={() => loadAll()}
+        toolbarLeft={toolbarLeft}
+        selection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
+        pageSize={12}
+        scrollX={1150}
+        onRowClick={(r) => openView(r.id)}
+      />
+
+      {/* Create Drawer */}
+      <Drawer
         title="Create Subscription"
-        open={open}
-        onCancel={() => setOpen(false)}
-        onOk={handleCreate}
-        okText="Create"
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        width={drawerWidth}
         destroyOnClose
+        extra={
+          <Space>
+            <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button type="primary" onClick={handleCreate}>
+              Create
+            </Button>
+          </Space>
+        }
       >
-        <Form
-          form={form}
-          layout="vertical"
-          preserve={false}
-        >
+        <Form form={form} layout="vertical" preserve={false}>
           <Form.Item
             name="plan_id"
-            label="Plan ID"
+            label="Plan / Product"
             rules={[{ required: true, message: "Please select a plan" }]}
-            tooltip="Stored as plan_id; shown before plan/product name"
           >
             <Select
               placeholder="Select plan/product"
@@ -432,10 +478,10 @@ export default function Subscriptions() {
               placeholder="Select parent"
               showSearch
               optionFilterProp="label"
-              options={(parents || []).map((p) => ({
-                label: p.name ? `${p.name} (#${p.id})` : `#${p.id}`,
-                value: p.id,
-              }))}
+              options={(parents || []).map((p) => {
+                const label = parentFullName({ raw: p }) || `#${p.id}`;
+                return { label, value: p.id };
+              })}
             />
           </Form.Item>
 
@@ -449,24 +495,137 @@ export default function Subscriptions() {
               options={[
                 { label: "Active", value: "active" },
                 { label: "Trialing", value: "trialing" },
-                { label: "Past Due", value: "past_due" },
                 { label: "Canceled", value: "canceled" },
-                { label: "Incomplete", value: "incomplete" },
-                { label: "Unpaid", value: "unpaid" },
               ]}
             />
           </Form.Item>
 
           <Form.Item name="current_period_end" label="Current Period End">
-            <DatePicker
-              className="w-full"
-              allowClear
-              showTime={false}
-              disabledDate={(d) => d && d.isBefore(dayjs().startOf("day"))}
-            />
+            <DatePicker className="w-full" allowClear showTime={false} />
           </Form.Item>
         </Form>
-      </Modal>
+      </Drawer>
+
+      {/* View Drawer */}
+      <Drawer
+        title="Subscription"
+        open={viewOpen}
+        onClose={closeView}
+        width={drawerWidth}
+        destroyOnClose
+      >
+        {viewLoading ? (
+          <Skeleton active paragraph={{ rows: 10 }} />
+        ) : viewRec ? (
+          (() => {
+            const p = viewRec;
+            const parent =
+              p.parent ||
+              parentMap.get(p.parent_id) ||
+              parentMap.get(p.parent_ids) ||
+              null;
+            const product =
+              p.product ||
+              productMap.get(p.product_id) ||
+              productMap.get(p.plan_id) ||
+              null;
+
+            const amountCents =
+              read(p, "price.unit_amount_cents") ??
+              read(p, "product.unit_amount_cents") ??
+              read(p, "plan.priceCents");
+            const currency =
+              read(p, "price.currency") || read(p, "product.currency") || "EUR";
+            const amount =
+              amountCents != null ? Number(amountCents) / 100 : null;
+
+            const parentId = parent?.raw?.id ?? parent?.id ?? p.parent_id;
+            const parentName = parentFullName(parent) || "—";
+
+            return (
+              <Descriptions bordered column={1} size="middle">
+                <Descriptions.Item label="ID">{p.id}</Descriptions.Item>
+                <Descriptions.Item label="Parent">
+                  {parentId ? (
+                    <a
+                      href={`/admin/parents/${parentId}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigate(`/admin/parents/${parentId}`, {
+                          state: { prefill: parent?.raw || parent || null },
+                        });
+                      }}
+                    >
+                      {parentName}
+                    </a>
+                  ) : (
+                    parentName
+                  )}
+                </Descriptions.Item>
+                <Descriptions.Item label="Plan / Product">
+                  {read(p, "price.nickname") ||
+                    read(product, "name") ||
+                    read(p, "plan.name") ||
+                    "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Status">
+                  <StatusTag value={p.status} />
+                </Descriptions.Item>
+                <Descriptions.Item label="Interval">
+                  {read(p, "price.interval") ||
+                    read(product, "interval") ||
+                    read(p, "plan.interval") ||
+                    "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Amount">
+                  {amount != null ? <MoneyText amount={amount} currency={currency} /> : "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Current period start">
+                  {p.current_period_start
+                    ? new Date(p.current_period_start).toLocaleString()
+                    : "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Current period end">
+                  {p.current_period_end
+                    ? new Date(p.current_period_end).toLocaleString()
+                    : "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Stripe Sub ID">
+                  {p.stripe_subscription_id || "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Created at">
+                  {p.created_at
+                    ? new Date(p.created_at).toLocaleString()
+                    : "—"}
+                </Descriptions.Item>
+              </Descriptions>
+            );
+          })()
+        ) : (
+          <Text type="secondary">No data.</Text>
+        )}
+      </Drawer>
+
+      {/* Delete Confirmation */}
+      <ConfirmDrawer
+        open={deleteOpen}
+        title="Delete subscription?"
+        description={
+          <>
+            This will permanently delete subscription{" "}
+            <Text strong>#{deleteRec?.id ?? "—"}</Text>. This action cannot be
+            undone.
+          </>
+        }
+        loading={deleting}
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={handleDelete}
+        onClose={() => {
+          setDeleteOpen(false);
+          setDeleteRec(null);
+        }}
+      />
     </div>
   );
 }
