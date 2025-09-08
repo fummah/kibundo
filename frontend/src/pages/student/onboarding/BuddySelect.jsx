@@ -7,9 +7,10 @@ import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
 import HomeRibbon from "@/components/student/mobile/HomeRibbon";
 import SettingsRibbon from "@/components/student/mobile/SettingsRibbon";
 
-/* Backgrounds */
-import globalBg from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\backgrounds\\global-bg.png";
-import intBack from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\backgrounds\\int-back.png";
+import globalBg from "../../../assets/backgrounds/global-bg.png";
+import intBack from "../../../assets/backgrounds/int-back.png";
+
+
 
 const { Title, Text } = Typography;
 
