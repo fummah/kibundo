@@ -11,9 +11,13 @@ import MobileShell from "@/components/student/mobile/MobileShell.jsx";
 
 /* ----------------------- Lazy student pages ----------------------- */
 // Onboarding
+const WelcomeIntro = lazy(() => import("@/pages/student/onboarding/WelcomeIntro.jsx"));
 const BuddySelect = lazy(() => import("@/pages/student/onboarding/BuddySelect.jsx"));
 const InterestsWizard = lazy(() => import("@/pages/student/onboarding/InterestsWizard.jsx"));
 const WelcomeSuccess = lazy(() => import("@/pages/student/onboarding/WelcomeSuccess.jsx"));
+// Gate helper (exports hasSeenIntro)
+import IntroGate from "@/routes/IntroGate.jsx";
+import { hasSeenIntro } from "@/pages/student/onboarding/WelcomeIntro.jsx";
 
 // Home
 const StudentHome = lazy(() => import("@/pages/student/HomeScreen.jsx"));
@@ -44,13 +48,19 @@ const StudentSettings = lazy(() => import("@/pages/student/StudentSettings.jsx")
 // Chat (point to actual file name)
 const ChatLayer = lazy(() => import("@/pages/student/mobile/ChatLayerMobile"));
 
+/* ----------------------------- Small helpers ----------------------------- */
+// Redirect first-time users on /student/home to /student/onboarding/intro
+function HomeGate() {
+  return hasSeenIntro() ? <StudentHome /> : <Navigate to="/student/onboarding/intro" replace />;
+}
+
 /* ----------------------------- Routes tree ----------------------------- */
 export default function StudentRoutes() {
   const Fallback = <div className="p-4">Loading…</div>;
 
   return (
     <>
-      <Route element={<ProtectedRoute allowedRoles={[ROLES.STUDENT]} />}>
+      <Route element={<ProtectedRoute allowedRoles={[ROLES.STUDENT]} />} >
         <Route
           path="/student"
           element={
@@ -59,22 +69,34 @@ export default function StudentRoutes() {
             </StudentAppProvider>
           }
         >
-          {/* Default → /student/home */}
+          {/* Default → /student/home (HomeGate will bounce first-time users to intro) */}
           <Route index element={<Navigate to="home" replace />} />
 
           {/* 🔹 Everything below is rendered inside MobileShell -> DeviceFrame */}
           <Route element={<MobileShell />}>
-            {/* Home */}
+            {/* Home (with intro redirect) */}
             <Route
               path="home"
               element={
                 <Suspense fallback={Fallback}>
-                  <StudentHome />
+                  <HomeGate />
                 </Suspense>
               }
             />
 
-            {/* Onboarding */}
+            {/* Onboarding: Intro (shown once) */}
+            <Route
+              path="onboarding/intro"
+              element={
+                <Suspense fallback={Fallback}>
+                  <IntroGate>
+                    <WelcomeIntro />
+                  </IntroGate>
+                </Suspense>
+              }
+            />
+
+            {/* Onboarding: Buddy / Interests / Success */}
             <Route
               path="onboarding/buddy"
               element={
@@ -229,7 +251,7 @@ export default function StudentRoutes() {
             <Route path="reading-practice" element={<Navigate to="/student/reading" replace />} />
             <Route path="homework-start" element={<Navigate to="/student/homework" replace />} />
 
-            {/* Catch-all → home */}
+            {/* Catch-all → home (HomeGate will handle first-time redirect) */}
             <Route path="*" element={<Navigate to="/student/home" replace />} />
           </Route>
         </Route>

@@ -1,6 +1,17 @@
 // src/pages/student/StudentSettings.jsx
-import { useMemo, useState } from "react";
-import { Card, Typography, Input, Button, Space, Tag, Switch, Radio, Modal, message } from "antd";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Card,
+  Typography,
+  Input,
+  Button,
+  Space,
+  Tag,
+  Switch,
+  Radio,
+  Modal,
+  message,
+} from "antd";
 import { Wand2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -8,6 +19,7 @@ import BackButton from "@/components/student/common/BackButton.jsx";
 import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
+import api from "@/api/axios"; // your axios instance
 
 const { Title, Text } = Typography;
 
@@ -32,13 +44,17 @@ export default function StudentSettings() {
   const navigate = useNavigate();
 
   const {
-    buddy, setBuddy,
-    interests, setInterests,
-    profile, setProfile, // { name, ttsEnabled, theme }
+    buddy,
+    setBuddy,
+    interests,
+    setInterests,
+    profile,
+    setProfile, // { name, ttsEnabled, theme }
   } = useStudentApp();
 
-  // Logged-in user (to prefill and show name)
+  // Logged-in user (for API ID)
   const { user, logout, signOut } = (useAuthContext?.() ?? {});
+  const userId = user?.id ?? user?._id ?? user?.user_id ?? null;
 
   const defaultName = useMemo(() => {
     return (
@@ -58,6 +74,10 @@ export default function StudentSettings() {
   const [buddyModal, setBuddyModal] = useState(false);
   const [pendingBuddy, setPendingBuddy] = useState(buddy || BUDDIES[0]);
 
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // theme preview bg
   const themePreview = useMemo(() => {
     const map = {
       indigo: "from-indigo-50 to-indigo-100",
@@ -69,9 +89,69 @@ export default function StudentSettings() {
     return map[theme] || map.indigo;
   }, [theme]);
 
-  const saveProfile = () => {
-    setProfile({ name, ttsEnabled, theme });
-    message.success("Settings saved!");
+  /* ---------------------- Load settings via GET /student/:id ---------------------- */
+  useEffect(() => {
+    if (!userId) return;
+
+    const load = async () => {
+      try {
+        setLoading(true);
+        const { data } = await api.get(`/student/${userId}`);
+        // try to normalize server response
+        const srvProfile = data?.profile ?? {};
+        const srvInterests = Array.isArray(data?.interests) ? data.interests : [];
+        const srvBuddy = data?.buddy ?? null;
+
+        // update context
+        setProfile({
+          name: srvProfile.name ?? "",
+          ttsEnabled: Boolean(srvProfile.ttsEnabled),
+          theme: srvProfile.theme || "indigo",
+        });
+        setInterests(srvInterests);
+        setBuddy(srvBuddy);
+
+        // update local copies
+        setName(srvProfile.name ?? defaultName ?? "");
+        setTTSEnabled(Boolean(srvProfile.ttsEnabled));
+        setTheme(srvProfile.theme || "indigo");
+        setPendingBuddy(srvBuddy || BUDDIES[0]);
+      } catch (e) {
+        message.error("Could not load your settings. Using local defaults.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  /* ---------------------- Persist with PUT /student/:id ---------------------- */
+  const putAllSettings = async (payload) => {
+    if (!userId) {
+      message.error("No user ID found. Please sign in again.");
+      return;
+    }
+    await api.put(`/student/${userId}`, payload);
+  };
+
+  const saveProfileAll = async () => {
+    try {
+      setSaving(true);
+      // optimistic update to context
+      setProfile({ name, ttsEnabled, theme });
+      await putAllSettings({
+        profile: { name, ttsEnabled, theme },
+        interests: interests || [],
+        buddy: buddy || null,
+      });
+      message.success("Settings saved!");
+    } catch (e) {
+      message.error("Could not save settings. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const addInterest = () => {
@@ -89,10 +169,20 @@ export default function StudentSettings() {
     setInterests((arr) => (arr || []).filter((x) => x !== val));
   };
 
-  const confirmBuddy = () => {
-    setBuddy(pendingBuddy);
-    setBuddyModal(false);
-    message.success(`Buddy set to ${pendingBuddy.name}`);
+  const confirmBuddy = async () => {
+    try {
+      // optimistic
+      setBuddy(pendingBuddy);
+      await putAllSettings({
+        profile: { name, ttsEnabled, theme },
+        interests: interests || [],
+        buddy: pendingBuddy,
+      });
+      setBuddyModal(false);
+      message.success(`Buddy set to ${pendingBuddy.name}`);
+    } catch (e) {
+      message.error("Could not update buddy. Please try again.");
+    }
   };
 
   const resetAll = () => {
@@ -108,6 +198,7 @@ export default function StudentSettings() {
     setTTSEnabled(false);
     setTheme("indigo");
     message.success("All student data reset on this device.");
+    // NOTE: If you also want to clear on server, add a PUT here with empty/default values.
   };
 
   const doLogout = async () => {
@@ -127,7 +218,9 @@ export default function StudentSettings() {
           className="p-2 rounded-full hover:bg-neutral-100 active:scale-95"
           aria-label="Back"
         />
-        <Title level={4} className="!mb-0">Student Settings</Title>
+        <Title level={4} className="!mb-0">
+          Student Settings
+        </Title>
       </div>
 
       {/* Theme preview strip (shows logged-in user's name) */}
@@ -142,8 +235,10 @@ export default function StudentSettings() {
       </div>
 
       {/* Profile Card */}
-      <Card className="rounded-2xl mb-3">
-        <Title level={5} className="!mb-2">Profile</Title>
+      <Card className="rounded-2xl mb-3" loading={loading}>
+        <Title level={5} className="!mb-2">
+          Profile
+        </Title>
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
             <div className="text-sm text-neutral-600 mb-1">Display name</div>
@@ -155,7 +250,9 @@ export default function StudentSettings() {
             />
           </div>
           <div>
-            <div className="text-sm text-neutral-600 mb-1">Text-to-Speech (Buddy voice)</div>
+            <div className="text-sm text-neutral-600 mb-1">
+              Text-to-Speech (Buddy voice)
+            </div>
             <div className="flex items-center gap-2">
               <Switch checked={ttsEnabled} onChange={setTTSEnabled} />
               <Text type="secondary">{ttsEnabled ? "Enabled" : "Disabled"}</Text>
@@ -179,29 +276,40 @@ export default function StudentSettings() {
         </div>
 
         <div className="mt-3">
-          <Button type="primary" className="rounded-xl" onClick={saveProfile}>
+          <Button
+            type="primary"
+            className="rounded-xl"
+            onClick={saveProfileAll}
+            loading={saving}
+          >
             Save Settings
           </Button>
         </div>
       </Card>
 
       {/* Buddy Card */}
-      <Card className="rounded-2xl mb-3">
-        <Title level={5} className="!mb-2">Buddy</Title>
+      <Card className="rounded-2xl mb-3" loading={loading}>
+        <Title level={5} className="!mb-2">
+          Buddy
+        </Title>
         <div className="flex items-center gap-3">
           <BuddyAvatar src={buddy?.img || "https://placekitten.com/200/207"} size={64} />
           <div className="flex-1">
             <div className="font-semibold">{buddy?.name || "No buddy selected yet"}</div>
             <Text type="secondary">Pick a monster friend to guide you.</Text>
           </div>
-          <Button className="rounded-xl" onClick={() => setBuddyModal(true)}>Change</Button>
+          <Button className="rounded-xl" onClick={() => setBuddyModal(true)}>
+            Change
+          </Button>
         </div>
       </Card>
 
       {/* Interests Card */}
-      <Card className="rounded-2xl mb-3">
+      <Card className="rounded-2xl mb-3" loading={loading}>
         <div className="flex items-center justify-between">
-          <Title level={5} className="!mb-2">Interests</Title>
+          <Title level={5} className="!mb-2">
+            Interests
+          </Title>
           <Button
             type="default"
             icon={<Wand2 className="w-4 h-4" />}
@@ -220,7 +328,10 @@ export default function StudentSettings() {
               <Tag
                 key={it}
                 closable
-                onClose={(e) => { e.preventDefault(); removeInterest(it); }}
+                onClose={(e) => {
+                  e.preventDefault();
+                  removeInterest(it);
+                }}
                 className="rounded-full px-3 py-1"
               >
                 {it}
@@ -237,25 +348,48 @@ export default function StudentSettings() {
             className="rounded-l-xl"
             onPressEnter={addInterest}
           />
-          <Button type="primary" onClick={addInterest} className="rounded-r-xl">Add</Button>
+          <Button type="primary" onClick={addInterest} className="rounded-r-xl">
+            Add
+          </Button>
         </Space.Compact>
+
+        {/* Optional: a second Save to persist interests immediately */}
+        <div className="mt-3">
+          <Button
+            onClick={saveProfileAll}
+            className="rounded-xl"
+            loading={saving}
+          >
+            Save Changes
+          </Button>
+        </div>
       </Card>
 
       {/* Account / Logout Card */}
       <Card className="rounded-2xl mb-3">
-        <Title level={5} className="!mb-2">Account</Title>
+        <Title level={5} className="!mb-2">
+          Account
+        </Title>
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <Text type="secondary">Sign out from this device.</Text>
-          <Button danger onClick={doLogout} className="rounded-xl">Log out</Button>
+          <Button danger onClick={doLogout} className="rounded-xl">
+            Log out
+          </Button>
         </div>
       </Card>
 
       {/* Danger zone */}
       <Card className="rounded-2xl border-red-200">
-        <Title level={5} className="!mb-2 text-red-600">Danger Zone</Title>
-        <Text type="secondary">This will remove your buddy, interests, and settings on this device.</Text>
+        <Title level={5} className="!mb-2 text-red-600">
+          Danger Zone
+        </Title>
+        <Text type="secondary">
+          This will remove your buddy, interests, and settings on this device.
+        </Text>
         <div className="mt-2">
-          <Button danger onClick={resetAll} className="rounded-xl">Reset local student data</Button>
+          <Button danger onClick={resetAll} className="rounded-xl">
+            Reset local student data
+          </Button>
         </div>
       </Card>
 
@@ -267,7 +401,9 @@ export default function StudentSettings() {
         okText="Choose"
         className="rounded-2xl"
       >
-        <Title level={5} className="!mb-3">Choose a Buddy</Title>
+        <Title level={5} className="!mb-3">
+          Choose a Buddy
+        </Title>
         <div className="grid grid-cols-2 gap-3">
           {BUDDIES.map((b) => (
             <button

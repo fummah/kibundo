@@ -1,5 +1,4 @@
 {
-    
   "parent.nav.home": "Home",
   "parent.nav.addChild": "Add Child",
   "parent.nav.news": "News",
@@ -14,7 +13,7 @@
   "parent.home.notices": "Notices",
   "parent.home.addChild": "Add Child",
   "parent.home.stats.activeChildren": "Active Children",
-  "parent.home.stats.thisWeekActivity": "This Week Activity",
+  "parent.home.stats.thisWeekActivity": "This Week’s Activity",
   "parent.home.stats.badgesEarned": "Badges Earned",
   "parent.home.stats.unpaidInvoices": "Unpaid Invoices",
 
@@ -24,16 +23,16 @@
   "parent.student.status.active": "Active",
   "parent.student.plan.current": "Current Plan",
   "parent.student.plan.active": "Active",
-  "parent.student.plan.premiumMonthly": "Premium Plan (monthly)",
-  "parent.student.plan.changeToYearly": "Change to yearly",
+  "parent.student.plan.premiumMonthly": "Premium (Monthly)",
+  "parent.student.plan.changeToYearly": "Switch to yearly",
   "parent.student.activity.title": "Activity",
   "parent.student.activity.lessonsCompleted": "Lessons Completed",
   "parent.student.activity.timeSpent": "Time Spent Learning",
   "parent.student.activities": "Activities",
   "parent.student.recentScans": "Recent Scans",
   "parent.student.focusTopics": "Focus Topics",
-  "parent.student.focusTopicsChooseTwo": "Choose two focus areas:",
-  "parent.student.progress.title": "14 Days Progress",
+  "parent.student.focusTopicsChooseTwo": "Choose two focus areas",
+  "parent.student.progress.title": "14-Day Progress",
 
   "parent.achievements.title": "Achievements",
   "parent.achievements.subtitle": "Badges earned by your children.",
@@ -43,8 +42,43 @@
   "parent.achievements.badge": "Badge",
   "parent.achievements.earned": "Earned",
   "parent.achievements.earnedOn": "Earned on {{date}}",
+
+  "parent.billing.coupons.title": "Coupons",
+  "parent.billing.coupons.subtitle": "Manage your active, upcoming and expired coupons.",
+  "parent.billing.coupons.rules.oneActiveOnly": "Only one coupon can be active at a time.",
+  "parent.billing.coupons.rules.activeSubNoDiscount": "Active subscriptions cannot receive a discount.",
+  "parent.billing.coupons.kpi.active": "Active",
+  "parent.billing.coupons.kpi.upcoming": "Upcoming",
+  "parent.billing.coupons.kpi.expired": "Expired",
+  "parent.billing.coupons.off": "off",
+  "parent.billing.coupons.minSpend": "Minimum spend: {{amount}}",
+  "parent.billing.coupons.searchPh": "Search by code, title or description",
+  "parent.billing.coupons.empty": "No coupons found.",
+  "parent.billing.coupons.refreshed": "Coupons refreshed.",
+  "parent.billing.coupons.applyNavigating": "Applying coupon and opening subscription…",
+  "parent.billing.coupons.errors.notActive": "This coupon is not active.",
+  "parent.billing.coupons.errors.hasActiveCoupon": "You already have an active coupon.",
+
+  "parent.billing.coupons.externalOffers.title": "Partner Offers",
+  "parent.billing.coupons.externalOffers.tag": "External",
+  "parent.billing.coupons.externalOffers.empty": "No partner offers available.",
+  "parent.billing.coupons.validUntil": "Valid until {{date}}",
+
+  "filters.active": "Active",
+  "filters.upcoming": "Upcoming",
+  "filters.expired": "Expired",
+  "filters.used": "Used",
+  "filters.all": "All",
+
   "common.cancel": "Cancel",
   "common.back": "Back",
+
+  "actions.refresh": "Refresh",
+  "actions.copy": "Copy",
+  "actions.useNow": "Use now",
+  "actions.getOffer": "Get offer",
+  "actions.copiedCode": "Copied {{code}}",
+  "actions.copyFailed": "Could not copy. Please try again.",
 
   "parent.addChild.title": "Add a Child",
   "parent.addChild.yourChildren": "Your Children",
@@ -56,7 +90,7 @@
   "parent.addChild.children.empty": "No children yet.",
   "parent.addChild.children.status": "Status: {{status}}",
   "parent.addChild.children.view": "View",
-  "parent.addChild.children.addAnother": "Add additional child",
+  "parent.addChild.children.addAnother": "Add another child",
 
   "parent.addChild.form.title": "Child Details",
   "parent.addChild.form.firstName": "First name",
@@ -70,7 +104,7 @@
   "parent.addChild.form.schoolType.other": "Other",
   "parent.addChild.form.city": "City",
   "parent.addChild.form.city_ph": "Enter city",
-  "parent.addChild.form.schoolName": "Name of your school",
+  "parent.addChild.form.schoolName": "School name",
   "parent.addChild.form.schoolName_ph": "Enter school name",
   "parent.addChild.form.create": "Create",
 
@@ -87,5 +121,4 @@
   "errors.required": "This field is required.",
   "errors.minChars": "Please enter at least {{n}} characters.",
   "errors.ageRange": "Age must be between 4 and 18."
-  
 }

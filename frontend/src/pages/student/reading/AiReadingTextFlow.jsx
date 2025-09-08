@@ -1,7 +1,6 @@
-// src/pages/student/reading/AiReadingTextFlow.jsx
 import { useEffect, useRef, useState } from "react";
-import { Card, Typography, Button, Alert, Segmented, message } from "antd";
-import { Mic, RefreshCw, Sparkles } from "lucide-react";
+import { Card, Typography, Button, Alert, Segmented, message, Dropdown, Tag } from "antd";
+import { Mic, RefreshCw, Sparkles, MoreVertical } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import BackButton from "@/components/student/common/BackButton.jsx";
@@ -13,6 +12,14 @@ import { diffTranscript } from "@/utils/diffTranscript.js";
 import { useTaskTimer } from "@/hooks/useTaskTimer.js";
 
 const { Title, Text } = Typography;
+
+const LEVEL_OPTIONS = [
+  { label: "Beginner", value: 1 },
+  { label: "Intermediate", value: 2 },
+  { label: "Advanced", value: 3 },
+];
+
+const LEVEL_LABEL = (val) => LEVEL_OPTIONS.find((o) => o.value === Number(val))?.label || "Beginner";
 
 export default function AiReadingTextFlow() {
   const navigate = useNavigate();
@@ -86,6 +93,11 @@ export default function AiReadingTextFlow() {
     message.success("Great work! Saved your time & accuracy.");
   };
 
+  const onLevelChange = (val) => {
+    setLevel(val);
+    regenerateText(val);
+  };
+
   const accuracyPct = result ? Math.round((result.score || 0) * 100) : null;
   const hhmmss = new Date(elapsedMs).toISOString().substr(11, 8);
 
@@ -114,19 +126,40 @@ export default function AiReadingTextFlow() {
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-3">
             <Text type="secondary">Difficulty</Text>
-            <Segmented
-              options={[
-                { label: "Beginner", value: 1 },
-                { label: "Intermediate", value: 2 },
-                { label: "Advanced", value: 3 },
-              ]}
-              value={level}
-              onChange={(val) => {
-                setLevel(val);
-                regenerateText(val);
-              }}
-            />
+
+            {/* Desktop / md+: Segmented (unchanged UX) */}
+            <div className="hidden md:block">
+              <Segmented
+                options={LEVEL_OPTIONS}
+                value={level}
+                onChange={onLevelChange}
+              />
+            </div>
+
+            {/* Mobile: vertical dotted button (⋮) opens dropdown */}
+            <div className="md:hidden">
+              <div className="flex items-center gap-2">
+                <Tag className="!m-0" color="gold">{LEVEL_LABEL(level)}</Tag>
+                <Dropdown
+                  trigger={["click"]}
+                  placement="bottomRight"
+                  menu={{
+                    items: LEVEL_OPTIONS.map((o) => ({ key: String(o.value), label: o.label })),
+                    onClick: ({ key }) => onLevelChange(Number(key)),
+                  }}
+                >
+                  <Button
+                    shape="circle"
+                    className="!w-10 !h-10 flex items-center justify-center"
+                    aria-label="Choose difficulty"
+                  >
+                    <MoreVertical className="w-5 h-5" />
+                  </Button>
+                </Dropdown>
+              </div>
+            </div>
           </div>
+
           <Button
             icon={<Sparkles className="w-4 h-4" />}
             onClick={() => regenerateText(level)}

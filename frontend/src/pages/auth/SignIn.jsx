@@ -4,10 +4,13 @@ import { toast, Toaster } from "react-hot-toast";
 import { Form, Input, Button, Typography } from "antd";
 import { MailOutlined, LockOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import { useAuthContext } from "../../context/AuthContext";
-import { ROLE_PATHS } from "../../utils/roleMapper";
+import { ROLE_PATHS, ROLES } from "../../utils/roleMapper";   // ✅ import ROLES
 import Lottie from "lottie-react";
 import loginAnimation from "../../assets/signup2.json";
 import api from "../../api/axios";
+
+/* ✅ Import helper from WelcomeIntro */
+import { hasSeenIntro } from "@/pages/student/onboarding/WelcomeIntro.jsx";
 
 const { Title, Text } = Typography;
 
@@ -16,26 +19,34 @@ export default function SignIn() {
   const { login } = useAuthContext();
   const [loading, setLoading] = useState(false);
 
-const handleFinish = async (values) => {
-  try {
-    const { data } = await api.post("/auth/login", values);
-    
+  const handleFinish = async (values) => {
+    try {
+      setLoading(true);
+      const { data } = await api.post("/auth/login", values);
 
-    console.log("Token:", data.token);
-    console.log("User Role ID:", data.user.role_id);
+      console.log("Token:", data.token);
+      console.log("User Role ID:", data.user.role_id);
 
-    
-    login(data.user, data.token);
-    const rolePath = ROLE_PATHS[data.user.role_id] || "/dashboard";
-    toast.success("Login successful!");
-    navigate(rolePath, { replace: true });
-  } catch (err) {
-    toast.error(err.response?.data?.message || "Login failed");
-  } finally {
-    setLoading(false);
-  }
-};
+      login(data.user, data.token);
+      toast.success("Login successful!");
 
+      // ✅ Special handling for student role
+      if (data.user.role_id === ROLES.STUDENT) {
+        if (!hasSeenIntro()) {
+          navigate("/student/onboarding/intro", { replace: true });
+          return;
+        }
+      }
+
+      // ✅ fallback: use role-based path
+      const rolePath = ROLE_PATHS[data.user.role_id] || "/dashboard";
+      navigate(rolePath, { replace: true });
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-tr from-blue-100 via-white to-purple-100 relative">
@@ -80,11 +91,7 @@ const handleFinish = async (values) => {
                 { type: "email", message: "Invalid email format" },
               ]}
             >
-              <Input
-                prefix={<MailOutlined />}
-                placeholder="Enter your email"
-                className="rounded-md"
-              />
+              <Input prefix={<MailOutlined />} placeholder="Enter your email" className="rounded-md" />
             </Form.Item>
 
             <Form.Item
@@ -92,11 +99,7 @@ const handleFinish = async (values) => {
               name="password"
               rules={[{ required: true, message: "Please enter your password" }]}
             >
-              <Input.Password
-                prefix={<LockOutlined />}
-                placeholder="Enter your password"
-                className="rounded-md"
-              />
+              <Input.Password prefix={<LockOutlined />} placeholder="Enter your password" className="rounded-md" />
             </Form.Item>
 
             <div className="text-right mb-3">

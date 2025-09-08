@@ -1,4 +1,6 @@
 // src/pages/parent/billing/BillingOverview.jsx
+import { useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import GradientShell from "@/components/GradientShell";
 import {
   Card,
@@ -13,6 +15,7 @@ import {
   Space,
   Divider,
   Tooltip,
+  Empty,
 } from "antd";
 import {
   FileDoneOutlined,
@@ -34,6 +37,8 @@ const money = (v, currency = "EUR") =>
     currency,
     maximumFractionDigits: 2,
   }).format(Number(v) || 0);
+
+const fmtDate = (v) => (v ? dayjs(v).format("DD MMM YYYY") : "—");
 
 /* ---------- dummy data ---------- */
 const SUBSCRIPTION = {
@@ -64,13 +69,26 @@ const COUPONS = [
 ];
 
 export default function BillingOverview() {
-  const outstanding = INVOICES
-    .filter((i) => i.status.toLowerCase() !== "paid")
-    .reduce((s, i) => s + Number(i.amount || 0), 0);
+  const navigate = useNavigate();
 
-  const paid30 = INVOICES.filter(
-    (i) => i.status.toLowerCase() === "paid" && dayjs(i.date).isAfter(dayjs().subtract(30, "day"))
-  ).length;
+  const outstanding = useMemo(
+    () =>
+      INVOICES.filter((i) => i.status.toLowerCase() !== "paid").reduce(
+        (s, i) => s + Number(i.amount || 0),
+        0
+      ),
+    []
+  );
+
+  const paid30 = useMemo(
+    () =>
+      INVOICES.filter(
+        (i) =>
+          i.status.toLowerCase() === "paid" &&
+          dayjs(i.date).isAfter(dayjs().subtract(30, "day"))
+      ).length,
+    []
+  );
 
   const invoiceColumns = [
     {
@@ -84,7 +102,7 @@ export default function BillingOverview() {
       title: "Date",
       dataIndex: "date",
       key: "date",
-      render: (v) => dayjs(v).format("DD MMM YYYY"),
+      render: (v) => fmtDate(v),
       responsive: ["xs", "sm", "md", "lg", "xl"],
     },
     {
@@ -111,7 +129,15 @@ export default function BillingOverview() {
       key: "action",
       align: "right",
       render: (_, r) => (
-        <Button type="link" icon={<DownloadOutlined />} href={r.url} onClick={(e) => e.preventDefault()}>
+        <Button
+          type="link"
+          icon={<DownloadOutlined />}
+          aria-label={`Download ${r.number} PDF`}
+          onClick={(e) => {
+            e.preventDefault();
+            // hook your real download here
+          }}
+        >
           PDF
         </Button>
       ),
@@ -129,13 +155,13 @@ export default function BillingOverview() {
             <Text type="secondary">Your plan, invoices, and payment methods at a glance.</Text>
           </div>
           <Space wrap className="justify-start md:justify-end">
-            <Button icon={<FileDoneOutlined />} href="/parent/billing/invoices">
+            <Button icon={<FileDoneOutlined />} onClick={() => navigate("/parent/billing/invoices")}>
               View Invoices
             </Button>
-            <Button icon={<ReconciliationOutlined />} href="/parent/billing/subscription">
+            <Button icon={<ReconciliationOutlined />} onClick={() => navigate("/parent/billing/subscription")}>
               Manage Subscription
             </Button>
-            <Button icon={<GiftOutlined />} href="/parent/billing/coupons">
+            <Button icon={<GiftOutlined />} onClick={() => navigate("/parent/billing/coupons")}>
               Coupons
             </Button>
           </Space>
@@ -162,7 +188,7 @@ export default function BillingOverview() {
                 <ReconciliationOutlined className="text-gray-500 text-xl" />
               </div>
               <div className="mt-2 text-sm text-gray-500">
-                On {dayjs(SUBSCRIPTION.next_renewal).format("DD MMM YYYY")}
+                On {fmtDate(SUBSCRIPTION.next_renewal)}
               </div>
             </Card>
           </Col>
@@ -203,9 +229,10 @@ export default function BillingOverview() {
               extra={
                 <Button
                   type="link"
-                  href="/parent/billing/invoices"
+                  onClick={() => navigate("/parent/billing/invoices")}
                   icon={<ArrowRightOutlined />}
                   className="hidden md:inline-flex"
+                  aria-label="See all invoices"
                 >
                   All invoices
                 </Button>
@@ -213,20 +240,29 @@ export default function BillingOverview() {
             >
               <div className="overflow-x-auto">
                 <Table
+                  locale={{
+                    emptyText: (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="No invoices yet"
+                      />
+                    ),
+                  }}
                   rowKey="id"
                   columns={invoiceColumns}
                   dataSource={INVOICES}
                   pagination={{ pageSize: 5, hideOnSinglePage: true }}
                   size="middle"
-                  scroll={{ x: 640 }} // ensures horizontal scroll on narrow screens
+                  scroll={{ x: 640 }}
                 />
               </div>
               {/* Mobile “All invoices” action */}
               <Button
                 type="link"
-                href="/parent/billing/invoices"
+                onClick={() => navigate("/parent/billing/invoices")}
                 icon={<ArrowRightOutlined />}
                 className="md:hidden mt-2"
+                aria-label="See all invoices"
               >
                 All invoices
               </Button>
@@ -261,11 +297,11 @@ export default function BillingOverview() {
                   </div>
                   <div className="flex justify-between">
                     <Text type="secondary">Started</Text>
-                    <Text>{dayjs(SUBSCRIPTION.started_at).format("DD MMM YYYY")}</Text>
+                    <Text>{fmtDate(SUBSCRIPTION.started_at)}</Text>
                   </div>
                   <div className="flex justify-between">
                     <Text type="secondary">Next renewal</Text>
-                    <Text>{dayjs(SUBSCRIPTION.next_renewal).format("DD MMM YYYY")}</Text>
+                    <Text>{fmtDate(SUBSCRIPTION.next_renewal)}</Text>
                   </div>
                   <div className="flex justify-between">
                     <Text type="secondary">Amount</Text>
@@ -273,7 +309,12 @@ export default function BillingOverview() {
                   </div>
                 </div>
 
-                <Button block className="mt-4" type="primary" href="/parent/billing/subscription">
+                <Button
+                  block
+                  className="mt-4"
+                  type="primary"
+                  onClick={() => navigate("/parent/billing/subscription")}
+                >
                   Manage Subscription
                 </Button>
               </Card>
@@ -292,11 +333,22 @@ export default function BillingOverview() {
                 <List
                   itemLayout="horizontal"
                   dataSource={PAYMENT_METHODS}
+                  locale={{ emptyText: "No payment methods yet" }}
                   renderItem={(m) => (
                     <List.Item
                       actions={[
-                        <Tooltip key="default" title={m.default ? "Default method" : "Set as default"}>
-                          <Tag color={m.default ? "green" : "default"}>
+                        <Tooltip
+                          key="default"
+                          title={m.default ? "Default method" : "Set as default"}
+                        >
+                          <Tag
+                            onClick={() => {
+                              // wire "set default" here
+                            }}
+                            className="cursor-pointer"
+                            color={m.default ? "green" : "default"}
+                            aria-label={m.default ? "Default payment method" : "Set as default"}
+                          >
                             {m.default ? "Default" : "Set default"}
                           </Tag>
                         </Tooltip>,
@@ -310,7 +362,9 @@ export default function BillingOverview() {
                     </List.Item>
                   )}
                 />
-                <Button block className="mt-2">Add New Card</Button>
+                <Button block className="mt-2" onClick={() => navigate("/parent/billing/payment-methods/add")}>
+                  Add New Card
+                </Button>
               </Card>
 
               {/* Coupons */}
@@ -320,7 +374,12 @@ export default function BillingOverview() {
                     <GiftOutlined />
                     <Text strong>Coupons</Text>
                   </Space>
-                  <Button type="link" href="/parent/billing/coupons" icon={<ArrowRightOutlined />}>
+                  <Button
+                    type="link"
+                    onClick={() => navigate("/parent/billing/coupons")}
+                    icon={<ArrowRightOutlined />}
+                    aria-label="Manage coupons"
+                  >
                     Manage
                   </Button>
                 </Space>
@@ -329,18 +388,21 @@ export default function BillingOverview() {
 
                 <List
                   dataSource={COUPONS}
+                  locale={{ emptyText: "No coupons" }}
                   renderItem={(c) => (
                     <List.Item>
                       <List.Item.Meta
                         title={
                           <Space>
                             <Text strong>{c.code}</Text>
-                            <Tag color={c.active ? "green" : "default"}>{c.active ? "Active" : "Inactive"}</Tag>
+                            <Tag color={c.active ? "green" : "default"}>
+                              {c.active ? "Active" : "Inactive"}
+                            </Tag>
                           </Space>
                         }
                         description={
                           <span className="text-sm text-gray-600">
-                            {c.desc} · Expires {dayjs(c.expires).format("DD MMM YYYY")}
+                            {c.desc} · Expires {fmtDate(c.expires)}
                           </span>
                         }
                       />

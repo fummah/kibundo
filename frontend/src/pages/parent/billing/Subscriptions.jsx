@@ -11,7 +11,10 @@ import {
   Table,
   Typography,
 } from "antd";
+import { ArrowRightOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import GradientShell from "@/components/GradientShell";
+import BottomTabBarDE from "@/components/BottomTabBarDE";
+import { useNavigate } from "react-router-dom";
 
 const { Text, Title } = Typography;
 
@@ -160,9 +163,26 @@ function PlanCard({ plan, selected, onSelect }) {
         ))}
       </div>
 
-      <Radio className="mt-4" checked={selected} onChange={() => onSelect(plan)}>
-        Select
-      </Radio>
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <Radio
+          checked={selected}
+          onChange={() => onSelect(plan)}
+          aria-label={`Select ${plan.name}`}
+        >
+          Select
+        </Radio>
+        <Button
+          type="primary"
+          className="bg-[#C7D425] text-neutral-900"
+          icon={<CheckCircleOutlined />}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(plan);
+          }}
+        >
+          Choose package
+        </Button>
+      </div>
     </>
   );
 
@@ -184,9 +204,8 @@ function PlanCard({ plan, selected, onSelect }) {
   );
 }
 
-function PromoSummary({ selectedPlan }) {
-  const [code, setCode] = useState("");
-  const valid = code.trim().toUpperCase() === "WELCOME20"; // dummy rule
+function PromoSummary({ selectedPlan, promoCode, setPromoCode }) {
+  const valid = promoCode.trim().toUpperCase() === "WELCOME20"; // dummy rule
   const subtotal = selectedPlan ? selectedPlan.price_amount : 0;
   const discount = valid ? +(subtotal * 0.2).toFixed(2) : 0;
   const total = +(subtotal - discount).toFixed(2);
@@ -197,20 +216,21 @@ function PromoSummary({ selectedPlan }) {
         Promo & Summary
       </Title>
 
-      <Space.Compact className="w-full mt-3">
+      <Space.Compact className="w-full mt-3" aria-label="Apply promo code">
         <Input
           size="large"
           placeholder="Enter promo code"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
+          value={promoCode}
+          onChange={(e) => setPromoCode(e.target.value)}
           disabled={!selectedPlan}
+          aria-label="Promo code"
         />
         <Button
           size="large"
           type="primary"
           className="bg-[#C7D425] text-neutral-900"
           disabled={!selectedPlan}
-          onClick={() => setCode((c) => c.trim())}
+          onClick={() => setPromoCode((c) => c.trim())}
         >
           Apply
         </Button>
@@ -240,11 +260,11 @@ function PromoSummary({ selectedPlan }) {
           <Text strong className="text-[#E95F6A]">{money(total, "EUR")}</Text>
         </div>
 
-        {!!code && (
+        {!!promoCode && (
           <div className="mt-2 text-xs">
             {valid ? (
               <span className="text-[#6D8F00]">
-                Promo “{code.toUpperCase()}” applied (20% off).
+                Promo “{promoCode.toUpperCase()}” applied (20% off).
               </span>
             ) : (
               <span className="text-red-500">Promo invalid or not applicable.</span>
@@ -252,24 +272,6 @@ function PromoSummary({ selectedPlan }) {
           </div>
         )}
       </div>
-
-      <Button
-        size="large"
-        className="mt-5 h-12 w-full rounded-full bg-[#C7D425] text-neutral-900 border-none hover:!bg-[#b8c61d]"
-        disabled={!selectedPlan}
-        onClick={() => {
-          if (!selectedPlan) return;
-          alert(
-            `Proceed to checkout: ${selectedPlan.id}${
-              valid ? ` + promo ${code.toUpperCase()}` : ""
-            }`
-          );
-        }}
-      >
-        Continue to Checkout
-      </Button>
-
-   
     </Card>
   );
 }
@@ -299,23 +301,28 @@ function Comparison({ plans }) {
       <Title level={5} className="!m-0 mb-3">
         Compare Plans
       </Title>
-      <Table
-        columns={columns}
-        dataSource={rows}
-        pagination={false}
-        size="small"
-        scroll={{ x: true }}
-        rowClassName="text-sm"
-      />
+      <div className="overflow-x-auto -mx-2 px-2">
+        <Table
+          columns={columns}
+          dataSource={rows}
+          pagination={false}
+          size="small"
+          scroll={{ x: true }}
+          rowClassName="text-sm"
+        />
+      </div>
     </Card>
   );
 }
 
 /* ------------------------------ Page ------------------------------ */
 export default function Subscription() {
+  const navigate = useNavigate();
+
   const [interval, setInterval] = useState("month"); // "week" | "month" | "year"
-  const [childrenCount, setChildrenCount] = useState(1); // 1 | 2
+  const [childrenCount, setChildrenCount] = useState(1); // 1 | 2 (Starter/Family)
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [promoCode, setPromoCode] = useState("");
 
   const filtered = useMemo(() => {
     const subset = PLANS.filter(
@@ -332,9 +339,22 @@ export default function Subscription() {
     : false;
   const currentSelected = selectedStillVisible ? selectedPlan : null;
 
+  const handleContinue = () => {
+    if (!currentSelected) return;
+    const code = promoCode.trim();
+    const url = `/parent/billing/subscription?plan=${encodeURIComponent(
+      currentSelected.id
+    )}${code ? `&code=${encodeURIComponent(code.toUpperCase())}` : ""}`;
+    navigate(url);
+  };
+
+  const selectedPrice = currentSelected?.price_amount ?? 0;
+  const discount = promoCode.trim().toUpperCase() === "WELCOME20" ? +(selectedPrice * 0.2).toFixed(2) : 0;
+  const total = +(selectedPrice - discount).toFixed(2);
+
   return (
     <GradientShell>
-      {/* Page header (kept simple to avoid external dependencies) */}
+      {/* Page header */}
       <div className="px-5 md:px-8 pt-6">
         <h1 className="text-2xl md:text-3xl font-extrabold text-neutral-800 m-0">
           Subscriptions
@@ -350,7 +370,7 @@ export default function Subscription() {
                 Choose Your Subscription
               </h2>
               <p className="mt-1 text-neutral-600">
-                Flexible plans for 1 or 2 children. Change or cancel anytime.
+                Flexible packages for 1 or 2 children. Change or cancel anytime.
               </p>
             </div>
 
@@ -364,15 +384,19 @@ export default function Subscription() {
                 ]}
                 value={interval}
                 onChange={setInterval}
+                aria-label="Billing interval"
               />
+
+              {/* Package selector (Starter/Family) */}
               <Radio.Group
                 size="large"
                 value={childrenCount}
                 onChange={(e) => setChildrenCount(e.target.value)}
                 className="bg-white rounded-full px-2 py-1"
+                aria-label="Package"
               >
-                <Radio.Button value={1}>1 Child</Radio.Button>
-                <Radio.Button value={2}>2 Children</Radio.Button>
+                <Radio.Button value={1}>Starter (1 child)</Radio.Button>
+                <Radio.Button value={2}>Family (2 children)</Radio.Button>
               </Radio.Group>
             </div>
           </div>
@@ -406,26 +430,75 @@ export default function Subscription() {
               ))}
             </div>
 
-            {/* Comparison (desktop) */}
+            {/* Comparison (desktop & tablet) */}
             <div className="hidden md:block mt-6">
               <Comparison plans={allForComparison} />
             </div>
-
-        
           </div>
 
           {/* Summary */}
           <div className="md:col-span-1 md:relative">
+            {/* Sticky on desktop */}
             <div className="hidden md:block md:sticky md:top-20">
-              <PromoSummary selectedPlan={currentSelected} />
+              <PromoSummary
+                selectedPlan={currentSelected}
+                promoCode={promoCode}
+                setPromoCode={setPromoCode}
+              />
+              <Button
+                size="large"
+                className="mt-4 h-12 w-full rounded-full bg-[#C7D425] text-neutral-900 border-none hover:!bg-[#b8c61d]"
+                disabled={!currentSelected}
+                onClick={handleContinue}
+                icon={<ArrowRightOutlined />}
+              >
+                Continue to Checkout
+              </Button>
             </div>
-            <div className="md:hidden">
-              <PromoSummary selectedPlan={currentSelected} />
+
+            {/* Mobile */}
+            <div className="md:hidden pb-[calc(8.5rem+env(safe-area-inset-bottom))]">
+              <PromoSummary
+                selectedPlan={currentSelected}
+                promoCode={promoCode}
+                setPromoCode={setPromoCode}
+              />
             </div>
           </div>
         </div>
 
         <div className="h-10" />
+      </div>
+
+      {/* Bottom sticky action bar (mobile) */}
+      <div className="fixed inset-x-0 bottom-0 z-40 md:hidden bg-white/95 backdrop-blur border-t border-neutral-200 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-xs text-neutral-500">Selected package</div>
+            <div className="text-sm font-semibold truncate">
+              {currentSelected
+                ? `${currentSelected.name} · ${money(total || 0, "EUR")}/${currentSelected.billing_interval}`
+                : "None"}
+            </div>
+          </div>
+          <Button
+            type="primary"
+            className="bg-[#C7D425] text-neutral-900"
+            size="large"
+            shape="round"
+            disabled={!currentSelected}
+            onClick={handleContinue}
+            icon={<ArrowRightOutlined />}
+          >
+            Continue
+          </Button>
+        </div>
+        <div className="h-[env(safe-area-inset-bottom)]" />
+      </div>
+
+      {/* Mobile bottom tabs */}
+      <div className="md:hidden">
+        <BottomTabBarDE />
       </div>
     </GradientShell>
   );

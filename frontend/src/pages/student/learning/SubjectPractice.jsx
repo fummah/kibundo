@@ -1,10 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Card, Typography, Tag, Button, Empty, message, Row, Col, Space } from "antd";
-import { ArrowLeft } from "lucide-react";
+import {
+  Card,
+  Typography,
+  Tag,
+  Button,
+  Empty,
+  message,
+  Row,
+  Col,
+  Segmented,
+  Divider,
+  Dropdown,
+} from "antd";
+import { ArrowLeft, MoreVertical } from "lucide-react";
+
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
-import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
+import GreetingBanner from "@/components/student/common/GreetingBanner.jsx";
 
 const { Title, Text } = Typography;
 
@@ -83,36 +96,28 @@ const toneRing = {
   orange: "ring-orange-200",
 };
 
-function TopicChip({ label, active, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1.5 rounded-full text-sm transition border ${
-        active ? "bg-indigo-600 text-white border-indigo-600"
-               : "bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50"
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
 function PracticeCard({ item, color = "indigo", onStart }) {
   return (
-    <Card className={`rounded-2xl border-0 shadow-sm hover:shadow-md transition ring-1 ${toneRing[color] || toneRing.indigo}`}>
+    <Card
+      hoverable
+      className={`rounded-2xl border-0 shadow-sm hover:shadow-md transition ring-1 ${toneRing[color] || toneRing.indigo}`}
+      bodyStyle={{ padding: 16 }}
+    >
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-sm text-neutral-500">
+        <div className="min-w-0">
+          <div className="text-xs md:text-sm text-neutral-500 truncate">
             {item.topic} • {item.level}
           </div>
-          <Title level={5} className="!mt-1 !mb-1">{item.title}</Title>
-          <Text type="secondary">{item.desc}</Text>
+          <Title level={5} className="!mt-1 !mb-1 truncate">{item.title}</Title>
+          <Text type="secondary" className="block">{item.desc}</Text>
           <div className="mt-2 flex items-center gap-2">
             <Tag color="blue">{item.est} min</Tag>
             <Tag color="gold">⭐ Good practice</Tag>
           </div>
         </div>
-        <Button type="primary" onClick={onStart} className="rounded-xl">Start</Button>
+        <Button type="primary" onClick={onStart} className="rounded-xl whitespace-nowrap">
+          Start
+        </Button>
       </div>
     </Card>
   );
@@ -120,24 +125,29 @@ function PracticeCard({ item, color = "indigo", onStart }) {
 
 function SubjectTile({ code, active, onClick }) {
   const meta = SUBJECT_META[code];
-  const toneBg = {
-    indigo: "bg-indigo-50",
-    emerald: "bg-emerald-50",
-    sky: "bg-sky-50",
-    orange: "bg-orange-50",
-  }[meta.color];
-
   return (
-    <button
+    <Card
+      hoverable
       onClick={onClick}
-      className={`text-left w-full rounded-2xl border transition p-3 ${
-        active ? "border-indigo-300 ring-2 ring-indigo-200" : "border-neutral-200 hover:border-neutral-300"
-      } ${toneBg}`}
-      aria-label={meta.title}
+      className={`rounded-2xl border ${active ? "border-indigo-300 ring-2 ring-indigo-200" : "border-neutral-200"} transition`}
+      bodyStyle={{ padding: 14 }}
     >
-      <div className="font-semibold">{meta.title}</div>
-      <div className="text-xs text-neutral-500">{meta.topics.length} topics</div>
-    </button>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="font-semibold">{meta.title}</div>
+          <div className="text-xs text-neutral-500">{meta.topics.length} topics</div>
+        </div>
+        <div
+          className={[
+            "w-8 h-8 rounded-lg",
+            code === "math" && "bg-indigo-100",
+            code === "science" && "bg-emerald-100",
+            code === "tech" && "bg-sky-100",
+            code === "german" && "bg-orange-100",
+          ].filter(Boolean).join(" ")}
+        />
+      </div>
+    </Card>
   );
 }
 
@@ -169,7 +179,7 @@ export default function SubjectPractice() {
   }, [state?.profile?.name, user]);
 
   // prefs
-  const [difficulty, setDifficulty] = useState("Easy"); // keep difficulty (you can remove if desired)
+  const [difficulty, setDifficulty] = useState("Easy");
   const [topic, setTopic] = useState(meta.topics?.[0] || "");
 
   useEffect(() => {
@@ -179,7 +189,6 @@ export default function SubjectPractice() {
     setDifficulty(saved.difficulty || "Easy");
     setTopic(validTopic(saved.topic));
     window.scrollTo({ top: 0, behavior: "smooth" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subject]);
 
   useEffect(() => {
@@ -196,10 +205,12 @@ export default function SubjectPractice() {
     // navigate(`/student/learning/practice/start?subject=${subject}&topic=${it.topic}&level=${it.level}`);
   };
 
+  const DIFFICULTIES = ["Easy", "Medium", "Hard"];
+
   return (
     <div className="px-3 md:px-6 py-4 mx-auto w-full max-w-6xl">
-      {/* Back + Title */}
-      <div className="flex items-center gap-2 mb-3">
+      {/* Header */}
+      <div className="flex items-center p-6 gap-2 mb-4">
         <button
           className="p-2 rounded-full hover:bg-neutral-100 active:scale-95"
           onClick={() => navigate(-1)}
@@ -210,18 +221,22 @@ export default function SubjectPractice() {
         <Title level={4} className="!mb-0">{meta.title}</Title>
       </div>
 
-      {/* Greeting + Buddy */}
-      <div className="flex items-start gap-3 mb-4">
-        <BuddyAvatar src={buddy?.avatar} size={96} className="md:size-[112px]" />
-        <div className="pt-1">
-          <Title level={4} className="!mb-1">Hello, {name}!</Title>
-          <Text type="secondary">Pick a subject, choose a topic, and try a quick practice.</Text>
-        </div>
+      {/* Greeting */}
+      <div className="mb-6">
+        <GreetingBanner
+          avatarSrc={buddy?.avatar}
+          title={`Hello, ${name}!`}
+          subtitle="Pick a subject, choose a topic, and try a quick practice."
+          className="!bg-white p-6"
+          translucent={false}
+          titleClassName="text-[20px] md:text-[22px] font-bold"
+          subtitleClassName="text-[15px] md:text-[16px]"
+        />
       </div>
 
-      {/* Subject switcher */}
+      {/* Subject Switcher */}
       <Card className="rounded-2xl border-0 shadow-sm mb-4">
-        <Row gutter={[12, 12]} align="middle">
+        <Row gutter={[12, 12]} align="stretch">
           {SUBJECT_KEYS.map((code) => (
             <Col key={code} xs={12} md={6}>
               <SubjectTile
@@ -249,32 +264,106 @@ export default function SubjectPractice() {
       </div>
 
       {/* Controls */}
-      <Card className="rounded-2xl border-0 shadow-sm mb-4">
-        <div className="flex flex-col gap-3">
-          {/* Topics */}
-          <div className="flex flex-wrap gap-2">
-            {(meta.topics || []).map((t) => (
-              <TopicChip key={t} label={t} active={t === topic} onClick={() => setTopic(t)} />
-            ))}
+      <Card className="rounded-2xl border-0 shadow-sm mb-5">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            {/* ---------- Topic picker ---------- */}
+            <div className="min-w-0">
+              <Text type="secondary" className="block">Topic</Text>
+
+              {/* Desktop: Segmented */}
+              <div className="hidden md:block mt-1">
+                <Segmented
+                  size="middle"
+                  value={topic}
+                  onChange={(v) => setTopic(v)}
+                  options={(meta.topics || []).map((t) => ({ label: t, value: t }))}
+                />
+              </div>
+
+              {/* Mobile: Dropdown via kebab */}
+              <div className="md:hidden mt-1">
+                <div className="flex items-center gap-2">
+                  <Tag className="!m-0" color="blue">{topic}</Tag>
+
+                  <Dropdown
+                    trigger={["click"]}
+                    placement="bottomRight"
+                    menu={{
+                      items: (meta.topics || []).map((t) => ({
+                        key: t,
+                        label: (
+                          <span className={t === topic ? "font-medium" : ""}>
+                            {t}
+                          </span>
+                        ),
+                        onClick: () => setTopic(t),
+                      })),
+                    }}
+                  >
+                    <Button
+                      shape="circle"
+                      className="!w-10 !h-10 flex items-center justify-center"
+                      aria-label="Choose topic"
+                    >
+                      <MoreVertical className="w-5 h-5" />
+                    </Button>
+                  </Dropdown>
+                </div>
+              </div>
+            </div>
+
+            {/* ---------- Difficulty picker ---------- */}
+            <div className="min-w-0">
+              <Text type="secondary" className="block">Difficulty</Text>
+
+              {/* Desktop: Segmented */}
+              <div className="hidden md:block mt-1">
+                <Segmented
+                  size="middle"
+                  value={difficulty}
+                  onChange={(v) => setDifficulty(v)}
+                  options={DIFFICULTIES}
+                />
+              </div>
+
+              {/* Mobile: Dropdown via kebab */}
+              <div className="md:hidden mt-1">
+                <div className="flex items-center gap-2">
+                  <Tag className="!m-0" color="gold">{difficulty}</Tag>
+
+                  <Dropdown
+                    trigger={["click"]}
+                    placement="bottomRight"
+                    menu={{
+                      items: DIFFICULTIES.map((lvl) => ({
+                        key: lvl,
+                        label: (
+                          <span className={lvl === difficulty ? "font-medium" : ""}>
+                            {lvl}
+                          </span>
+                        ),
+                        onClick: () => setDifficulty(lvl),
+                      })),
+                    }}
+                  >
+                    <Button
+                      shape="circle"
+                      className="!w-10 !h-10 flex items-center justify-center"
+                      aria-label="Choose difficulty"
+                    >
+                      <MoreVertical className="w-5 h-5" />
+                    </Button>
+                  </Dropdown>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* (Optional) Difficulty — keep or remove as you wish */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Text type="secondary">Difficulty:</Text>
-            <Space wrap>
-              {["Easy", "Medium", "Hard"].map((lvl) => (
-                <Button
-                  key={lvl}
-                  size="small"
-                  type={difficulty === lvl ? "primary" : "default"}
-                  onClick={() => setDifficulty(lvl)}
-                  className="rounded-full"
-                >
-                  {lvl}
-                </Button>
-              ))}
-            </Space>
-          </div>
+          <Divider className="!my-2" />
+          <Text type="secondary" className="text-xs">
+            Tip: Pick a topic you enjoy and start easy — we’ll build up from there.
+          </Text>
         </div>
       </Card>
 

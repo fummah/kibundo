@@ -11,10 +11,11 @@ import {
   Row,
   Segmented,
   Space,
-  Table,
   Tag,
   Typography,
   message,
+  Alert,
+  Tooltip,
 } from "antd";
 import {
   GiftOutlined,
@@ -22,9 +23,12 @@ import {
   CopyOutlined,
   ArrowRightOutlined,
   ReloadOutlined,
+  LinkOutlined,
+  ArrowLeftOutlined, // ✅ added
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
+import { useTranslation } from "react-i18next";
 import GradientShell from "@/components/GradientShell";
 import BottomTabBarDE from "@/components/BottomTabBarDE";
 
@@ -38,8 +42,10 @@ const money = (v, currency = "EUR") =>
     maximumFractionDigits: 2,
   }).format(Number(v) || 0);
 
+const fmtDate = (v) => (v ? dayjs(v).format("MMM D, YYYY") : "—");
+
 const discountLabel = (c) =>
-  c.type === "percent" ? `${c.value}% off` : `${money(c.value, c.currency)} off`;
+  c.type === "percent" ? `${c.value}%` : `${money(c.value, c.currency)}`;
 
 const statusTag = (s) => {
   const t = String(s).toLowerCase();
@@ -52,12 +58,19 @@ const statusTag = (s) => {
 
 const now = () => dayjs();
 
-/* derive status from dates + used flag */
+/* derive status from dates + used flag (end date inclusive through end of day) */
 const deriveStatus = (c) => {
   if (c.used) return "used";
   if (c.start_at && now().isBefore(dayjs(c.start_at))) return "upcoming";
-  if (c.end_at && now().isAfter(dayjs(c.end_at))) return "expired";
+  if (c.end_at && now().isAfter(dayjs(c.end_at).endOf("day"))) return "expired";
   return "active";
+};
+
+/* very light analytics helper (no-op if not available) */
+const track = (name, props = {}) => {
+  try {
+    window?.analytics?.track?.(name, props);
+  } catch {}
 };
 
 /* ---------------- dummy coupons ---------------- */
@@ -129,24 +142,56 @@ const DUMMY_COUPONS = [
   },
 ];
 
+/* ---------------- dummy external offers ---------------- */
+const DUMMY_OFFERS = [
+  {
+    id: "o1",
+    partnerId: "books-xy",
+    title: "Save 10% at Partner XY",
+    description: "Get 10% off when buying a children’s book.",
+    url: "https://example.com/partner-xy",
+    end_at: dayjs().add(45, "day").toISOString(),
+  },
+  {
+    id: "o2",
+    partnerId: "newspaper-summer",
+    title: "Summer: 4 weeks newspaper free",
+    description: "Try 4 weeks free — learning section included.",
+    url: "https://example.com/summer-newspaper",
+    end_at: dayjs().add(20, "day").toISOString(),
+  },
+];
+
 /* ---------------- page ---------------- */
 export default function Coupons() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
+
   const [query, setQuery] = useState("");
   const [seg, setSeg] = useState("active"); // active | upcoming | expired | used | all
 
+  // TODO: wire to your backend profile/subscription endpoints
+  const hasActiveSub = false; // active subscriptions cannot be discounted
+  const hasActiveCoupon = false; // only one active coupon at a time
+
   const refresh = () => {
-    message.success("Coupons refreshed");
+    message.success(t("parent.billing.coupons.refreshed"));
+    track("coupon_list_refreshed");
   };
 
   const decorated = useMemo(
-    () => DUMMY_COUPONS.map((c) => ({ ...c, status: deriveStatus(c) })),
+    () =>
+      DUMMY_COUPONS.map((c) => ({
+        ...c,
+        code: String(c.code || "").toUpperCase(),
+        status: deriveStatus(c),
+      })),
     []
   );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return decorated
+    const list = decorated
       .filter((c) => (seg === "all" ? true : c.status === seg))
       .filter(
         (c) =>
@@ -155,7 +200,13 @@ export default function Coupons() {
           c.title.toLowerCase().includes(q) ||
           c.description.toLowerCase().includes(q)
       )
-      .sort((a, b) => (a.status === "active" ? -1 : 1));
+      .sort((a, b) => {
+        const order = { active: 0, upcoming: 1, used: 2, expired: 3 };
+        return (order[a.status] ?? 99) - (order[b.status] ?? 99);
+      });
+
+    track("coupon_offers_viewed", { count: list.length, seg });
+    return list;
   }, [decorated, seg, query]);
 
   const kpis = useMemo(() => {
@@ -168,195 +219,203 @@ export default function Coupons() {
   const copy = async (code) => {
     try {
       await navigator.clipboard.writeText(code);
-      message.success(`Copied code: ${code}`);
+      message.success(t("actions.copiedCode", { code }));
+      track("coupon_code_copied", { code });
     } catch {
-      message.warning("Could not copy code");
+      message.warning(t("actions.copyFailed"));
     }
   };
 
-  const useNow = (code) => {
-    const url = `/parent/billing/subscription?code=${encodeURIComponent(code)}`;
-    navigator.clipboard?.writeText(code);
-    message.success(`Code copied. Opening Subscription…`);
-    navigate(url);
+  const canRedeem = (coupon) =>
+    coupon.status === "active" && !hasActiveSub && !hasActiveCoupon;
+
+  const blockedReason = (coupon) => {
+    if (coupon.status !== "active") return t("parent.billing.coupons.errors.notActive");
+    if (hasActiveCoupon) return t("parent.billing.coupons.errors.hasActiveCoupon");
+    if (hasActiveSub) return t("parent.billing.coupons.activeSubNoDiscount");
+    return "";
   };
 
-  const columns = [
-    {
-      title: "Code",
-      dataIndex: "code",
-      key: "code",
-      width: 140,
-      render: (v) => <Badge color="#c7d425" text={<strong>{v}</strong>} />,
-    },
-    { title: "Title", dataIndex: "title", key: "title" },
-    {
-      title: "Discount",
-      key: "disc",
-      width: 140,
-      render: (_, r) => <span className="font-semibold">{discountLabel(r)}</span>,
-    },
-    {
-      title: "Validity",
-      key: "validity",
-      width: 220,
-      render: (_, r) => (
-        <span className="text-gray-600">
-          {dayjs(r.start_at).format("MMM D, YYYY")} – {dayjs(r.end_at).format("MMM D, YYYY")}
-        </span>
-      ),
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      key: "status",
-      width: 110,
-      render: statusTag,
-    },
-    {
-      title: "Actions",
-      key: "actions",
-      width: 200,
-      render: (_, r) => (
-        <Space>
-          <Button size="small" icon={<CopyOutlined />} onClick={() => copy(r.code)}>
-            Copy
-          </Button>
-          <Button
-            size="small"
-            type="primary"
-            icon={<ArrowRightOutlined />}
-            disabled={r.status !== "active"}
-            onClick={() => useNow(r.code)}
-          >
-            Use now
-          </Button>
-        </Space>
-      ),
-    },
-  ];
+  const useNow = (coupon) => {
+    const code = coupon.code;
+
+    if (!canRedeem(coupon)) {
+      const reason = blockedReason(coupon);
+      if (reason) message.warning(reason);
+      track("coupon_redeem_blocked", { code, reason });
+      return;
+    }
+
+    navigator.clipboard?.writeText(code);
+    message.success(t("parent.billing.coupons.applyNavigating"));
+    track("coupon_applied", { code, type: "internal" });
+
+    navigate(`/parent/billing/subscription?code=${encodeURIComponent(code)}`);
+  };
 
   return (
     <GradientShell>
-      {/* padding-bottom for mobile bottom tabs */}
-      <div className="p-4 md:p-6 space-y-6 pb-24 md:pb-6">
-        {/* header */}
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-          <div>
-            <Title level={2} className="!m-0">
-              Coupons
-            </Title>
-            <p className="text-gray-600 m-0">
-              Find and apply promo codes to save on your plan.
-            </p>
-          </div>
-          <Button icon={<ReloadOutlined />} onClick={refresh}>
-            Refresh
-          </Button>
-        </div>
-
-        {/* KPIs (responsive) */}
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={8}>
-            <Card className="rounded-2xl shadow-sm">
-              <div className="text-gray-500 text-sm">Active</div>
-              <div className="text-2xl font-extrabold text-green-600">
-                {kpis.actives}
-              </div>
-            </Card>
-          </Col>
-          <Col xs={24} sm={8}>
-            <Card className="rounded-2xl shadow-sm">
-              <div className="text-gray-500 text-sm">Upcoming</div>
-              <div className="text-2xl font-extrabold text-blue-600">
-                {kpis.upcoming}
-              </div>
-            </Card>
-          </Col>
-          <Col xs={24} sm={8}>
-            <Card className="rounded-2xl shadow-sm">
-              <div className="text-gray-500 text-sm">Expired</div>
-              <div className="text-2xl font-extrabold text-red-500">
-                {kpis.expired}
-              </div>
-            </Card>
-          </Col>
-        </Row>
-
-        {/* filters (stack on mobile; Segmented scrolls horizontally if tight) */}
-        <Card className="rounded-2xl shadow-sm">
-          <Row gutter={[12, 12]} align="middle">
-            <Col xs={24} md={12} lg={10}>
-              <Input
-                allowClear
-                prefix={<SearchOutlined />}
-                placeholder="Search code, title, or description"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="rounded-xl"
+      {/* Full-height scroll container */}
+      <div
+        className="w-full h-[100dvh] overflow-y-auto overscroll-y-contain touch-pan-y flex justify-center"
+        style={{ WebkitOverflowScrolling: "touch" }}
+        role="main"
+        aria-label={t("parent.billing.coupons.title")}
+      >
+        <div className="w-full max-w-[520px] px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] mx-auto space-y-6">
+          
+          {/* header with back + refresh */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              {/* ✅ Back arrow */}
+              <Button
+                icon={<ArrowLeftOutlined />}
+                onClick={() => navigate(-1)}
+                aria-label={t("common.back")}
               />
-            </Col>
-            <Col xs={24} md={12} lg={8}>
-              <div className="w-full overflow-x-auto">
-                <Segmented
-                  options={[
-                    { label: "Active", value: "active" },
-                    { label: "Upcoming", value: "upcoming" },
-                    { label: "Expired", value: "expired" },
-                    { label: "Used", value: "used" },
-                    { label: "All", value: "all" },
-                  ]}
-                  value={seg}
-                  onChange={setSeg}
-                  size="large"
-                />
+              <div>
+                <Title level={2} className="!m-0">
+                  {t("parent.billing.coupons.title")}
+                </Title>
+                <p className="text-gray-600 m-0">
+                  {t("parent.billing.coupons.subtitle")}
+                </p>
               </div>
+            </div>
+
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={refresh}
+              aria-label="Refresh coupons"
+            >
+              {t("actions.refresh")}
+            </Button>
+          </div>
+
+          {/* rules */}
+          <Space direction="vertical" className="w-full">
+            <Alert
+              type="info"
+              showIcon
+              message={t("parent.billing.coupons.rules.oneActiveOnly")}
+            />
+            <Alert
+              type="warning"
+              showIcon
+              message={t("parent.billing.coupons.activeSubNoDiscount")}
+            />
+          </Space>
+
+          {/* KPIs */}
+          <Row gutter={[12, 12]}>
+            <Col xs={8}>
+              <Card className="rounded-2xl shadow-sm text-center">
+                <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.active")}</div>
+                <div className="text-xl font-extrabold text-green-600">{kpis.actives}</div>
+              </Card>
+            </Col>
+            <Col xs={8}>
+              <Card className="rounded-2xl shadow-sm text-center">
+                <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.upcoming")}</div>
+                <div className="text-xl font-extrabold text-blue-600">{kpis.upcoming}</div>
+              </Card>
+            </Col>
+            <Col xs={8}>
+              <Card className="rounded-2xl shadow-sm text-center">
+                <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.expired")}</div>
+                <div className="text-xl font-extrabold text-red-500">{kpis.expired}</div>
+              </Card>
             </Col>
           </Row>
-        </Card>
 
-        {/* mobile list */}
-        <div className="mobile-only">
+          {/* filters */}
+          <Card className="rounded-2xl shadow-sm">
+            <Row gutter={[12, 12]} align="middle">
+              <Col xs={24}>
+                <Input
+                  allowClear
+                  prefix={<SearchOutlined />}
+                  placeholder={t("parent.billing.coupons.searchPh")}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="rounded-xl"
+                  aria-label="Search coupons"
+                />
+              </Col>
+              <Col xs={24}>
+                <div className="w-full overflow-x-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+                  <Segmented
+                    options={[
+                      { label: t("filters.active"), value: "active" },
+                      { label: t("filters.upcoming"), value: "upcoming" },
+                      { label: t("filters.expired"), value: "expired" },
+                      { label: t("filters.used"), value: "used" },
+                      { label: t("filters.all"), value: "all" },
+                    ]}
+                    value={seg}
+                    onChange={setSeg}
+                    size="large"
+                    aria-label="Filter coupons by status"
+                  />
+                </div>
+              </Col>
+            </Row>
+          </Card>
+
+          {/* internal coupons list */}
           {filtered.length === 0 ? (
             <Card className="rounded-2xl shadow-sm">
-              <Empty description="No coupons match your filters." />
+              <Empty description={t("parent.billing.coupons.empty")} />
             </Card>
           ) : (
             <List
               dataSource={filtered}
               renderItem={(c) => (
-                <Card className="rounded-2xl shadow-sm mb-3">
+                <Card className="rounded-2xl shadow-sm mb-3" key={c.id}>
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-xl bg-lime-200 grid place-items-center text-lime-800">
                       <GiftOutlined />
                     </div>
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold">{c.title}</span>
                         {statusTag(c.status)}
+                        {c.min_spend > 0 && (
+                          <Tag color="purple" className="ml-1">
+                            {t("parent.billing.coupons.minSpend", {
+                              amount: money(c.min_spend, c.currency),
+                            })}
+                          </Tag>
+                        )}
                       </div>
                       <div className="text-gray-600 text-sm">{c.description}</div>
+
                       <div className="mt-2 flex flex-wrap items-center gap-3">
                         <Badge color="#c7d425" text={<strong>{c.code}</strong>} />
-                        <Tag color="magenta">{discountLabel(c)}</Tag>
+                        <Tag color="magenta">
+                          {discountLabel(c)} {t("parent.billing.coupons.off")}
+                        </Tag>
                         <Text type="secondary" className="text-xs">
-                          {dayjs(c.start_at).format("MMM D")} –{" "}
-                          {dayjs(c.end_at).format("MMM D, YYYY")}
+                          {dayjs(c.start_at).format("MMM D")} – {fmtDate(c.end_at)}
                         </Text>
                       </div>
 
                       <Space className="mt-3">
-                        <Button icon={<CopyOutlined />} onClick={() => copy(c.code)}>
-                          Copy
+                        <Button onClick={() => copy(c.code)} icon={<CopyOutlined />} aria-label={`Copy ${c.code}`}>
+                          {t("actions.copy")}
                         </Button>
-                        <Button
-                          type="primary"
-                          icon={<ArrowRightOutlined />}
-                          disabled={c.status !== "active"}
-                          onClick={() => useNow(c.code)}
-                        >
-                          Use now
-                        </Button>
+
+                        <Tooltip title={!canRedeem(c) ? blockedReason(c) : ""}>
+                          <Button
+                            type="primary"
+                            icon={<ArrowRightOutlined />}
+                            disabled={!canRedeem(c)}
+                            onClick={() => useNow(c)}
+                            aria-label={`Use ${c.code}`}
+                          >
+                            {t("actions.useNow")}
+                          </Button>
+                        </Tooltip>
                       </Space>
                     </div>
                   </div>
@@ -364,20 +423,42 @@ export default function Coupons() {
               )}
             />
           )}
-        </div>
 
-        {/* desktop table (scroll-x to stay responsive on narrow laptops) */}
-        <div className="desktop-only">
+          {/* External offers */}
           <Card className="rounded-2xl shadow-sm">
-            {filtered.length === 0 ? (
-              <Empty description="No coupons match your filters." />
+            <div className="flex items-center justify-between mb-2">
+              <strong>{t("parent.billing.coupons.externalOffers.title")}</strong>
+              <Tag>{t("parent.billing.coupons.externalOffers.tag")}</Tag>
+            </div>
+            {DUMMY_OFFERS.length === 0 ? (
+              <Empty description={t("parent.billing.coupons.externalOffers.empty")} />
             ) : (
-              <Table
-                rowKey="id"
-                columns={columns}
-                dataSource={filtered}
-                pagination={{ pageSize: 8, showSizeChanger: false }}
-                scroll={{ x: 920 }}
+              <List
+                dataSource={DUMMY_OFFERS}
+                renderItem={(o) => (
+                  <List.Item key={o.id} className="!px-0">
+                    <div className="flex-1">
+                      <div className="font-semibold">{o.title}</div>
+                      <div className="text-gray-600 text-sm">{o.description}</div>
+                      <Text type="secondary" className="text-xs">
+                        {t("parent.billing.coupons.validUntil", {
+                          date: fmtDate(o.end_at),
+                        })}
+                      </Text>
+                    </div>
+                    <Button
+                      type="default"
+                      icon={<LinkOutlined />}
+                      onClick={() => {
+                        track("coupon_applied", { type: "external", partnerId: o.partnerId });
+                        window.open(o.url, "_blank", "noopener,noreferrer");
+                      }}
+                      aria-label={`Open offer: ${o.title}`}
+                    >
+                      {t("actions.getOffer")}
+                    </Button>
+                  </List.Item>
+                )}
               />
             )}
           </Card>

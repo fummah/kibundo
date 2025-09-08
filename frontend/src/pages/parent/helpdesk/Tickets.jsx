@@ -1,256 +1,205 @@
 // src/pages/parent/helpdesk/Tickets.jsx
-import { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
-  Table,
-  Tag,
-  Button,
-  Modal,
-  Input,
-  Select,
-  message,
-  Space,
   Form,
+  Input,
+  Button,
+  Select,
+  Upload,
+  message as antdMessage,
+  Typography,
 } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
-import dayjs from "dayjs";
+import {
+  ArrowLeftOutlined,
+  UploadOutlined,
+  SendOutlined,
+} from "@ant-design/icons";
 import GradientShell from "@/components/GradientShell";
+import BottomTabBar, { ParentTabSpacer } from "@/components/parent/BottomTabBar";
 
-const { TextArea } = Input;
-const MSG_MIN = 20; // 🔒 Acceptance: minimum length for free-text message
+/* Optional: match other parent screens’ background */
+import globalBg from "@/assets/backgrounds/global-bg.png";
 
-const DUMMY = [
-  {
-    id: "T-1024",
-    subject: "Invoice question",
-    status: "open",
-    priority: "medium",
-    created_at: dayjs().subtract(1, "day").toISOString(),
-  },
-  {
-    id: "T-1025",
-    subject: "Scan failed to process",
-    status: "open",
-    priority: "high",
-    created_at: dayjs().subtract(3, "hour").toISOString(),
-  },
-  {
-    id: "T-1020",
-    subject: "Feature request: dark mode",
-    status: "closed",
-    priority: "low",
-    created_at: dayjs().subtract(10, "day").toISOString(),
-  },
-];
-
-const STATUS = {
-  open: <Tag color="blue">Open</Tag>,
-  closed: <Tag color="default">Closed</Tag>,
-};
-const PRIORITY = {
-  high: <Tag color="red">High</Tag>,
-  medium: <Tag color="gold">Medium</Tag>,
-  low: <Tag>Low</Tag>,
-};
+const { Title, Text } = Typography;
 
 export default function Tickets() {
-  const [tickets, setTickets] = useState(DUMMY);
-  const [q, setQ] = useState("");
-  const [open, setOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
+  // ⬇️ All hooks declared unconditionally at the top (fixes your error)
+  const navigate = useNavigate();
   const [form] = Form.useForm();
+  const [submitting, setSubmitting] = useState(false);
 
-  const data = useMemo(() => {
-    const qt = q.trim().toLowerCase();
-    return tickets.filter(
-      (t) =>
-        t.subject.toLowerCase().includes(qt) ||
-        t.id.toLowerCase().includes(qt)
-    );
-  }, [q, tickets]);
+  // spec: required free text, with minimum length
+  const MIN_LEN = 20;
 
-  const columns = [
-    { title: "Ticket", dataIndex: "id", key: "id", width: 120 },
-    { title: "Subject", dataIndex: "subject", key: "subject" },
-    {
-      title: "Status",
-      dataIndex: "status",
-      key: "status",
-      width: 120,
-      render: (v) => STATUS[v],
-    },
-    {
-      title: "Priority",
-      dataIndex: "priority",
-      key: "priority",
-      width: 120,
-      render: (v) => PRIORITY[v],
-    },
-    {
-      title: "Created",
-      dataIndex: "created_at",
-      key: "created_at",
-      width: 160,
-      render: (v) => dayjs(v).format("MMM D, HH:mm"),
-    },
-  ];
+  // categories are static; memoized for stability (not strictly required)
+  const categories = useMemo(
+    () => [
+      { label: "General question", value: "general" },
+      { label: "Billing", value: "billing" },
+      { label: "Technical issue", value: "technical" },
+      { label: "Content/lesson", value: "content" },
+      { label: "Other", value: "other" },
+    ],
+    []
+  );
 
-  const resetAndClose = () => {
-    form.resetFields();
-    setOpen(false);
+  // Ensure consistent initial form values
+  useEffect(() => {
+    form.setFieldsValue({
+      category: "general",
+      subject: "",
+      message: "",
+      attachments: [],
+    });
+  }, [form]);
+
+  const beforeUpload = () => {
+    // Prevent auto upload; store file in form only
+    return false;
   };
 
-  const handleCreate = async () => {
+  const onFinish = async (values) => {
     try {
-      setCreating(true);
-      const values = await form.validateFields(); // triggers inline error states
-      const id = "T-" + Math.floor(1000 + Math.random() * 9000);
+      setSubmitting(true);
 
-      // optional: analytics event
-      try {
-        window?.analytics?.track?.("ticket_submitted", {
-          priority: values.priority,
-          hasMessage: !!values.message?.length,
-        });
-      } catch (_) {}
+      // Simple demo “API” validation echo
+      const msg = (values.message || "").trim();
+      if (msg.length < MIN_LEN) {
+        // antd already shows field error; guard here too
+        throw new Error(`Please enter at least ${MIN_LEN} characters.`);
+      }
 
-      setTickets((prev) => [
-        {
-          id,
-          subject: values.subject.trim(),
-          status: "open",
-          priority: values.priority,
-          created_at: new Date().toISOString(),
-        },
-        ...prev,
-      ]);
+      // Simulate API call
+      await new Promise((res) => setTimeout(res, 700));
 
-      message.success("Ticket created");
-      resetAndClose();
-    } catch (err) {
-      // validation errors are shown inline by antd; no toast needed
+      antdMessage.success("Ticket submitted");
+      // Could clear the form after success
+      form.resetFields();
+      form.setFieldsValue({ category: "general" });
+    } catch (e) {
+      const errText =
+        e?.message || "Could not submit your ticket. Please try again.";
+      antdMessage.error(errText);
     } finally {
-      setCreating(false);
+      setSubmitting(false);
     }
   };
 
-  // Disable OK button until form is valid (client-side)
-  const okDisabled =
-    !Form.useWatch("subject", form)?.trim()?.length ||
-    !Form.useWatch("message", form)?.trim()?.length ||
-    (Form.useWatch("message", form)?.trim()?.length || 0) < MSG_MIN;
-
   return (
-    <GradientShell>
-      <div className="p-4 md:p-6 space-y-6">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-extrabold m-0">Tickets</h1>
-            <p className="text-gray-600 m-0">
-              Ask for help or report an issue.
-            </p>
-          </div>
-          <Space>
-            <Input.Search
-              allowClear
-              placeholder="Search subject or ticket id"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              className="rounded-xl"
-            />
+    <GradientShell backgroundImage={globalBg}>
+      <div className="w-full min-h-[100dvh] flex justify-center">
+        {/* Single-column layout inside the phone mockup */}
+        <section className="relative w-full max-w-[520px] px-4 pt-6 mx-auto space-y-6">
+          {/* Header with Back Arrow */}
+          <div className="flex items-center gap-3">
             <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setOpen(true)}
+              type="text"
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate(-1)}
+              className="!p-0 !h-auto text-neutral-700"
+              aria-label="Back"
+            />
+            <div>
+              <Title level={3} className="!m-0">
+                Feedback
+              </Title>
+              <Text type="secondary">
+                Submit a ticket to our support team.
+              </Text>
+            </div>
+          </div>
+
+          {/* Ticket Form */}
+          <Card className="rounded-2xl shadow-sm">
+            <Form
+              form={form}
+              layout="vertical"
+              requiredMark={false}
+              onFinish={onFinish}
             >
-              New Ticket
-            </Button>
-          </Space>
-        </div>
+              <Form.Item name="category" label="Category">
+                <Select
+                  options={categories}
+                  className="rounded-xl"
+                  dropdownMatchSelectWidth={false}
+                />
+              </Form.Item>
 
-        <Card className="rounded-2xl shadow-sm">
-          <Table
-            rowKey="id"
-            columns={columns}
-            dataSource={data}
-            pagination={{ pageSize: 6, showSizeChanger: false }}
-          />
-        </Card>
-
-        <Modal
-          title="New Ticket"
-          open={open}
-          onCancel={resetAndClose}
-          onOk={handleCreate}
-          okText="Create"
-          okButtonProps={{ loading: creating, disabled: okDisabled }}
-          destroyOnClose
-        >
-          <Form
-            layout="vertical"
-            form={form}
-            initialValues={{ subject: "", message: "", priority: "medium" }}
-          >
-            <Form.Item
-              name="subject"
-              label="Subject"
-              rules={[
-                { required: true, message: "Please enter a subject." },
-                {
-                  validator: (_, v) =>
-                    v && v.trim().length > 0
-                      ? Promise.resolve()
-                      : Promise.reject(new Error("Subject cannot be empty.")),
-                },
-              ]}
-            >
-              <Input placeholder="Short summary (e.g., 'Invoice question')" />
-            </Form.Item>
-
-            {/* 🔒 Required free-text message with minimum length & errors */}
-            <Form.Item
-              name="message"
-              label="Message"
-              rules={[
-                { required: true, message: "Please describe the issue." },
-                {
-                  min: MSG_MIN,
-                  message: `Message must be at least ${MSG_MIN} characters.`,
-                },
-                {
-                  validator: (_, v) => {
-                    const len = (v || "").trim().length;
-                    if (!len) return Promise.reject(new Error("Message is required."));
-                    if (len < MSG_MIN)
-                      return Promise.reject(
-                        new Error(`Please provide at least ${MSG_MIN} characters.`)
-                      );
-                    return Promise.resolve();
-                  },
-                },
-              ]}
-              extra={`Minimum ${MSG_MIN} characters.`}
-            >
-              <TextArea
-                rows={6}
-                showCount
-                maxLength={2000}
-                placeholder="Provide details that help us resolve your issue quickly…"
-              />
-            </Form.Item>
-
-            <Form.Item name="priority" label="Priority">
-              <Select
-                options={[
-                  { value: "high", label: "High" },
-                  { value: "medium", label: "Medium" },
-                  { value: "low", label: "Low" },
+              <Form.Item
+                name="subject"
+                label="Subject"
+                rules={[
+                  { required: true, message: "Please enter a subject" },
+                  { min: 3, message: "Please enter at least 3 characters" },
                 ]}
-                className="w-full"
-              />
-            </Form.Item>
-          </Form>
-        </Modal>
+              >
+                <Input className="rounded-xl" placeholder="Short summary" />
+              </Form.Item>
+
+              <Form.Item
+                name="message"
+                label="Message"
+                rules={[
+                  { required: true, message: "This field is required." },
+                  {
+                    validator: (_, value) => {
+                      const len = (value || "").trim().length;
+                      if (len === 0) return Promise.reject("This field is required.");
+                      if (len < MIN_LEN)
+                        return Promise.reject(
+                          `Please enter at least ${MIN_LEN} characters.`
+                        );
+                      return Promise.resolve();
+                    },
+                  },
+                ]}
+                extra={
+                  <Text type="secondary">
+                    Minimum {MIN_LEN} characters. Describe your issue clearly.
+                  </Text>
+                }
+              >
+                <Input.TextArea
+                  className="rounded-xl"
+                  placeholder="Write your message here…"
+                  autoSize={{ minRows: 4, maxRows: 8 }}
+                  showCount
+                />
+              </Form.Item>
+
+              <Form.Item name="attachments" label="Attachments">
+                <Upload
+                  multiple
+                  beforeUpload={beforeUpload}
+                  listType="text"
+                  maxCount={5}
+                >
+                  <Button icon={<UploadOutlined />}>Add files</Button>
+                </Upload>
+              </Form.Item>
+
+              <div className="flex justify-end gap-2">
+                <Button onClick={() => form.resetFields()}>Cancel</Button>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  icon={<SendOutlined />}
+                  loading={submitting}
+                >
+                  Submit
+                </Button>
+              </div>
+            </Form>
+          </Card>
+
+          {/* Spacer so content never hides behind the footer */}
+          <ParentTabSpacer />
+
+          {/* Footer tab bar (mobile: fixed; desktop mockup: absolute inside frame) */}
+          <BottomTabBar />
+        </section>
       </div>
     </GradientShell>
   );
