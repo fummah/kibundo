@@ -9,10 +9,11 @@ import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
 
 /* Backgrounds */
-import globalBg from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\backgrounds\\global-bg.png";
-import intBack from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\backgrounds\\int-back.png";
+import globalBg from "../../../assets/backgrounds/global-bg.png";
+import intBack from "../../../assets/backgrounds/int-back.png";
 /* Mascot (replace with your final file if you have one) */
-import buddyMascot from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\buddies\\kibundo-buddy.png";
+import buddyMascot from "../../../assets/buddies/kibundo-buddy.png";
+
 
 const INTRO_LS_KEY = "kib_intro_seen_v1";
 
