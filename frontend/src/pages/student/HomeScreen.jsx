@@ -11,9 +11,10 @@ import buddyMascot from "@/assets/buddies/kibundo-buddy.png";
 import { TILE_BG } from "@/assets/mobile/tiles";
 import { IMGS } from "@/assets/mobile";
 
-// Assets (absolute paths you provided)
-import topBg from "C:/wamp64/www/kibundo/frontend/src/assets/backgrounds/top.png";
-import bottomBg from "C:/wamp64/www/kibundo/frontend/src/assets/backgrounds/int-back.png";
+// Assets (relative paths)
+import topBg from "../../../assets/backgrounds/top.png";
+import bottomBg from "../../../assets/backgrounds/int-back.png";
+
 
 export default function HomeMobile() {
   const navigate = useNavigate();
