@@ -17,7 +17,7 @@ import buddyMascot from "../../../assets/buddies/kibundo-buddy.png";
 
 /* ✅ image assets (used for the theme step) */
 import dinoImg from "../../../assets/mobile/icons/\Dinosaurier.png";
-import unicornImg from "../../..assets/mobile/icons/Einhörner.png";
+import unicornImg from "../../../assets/mobile/icons/Einhörner.png";
 
 const { Title } = Typography;
 
