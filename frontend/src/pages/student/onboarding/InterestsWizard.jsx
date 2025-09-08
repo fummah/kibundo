@@ -8,14 +8,16 @@ import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
 /* ✅ Ribbons */
 import HomeRibbon from "@/components/student/mobile/HomeRibbon";
 import SettingsRibbon from "@/components/student/mobile/SettingsRibbon";
+import globalBg from "../../../assets/backgrounds/global-bg.png";
+import intBack from "../../../assets/backgrounds/int-back.png";
 
-/* ✅ Backgrounds */
-import globalBg from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\backgrounds\\global-bg.png";
-import intBack from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\backgrounds\\int-back.png";
+/* Mascot (replace with your final file if you have one) */
+import buddyMascot from "../../../assets/buddies/kibundo-buddy.png";
+
 
 /* ✅ image assets (used for the theme step) */
-import dinoImg from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\mobile\\icons\\Dinosaurier.png";
-import unicornImg from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\mobile\\icons\\Einhörner.png";
+import dinoImg from "../../../assets/mobile/icons/\Dinosaurier.png";
+import unicornImg from "../../..assets/mobile/icons/Einhörner.png";
 
 const { Title } = Typography;
 

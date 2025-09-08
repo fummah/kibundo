@@ -4,8 +4,8 @@ import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
 
 /* ✅ Backgrounds */
-import globalBg from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\backgrounds\\global-bg.png";
-import intBack from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\backgrounds\\int-back.png";
+import globalBg from "../../..assets/backgrounds/global-bg.png";
+import intBack from "../../..assets/backgrounds/int-back.png";
 
 const { Title, Text } = Typography;
 
