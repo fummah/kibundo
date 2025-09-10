@@ -3,8 +3,8 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Input, Tag, Empty, message, Button, Skeleton } from "antd";
 import { RightOutlined } from "@ant-design/icons";
-import GradientShell from "@/components/GradientShell";
-import BottomTabBar, { ParentTabSpacer } from "@/components/parent/BottomTabBar";
+
+import ParentShell from "@/components/parent/ParentShell";
 import api from "@/api/axios";
 
 // Background (optional: looks consistent with other parent screens)
@@ -20,18 +20,10 @@ import newsImg from "@/assets/parent/news.png";
 function isNumericId(val) {
   return typeof val === "number" || (typeof val === "string" && /^[0-9]+$/.test(val));
 }
-
 function buildArticleHref(p) {
-  // Prefer an explicit external URL if present
   if (p.external_url) return p.external_url.trim();
-
-  // Slugged article route
   if (p.slug) return `/parent/communications/news/${encodeURIComponent(p.slug)}`;
-
-  // Preview route only when the id looks like a real numeric backend id
   if (isNumericId(p.id)) return `/parent/communications/news/preview/${p.id}`;
-
-  // No routable target
   return null;
 }
 
@@ -71,9 +63,7 @@ function FeaturedCard({ article, onOpen }) {
         </h2>
 
         {article.excerpt ? (
-          <p className="text-neutral-700 text-[15px] sm:text-[16px]">
-            {article.excerpt}
-          </p>
+          <p className="text-neutral-700 text-[15px] sm:text-[16px]">{article.excerpt}</p>
         ) : null}
 
         <div className="mt-4">
@@ -113,16 +103,18 @@ function ListCard({ article, onOpen }) {
     >
       <div className="flex items-center gap-4">
         <div className="flex-1 min-w-0">
-          {article.tag ? <Tag color="green" className="mb-1">{article.tag}</Tag> : null}
+          {article.tag ? (
+            <Tag color="green" className="mb-1">
+              {article.tag}
+            </Tag>
+          ) : null}
 
           <h3 className="text-[18px] sm:text-[20px] font-extrabold text-neutral-800 leading-snug">
             {article.title}
           </h3>
 
           {article.excerpt ? (
-            <p className="text-neutral-700 mt-1 text-[14px] sm:text-[15px]">
-              {article.excerpt}
-            </p>
+            <p className="text-neutral-700 mt-1 text-[14px] sm:text-[15px]">{article.excerpt}</p>
           ) : null}
 
           <div className="mt-3">
@@ -141,12 +133,7 @@ function ListCard({ article, onOpen }) {
         </div>
 
         <div className="w-[72px] h-[72px] sm:w-[84px] sm:h-[84px] shrink-0 rounded-[14px] overflow-hidden ring-4 ring-white/70 pointer-events-none">
-          <img
-            src={article.image}
-            alt=""
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
+          <img src={article.image} alt="" className="w-full h-full object-cover" loading="lazy" />
         </div>
       </div>
     </div>
@@ -155,6 +142,7 @@ function ListCard({ article, onOpen }) {
 
 /* ---------- page ---------- */
 const CACHE_KEY = "kib_parent_news_cache_v3";
+const PAGE_SIZE = 2;
 
 export default function NewsFeed() {
   const navigate = useNavigate();
@@ -164,11 +152,14 @@ export default function NewsFeed() {
   const [err, setErr] = useState(null);
   const abortRef = useRef(null);
 
+  // pagination
+  const [page, setPage] = useState(1);
+
   useEffect(() => {
     document.title = "Kibundo News | Parent";
   }, []);
 
-  // Fast paint from cache
+  // seed from cache
   useEffect(() => {
     try {
       const cached = JSON.parse(sessionStorage.getItem(CACHE_KEY) || "null");
@@ -179,6 +170,7 @@ export default function NewsFeed() {
     } catch {}
   }, []);
 
+  // fetch
   useEffect(() => {
     (async () => {
       try {
@@ -195,8 +187,6 @@ export default function NewsFeed() {
         });
 
         const list = Array.isArray(data?.results ?? data) ? (data.results ?? data) : [];
-
-        // Map + placeholders to match the mock
         const placeholders = [platnews, unkcat, blognews, newsImg];
 
         const mapped = list.map((p, idx) => {
@@ -207,16 +197,17 @@ export default function NewsFeed() {
               ? p.tags.split(",").map((t) => t.trim()).filter(Boolean)
               : [];
 
-          const base = {
+        const base = {
             id: p.id,
             featured: Boolean(p.featured || p.is_featured || idx === 0),
             title: p.title || "Headline Article",
             excerpt:
-              p.excerpt || p.summary || p.subtitle ||
+              p.excerpt ||
+              p.summary ||
+              p.subtitle ||
               "Explore the latest math games designed to make learning fun.",
             image:
-              p.image_url || p.cover_image || p.thumbnail_url || p.image ||
-              placeholders[idx % placeholders.length],
+              p.image_url || p.cover_image || p.thumbnail_url || p.image || placeholders[idx % placeholders.length],
             published_at: p.published_at || p.created_at || null,
             tags,
             tag: p.category || p.audience || null,
@@ -225,11 +216,9 @@ export default function NewsFeed() {
           };
 
           const href = buildArticleHref(base);
-
           return { ...base, href };
         });
 
-        // Fallback placeholders if API empty
         const fallback = [
           {
             id: "ph-1",
@@ -271,16 +260,14 @@ export default function NewsFeed() {
         ];
 
         const finalList = mapped.length ? mapped : fallback;
-
-        // Sort: featured first
         finalList.sort((a, b) => Number(b.featured) - Number(a.featured));
 
         setArticles(finalList);
         sessionStorage.setItem(CACHE_KEY, JSON.stringify({ items: finalList }));
       } catch (e) {
+        if (e.code === "ERR_CANCELED") return;
         console.error(e);
         setErr("Failed to load articles");
-        // show placeholders on error
         setArticles([
           {
             id: "ph-1",
@@ -326,7 +313,7 @@ export default function NewsFeed() {
     })();
   }, []);
 
-  // Search filters the visible list but keeps the layout
+  // filter
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return articles;
@@ -338,17 +325,35 @@ export default function NewsFeed() {
     });
   }, [q, articles]);
 
+  // featured + rest
   const featured = useMemo(
     () => filtered.find((a) => a.featured) || filtered[0] || null,
     [filtered]
   );
-
   const rest = useMemo(() => {
     if (!featured) return filtered;
     return filtered.filter((a) => a.id !== featured.id);
   }, [filtered, featured]);
 
-  // Centralized open handler (handles placeholders & external links)
+  // reset to page 1 whenever the result set changes
+  useEffect(() => {
+    setPage(1);
+  }, [q, filtered.length]);
+
+  // slice rest for current page (2 per page)
+  const totalPages = Math.max(1, Math.ceil(rest.length / PAGE_SIZE));
+  const startIdx = (page - 1) * PAGE_SIZE;
+  const visibleRest = rest.slice(startIdx, startIdx + PAGE_SIZE);
+  const rangeStart = rest.length === 0 ? 0 : startIdx + 1;
+  const rangeEnd = Math.min(startIdx + PAGE_SIZE, rest.length);
+
+  // scroll to top on page change (nice on mobile)
+  useEffect(() => {
+    try {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {}
+  }, [page]);
+
   function openArticle(article) {
     const href = article?.href?.trim?.();
     if (!href) {
@@ -356,7 +361,6 @@ export default function NewsFeed() {
       return;
     }
 
-    // optional analytics
     try {
       window?.analytics?.track?.("news_read_clicked", {
         slug: article.slug ?? null,
@@ -365,10 +369,8 @@ export default function NewsFeed() {
     } catch {}
 
     if (/^https?:\/\//i.test(href)) {
-      // External link
       window.location.assign(href);
     } else {
-      // Internal route to article detail page
       navigate(href);
       try {
         window.scrollTo({ top: 0, behavior: "auto" });
@@ -377,11 +379,9 @@ export default function NewsFeed() {
   }
 
   return (
-    <GradientShell backgroundImage={globalBg}>
-      <div className="w-full min-h-[100dvh] flex justify-center">
-        {/* Single-column phone layout inside mockup; leave room for footer */}
+    <ParentShell bgImage={globalBg}>
+      <div className="w-full flex justify-center">
         <section className="relative w-full max-w-[520px] px-4 pt-4 mx-auto">
-          {/* Title */}
           <div className="text-center mb-3">
             <h1
               className="text-[28px] font-extrabold text-neutral-800"
@@ -391,7 +391,6 @@ export default function NewsFeed() {
             </h1>
           </div>
 
-          {/* Search */}
           <div className="mb-4">
             <Input
               allowClear
@@ -402,10 +401,8 @@ export default function NewsFeed() {
             />
           </div>
 
-          {/* Section label */}
           <div className="text-neutral-700 font-extrabold text-[18px] mb-3">News</div>
 
-          {/* Loading / Error / Empty */}
           {loading && !articles.length ? (
             <div className="py-6 space-y-4">
               <Skeleton active round />
@@ -422,36 +419,54 @@ export default function NewsFeed() {
             </div>
           ) : (
             <>
-              {/* Featured hero */}
               {featured && (
                 <div className="mb-6">
                   <FeaturedCard article={featured} onOpen={openArticle} />
                 </div>
               )}
 
-              {/* “Weitere Artikel” */}
               {rest.length > 0 && (
                 <div className="text-neutral-700 font-extrabold text-[18px] mb-3">
                   Weitere Artikel
                 </div>
               )}
 
-              {/* List cards */}
-              <div className="space-y-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
-                {rest.map((a) => (
+              {/* paginated list: 2 per page */}
+              <div className="space-y-4">
+                {visibleRest.map((a) => (
                   <ListCard key={a.id ?? `a-${a.title}`} article={a} onOpen={openArticle} />
                 ))}
               </div>
+
+              {/* pagination controls */}
+              {rest.length > PAGE_SIZE && (
+                <div className="mt-4 flex items-center justify-between">
+                  <Button
+                    shape="round"
+                    disabled={page === 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </Button>
+
+                  <div className="text-sm text-neutral-600">
+                    {rangeStart}-{rangeEnd} of {rest.length}
+                  </div>
+
+                  <Button
+                    type="primary"
+                    shape="round"
+                    disabled={page === totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
             </>
           )}
-
-          {/* Spacer so content never hides behind the bottom bar */}
-          <ParentTabSpacer />
-
-          {/* Bottom tab bar INSIDE the mockup */}
-          <BottomTabBar />
         </section>
       </div>
-    </GradientShell>
+    </ParentShell>
   );
 }

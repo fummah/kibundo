@@ -1,9 +1,11 @@
 // src/pages/parent/ParentHome.jsx
+import React from "react";
 import { Link } from "react-router-dom";
-import GradientShell from "@/components/GradientShell";
-import { PlusCircleOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
-import BottomTabBar, { ParentTabSpacer } from "@/components/parent/BottomTabBar";
+
+import ParentShell from "@/components/parent/ParentShell";
+// ✅ explicit extension + alias to avoid any shadowing
+import ParentNewsCard from "@/components/parent/NewsCard.jsx";
 
 /* Assets */
 import globalBg from "@/assets/backgrounds/global-bg.png";
@@ -47,6 +49,7 @@ function ActivityCard({ to, avatar, name, text, bg = "bg-cyan-200" }) {
     </Link>
   );
 }
+
 function ChildBubble({ to, avatar, name, meta }) {
   return (
     <Link
@@ -61,44 +64,23 @@ function ChildBubble({ to, avatar, name, meta }) {
     </Link>
   );
 }
-function NewsCard({ to, tag, title, desc, image }) {
-  return (
-    <Link
-      to={to}
-      className="block w-full bg-white/80 backdrop-blur rounded-2xl px-4 py-4 shadow-[0_10px_28px_rgba(0,0,0,0.08)] border border-white/70 transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-    >
-      <div className="flex gap-4 items-stretch">
-        <div className="flex-1">
-          <div className="text-[13px] font-semibold text-emerald-700 mb-1">{tag}</div>
-          <div className="text-xl font-extrabold text-neutral-800 mb-2 leading-snug">{title}</div>
-          <div className="text-neutral-600 text-[14px]">{desc}</div>
-        </div>
-        <div className="w-28 h-24 shrink-0 rounded-xl overflow-hidden ring-4 ring-white/60 self-center">
-          <img src={image} alt="" className="w-full h-full object-cover" />
-        </div>
-      </div>
-    </Link>
-  );
-}
 
 /* ---------------- Page ---------------- */
 export default function ParentHome() {
   const { t } = useTranslation();
 
   return (
-    <GradientShell backgroundImage={globalBg}>
-      <div className="w-full min-h-[100dvh] flex justify-center">
-        {/* Single-column layout on ALL sizes; footer handled by ParentTabSpacer + BottomTabBar */}
+    <ParentShell title={t("parent.home.title", "Home")} showBack={false} bgImage={globalBg}>
+      <div className="w-full flex justify-center">
         <section className="relative w-full max-w-[520px] px-4 pt-6 mx-auto space-y-6">
           <h1 className="text-3xl font-extrabold text-neutral-800 text-center">
-            {t("parent.home.title")}
+            {t("parent.home.title", "Home")}
           </h1>
-
 
           {/* Activities */}
           <section>
             <h2 className="text-xl font-extrabold text-neutral-800 mb-3">
-              {t("parent.home.activities")}
+              {t("parent.home.activities", "Aktivitäten")}
             </h2>
             <div className="space-y-3">
               {ACTIVITIES.slice(0, 2).map((a, i) => (
@@ -117,17 +99,11 @@ export default function ParentHome() {
           {/* My Family */}
           <section>
             <h2 className="text-xl font-extrabold text-neutral-800 mb-4">
-              {t("parent.home.myFamily")}
+              {t("parent.home.myFamily", "Meine Familie")}
             </h2>
             <div className="flex items-start justify-center gap-8">
               {CHILDREN.map((c) => (
-                <ChildBubble
-                  key={c.id}
-                  to={`/parent/myfamily/student/${c.id}`}
-                  avatar={c.avatar}
-                  name={c.name}
-                  meta={c.meta}
-                />
+                <ChildBubble key={c.id} to={`/parent/myfamily/student/${c.id}`} avatar={c.avatar} name={c.name} meta={c.meta} />
               ))}
             </div>
             <hr className="mt-6 border-0 h-px bg-neutral-300/60" />
@@ -136,20 +112,21 @@ export default function ParentHome() {
           {/* News & Insights */}
           <section className="space-y-4">
             <h2 className="text-xl font-extrabold text-neutral-800">
-              {t("parent.home.newsInsights")}
+              {t("parent.home.newsInsights", "Neuigkeiten & Einblicke")}
             </h2>
             {NEWS.map((n) => (
-              <NewsCard key={n.id} to="/parent/communications/news" {...n} />
+              <ParentNewsCard
+                key={n.id}
+                to="/parent/communications/news"
+                badge={n.tag}
+                title={n.title}
+                excerpt={n.desc}
+                image={n.image}
+              />
             ))}
           </section>
-
-          {/* Spacer so content never hides behind the footer */}
-          <ParentTabSpacer />
-
-          {/* Footer tab bar (mobile: fixed; desktop mockup: absolute inside frame) */}
-          <BottomTabBar />
         </section>
       </div>
-    </GradientShell>
+    </ParentShell>
   );
 }

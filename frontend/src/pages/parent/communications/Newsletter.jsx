@@ -26,8 +26,10 @@ import {
   EyeOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import GradientShell from "@/components/GradientShell";
-import BottomTabBarDE from "@/components/BottomTabBarDE";
+
+import BottomTabBar from "@/components/parent/BottomTabBar";
+import ParentSpaceBar from "@/components/parent/ParentSpaceBar";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 
 const { Title, Text } = Typography;
 
@@ -127,7 +129,11 @@ export default function Newsletter() {
       key: "actions",
       width: 120,
       render: (_, r) => (
-        <Button size="small" icon={<EyeOutlined />} onClick={() => message.info(`Open issue: ${r.id}`)}>
+        <Button
+          size="small"
+          icon={<EyeOutlined />}
+          onClick={() => message.info(`Open issue: ${r.id}`)}
+        >
           Read
         </Button>
       ),
@@ -143,231 +149,269 @@ export default function Newsletter() {
   };
 
   return (
-    <GradientShell>
-      {/* page padding; extra bottom space for mobile bottom tabs */}
-      <div className="p-4 md:p-6 space-y-6 pb-24 md:pb-6">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-          <div>
-            <Title level={2} className="!m-0">
-              Newsletter
-            </Title>
-            <p className="text-gray-600 m-0">
-              Manage your subscription, topics, and read past issues.
-            </p>
-          </div>
-          <Button icon={<ReloadOutlined />} onClick={refresh}>
-            Refresh
-          </Button>
-        </div>
-
-        {/* Preferences */}
-        <Card className="rounded-2xl shadow-sm">
-          <Row gutter={[16, 16]} align="middle">
-            <Col xs={24} md={12} lg={10}>
-              <div className="flex items-center gap-2">
-                <MailOutlined className="text-gray-500" />
-                <Text type="secondary">Delivery address</Text>
+    // Desktop mock container
+    <div className="relative mx-auto max-w-[720px] w-full lg:shadow-2xl lg:rounded-[32px] overflow-hidden">
+      <div
+        className="min-h-screen flex flex-col"
+        style={{
+          backgroundImage: `url(${globalBg})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          paddingTop: "env(safe-area-inset-top)",
+        }}
+      >
+        {/* Scrollable area; sticky bar lives inside this element */}
+        <main className="flex-1 overflow-y-auto">
+          {/* page padding; extra bottom space provided by ParentSpaceBar */}
+          <div className="p-4 md:p-6 space-y-6">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+              <div>
+                <Title level={2} className="!m-0">
+                  Newsletter
+                </Title>
+                <p className="text-gray-600 m-0">
+                  Manage your subscription, topics, and read past issues.
+                </p>
               </div>
-              <Input
-                className="mt-2 rounded-xl"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
-              />
-              <div className="mt-3 flex items-center gap-3">
-                <Text>Status:</Text>
-                {subscribed ? (
-                  <Badge color="#6D8F00" text="Subscribed" />
-                ) : (
-                  <Badge color="#f5222d" text="Unsubscribed" />
-                )}
-                <Switch
-                  checked={subscribed}
-                  onChange={setSubscribed}
-                  checkedChildren="On"
-                  unCheckedChildren="Off"
-                />
-              </div>
-            </Col>
-
-            <Col xs={24} md={12} lg={8}>
-              <div className="flex items-center gap-2">
-                <ScheduleOutlined className="text-gray-500" />
-                <Text type="secondary">Frequency</Text>
-              </div>
-              <div className="mt-2 overflow-x-auto">
-                <Segmented
-                  value={frequency}
-                  onChange={setFrequency}
-                  options={[
-                    { label: "Weekly", value: "weekly" },
-                    { label: "Monthly", value: "monthly" },
-                    { label: "Only updates", value: "only_updates" },
-                  ]}
-                  size="large"
-                />
-              </div>
-              <div className="mt-3">
-                <Text type="secondary">Topics</Text>
-                <Checkbox.Group
-                  className="block mt-2"
-                  value={topics}
-                  onChange={(v) => setTopics(v)}
-                >
-                  <Space direction="vertical">
-                    <Checkbox value="reading">Reading & language</Checkbox>
-                    <Checkbox value="math">Math & logic</Checkbox>
-                    <Checkbox value="science">Science & nature</Checkbox>
-                    <Checkbox value="parenting">Parenting tips</Checkbox>
-                  </Space>
-                </Checkbox.Group>
-              </div>
-            </Col>
-
-            <Col xs={24} lg={6}>
-              <div className="bg-white/70 rounded-2xl p-3 border">
-                <div className="font-semibold mb-2">Automations</div>
-                <Space direction="vertical" className="w-full">
-                  <div className="flex items-center justify-between">
-                    <span>Weekly digest</span>
-                    <Switch checked={autoWeeklyDigest} onChange={setAutoWeeklyDigest} />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Activity summary</span>
-                    <Switch checked={autoActivitySummary} onChange={setAutoActivitySummary} />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Product updates</span>
-                    <Switch checked={autoProductNews} onChange={setAutoProductNews} />
-                  </div>
-                </Space>
-              </div>
-
-              <Button
-                type="primary"
-                size="large"
-                className="mt-3 w-full h-11 rounded-full bg-[#C7D425] text-neutral-900 border-none hover:!bg-[#b8c61d]"
-                icon={<SendOutlined />}
-                onClick={save}
-              >
-                Save Preferences
+              <Button icon={<ReloadOutlined />} onClick={refresh}>
+                Refresh
               </Button>
-            </Col>
-          </Row>
-        </Card>
+            </div>
 
-        {/* Latest issue (hero) */}
-        <Card className="rounded-2xl shadow-sm">
-          <Row gutter={[16, 16]} align="middle">
-            <Col xs={24} md={10}>
-              <img
-                src={ISSUES[0].image}
-                alt={ISSUES[0].title}
-                className="w-full h-48 md:h-56 object-cover rounded-xl"
-              />
-            </Col>
-            <Col xs={24} md={14}>
-              <div className="flex items-center gap-2">
-                <Tag color="blue">Latest</Tag>
-                <Text type="secondary">{dayjs(ISSUES[0].sent_at).format("MMM D, YYYY")}</Text>
-              </div>
-              <h3 className="text-xl md:text-2xl font-extrabold mt-1">{ISSUES[0].title}</h3>
-              <p className="text-gray-600">{ISSUES[0].excerpt}</p>
-              <Space wrap>
-                {ISSUES[0].tags.map((t) => (
-                  <Tag key={t}>{t}</Tag>
-                ))}
-              </Space>
-              <div className="mt-3">
-                <Button type="primary" icon={<EyeOutlined />} onClick={() => message.info("Open latest issue")}>
-                  Read issue
-                </Button>
-              </div>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* Search & lists */}
-        <Card className="rounded-2xl shadow-sm">
-          <Row gutter={[12, 12]} align="middle">
-            <Col xs={24} md={12} lg={10}>
-              <Input
-                allowClear
-                prefix={<MailOutlined />}
-                placeholder="Search past issues by title, tag, or summary"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="rounded-xl"
-              />
-            </Col>
-          </Row>
-        </Card>
-
-        {/* Mobile list */}
-        <div className="mobile-only">
-          {filteredIssues.length === 0 ? (
+            {/* Preferences */}
             <Card className="rounded-2xl shadow-sm">
-              <Empty description="No issues found." />
-            </Card>
-          ) : (
-            <List
-              dataSource={filteredIssues}
-              renderItem={(i) => (
-                <Card className="rounded-2xl shadow-sm mb-3">
-                  <div className="flex gap-3">
-                    <img
-                      src={i.image}
-                      alt={i.title}
-                      className="w-24 h-24 rounded-lg object-cover"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Text type="secondary" className="text-xs">
-                          {dayjs(i.sent_at).format("MMM D, YYYY")}
-                        </Text>
-                        <Space size={4} wrap>
-                          {i.tags.map((t) => (
-                            <Tag key={t}>{t}</Tag>
-                          ))}
-                        </Space>
-                      </div>
-                      <div className="font-semibold mt-1">{i.title}</div>
-                      <div className="text-gray-600 text-sm">{i.excerpt}</div>
-                      <div className="mt-2">
-                        <Button size="small" icon={<EyeOutlined />} onClick={() => message.info(`Open: ${i.id}`)}>
-                          Read
-                        </Button>
-                      </div>
-                    </div>
+              <Row gutter={[16, 16]} align="middle">
+                <Col xs={24} md={12} lg={10}>
+                  <div className="flex items-center gap-2">
+                    <MailOutlined className="text-gray-500" />
+                    <Text type="secondary">Delivery address</Text>
                   </div>
+                  <Input
+                    className="mt-2 rounded-xl"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="your@email.com"
+                  />
+                  <div className="mt-3 flex items-center gap-3">
+                    <Text>Status:</Text>
+                    {subscribed ? (
+                      <Badge color="#6D8F00" text="Subscribed" />
+                    ) : (
+                      <Badge color="#f5222d" text="Unsubscribed" />
+                    )}
+                    <Switch
+                      checked={subscribed}
+                      onChange={setSubscribed}
+                      checkedChildren="On"
+                      unCheckedChildren="Off"
+                    />
+                  </div>
+                </Col>
+
+                <Col xs={24} md={12} lg={8}>
+                  <div className="flex items-center gap-2">
+                    <ScheduleOutlined className="text-gray-500" />
+                    <Text type="secondary">Frequency</Text>
+                  </div>
+                  <div className="mt-2 overflow-x-auto">
+                    <Segmented
+                      value={frequency}
+                      onChange={setFrequency}
+                      options={[
+                        { label: "Weekly", value: "weekly" },
+                        { label: "Monthly", value: "monthly" },
+                        { label: "Only updates", value: "only_updates" },
+                      ]}
+                      size="large"
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <Text type="secondary">Topics</Text>
+                    <Checkbox.Group
+                      className="block mt-2"
+                      value={topics}
+                      onChange={(v) => setTopics(v)}
+                    >
+                      <Space direction="vertical">
+                        <Checkbox value="reading">Reading & language</Checkbox>
+                        <Checkbox value="math">Math & logic</Checkbox>
+                        <Checkbox value="science">Science & nature</Checkbox>
+                        <Checkbox value="parenting">Parenting tips</Checkbox>
+                      </Space>
+                    </Checkbox.Group>
+                  </div>
+                </Col>
+
+                <Col xs={24} lg={6}>
+                  <div className="bg-white/70 rounded-2xl p-3 border">
+                    <div className="font-semibold mb-2">Automations</div>
+                    <Space direction="vertical" className="w-full">
+                      <div className="flex items-center justify-between">
+                        <span>Weekly digest</span>
+                        <Switch
+                          checked={autoWeeklyDigest}
+                          onChange={setAutoWeeklyDigest}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Activity summary</span>
+                        <Switch
+                          checked={autoActivitySummary}
+                          onChange={setAutoActivitySummary}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Product updates</span>
+                        <Switch
+                          checked={autoProductNews}
+                          onChange={setAutoProductNews}
+                        />
+                      </div>
+                    </Space>
+                  </div>
+
+                  <Button
+                    type="primary"
+                    size="large"
+                    className="mt-3 w-full h-11 rounded-full bg-[#C7D425] text-neutral-900 border-none hover:!bg-[#b8c61d]"
+                    icon={<SendOutlined />}
+                    onClick={save}
+                  >
+                    Save Preferences
+                  </Button>
+                </Col>
+              </Row>
+            </Card>
+
+            {/* Latest issue (hero) */}
+            <Card className="rounded-2xl shadow-sm">
+              <Row gutter={[16, 16]} align="middle">
+                <Col xs={24} md={10}>
+                  <img
+                    src={ISSUES[0].image}
+                    alt={ISSUES[0].title}
+                    className="w-full h-48 md:h-56 object-cover rounded-xl"
+                  />
+                </Col>
+                <Col xs={24} md={14}>
+                  <div className="flex items-center gap-2">
+                    <Tag color="blue">Latest</Tag>
+                    <Text type="secondary">
+                      {dayjs(ISSUES[0].sent_at).format("MMM D, YYYY")}
+                    </Text>
+                  </div>
+                  <h3 className="text-xl md:text-2xl font-extrabold mt-1">
+                    {ISSUES[0].title}
+                  </h3>
+                  <p className="text-gray-600">{ISSUES[0].excerpt}</p>
+                  <Space wrap>
+                    {ISSUES[0].tags.map((t) => (
+                      <Tag key={t}>{t}</Tag>
+                    ))}
+                  </Space>
+                  <div className="mt-3">
+                    <Button
+                      type="primary"
+                      icon={<EyeOutlined />}
+                      onClick={() => message.info("Open latest issue")}
+                    >
+                      Read issue
+                    </Button>
+                  </div>
+                </Col>
+              </Row>
+            </Card>
+
+            {/* Search */}
+            <Card className="rounded-2xl shadow-sm">
+              <Row gutter={[12, 12]} align="middle">
+                <Col xs={24} md={12} lg={10}>
+                  <Input
+                    allowClear
+                    prefix={<MailOutlined />}
+                    placeholder="Search past issues by title, tag, or summary"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="rounded-xl"
+                  />
+                </Col>
+              </Row>
+            </Card>
+
+            {/* Mobile list */}
+            <div className="block md:hidden">
+              {filteredIssues.length === 0 ? (
+                <Card className="rounded-2xl shadow-sm">
+                  <Empty description="No issues found." />
                 </Card>
+              ) : (
+                <List
+                  dataSource={filteredIssues}
+                  renderItem={(i) => (
+                    <Card className="rounded-2xl shadow-sm mb-3">
+                      <div className="flex gap-3">
+                        <img
+                          src={i.image}
+                          alt={i.title}
+                          className="w-24 h-24 rounded-lg object-cover"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Text type="secondary" className="text-xs">
+                              {dayjs(i.sent_at).format("MMM D, YYYY")}
+                            </Text>
+                            <Space size={4} wrap>
+                              {i.tags.map((t) => (
+                                <Tag key={t}>{t}</Tag>
+                              ))}
+                            </Space>
+                          </div>
+                          <div className="font-semibold mt-1">{i.title}</div>
+                          <div className="text-gray-600 text-sm">
+                            {i.excerpt}
+                          </div>
+                          <div className="mt-2">
+                            <Button
+                              size="small"
+                              icon={<EyeOutlined />}
+                              onClick={() => message.info(`Open: ${i.id}`)}
+                            >
+                              Read
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  )}
+                />
               )}
-            />
-          )}
-        </div>
+            </div>
 
-        {/* Desktop table */}
-        <div className="desktop-only">
-          <Card className="rounded-2xl shadow-sm">
-            {filteredIssues.length === 0 ? (
-              <Empty description="No issues found." />
-            ) : (
-              <Table
-                rowKey="id"
-                columns={columns}
-                dataSource={filteredIssues}
-                pagination={{ pageSize: 6, showSizeChanger: false }}
-              />
-            )}
-          </Card>
-        </div>
-      </div>
+            {/* Desktop table */}
+            <div className="hidden md:block">
+              <Card className="rounded-2xl shadow-sm">
+                {filteredIssues.length === 0 ? (
+                  <Empty description="No issues found." />
+                ) : (
+                  <Table
+                    rowKey="id"
+                    columns={columns}
+                    dataSource={filteredIssues}
+                    pagination={{ pageSize: 6, showSizeChanger: false }}
+                  />
+                )}
+              </Card>
+            </div>
 
-      {/* Mobile bottom tabs */}
-      <div className="md:hidden">
-        <BottomTabBarDE />
+            {/* Space so content never hides behind the sticky bottom tabs */}
+            <ParentSpaceBar />
+          </div>
+
+          {/* Sticky bottom nav inside the scroller */}
+          <BottomTabBar />
+        </main>
       </div>
-    </GradientShell>
+    </div>
   );
 }

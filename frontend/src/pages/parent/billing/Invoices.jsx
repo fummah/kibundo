@@ -1,6 +1,6 @@
+// src/pages/parent/billing/Invoices.jsx
 import { useMemo, useState } from "react";
 import {
-  Badge,
   Button,
   Card,
   Col,
@@ -25,8 +25,10 @@ import {
   CreditCardOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import GradientShell from "@/components/GradientShell";
-import BottomTabBarDE from "@/components/BottomTabBarDE";
+
+import DeviceFrame from "@/components/student/mobile/DeviceFrame";
+import BottomTabBar, { ParentTabSpacer } from "@/components/parent/BottomTabBar";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 
 const { Title, Text } = Typography;
 
@@ -56,9 +58,7 @@ const DUMMY = [
     amount: 29.99,
     currency: "EUR",
     children: ["Name Child one"],
-    items: [
-      { name: "Monthly Family plan", qty: 1, unit: 29.99, total: 29.99 },
-    ],
+    items: [{ name: "Monthly Family plan", qty: 1, unit: 29.99, total: 29.99 }],
   },
   {
     id: "INV-2025-000",
@@ -147,7 +147,6 @@ export default function Invoices() {
   const [active, setActive] = useState(null);
 
   const refresh = () => {
-    // Using dummy data only; hook left for future API.
     message.success("Invoices refreshed");
   };
 
@@ -158,8 +157,7 @@ export default function Invoices() {
         !q ||
         inv.id.toLowerCase().includes(q) ||
         inv.children.join(", ").toLowerCase().includes(q);
-      const bySeg =
-        seg === "all" ? true : String(inv.status).toLowerCase() === seg;
+      const bySeg = seg === "all" ? true : String(inv.status).toLowerCase() === seg;
       const byRange =
         !range ||
         (dayjs(inv.date).isAfter(range[0].startOf("day")) &&
@@ -232,11 +230,7 @@ export default function Invoices() {
           >
             View
           </Button>
-          <Button
-            size="small"
-            icon={<DownloadOutlined />}
-            onClick={() => openPrintable(rec)}
-          >
+          <Button size="small" icon={<DownloadOutlined />} onClick={() => openPrintable(rec)}>
             Download
           </Button>
           {["due", "overdue"].includes(rec.status) && (
@@ -255,150 +249,167 @@ export default function Invoices() {
   ];
 
   return (
-    <GradientShell>
-      {/* page header */}
-      <div className="p-4 md:p-6 space-y-6 pb-24 md:pb-6">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-          <div>
-            <Title level={2} className="!m-0">
-              Invoices
-            </Title>
-            <p className="text-gray-600 m-0">Your billing history and payments.</p>
-          </div>
-          <Button icon={<ReloadOutlined />} onClick={refresh}>
-            Refresh
-          </Button>
-        </div>
-
-        {/* KPI cards */}
-        <Row gutter={[16, 16]}>
-          <Col xs={24} md={8}>
-            <Card className="rounded-2xl shadow-sm">
-              <div className="text-gray-500 text-sm">Outstanding</div>
-              <div className="text-2xl font-extrabold text-red-500">
-                {money(kpis.outstanding)}
+    <DeviceFrame showFooterChat={false} className="bg-neutral-100">
+      <div
+        className="min-h-screen flex flex-col"
+        style={{
+          backgroundImage: `url(${globalBg})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          paddingTop: "env(safe-area-inset-top)",
+        }}
+      >
+        {/* Scrollable content (bottom tab bar lives inside this element) */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-4 md:p-6 space-y-6 pb-6">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+              <div>
+                <Title level={2} className="!m-0">
+                  Invoices
+                </Title>
+                <p className="text-gray-600 m-0">Your billing history and payments.</p>
               </div>
-            </Card>
-          </Col>
-          <Col xs={24} md={8}>
-            <Card className="rounded-2xl shadow-sm">
-              <div className="text-gray-500 text-sm">Paid (Last 30 days)</div>
-              <div className="text-2xl font-extrabold text-green-600">
-                {money(kpis.last30paid)}
-              </div>
-            </Card>
-          </Col>
-          <Col xs={24} md={8}>
-            <Card className="rounded-2xl shadow-sm">
-              <div className="text-gray-500 text-sm">Invoices</div>
-              <div className="text-2xl font-extrabold">{kpis.count}</div>
-            </Card>
-          </Col>
-        </Row>
+              <Button icon={<ReloadOutlined />} onClick={refresh}>
+                Refresh
+              </Button>
+            </div>
 
-        {/* Filters */}
-        <Card className="rounded-2xl shadow-sm">
-          <Row gutter={[12, 12]} align="middle">
-            <Col xs={24} md={10}>
-              <Input
-                allowClear
-                prefix={<SearchOutlined />}
-                placeholder="Search invoice # or child name"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="rounded-xl"
-              />
-            </Col>
-            <Col xs={24} md={8}>
-              <DatePicker.RangePicker
-                className="w-full rounded-xl"
-                value={range}
-                onChange={(vals) => setRange(vals && vals[0] && vals[1] ? vals : null)}
-              />
-            </Col>
-            <Col xs={24} md={6} className="md:flex md:justify-end">
-              <Segmented
-                options={[
-                  { label: "All", value: "all" },
-                  { label: "Due", value: "due" },
-                  { label: "Paid", value: "paid" },
-                  { label: "Overdue", value: "overdue" },
-                ]}
-                value={seg}
-                onChange={setSeg}
-              />
-            </Col>
-          </Row>
-        </Card>
-
-        {/* Mobile list */}
-        <div className="mobile-only">
-          {filtered.length === 0 ? (
-            <Card className="rounded-2xl shadow-sm">
-              <Empty description="No invoices match your filters." />
-            </Card>
-          ) : (
-            <List
-              dataSource={filtered}
-              renderItem={(inv) => (
-                <Card className="rounded-2xl shadow-sm mb-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold">{inv.id}</div>
-                      <div className="text-gray-500 text-sm">
-                        {dayjs(inv.date).format("MMM D, YYYY")} · Due{" "}
-                        {dayjs(inv.due_date).format("MMM D")}
-                      </div>
-                      <div className="text-gray-600 text-sm mt-1">
-                        {inv.children.join(", ")}
-                      </div>
-                      <div className="mt-2">{statusTag(inv.status)}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold">{money(inv.amount)}</div>
-                      <Space className="mt-2">
-                        <Button
-                          size="small"
-                          icon={<EyeOutlined />}
-                          onClick={() => {
-                            setActive(inv);
-                            setOpen(true);
-                          }}
-                        />
-                        <Button
-                          size="small"
-                          icon={<DownloadOutlined />}
-                          onClick={() => openPrintable(inv)}
-                        />
-                      </Space>
-                    </div>
+            {/* KPI cards */}
+            <Row gutter={[16, 16]}>
+              <Col xs={24} md={8}>
+                <Card className="rounded-2xl shadow-sm">
+                  <div className="text-gray-500 text-sm">Outstanding</div>
+                  <div className="text-2xl font-extrabold text-red-500">
+                    {money(kpis.outstanding)}
                   </div>
                 </Card>
+              </Col>
+              <Col xs={24} md={8}>
+                <Card className="rounded-2xl shadow-sm">
+                  <div className="text-gray-500 text-sm">Paid (Last 30 days)</div>
+                  <div className="text-2xl font-extrabold text-green-600">
+                    {money(kpis.last30paid)}
+                  </div>
+                </Card>
+              </Col>
+              <Col xs={24} md={8}>
+                <Card className="rounded-2xl shadow-sm">
+                  <div className="text-gray-500 text-sm">Invoices</div>
+                  <div className="text-2xl font-extrabold">{kpis.count}</div>
+                </Card>
+              </Col>
+            </Row>
+
+            {/* Filters */}
+            <Card className="rounded-2xl shadow-sm">
+              <Row gutter={[12, 12]} align="middle">
+                <Col xs={24} md={10}>
+                  <Input
+                    allowClear
+                    prefix={<SearchOutlined />}
+                    placeholder="Search invoice # or child name"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="rounded-xl"
+                  />
+                </Col>
+                <Col xs={24} md={8}>
+                  <DatePicker.RangePicker
+                    className="w-full rounded-xl"
+                    value={range}
+                    onChange={(vals) => setRange(vals && vals[0] && vals[1] ? vals : null)}
+                  />
+                </Col>
+                <Col xs={24} md={6} className="md:flex md:justify-end">
+                  <Segmented
+                    options={[
+                      { label: "All", value: "all" },
+                      { label: "Due", value: "due" },
+                      { label: "Paid", value: "paid" },
+                      { label: "Overdue", value: "overdue" },
+                    ]}
+                    value={seg}
+                    onChange={setSeg}
+                  />
+                </Col>
+              </Row>
+            </Card>
+
+            {/* Mobile list */}
+            <div className="mobile-only">
+              {filtered.length === 0 ? (
+                <Card className="rounded-2xl shadow-sm">
+                  <Empty description="No invoices match your filters." />
+                </Card>
+              ) : (
+                <List
+                  dataSource={filtered}
+                  renderItem={(inv) => (
+                    <Card className="rounded-2xl shadow-sm mb-3" key={inv.id}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold">{inv.id}</div>
+                          <div className="text-gray-500 text-sm">
+                            {dayjs(inv.date).format("MMM D, YYYY")} · Due{" "}
+                            {dayjs(inv.due_date).format("MMM D")}
+                          </div>
+                          <div className="text-gray-600 text-sm mt-1">
+                            {inv.children.join(", ")}
+                          </div>
+                          <div className="mt-2">{statusTag(inv.status)}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold">{money(inv.amount)}</div>
+                          <Space className="mt-2">
+                            <Button
+                              size="small"
+                              icon={<EyeOutlined />}
+                              onClick={() => {
+                                setActive(inv);
+                                setOpen(true);
+                              }}
+                            />
+                            <Button
+                              size="small"
+                              icon={<DownloadOutlined />}
+                              onClick={() => openPrintable(inv)}
+                            />
+                          </Space>
+                        </div>
+                      </div>
+                    </Card>
+                  )}
+                />
               )}
-            />
-          )}
-        </div>
+            </div>
 
-        {/* Desktop table */}
-        <div className="desktop-only">
-          <Card className="rounded-2xl shadow-sm">
-            {filtered.length === 0 ? (
-              <Empty description="No invoices match your filters." />
-            ) : (
-              <Table
-                rowKey="id"
-                columns={columns}
-                dataSource={filtered}
-                pagination={{ pageSize: 8, showSizeChanger: false }}
-              />
-            )}
-          </Card>
-        </div>
-      </div>
+            {/* Desktop table */}
+            <div className="desktop-only">
+              <Card className="rounded-2xl shadow-sm">
+                {filtered.length === 0 ? (
+                  <Empty description="No invoices match your filters." />
+                ) : (
+                  <Table
+                    rowKey="id"
+                    columns={columns}
+                    dataSource={filtered}
+                    pagination={{ pageSize: 8, showSizeChanger: false }}
+                  />
+                )}
+              </Card>
+            </div>
 
-      {/* mobile bottom tabs */}
-      <div className="md:hidden">
-        <BottomTabBarDE />
+            {/* Give some breathing room before the bottom bar */}
+            <div className="h-6" />
+          </div>
+
+          {/* Prevent content from being hidden by the bottom nav */}
+          <ParentTabSpacer />
+
+          {/* Bottom nav inside the scroll container */}
+          <BottomTabBar />
+        </main>
       </div>
 
       {/* Drawer details */}
@@ -411,12 +422,8 @@ export default function Invoices() {
         {!active ? null : (
           <>
             <Space direction="vertical" size={4} className="mb-3">
-              <Text type="secondary">
-                Date: {dayjs(active.date).format("YYYY-MM-DD")}
-              </Text>
-              <Text type="secondary">
-                Due: {dayjs(active.due_date).format("YYYY-MM-DD")}
-              </Text>
+              <Text type="secondary">Date: {dayjs(active.date).format("YYYY-MM-DD")}</Text>
+              <Text type="secondary">Due: {dayjs(active.due_date).format("YYYY-MM-DD")}</Text>
               <div>Children: {active.children.join(", ")}</div>
               <div>Status: {statusTag(active.status)}</div>
             </Space>
@@ -467,6 +474,6 @@ export default function Invoices() {
           </>
         )}
       </Drawer>
-    </GradientShell>
+    </DeviceFrame>
   );
 }

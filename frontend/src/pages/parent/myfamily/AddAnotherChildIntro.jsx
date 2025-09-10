@@ -1,4 +1,4 @@
-// src/pages/parent/myfamily/AddStudentIntro.jsx
+// src/pages/parent/myfamily/AddAnotherChildIntro.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { PlusOutlined } from "@ant-design/icons";
@@ -8,7 +8,7 @@ import DeviceFrame from "@/components/student/mobile/DeviceFrame";
 import HeroBackdrop from "@/components/parent/HeroBackdrop";
 import BottomTabBar, { ParentTabSpacer } from "@/components/parent/BottomTabBar";
 
-export default function AddStudentIntro() {
+export default function AddAnotherChildIntro() {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
@@ -17,29 +17,38 @@ export default function AddStudentIntro() {
       <HeroBackdrop
         showBuddy
         buddySize={280}
-        buddyTop={76}             // leave room for header
+        buddyTop={76}            // space for the “Los geht's” header
         headerTop={20}
-        contentClassName="pb-24"  // space for the bottom bar
+        contentPadTop={680}      // keep paragraphs below mascot
+        contentClassName="pb-24"
         header={
-          <h2 className="text-center text-[28px] font-extrabold text-neutral-800">
+          <h2 className="text-center text-[16px] font-extrabold text-neutral-800">
             {t("parent.addChild.intro.kicker", "Los geht‘s")}
           </h2>
         }
       >
-        {/* Headline (below buddy) */}
+        {/* Headline */}
         <h1 className="mt-2 text-center font-extrabold leading-tight text-[28px] md:text-[34px] text-lime-700">
-          {t("parent.addChild.intro.headline", "Lege jetzt einen Account für Dein Kind an")}
+          {t("parent.addChild.more.headline", "Weiteres Kind anlegen")}
         </h1>
 
         {/* Copy (16px) */}
-        <p className="mx-auto mt-4 max-w-[640px] text-center text-[16px] text-neutral-600">
-          {t(
-            "parent.addChild.intro.copy",
-            "Damit dein Kind die App selbstständig und sicher nutzen kann, legst du jetzt den Kinderaccount an."
-          )}
-        </p>
+        <div className="mx-auto mt-3 max-w-[640px] text-center text-[16px] text-neutral-600 space-y-1">
+          <p>
+            {t(
+              "parent.addChild.more.copy1",
+              "Du kannst für mehrere Kinder Konten hinzufügen."
+            )}
+          </p>
+          <p>
+            {t(
+              "parent.addChild.more.copy2",
+              "Das Hinzufügen ist jederzeit auch nachträglich möglich. Für jedes weitere Kind erhältst du eine Vergünstigung."
+            )}
+          </p>
+        </div>
 
-        {/* CTA */}
+        {/* Primary CTA (card style) */}
         <div className="mt-7 flex justify-center">
           <button
             type="button"
@@ -57,15 +66,18 @@ export default function AddStudentIntro() {
           </button>
         </div>
 
-        {/* DSGVO note (16px) */}
-        <p className="mx-auto mt-6 max-w-[640px] text-center text-[16px] leading-snug text-neutral-500">
-          {t(
-            "parent.addChild.intro.gdpr",
-            "DSGV Konform. Die Daten liegen sicher verschlüsselt auf einem Server in Deutschland und werden niemals ohne ihre ausdrückliche Zustimmung an Dritte weitergegeben."
-          )}
-        </p>
+        {/* Secondary CTA (Skip) */}
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            onClick={() => navigate("/parent/home")}
+            className="w-full max-w-[420px] h-12 rounded-full bg-[#ff7a1a] text-white font-semibold shadow-[0_10px_24px_rgba(255,122,26,0.35)] active:scale-[0.995] transition hover:bg-[#e86d18]"
+          >
+            {t("parent.addChild.more.skip", "Skip")}
+          </button>
+        </div>
 
-        {/* Spacer + Bottom Tab Bar */}
+        {/* Spacer + Bottom tabs */}
         <ParentTabSpacer />
         <BottomTabBar />
       </HeroBackdrop>

@@ -1,4 +1,3 @@
-// src/pages/parent/myfamily/AddStudentIntro.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { PlusOutlined } from "@ant-design/icons";
@@ -17,9 +16,9 @@ export default function AddStudentIntro() {
       <HeroBackdrop
         showBuddy
         buddySize={280}
-        buddyTop={76}             // leave room for header
+        buddyTop={76}             // lower the buddy a touch to give header room
         headerTop={20}
-        contentClassName="pb-24"  // space for the bottom bar
+        contentClassName="pb-24" // room for the bottom bar
         header={
           <h2 className="text-center text-[28px] font-extrabold text-neutral-800">
             {t("parent.addChild.intro.kicker", "Los geht‘s")}
@@ -31,8 +30,8 @@ export default function AddStudentIntro() {
           {t("parent.addChild.intro.headline", "Lege jetzt einen Account für Dein Kind an")}
         </h1>
 
-        {/* Copy (16px) */}
-        <p className="mx-auto mt-4 max-w-[640px] text-center text-[16px] text-neutral-600">
+        {/* Copy */}
+        <p className="mx-auto mt-4 max-w-[640px] text-center text-[15px] md:text-[16px] text-neutral-600">
           {t(
             "parent.addChild.intro.copy",
             "Damit dein Kind die App selbstständig und sicher nutzen kann, legst du jetzt den Kinderaccount an."
@@ -57,7 +56,7 @@ export default function AddStudentIntro() {
           </button>
         </div>
 
-        {/* DSGVO note (16px) */}
+        {/* DSGVO note */}
         <p className="mx-auto mt-6 max-w-[640px] text-center text-[16px] leading-snug text-neutral-500">
           {t(
             "parent.addChild.intro.gdpr",
@@ -67,7 +66,7 @@ export default function AddStudentIntro() {
 
         {/* Spacer + Bottom Tab Bar */}
         <ParentTabSpacer />
-        <BottomTabBar />
+     <BottomTabBar />
       </HeroBackdrop>
     </DeviceFrame>
   );

@@ -1,119 +1,105 @@
 // src/routes/ParentRoutes.jsx
 import React from "react";
 import { Route, Navigate, Outlet } from "react-router-dom";
+import { ROLES } from "@/utils/roleMapper";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
-import MobileShell from "@/components/student/mobile/MobileShell.jsx";
 import { FLAGS } from "@/config/featureFlags.js";
 
-/* Home */
-import ParentHome from "@/pages/parent/ParentHome.jsx";
+import ParentAppProvider from "@/context/ParentAppProvider.jsx";
 
-/* My Family */
+/* Pages */
+import ParentHome from "@/pages/parent/ParentHome.jsx";
 import MyFamily from "@/pages/parent/myfamily/MyFamily.jsx";
 import Activity from "@/pages/parent/myfamily/Activity.jsx";
 import ParentStudentDetail from "@/pages/parent/myfamily/ParentStudentDetail.jsx";
 import AddStudentFlow from "@/pages/parent/myfamily/AddStudentFlow";
-
-/* Learning (Resources behind flag; Scans removed) */
-// import Scans from "@/pages/parent/learning/Scans.jsx";
 import Resources from "@/pages/parent/learning/Resources.jsx";
-
-/* Billing */
 import BillingOverview from "@/pages/parent/billing/BillingOverview.jsx";
 import Subscriptions from "@/pages/parent/billing/Subscriptions.jsx";
 import Invoices from "@/pages/parent/billing/Invoices.jsx";
 import Coupons from "@/pages/parent/billing/Coupons.jsx";
-
-/* Communication */
-import Communications from "@/pages/parent/communications/Communications.jsx";
 import NewsFeed from "@/pages/parent/communications/NewsFeed.jsx";
 import NewsArticle from "@/pages/parent/communications/NewsArticle.jsx";
 import Newsletter from "@/pages/parent/communications/Newsletter.jsx";
 import Notifications from "@/pages/parent/communications/Notifications.jsx";
-
-/* Achievements */
 import AchievementsPage from "@/pages/parent/AchievementsPage";
-
-/* Feedback */
 import Tickets from "@/pages/parent/helpdesk/Tickets.jsx";
-
-/* Account */
 import Settings from "@/pages/parent/Settings.jsx";
 import AccountSelect from "@/components/parent/account/AccountSelect.jsx";
 
 export default function ParentRoutes() {
   return (
-    <Route
-      path="/parent"
-      element={
-        <ProtectedRoute allowedRoles={[4]}>
-          {/* The mockup wrapper — exposes one scroll container */}
-          <MobileShell variant="parent" lockWidth={520}>
+    <Route element={<ProtectedRoute allowedRoles={[ROLES.PARENT]} />}>
+      <Route
+        path="/parent"
+        element={
+          <ParentAppProvider>
             <Outlet />
-          </MobileShell>
-        </ProtectedRoute>
-      }
-    >
-      {/* Home */}
-      <Route index element={<ParentHome />} />
-      <Route path="home" element={<ParentHome />} />
-      <Route path="overview" element={<Navigate to="/parent/home" replace />} />
+          </ParentAppProvider>
+        }
+      >
+        {/* Home */}
+        <Route index element={<ParentHome />} />
+        <Route path="home" element={<ParentHome />} />
+        <Route path="overview" element={<Navigate to="/parent/home" replace />} />
 
-      {/* My Family */}
-      <Route path="myfamily/family" element={<MyFamily />} />
-      <Route path="myfamily/activity" element={<Activity />} />
-      <Route path="myfamily/student/:id" element={<ParentStudentDetail />} />
-      <Route
-        path="myfamily/add-student"
-        element={<Navigate to="/parent/myfamily/family?add-student=1" replace />}
-      />
-      <Route
-        path="myfamily/add"
-        element={<Navigate to="/parent/myfamily/family?add-student=1" replace />}
-      />
-      <Route path="myfamily/add-student-flow" element={<AddStudentFlow />} />
+        {/* My Family */}
+        <Route path="myfamily/family" element={<MyFamily />} />
+        <Route path="myfamily/activity" element={<Activity />} />
+        <Route path="myfamily/student/:id" element={<ParentStudentDetail />} />
+        {/* Open Add Student modal on the family page (matches ?add=1 in MyFamily.jsx) */}
+        <Route
+          path="myfamily/add-student"
+          element={<Navigate to="/parent/myfamily/family?add=1" replace />}
+        />
+        <Route
+          path="myfamily/add"
+          element={<Navigate to="/parent/myfamily/family?add=1" replace />}
+        />
+        <Route path="myfamily/add-student-flow" element={<AddStudentFlow />} />
 
-      {/* Learning (Parent) */}
-      <Route
-        path="learning/scans"
-        element={<Navigate to="/parent/myfamily/activity" replace />}
-      />
-      {FLAGS.parentResources && (
-        <Route path="learning/resources" element={<Resources />} />
-      )}
+        {/* Learning (Parent) — Scans removed, Resources behind flag */}
+        <Route
+          path="learning/scans"
+          element={<Navigate to="/parent/myfamily/activity" replace />}
+        />
+        {FLAGS.parentResources && (
+          <Route path="learning/resources" element={<Resources />} />
+        )}
 
-      {/* Achievements */}
-      <Route path="achievements" element={<AchievementsPage />} />
+        {/* Achievements */}
+        <Route path="achievements" element={<AchievementsPage />} />
 
-      {/* Billing */}
-      <Route path="billing/overview" element={<BillingOverview />} />
-      <Route path="billing/subscription" element={<Subscriptions />} />
-      <Route path="billing/invoices" element={<Invoices />} />
-      <Route path="billing/coupons" element={<Coupons />} />
+        {/* Billing */}
+        <Route path="billing/overview" element={<BillingOverview />} />
+        <Route path="billing/subscription" element={<Subscriptions />} />
+        <Route path="billing/invoices" element={<Invoices />} />
+        <Route path="billing/coupons" element={<Coupons />} />
 
-      {/* Communication */}
-      <Route path="communications" element={<Communications />} />
-      <Route path="communications/news">
-        <Route index element={<NewsFeed />} />
-        <Route path="preview/:id" element={<NewsArticle />} />
-        <Route path=":slug" element={<NewsArticle />} />
+        {/* Communications */}
+        <Route
+          path="communications"
+          element={<Navigate to="/parent/communications/news" replace />}
+        />
+        <Route path="communications/news">
+          <Route index element={<NewsFeed />} />
+          <Route path="preview/:id" element={<NewsArticle />} />
+          <Route path=":slug" element={<NewsArticle />} />
+        </Route>
+        <Route path="communications/newsletter" element={<Newsletter />} />
+        <Route path="communications/notifications" element={<Notifications />} />
+
+        {/* Feedback */}
+        <Route path="feedback" element={<Navigate to="/parent/feedback/tickets" replace />} />
+        <Route path="feedback/tickets" element={<Tickets />} />
+
+        {/* Account */}
+        <Route path="settings" element={<Settings />} />
+        <Route path="account" element={<AccountSelect />} />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/parent/home" replace />} />
       </Route>
-      <Route path="communications/newsletter" element={<Newsletter />} />
-      <Route path="communications/notifications" element={<Notifications />} />
-
-      {/* Feedback */}
-      <Route
-        path="feedback"
-        element={<Navigate to="/parent/feedback/tickets" replace />}
-      />
-      <Route path="feedback/tickets" element={<Tickets />} />
-
-      {/* Account */}
-      <Route path="settings" element={<Settings />} />
-      <Route path="account" element={<AccountSelect />} />
-
-      {/* Fallback */}
-      <Route path="*" element={<Navigate to="/parent/home" replace />} />
     </Route>
   );
 }
