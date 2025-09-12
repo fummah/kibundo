@@ -1,9 +1,13 @@
 // src/components/student/mobile/FooterChat.jsx
-import React from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import React, { useState } from "react";
+import { useLocation } from "react-router-dom";
+import { Drawer } from "antd";
 import { bottomChat } from "@/assets/mobile/tiles";
 
-/** Use at the bottom of long pages so content never hides behind the footer. */
+// import your chat layer
+import ChatLayer from "@/components/student/mobile/ChatLayer";
+
+/** Spacer so page content never hides behind footer. */
 export function ChatStripSpacer({ className = "" }) {
   return (
     <>
@@ -14,29 +18,26 @@ export function ChatStripSpacer({ className = "" }) {
         aria-hidden
       />
       {/* Desktop spacer for framed layout */}
-      <div className={["hidden md:block h-[72px]", className].join(" ")} aria-hidden />
+      <div
+        className={["hidden md:block h-[72px]", className].join(" ")}
+        aria-hidden
+      />
     </>
   );
 }
 
-/**
- * FooterChat
- * - Shows ONLY on routes in `includeOnRoutes`
- * - Hides on any route in `hideOnRoutes`
- * - Safe-area aware on mobile, absolute inside desktop device frame
- */
 export default function FooterChat({
-  to = "/student/chat",
   includeOnRoutes = ["/student/home", "/student/homework/start"],
   hideOnRoutes = ["/student/chat"],
   className = "",
 }) {
-  const navigate = useNavigate();
   const { pathname } = useLocation();
+  const [open, setOpen] = useState(false);
 
   const isHidden = hideOnRoutes.some((r) => pathname.startsWith(r));
   const isIncluded =
-    !includeOnRoutes?.length || includeOnRoutes.some((r) => pathname.startsWith(r));
+    !includeOnRoutes?.length ||
+    includeOnRoutes.some((r) => pathname.startsWith(r));
 
   if (isHidden || !isIncluded) return null;
 
@@ -52,11 +53,16 @@ export default function FooterChat({
       >
         <button
           type="button"
-          onClick={() => navigate(to)}
+          onClick={() => setOpen(true)}
           className="block w-full pointer-events-auto active:scale-[0.98] transition"
           aria-label="Chat öffnen"
         >
-          <img src={bottomChat} alt="Chat dock" className="w-full h-auto select-none" draggable={false} />
+          <img
+            src={bottomChat}
+            alt="Chat dock"
+            className="w-full h-auto select-none"
+            draggable={false}
+          />
         </button>
       </div>
 
@@ -69,13 +75,35 @@ export default function FooterChat({
       >
         <button
           type="button"
-          onClick={() => navigate(to)}
+          onClick={() => setOpen(true)}
           className="block w-full pointer-events-auto active:scale-[0.98] transition"
           aria-label="Chat öffnen"
         >
-          <img src={bottomChat} alt="Chat dock" className="w-full h-auto select-none" draggable={false} />
+          <img
+            src={bottomChat}
+            alt="Chat dock"
+            className="w-full h-auto select-none"
+            draggable={false}
+          />
         </button>
       </div>
+
+      {/* Drawer with ChatLayer */}
+      <Drawer
+        open={open}
+        onClose={() => setOpen(false)}
+        placement="bottom"
+        height="75%"
+        closable={false}
+        bodyStyle={{
+          borderTopLeftRadius: "1rem",
+          borderTopRightRadius: "1rem",
+          overflow: "hidden",
+          padding: 0,
+        }}
+      >
+        <ChatLayer onClose={() => setOpen(false)} />
+      </Drawer>
     </>
   );
 }

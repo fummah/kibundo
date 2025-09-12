@@ -1,22 +1,21 @@
-// src/pages/student/onboarding/WelcomeIntro.jsx
 import { useEffect, useState } from "react";
-import { Button } from "antd";
-import { Volume2 } from "lucide-react";
+import { Button, Typography } from "antd";
+import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import HomeRibbon from "@/components/student/mobile/HomeRibbon";
-import SettingsRibbon from "@/components/student/mobile/SettingsRibbon";
+
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
-import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
+import { markIntroSeen, markTourDone } from "./introFlags";
 
-/* Backgrounds */
-import globalBg from "../../../assets/backgrounds/global-bg.png";
-import intBack from "../../../assets/backgrounds/int-back.png";
+import globalBg from "@/assets/backgrounds/global-bg.png";
+import intBack from "@/assets/backgrounds/int-back.png";
+import buddyMascot from "@/assets/buddies/kibundo-buddy.png";
 
-/* Mascot (replace with your final file if you have one) */
-import buddyMascot from "../../../assets/buddies/kibundo-buddy.png";
+/* PNG icons */
+import chatAgentIcon from "@/assets/mobile/icons/chat-agent.png";
+import micIcon from "@/assets/mobile/icons/mic.png";
+import speakerIcon from "@/assets/mobile/icons/speaker.png";
 
-
-const INTRO_LS_KEY = "kib_intro_seen_v1";
+const { Text } = Typography;
 
 export default function WelcomeIntro() {
   const navigate = useNavigate();
@@ -24,8 +23,7 @@ export default function WelcomeIntro() {
   const [speaking, setSpeaking] = useState(false);
 
   useEffect(() => {
-    // Mark as seen as soon as we land here (or do it on CTA click if you prefer)
-    localStorage.setItem(INTRO_LS_KEY, "1");
+    markIntroSeen();
   }, []);
 
   const speak = () => {
@@ -33,109 +31,143 @@ export default function WelcomeIntro() {
       const u = new SpeechSynthesisUtterance(
         "Hallo! Ich bin Kibundo. Gemeinsam machen wir Hausaufgaben entspannt und spielerisch."
       );
+      u.lang = "de-DE";
       setSpeaking(true);
       u.onend = () => setSpeaking(false);
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(u);
-    } catch {}
+    } catch {
+      setSpeaking(false);
+    }
   };
 
-  const next = () => navigate("/student/onboarding/buddy"); // -> your BuddySelect route
-  const skip = () => navigate("/student/home");              // or jump straight to home
+  const next = () => navigate("/student/onboarding/welcome-tour");
+
+  const skip = () => {
+    markIntroSeen();
+    markTourDone();
+    navigate("/student/home");
+  };
 
   return (
-    <div className="relative min-h-[100svh] md:min-h-screen overflow-hidden">
-      {/* Background layers */}
-      <img
-        src={globalBg}
-        alt=""
-        className="absolute inset-0 w-full h-full object-cover pointer-events-none -z-20"
-        draggable={false}
-      />
-      <img
-        src={intBack}
-        alt=""
-        className="absolute bottom-0 left-0 w-full h-1/2 object-cover pointer-events-none -z-10"
-        draggable={false}
-      />
+    <div className="relative w-full h-full overflow-hidden">
+      {/* Backgrounds */}
+      <div className="absolute inset-0 -z-10">
+        <img
+          src={globalBg}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover"
+          draggable={false}
+        />
+        <img
+          src={intBack}
+          alt=""
+          className="absolute bottom-0 left-0 w-full h-1/2 object-cover"
+          draggable={false}
+        />
+      </div>
 
-      {/* Ribbons */}
-      <HomeRibbon />
-      <SettingsRibbon />
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 pt-3">
+        <button
+          className="p-2 rounded-full hover:bg-neutral-100"
+          onClick={() => navigate(-1)}
+          aria-label="Zurück"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
 
-      {/* Content column (mobile look on all breakpoints) */}
-      <div className="relative z-10 w-full max-w-[480px] mx-auto px-4 pt-[88px] md:pt-[104px] pb-6 min-h-[100svh] md:min-h-screen flex flex-col">
-        {/* Title */}
-        <h1 className="text-center text-[22px] font-extrabold text-[#4D4D4D] mb-3">
-          Willkommen
-        </h1>
-
-        {/* Mascot + speech bubble */}
-        <div className="relative flex items-start justify-center gap-4">
-          <img
-            src={buddyMascot}
-            alt="Kibundo"
-            className="h-[150px] object-contain select-none drop-shadow"
-            draggable={false}
-          />
-          <div className="relative">
-            <div
-              className="rounded-3xl px-4 py-3 shadow"
-              style={{ backgroundColor: "#9CE16C", color: "#1b3a1b" }}
-            >
-              <div className="max-w-[240px] leading-snug text-[15px]">
-                Hallo! Ich bin Kibundo. <br />
-                Gemeinsam machen wir Hausaufgaben <br />
-                entspannt und spielerisch.
-              </div>
-            </div>
-            <div
-              className="absolute -left-2 top-6 w-4 h-4 rotate-45"
-              style={{
-                backgroundColor: "#9CE16C",
-                boxShadow: "2px 2px 0 rgba(0,0,0,.06)",
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Speak + Skip */}
-        <div className="flex justify-center gap-3 mt-4">
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            className="px-2 py-1 text-sm rounded-full hover:bg-neutral-100"
+            onClick={skip}
+          >
+            Überspringen
+          </button>
           <Button
-            icon={<Volume2 className="w-4 h-4" />}
+            icon={<img src={speakerIcon} alt="Vorlesen" className="w-4 h-4 object-contain" />}
             onClick={speak}
             loading={speaking}
-            className="rounded-xl"
+            className="rounded-full"
           >
             Vorlesen
           </Button>
-          <Button onClick={skip} className="rounded-xl">
-            Überspringen
-          </Button>
         </div>
+      </div>
 
-        {/* Centered buddy (optional, if you want avatar below text) */}
-        <div className="flex justify-center mt-6">
-          <BuddyAvatar src={buddy?.img || buddyMascot} size={120} />
-        </div>
+      {/* Buddy + PNG bubble */}
+      <div className="px-3 mt-2">
+        <div className="relative min-h-[240px]">
+          <img
+            src={buddy?.img || buddyMascot}
+            alt="Kibundo"
+            className="w-[230px] drop-shadow-md select-none"
+            draggable={false}
+          />
 
-        {/* CTA */}
-        <div className="mt-auto">
-          <Button
-            type="primary"
-            size="large"
-            onClick={next}
-            className="w-full rounded-xl !bg-[#FF7900] !border-none text-[16px] font-bold"
+          {/* Bubble as background using chat-agent.png */}
+          <div
+            className="absolute left-[150px] top-[8px] max-w-[75%] text-[#1b3a1b]"
+            style={{
+              backgroundImage: `url(${chatAgentIcon})`,
+              backgroundRepeat: "no-repeat",
+              backgroundSize: "contain",
+              width: 270,
+              minHeight: 170,
+              padding: "28px 24px 36px 26px",
+              display: "flex",
+              alignItems: "center",
+              filter: "drop-shadow(0 8px 16px rgba(0,0,0,.12))",
+            }}
+            role="note"
+            aria-label="Kibundo Nachricht"
           >
-            Los geht’s
-          </Button>
+            <Text style={{ fontSize: 14, lineHeight: 1.3, display: "block" }}>
+              Hallo! Ich bin Kibundo. <br />
+              Gemeinsam machen wir Hausaufgaben entspannt und spielerisch.
+            </Text>
+          </div>
         </div>
+      </div>
+
+      {/* Decorative big mic */}
+      <div className="absolute left-0 right-0 bottom-20 grid place-items-center">
+        <div className="grid place-items-center w-16 h-16 rounded-full shadow-lg bg-[#ffb08f]">
+          <img
+            src={micIcon}
+            alt="Mikrofon"
+            className="w-7 h-7 object-contain"
+            draggable={false}
+          />
+        </div>
+      </div>
+
+      {/* Bottom tab label (“Chat”) */}
+      <div className="absolute left-0 right-0 bottom-10 px-6">
+        <div className="mx-auto h-8 w-32 bg-white/90 rounded-t-2xl shadow-sm grid place-items-center">
+          <div className="flex items-center gap-1">
+            <img
+              src={chatAgentIcon}
+              alt="Chat"
+              className="w-4 h-4 object-contain"
+              draggable={false}
+            />
+            <span className="text-[13px] font-medium">Chat</span>
+          </div>
+        </div>
+      </div>
+
+      {/* CTA */}
+      <div className="absolute left-3 right-3 bottom-3">
+        <Button
+          type="primary"
+          size="large"
+          onClick={next}
+          className="w-full rounded-full !bg-[#ff4d4f] !border-none !h-[52px] font-semibold"
+        >
+          Los geht’s
+        </Button>
       </div>
     </div>
   );
 }
-
-// Helper you can reuse in routing to decide if intro should show
-export const hasSeenIntro = () => {
-  try { return localStorage.getItem(INTRO_LS_KEY) === "1"; } catch { return false; }
-};

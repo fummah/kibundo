@@ -1,16 +1,17 @@
+// src/pages/auth/SignIn.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
 import { Form, Input, Button, Typography } from "antd";
 import { MailOutlined, LockOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import { useAuthContext } from "../../context/AuthContext";
-import { ROLE_PATHS, ROLES } from "../../utils/roleMapper";   // ✅ import ROLES
+import { ROLE_PATHS, ROLES } from "../../utils/roleMapper";
 import Lottie from "lottie-react";
 import loginAnimation from "../../assets/signup2.json";
 import api from "../../api/axios";
 
-/* ✅ Import helper from WelcomeIntro */
-import { hasSeenIntro } from "@/pages/student/onboarding/WelcomeIntro.jsx";
+/* Onboarding flags (no HMR conflicts) */
+import { hasSeenIntro, hasDoneTour } from "@/pages/student/onboarding/introFlags";
 
 const { Title, Text } = Typography;
 
@@ -22,27 +23,48 @@ export default function SignIn() {
   const handleFinish = async (values) => {
     try {
       setLoading(true);
+
       const { data } = await api.post("/auth/login", values);
+      const user = data?.user;
+      const token = data?.token;
 
-      console.log("Token:", data.token);
-      console.log("User Role ID:", data.user.role_id);
+      if (!user || !token) {
+        toast.error("Unexpected response. Please try again.");
+        return;
+      }
 
-      login(data.user, data.token);
+      // Be tolerant of different user role shapes
+      const roleId = Number(
+        user.role_id ??
+        user.roleId ??
+        user?.role?.id
+      );
+
+      // Store session in your context
+      login(user, token);
       toast.success("Login successful!");
 
-      // ✅ Special handling for student role
-      if (data.user.role_id === ROLES.STUDENT) {
+      // Student onboarding gate
+      if (roleId === ROLES.STUDENT) {
         if (!hasSeenIntro()) {
-          navigate("/student/onboarding/intro", { replace: true });
+          navigate("/student/onboarding/welcome-intro", { replace: true });
+          return;
+        }
+        if (!hasDoneTour()) {
+          navigate("/student/onboarding/welcome-tour", { replace: true });
           return;
         }
       }
 
-      // ✅ fallback: use role-based path
-      const rolePath = ROLE_PATHS[data.user.role_id] || "/dashboard";
+      // Fallback: role landing path (teacher/parent/admin/etc.)
+      const rolePath = ROLE_PATHS[roleId] || "/dashboard";
       navigate(rolePath, { replace: true });
     } catch (err) {
-      toast.error(err.response?.data?.message || "Login failed");
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        "Login failed";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -91,7 +113,12 @@ export default function SignIn() {
                 { type: "email", message: "Invalid email format" },
               ]}
             >
-              <Input prefix={<MailOutlined />} placeholder="Enter your email" className="rounded-md" />
+              <Input
+                prefix={<MailOutlined />}
+                placeholder="Enter your email"
+                className="rounded-md"
+                autoComplete="email"
+              />
             </Form.Item>
 
             <Form.Item
@@ -99,7 +126,12 @@ export default function SignIn() {
               name="password"
               rules={[{ required: true, message: "Please enter your password" }]}
             >
-              <Input.Password prefix={<LockOutlined />} placeholder="Enter your password" className="rounded-md" />
+              <Input.Password
+                prefix={<LockOutlined />}
+                placeholder="Enter your password"
+                className="rounded-md"
+                autoComplete="current-password"
+              />
             </Form.Item>
 
             <div className="text-right mb-3">

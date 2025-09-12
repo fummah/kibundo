@@ -1,5 +1,4 @@
-// src/routes/ParentRoutes.jsx
-import React from "react";
+import React, { Suspense } from "react";
 import { Route, Navigate, Outlet } from "react-router-dom";
 import { ROLES } from "@/utils/roleMapper";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
@@ -47,25 +46,13 @@ export default function ParentRoutes() {
         <Route path="myfamily/family" element={<MyFamily />} />
         <Route path="myfamily/activity" element={<Activity />} />
         <Route path="myfamily/student/:id" element={<ParentStudentDetail />} />
-        {/* Open Add Student modal on the family page (matches ?add=1 in MyFamily.jsx) */}
-        <Route
-          path="myfamily/add-student"
-          element={<Navigate to="/parent/myfamily/family?add=1" replace />}
-        />
-        <Route
-          path="myfamily/add"
-          element={<Navigate to="/parent/myfamily/family?add=1" replace />}
-        />
+        <Route path="myfamily/add-student" element={<Navigate to="/parent/myfamily/family?add=1" replace />} />
+        <Route path="myfamily/add" element={<Navigate to="/parent/myfamily/family?add=1" replace />} />
         <Route path="myfamily/add-student-flow" element={<AddStudentFlow />} />
 
-        {/* Learning (Parent) — Scans removed, Resources behind flag */}
-        <Route
-          path="learning/scans"
-          element={<Navigate to="/parent/myfamily/activity" replace />}
-        />
-        {FLAGS.parentResources && (
-          <Route path="learning/resources" element={<Resources />} />
-        )}
+        {/* Learning (Parent) */}
+        <Route path="learning/scans" element={<Navigate to="/parent/myfamily/activity" replace />} />
+        {FLAGS.parentResources && <Route path="learning/resources" element={<Resources />} />}
 
         {/* Achievements */}
         <Route path="achievements" element={<AchievementsPage />} />
@@ -77,10 +64,7 @@ export default function ParentRoutes() {
         <Route path="billing/coupons" element={<Coupons />} />
 
         {/* Communications */}
-        <Route
-          path="communications"
-          element={<Navigate to="/parent/communications/news" replace />}
-        />
+        <Route path="communications" element={<Navigate to="/parent/communications/news" replace />} />
         <Route path="communications/news">
           <Route index element={<NewsFeed />} />
           <Route path="preview/:id" element={<NewsArticle />} />

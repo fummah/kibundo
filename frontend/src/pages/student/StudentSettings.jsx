@@ -19,7 +19,7 @@ import BackButton from "@/components/student/common/BackButton.jsx";
 import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
-import api from "@/api/axios"; // your axios instance
+import api from "@/api/axios"; // axios instance with baseURL -> /api or env
 
 const { Title, Text } = Typography;
 
@@ -77,6 +77,10 @@ export default function StudentSettings() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Option-B state: whether a server record already exists
+  const [hasServerRecord, setHasServerRecord] = useState(false);
+  const [serverStudentId, setServerStudentId] = useState(null);
+
   // theme preview bg
   const themePreview = useMemo(() => {
     const map = {
@@ -97,12 +101,16 @@ export default function StudentSettings() {
       try {
         setLoading(true);
         const { data } = await api.get(`/student/${userId}`);
-        // try to normalize server response
+        // If we got here, a server record exists
+        setHasServerRecord(true);
+        setServerStudentId(data?.id ?? data?._id ?? userId);
+
+        // Try to normalize server response
         const srvProfile = data?.profile ?? {};
         const srvInterests = Array.isArray(data?.interests) ? data.interests : [];
         const srvBuddy = data?.buddy ?? null;
 
-        // update context
+        // Update context
         setProfile({
           name: srvProfile.name ?? "",
           ttsEnabled: Boolean(srvProfile.ttsEnabled),
@@ -111,13 +119,20 @@ export default function StudentSettings() {
         setInterests(srvInterests);
         setBuddy(srvBuddy);
 
-        // update local copies
+        // Update local copies
         setName(srvProfile.name ?? defaultName ?? "");
         setTTSEnabled(Boolean(srvProfile.ttsEnabled));
         setTheme(srvProfile.theme || "indigo");
         setPendingBuddy(srvBuddy || BUDDIES[0]);
       } catch (e) {
-        message.error("Could not load your settings. Using local defaults.");
+        // 404 means: not found -> we’ll create on first save
+        if (e?.response?.status === 404) {
+          setHasServerRecord(false);
+          setServerStudentId(null);
+          // keep local defaults
+        } else {
+          message.error("Could not load your settings. Using local defaults.");
+        }
       } finally {
         setLoading(false);
       }
@@ -127,26 +142,49 @@ export default function StudentSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  /* ---------------------- Persist with PUT /student/:id ---------------------- */
-  const putAllSettings = async (payload) => {
-    if (!userId) {
-      message.error("No user ID found. Please sign in again.");
-      return;
-    }
-    await api.put(`/student/${userId}`, payload);
+  /* ---------------------- Persist using Option B ----------------------
+     - If NO server record => CREATE via POST /addstudent
+     - If HAS server record => local-only (no update endpoint available)
+  --------------------------------------------------------------------*/
+  const createStudentOnServer = async ({ profile, interests, buddy }) => {
+    // Build a conservative payload; adapt to your addstudent schema if needed
+    const payload = {
+      userId,               // pass the logged-in user id if your backend needs it
+      profile: {
+        name: profile?.name ?? "",
+        ttsEnabled: Boolean(profile?.ttsEnabled),
+        theme: profile?.theme || "indigo",
+      },
+      interests: Array.isArray(interests) ? interests : [],
+      buddy: buddy
+        ? { id: buddy.id, name: buddy.name, img: buddy.img }
+        : null,
+    };
+    const res = await api.post(`/addstudent`, payload);
+    return res?.data;
   };
 
   const saveProfileAll = async () => {
     try {
       setSaving(true);
-      // optimistic update to context
+
+      // optimistic local update
       setProfile({ name, ttsEnabled, theme });
-      await putAllSettings({
-        profile: { name, ttsEnabled, theme },
-        interests: interests || [],
-        buddy: buddy || null,
-      });
-      message.success("Settings saved!");
+
+      if (!hasServerRecord) {
+        // Create now (first save)
+        const created = await createStudentOnServer({
+          profile: { name, ttsEnabled, theme },
+          interests: interests || [],
+          buddy: buddy || null,
+        });
+        setHasServerRecord(true);
+        setServerStudentId(created?.id ?? created?._id ?? userId);
+        message.success("Student created and settings saved!");
+      } else {
+        // Option B: no update route, so we save locally only
+        message.info("Settings saved ");
+      }
     } catch (e) {
       message.error("Could not save settings. Please try again.");
     } finally {
@@ -171,17 +209,27 @@ export default function StudentSettings() {
 
   const confirmBuddy = async () => {
     try {
-      // optimistic
+      // optimistic local update
       setBuddy(pendingBuddy);
-      await putAllSettings({
-        profile: { name, ttsEnabled, theme },
-        interests: interests || [],
-        buddy: pendingBuddy,
-      });
-      setBuddyModal(false);
-      message.success(`Buddy set to ${pendingBuddy.name}`);
+
+      if (!hasServerRecord) {
+        // First-time persist: create and include buddy
+        const created = await createStudentOnServer({
+          profile: { name, ttsEnabled, theme },
+          interests: interests || [],
+          buddy: pendingBuddy,
+        });
+        setHasServerRecord(true);
+        setServerStudentId(created?.id ?? created?._id ?? userId);
+        setBuddyModal(false);
+        message.success(`Buddy selected: ${pendingBuddy.name}`);
+      } else {
+        // No update endpoint — local-only
+        setBuddyModal(false);
+        message.info("Buddy changed");
+      }
     } catch (e) {
-      message.error("Could not update buddy. Please try again.");
+      message.error("Could not apply buddy. Please try again.");
     }
   };
 
@@ -198,7 +246,7 @@ export default function StudentSettings() {
     setTTSEnabled(false);
     setTheme("indigo");
     message.success("All student data reset on this device.");
-    // NOTE: If you also want to clear on server, add a PUT here with empty/default values.
+    // NOTE: With Option B, there's no server reset; add a DELETE/PUT endpoint if needed later.
   };
 
   const doLogout = async () => {
@@ -378,20 +426,7 @@ export default function StudentSettings() {
         </div>
       </Card>
 
-      {/* Danger zone */}
-      <Card className="rounded-2xl border-red-200">
-        <Title level={5} className="!mb-2 text-red-600">
-          Danger Zone
-        </Title>
-        <Text type="secondary">
-          This will remove your buddy, interests, and settings on this device.
-        </Text>
-        <div className="mt-2">
-          <Button danger onClick={resetAll} className="rounded-xl">
-            Reset local student data
-          </Button>
-        </div>
-      </Card>
+   
 
       {/* Buddy modal */}
       <Modal

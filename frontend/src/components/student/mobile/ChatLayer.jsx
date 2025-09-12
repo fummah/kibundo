@@ -2,38 +2,23 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { CheckOutlined } from "@ant-design/icons";           // ⬅️ NEW
+import { useChatDock } from "@/context/ChatDockContext.jsx";  // ⬅️ NEW
+
 // Assets
-import topBg from "@/assets/backgrounds/top.png";
 import minimiseBg from "@/assets/backgrounds/minimise.png";
-import buddyMascot from "@/assets/buddies/kibundo-buddy.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
 import cameraIcon from "@/assets/mobile/icons/camera.png";
-import galleryIcon from "@/assets/mobile/icons/galary.png"; // keep repo spelling
-import emojiIcon from "@/assets/mobile/icons/imoji.png";   // keep repo spelling
+import galleryIcon from "@/assets/mobile/icons/galary.png";
+import emojiIcon from "@/assets/mobile/icons/imoji.png";
 import micIcon from "@/assets/mobile/icons/mic.png";
 import studentIcon from "@/assets/mobile/icons/stud-icon.png";
 import agentChats from "@/assets/mobile/icons/agent-chats.png";
-
-// UI
-import HomeRibbon from "@/components/student/mobile/HomeRibbon";
-import SettingsRibbon from "@/components/student/mobile/SettingsRibbon";
 
 // Optional: analytics + ASR hooks
 import { track } from "@/lib/analytics";
 import useASR from "@/lib/voice/useASR";
 
-/**
- * ChatLayer (reusable)
- * Props:
- * - messages: controlled messages array [{id, from: "student"|"agent", text?, image?}]
- * - onMessagesChange(next) : called when messages change (if using controlled mode)
- * - initialMessages: seed messages (uncontrolled mode)
- * - onSendText(text), onSendMedia(filesArray)
- * - showHomeRibbon, showSettingsRibbon (default true)
- * - minimiseTo: route to navigate when tapping minimise strip (default "/student/home")
- * - headerHeight: px height for header area (default 200)
- * - className: extra container classes
- */
 export default function ChatLayer({
   messages: controlledMessages,
   onMessagesChange,
@@ -46,10 +31,9 @@ export default function ChatLayer({
   ],
   onSendText,
   onSendMedia,
-  showHomeRibbon = true,
-  showSettingsRibbon = true,
+  onClose,
   minimiseTo = "/student/home",
-  headerHeight = 200,
+  minimiseHeight = 54,
   className = "",
 }) {
   const [localMessages, setLocalMessages] = useState(initialMessages);
@@ -66,6 +50,10 @@ export default function ChatLayer({
 
   const navigate = useNavigate();
   const { listening, start, stop, reset } = useASR?.({ lang: "de-DE" }) ?? {};
+
+  // ⬇️ Chat dock integration (for “Done” action and mode)
+  const { state: dockState, markHomeworkDone } = useChatDock?.() ?? {};
+  const showDone = dockState?.mode === "homework"; // show only in homework flow
 
   // utilities
   const setMessages = (next) => {
@@ -110,7 +98,11 @@ export default function ChatLayer({
   const onCamera = () => cameraInputRef.current?.click();
   const onGallery = () => galleryInputRef.current?.click();
   const onEmoji = () => setShowEmoji((p) => !p);
-  const onMinimise = () => navigate(minimiseTo);
+
+  const onMinimise = () => {
+    if (typeof onClose === "function") onClose();
+    else navigate(minimiseTo);
+  };
 
   const onPrimaryButton = async () => {
     if (draft.trim()) {
@@ -193,49 +185,28 @@ export default function ChatLayer({
         className="hidden"
       />
 
-      {/* header */}
+      {/* minimise strip as the ONLY header */}
       <div
-        className="relative w-full"
+        onClick={onMinimise}
+        className="w-full cursor-pointer"
         style={{
-          backgroundImage: `url(${topBg})`,
+          height: `${minimiseHeight}px`,
+          backgroundImage: `url(${minimiseBg})`,
+          backgroundRepeat: "no-repeat",
           backgroundSize: "cover",
           backgroundPosition: "center",
-          height: `${headerHeight}px`,
         }}
-      >
-        {showHomeRibbon && <HomeRibbon />}
-        {showSettingsRibbon && <SettingsRibbon />}
-
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-[10px]">
-          <img
-            src={buddyMascot}
-            alt="Buddy"
-            className="h-[160px] object-contain drop-shadow-lg select-none"
-            draggable={false}
-          />
-        </div>
-
-        <div
-          onClick={onMinimise}
-          className="absolute left-0 right-0 -bottom-[1px] h-[54px] cursor-pointer"
-          style={{
-            backgroundImage: `url(${minimiseBg})`,
-            backgroundRepeat: "no-repeat",
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-          }}
-          aria-label="Minimise chat"
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onMinimise()}
-        />
-      </div>
+        aria-label="Chat minimieren"
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onMinimise()}
+      />
 
       {/* messages */}
       <div
         ref={listRef}
         className="relative px-3 pt-4 pb-28 overflow-y-auto bg-[#f3f7eb]"
-        style={{ height: `calc(100% - ${headerHeight}px)` }}
+        style={{ height: `calc(100% - ${minimiseHeight}px)` }}
         aria-live="polite"
       >
         {msgs.map((m) => {
@@ -363,6 +334,20 @@ export default function ChatLayer({
           >
             <img src={emojiIcon} alt="" className="w-6 h-6" />
           </button>
+
+          {/* ✅ NEW: 'Fertig' button (only in homework mode) */}
+          {showDone && (
+            <button
+              onClick={() => markHomeworkDone?.()}
+              className="w-11 h-11 grid place-items-center rounded-full"
+              style={{ backgroundColor: "#8fd85d" }}
+              aria-label="Fertig – Aufgabe abschließen"
+              type="button"
+              title="Fertig"
+            >
+              <CheckOutlined style={{ color: "#fff", fontSize: 16 }} />
+            </button>
+          )}
 
           <button
             onClick={onPrimaryButton}

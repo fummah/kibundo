@@ -1,4 +1,3 @@
-// src/pages/student/mobile/HomeMobile.jsx
 import React from "react";
 import { Row, Col } from "antd";
 import { useNavigate } from "react-router-dom";
@@ -11,22 +10,46 @@ import buddyMascot from "@/assets/buddies/kibundo-buddy.png";
 import { TILE_BG } from "@/assets/mobile/tiles";
 import { IMGS } from "@/assets/mobile";
 
-// Assets (relative paths)
-import topBg from "../../assets/backgrounds/top.png";
-import bottomBg from "../../assets/backgrounds/int-back.png";
+// Background art (use alias paths)
+import topBg from "@/assets/backgrounds/top.png";
+import bottomBg from "@/assets/backgrounds/int-back.png";
 
+/* ---- Homework entry route (supports resume) ---- */
+function computeHomeworkEntryRoute() {
+  // Expecting: localStorage.setItem('kibundo.homework.progress.v1', JSON.stringify({ step: 0|1|2|3 }))
+  try {
+    const raw = localStorage.getItem("kibundo.homework.progress.v1");
+    if (raw) {
+      const { step } = JSON.parse(raw) ?? {};
+      switch (step) {
+        case 1:
+          return "/student/homework/doing";
+        case 2:
+          return "/student/homework/chat";
+        case 3:
+          return "/student/homework/feedback";
+        default:
+          return "/student/homework"; // 0 or unknown → HomeworkList
+      }
+    }
+  } catch {}
+  return "/student/homework";
+}
 
 export default function HomeMobile() {
   const navigate = useNavigate();
 
+  const goHomework = () => navigate(computeHomeworkEntryRoute());
+
   return (
     <div className="flex flex-col min-h-[100dvh] bg-[#f7f2ec]">
-        {/* Sticky settings */}
+      {/* Sticky settings (safe-area aware) */}
       <div className="sticky top-0 z-50 flex justify-end px-4 pt-[env(safe-area-inset-top)] pointer-events-none">
         <div className="pointer-events-auto">
           <SettingsRibbon />
         </div>
       </div>
+
       {/* HEADER — top background only */}
       <header
         className="relative w-full h-[260px] md:h-[300px] lg:h-[340px] flex items-end justify-center"
@@ -36,74 +59,79 @@ export default function HomeMobile() {
           backgroundSize: "cover",
           backgroundPosition: "center top",
         }}
+        aria-label="Kibundo Startbereich"
       >
-      
-
         <img
           src={buddyMascot}
           alt="Buddy"
-          className="w-[100px] md:w-[100px] lg:w-[120px] h-auto drop-shadow-[0_10px_18px_rgba(0,0,0,.18)] select-none"
+          loading="lazy"
           draggable={false}
+          className="w-[108px] md:w-[116px] lg:w-[128px] h-auto select-none drop-shadow-[0_10px_18px_rgba(0,0,0,.18)]"
         />
       </header>
 
       {/* CARDS SECTION — bottom background lives here so tiles ALWAYS sit on it */}
       <main
-        className="relative flex-1 overflow-y-auto px-4 pb-28"
+        className="relative flex-1 overflow-y-auto px-4 pb-[calc(96px+env(safe-area-inset-bottom))]"
         style={{
           backgroundImage: `url(${bottomBg})`,
           backgroundRepeat: "no-repeat",
-          backgroundSize: "100% auto",         // spans full width
-          backgroundPosition: "top center",     // artwork starts at top of this section
-          backgroundColor: "#f7f2ec",           // fill below the artwork
+          backgroundSize: "100% auto",
+          backgroundPosition: "top center",
+          backgroundColor: "#f7f2ec",
         }}
+        aria-label="Schnellzugriffe"
       >
-        {/* pull section slightly up so it kisses the wave/curve nicely */}
-        <div className="pt-8 md:pt-10 lg:pt-12">
+        <div className="pt-8 md:pt-10 lg:pt-12 max-w-[980px] mx-auto">
           <Row gutter={[14, 14]}>
-            <Col span={12}>
+            <Col xs={12}>
               <ImageTile
                 title="Hausaufgaben"
                 bg={TILE_BG.blue}
                 illustration={IMGS.homework}
-                onClick={() => navigate("/student/homework-start")}
+                onClick={goHomework}
                 ariaLabel="Zu Hausaufgaben"
+                data-testid="tile-homework"
               />
             </Col>
 
-            <Col span={12}>
+            <Col xs={12}>
               <ImageTile
                 title="Lernen"
                 bg={TILE_BG.yellow}
                 illustration={IMGS.learning}
                 onClick={() => navigate("/student/learning")}
                 ariaLabel="Zu Lernen"
+                data-testid="tile-learning"
               />
             </Col>
 
-            <Col span={12}>
+            <Col xs={12}>
               <ImageTile
                 title="Lesen"
                 bg={TILE_BG.pink}
                 illustration={IMGS.reading}
-                onClick={() => navigate("/student/reading-practice")}
+                onClick={() => navigate("/student/reading")}
                 ariaLabel="Zu Lesen"
+                data-testid="tile-reading"
               />
             </Col>
 
-            <Col span={12}>
+            <Col xs={12}>
               <ImageTile
                 title="Schatzkarte"
                 bg={TILE_BG.green}
                 illustration={IMGS.map}
                 onClick={() => navigate("/student/map")}
                 ariaLabel="Zur Schatzkarte"
+                data-testid="tile-map"
               />
             </Col>
           </Row>
         </div>
       </main>
 
+      {/* Footer chat dock */}
       <FooterChat />
     </div>
   );
