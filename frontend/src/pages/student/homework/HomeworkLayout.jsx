@@ -61,36 +61,7 @@ export default function HomeworkLayout() {
         </div>
       </div>
 
-      {/* CONFETTI (success only) – under ribbons */}
-      {current === 2 && (
-        <div className="absolute inset-0 pointer-events-none overflow-hidden z-40">
-          {Array.from({ length: 32 }).map((_, i) => (
-            <div
-              key={i}
-              className="confetti"
-              style={{
-                left: `${(i * 13) % 100}%`,
-                animationDelay: `${(i % 10) * 0.15}s`,
-                background: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#b892ff"][i % 5],
-              }}
-            />
-          ))}
-          <style>{`
-            .confetti {
-              position: absolute;
-              top: -10px;
-              width: 8px;
-              height: 14px;
-              border-radius: 2px;
-              animation: kib-fall 2.8s linear infinite;
-            }
-            @keyframes kib-fall {
-              0%   { transform: translateY(-10px) rotate(0) }
-              100% { transform: translateY(120vh) rotate(540deg) }
-            }
-          `}</style>
-        </div>
-      )}
+
 
       {/* TITLE */}
       <div className="w-full mx-auto px-3 mt-9">

@@ -86,13 +86,13 @@ export default function HomeMobile() {
           <Row gutter={[14, 14]}>
             <Col xs={12}>
               <ImageTile
-                title="Hausaufgaben"
-                bg={TILE_BG.blue}
-                illustration={IMGS.homework}
-                onClick={goHomework}
-                ariaLabel="Zu Hausaufgaben"
-                data-testid="tile-homework"
-              />
+  title="Hausaufgaben"
+  bg={TILE_BG.blue}
+  illustration={IMGS.homework}
+  onClick={() => navigate("/student/homework")} // <— always list
+  ariaLabel="Zu Hausaufgaben"
+  data-testid="tile-homework"
+/>
             </Col>
 
             <Col xs={12}>

@@ -17,14 +17,20 @@ function loadTasks() {
   catch { return []; }
 }
 
+function readProgress() {
+  try { return JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}"); }
+  catch { return {}; }
+}
+
 export default function HomeworkFeedback() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // taskId may come from state or ?taskId=...
-  const taskId =
-    location.state?.taskId ||
-    new URLSearchParams(location.search).get("taskId");
+  // taskId may come from state, ?taskId=..., or fall back to progress
+  const taskIdFromState = location.state?.taskId || null;
+  const taskIdFromQuery = new URLSearchParams(location.search).get("taskId");
+  const taskIdFromProgress = readProgress()?.taskId || null;
+  const taskId = taskIdFromState || taskIdFromQuery || taskIdFromProgress || null;
 
   const tasks = useMemo(() => loadTasks(), []);
   const task = useMemo(
@@ -32,12 +38,13 @@ export default function HomeworkFeedback() {
     [tasks, taskId]
   );
 
-  // Persist step 2 so ProgressBar shows "Done"
+  // ✅ Persist step 3 (Feedback) so ProgressBar shows the correct stage
   useEffect(() => {
     try {
+      const prev = readProgress();
       localStorage.setItem(
         PROGRESS_KEY,
-        JSON.stringify({ step: 2, taskId: taskId || null })
+        JSON.stringify({ ...prev, step: 3, taskId: taskId || prev.taskId || null })
       );
     } catch {}
   }, [taskId]);
@@ -58,7 +65,7 @@ export default function HomeworkFeedback() {
         draggable={false}
       />
 
-      {/* ---------- CONFETTI ANIMATION ---------- */}
+      {/* ---------- CONFETTI (Feedback-only) ---------- */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {Array.from({ length: 32 }).map((_, i) => (
           <div
@@ -119,7 +126,7 @@ export default function HomeworkFeedback() {
         )}
 
         {/* Actions */}
-        <div className="mt-8 flex flex-wrap gap-2 justify-center">
+        <div className="mt-8 flex flex-wrap gap-2 justify-center pb-[env(safe-area-inset-bottom)]">
           <Button
             type="primary"
             size="large"
