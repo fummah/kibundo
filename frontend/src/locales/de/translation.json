@@ -1,125 +1,125 @@
 {
-  "parent.nav.home": "Startseite",
-  "parent.nav.addChild": "Kind hinzufügen",
-  "parent.nav.news": "Neuigkeiten",
-  "parent.nav.feedback": "Feedback",
-  "parent.nav.settings": "Einstellungen",
+  "parent": {
+    "nav": {
+      "home": "Startseite",
+      "addChild": "Kind hinzufügen",
+      "news": "Neuigkeiten",
+      "feedback": "Feedback",
+      "settings": "Einstellungen"
+    },
+    "home": {
+      "title": "Startseite",
+      "subtitle": "Überblick über das Lernen und die Abrechnung Ihrer Familie.",
+      "activities": "Aktivitäten",
+      "myFamily": "Meine Familie",
+      "yourChildren": "Ihre Kinder",
+      "addChild": "Kind hinzufügen",
+      "news": "Neuigkeiten & Einblicke",
+      "newsInsights": "Neuigkeiten & Einblicke",
+      "notices": "Hinweise",
+      "manageBilling": "Abrechnung verwalten",
+      "viewAll": "Alle anzeigen",
+      "stats": {
+        "activeChildren": "Aktive Kinder",
+        "thisWeekActivity": "Aktivität dieser Woche",
+        "badgesEarned": "Verdiente Abzeichen",
+        "unpaidInvoices": "Offene Rechnungen"
+      }
+    },
+    "student": {
+      "title": "Kind-Details",
+      "defaultName": "Name Platzhalter",
+      "defaultAge": "Alter X",
+      "status": {
+        "active": "Aktiv"
+      },
+      "plan": {
+        "current": "Aktueller Plan",
+        "active": "Aktiv",
+        "premiumMonthly": "Premium (monatlich)",
+        "changeToYearly": "Auf jährlich ändern"
+      },
+      "activity": {
+        "title": "Aktivität",
+        "lessonsCompleted": "Lektionen abgeschlossen",
+        "timeSpent": "Lernzeit"
+      },
+      "activities": "Aktivitäten",
+      "recentScans": "Letzte Scans",
+      "focusTopics": "Schwerpunkte",
+      "focusTopicsChooseTwo": "Wählen Sie zwei Schwerpunkte",
+      "progress": {
+        "title": "14-Tage-Fortschritt"
+      }
+    },
+    "achievements": {
+      "title": "Erfolge",
+      "subtitle": "Von Ihren Kindern verdiente Abzeichen.",
+      "allBadges": "Alle Abzeichen",
+      "viewChild": "Zum Kind",
+      "empty": "Noch keine Abzeichen verdient.",
+      "badge": "Abzeichen",
+      "earned": "Verdient",
+      "earnedOn": "Verdient am {{date}}"
+    },
+    "billing": {
+      "loading": "Lädt…",
+      "inactive": "Inaktiv",
+      "active": "Aktiv",
 
-  "parent.home.title": "Startseite",
-  "parent.home.subtitle": "Überblick über das Lernen und die Abrechnung Ihrer Familie.",
-  "parent.home.activities": "Aktivitäten",
-  "parent.home.myFamily": "Meine Familie",
-  "parent.home.newsInsights": "Neuigkeiten & Einblicke",
-  "parent.home.notices": "Hinweise",
-  "parent.home.addChild": "Kind hinzufügen",
-  "parent.home.stats.activeChildren": "Aktive Kinder",
-  "parent.home.stats.thisWeekActivity": "Aktivität dieser Woche",
-  "parent.home.stats.badgesEarned": "Verdiente Abzeichen",
-  "parent.home.stats.unpaidInvoices": "Offene Rechnungen",
-
-  "parent.student.title": "Kind-Details",
-  "parent.student.defaultName": "Name Platzhalter",
-  "parent.student.defaultAge": "Alter X",
-  "parent.student.status.active": "Aktiv",
-  "parent.student.plan.current": "Aktueller Plan",
-  "parent.student.plan.active": "Aktiv",
-  "parent.student.plan.premiumMonthly": "Premium (monatlich)",
-  "parent.student.plan.changeToYearly": "Auf jährlich ändern",
-  "parent.student.activity.title": "Aktivität",
-  "parent.student.activity.lessonsCompleted": "Lektionen abgeschlossen",
-  "parent.student.activity.timeSpent": "Lernzeit",
-  "parent.student.activities": "Aktivitäten",
-  "parent.student.recentScans": "Letzte Scans",
-  "parent.student.focusTopics": "Schwerpunkte",
-  "parent.student.focusTopicsChooseTwo": "Wählen Sie zwei Schwerpunkte",
-  "parent.student.progress.title": "14-Tage-Fortschritt",
-
-  "parent.achievements.title": "Erfolge",
-  "parent.achievements.subtitle": "Von Ihren Kindern verdiente Abzeichen.",
-  "parent.achievements.allBadges": "Alle Abzeichen",
-  "parent.achievements.viewChild": "Zum Kind",
-  "parent.achievements.empty": "Noch keine Abzeichen verdient.",
-  "parent.achievements.badge": "Abzeichen",
-  "parent.achievements.earned": "Verdient",
-  "parent.achievements.earnedOn": "Verdient am {{date}}",
-
-  "parent.billing.coupons.title": "Gutscheine",
-  "parent.billing.coupons.subtitle": "Verwalten Sie aktive, bevorstehende und abgelaufene Gutscheine.",
-  "parent.billing.coupons.rules.oneActiveOnly": "Es kann nur ein Gutschein gleichzeitig aktiv sein.",
-  "parent.billing.coupons.rules.activeSubNoDiscount": "Aktive Abonnements können nicht rabattiert werden.",
-  "parent.billing.coupons.kpi.active": "Aktiv",
-  "parent.billing.coupons.kpi.upcoming": "Bevorstehend",
-  "parent.billing.coupons.kpi.expired": "Abgelaufen",
-
-  "parent.billing.coupons.off": "Rabatt",
-  "parent.billing.coupons.minSpend": "Mindestumsatz: {{amount}}",
-  "parent.billing.coupons.searchPh": "Nach Code, Titel oder Beschreibung suchen",
-  "parent.billing.coupons.empty": "Keine Gutscheine gefunden.",
-  "parent.billing.coupons.refreshed": "Gutscheine aktualisiert.",
-  "parent.billing.coupons.applyNavigating": "Gutschein anwenden und Abo öffnen …",
-  "parent.billing.coupons.errors.notActive": "Dieser Gutschein ist nicht aktiv.",
-  "parent.billing.coupons.errors.hasActiveCoupon": "Sie haben bereits einen aktiven Gutschein.",
-
-  "parent.billing.coupons.externalOffers.title": "Partnerangebote",
-  "parent.billing.coupons.externalOffers.tag": "Extern",
-  "parent.billing.coupons.externalOffers.empty": "Keine Partnerangebote verfügbar.",
-  "parent.billing.coupons.validUntil": "Gültig bis {{date}}",
-
-  "filters.active": "Aktiv",
-  "filters.upcoming": "Bevorstehend",
-  "filters.expired": "Abgelaufen",
-  "filters.used": "Eingelöst",
-  "filters.all": "Alle",
-
-  "common.cancel": "Abbrechen",
-  "common.back": "Zurück",
-
-  "actions.refresh": "Aktualisieren",
-  "actions.copy": "Kopieren",
-  "actions.useNow": "Jetzt nutzen",
-  "actions.getOffer": "Angebot öffnen",
-  "actions.copiedCode": "{{code}} kopiert",
-  "actions.copyFailed": "Konnte nicht kopiert werden. Bitte erneut versuchen.",
-
-  "parent.addChild.title": "Kind hinzufügen",
-  "parent.addChild.yourChildren": "Deine Kinder",
-  "parent.addChild.intro.headline": "Kinderaccount anlegen",
-  "parent.addChild.intro.copy": "Damit dein Kind die App selbstständig und sicher nutzen kann, legst du jetzt den Kinderaccount an.",
-  "parent.addChild.intro.cta": "Kind hinzufügen",
-  "parent.addChild.intro.illustrationAlt": "Maskottchen-Illustration",
-
-  "parent.addChild.children.empty": "Noch keine Kinder hinzugefügt.",
-  "parent.addChild.children.status": "Status: {{status}}",
-  "parent.addChild.children.view": "Ansehen",
-  "parent.addChild.children.addAnother": "Weiteres Kind hinzufügen",
-
-  "parent.addChild.form.title": "Kind-Details",
-  "parent.addChild.form.firstName": "Vorname",
-  "parent.addChild.form.firstName_ph": "Vorname eingeben",
-  "parent.addChild.form.age": "Alter",
-  "parent.addChild.form.grade": "Klasse",
-  "parent.addChild.form.schoolType": "Schulart",
-  "parent.addChild.form.schoolType_ph": "Schulart wählen",
-  "parent.addChild.form.schoolType.primary": "Grundschule",
-  "parent.addChild.form.schoolType.secondary": "Weiterführend",
-  "parent.addChild.form.schoolType.other": "Andere",
-  "parent.addChild.form.city": "Stadt",
-  "parent.addChild.form.city_ph": "Stadt eingeben",
-  "parent.addChild.form.schoolName": "Name der Schule",
-  "parent.addChild.form.schoolName_ph": "Schulname eingeben",
-  "parent.addChild.form.create": "Anlegen",
-
-  "parent.addChild.success.title": "Geschafft",
-  "parent.addChild.success.headline": "Alles bereit!",
-  "parent.addChild.success.copy": "Du wirst jetzt zur Startseite weitergeleitet. Dein Kind kann sich von dort aus selbstständig einloggen.",
-  "parent.addChild.success.goHome": "Weiter",
-  "parent.addChild.success.addAnother": "Weiteres Kind anlegen",
-  "parent.addChild.success.illustrationAlt": "Konfetti-Maskottchen",
-
-  "parent.addChild.toast.created": "Kind angelegt",
-  "parent.addChild.toast.createFailed": "Kind konnte nicht angelegt werden. Bitte versuche es erneut.",
-
-  "errors.required": "Dieses Feld ist erforderlich.",
-  "errors.minChars": "Bitte mindestens {{n}} Zeichen eingeben.",
-  "errors.ageRange": "Das Alter muss zwischen 4 und 18 liegen."
+      "coupons": {
+        "title": "Gutscheine",
+        "subtitle": "Verwalten Sie aktive, bevorstehende und abgelaufene Gutscheine.",
+        "rules": {
+          "oneActiveOnly": "Es kann nur ein Gutschein gleichzeitig aktiv sein.",
+          "activeSubNoDiscount": "Aktive Abonnements können nicht rabattiert werden."
+        },
+        "kpi": {
+          "active": "Aktiv",
+          "upcoming": "Bevorstehend",
+          "expired": "Abgelaufen"
+        },
+        "off": "Rabatt",
+        "minSpend": "Mindestumsatz: {{amount}}",
+        "searchPh": "Nach Code, Titel oder Beschreibung suchen",
+        "empty": "Keine Gutscheine gefunden.",
+        "refreshed": "Gutscheine aktualisiert.",
+        "applyNavigating": "Gutschein anwenden und Abo öffnen …",
+        "errors": {
+          "notActive": "Dieser Gutschein ist nicht aktiv.",
+          "hasActiveCoupon": "Sie haben bereits einen aktiven Gutschein."
+        },
+        "externalOffers": {
+          "title": "Partnerangebote",
+          "tag": "Extern",
+          "empty": "Keine Partnerangebote verfügbar."
+        },
+        "validUntil": "Gültig bis {{date}}"
+      }
+    }
+  },
+  "filters": {
+    "active": "Aktiv",
+    "upcoming": "Bevorstehend",
+    "expired": "Abgelaufen",
+    "used": "Eingelöst",
+    "all": "Alle"
+  },
+  "common": {
+    "cancel": "Abbrechen",
+    "back": "Zurück"
+  },
+  "actions": {
+    "refresh": "Aktualisieren",
+    "copy": "Kopieren",
+    "useNow": "Jetzt nutzen",
+    "getOffer": "Angebot öffnen",
+    "copiedCode": "{{code}} kopiert",
+    "copyFailed": "Konnte nicht kopiert werden. Bitte erneut versuchen."
+  },
+  "errors": {
+    "required": "Dieses Feld ist erforderlich.",
+    "minChars": "Bitte mindestens {{n}} Zeichen eingeben.",
+    "ageRange": "Das Alter muss zwischen 4 und 18 liegen."
+  }
 }

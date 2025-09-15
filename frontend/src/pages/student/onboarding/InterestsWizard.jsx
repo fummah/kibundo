@@ -1,25 +1,24 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Card, Typography, Button } from "antd";
 import { ArrowLeft, Volume2, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
+import DeviceFrame from "@/components/student/mobile/DeviceFrame.jsx";
 
-/* ✅ Ribbons */
-import HomeRibbon from "@/components/student/mobile/HomeRibbon";
-import SettingsRibbon from "@/components/student/mobile/SettingsRibbon";
+import globalBg from "../../../assets/backgrounds/global-bg.png";
+import intBack from "../../../assets/backgrounds/int-back.png";
 
-/* ✅ Backgrounds */
-import globalBg from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\backgrounds\\global-bg.png";
-import intBack from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\backgrounds\\int-back.png";
+/* Mascot (optional, not directly used here) */
+import buddyMascot from "../../../assets/buddies/kibundo-buddy.png";
 
-/* ✅ image assets (used for the theme step) */
-import dinoImg from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\mobile\\icons\\Dinosaurier.png";
-import unicornImg from "C:\\wamp64\\www\\kibundo\\frontend\\src\\assets\\mobile\\icons\\Einhörner.png";
+/* image assets (used for the theme step) */
+import dinoImg from "../../../assets/mobile/icons/Dinosaurier.png";
+import unicornImg from "../../../assets/mobile/icons/Einhörner.png";
 
 const { Title } = Typography;
 
-/* ---------- Schritte (mit Bildkarten für theme1) ---------- */
+/* ---------- Steps ---------- */
 const STEPS = [
   {
     id: "colors",
@@ -71,12 +70,26 @@ export default function InterestsWizard() {
     interests?.length ? [...interests] : []
   );
 
+  // Optional restore from localStorage if context is empty
+  useEffect(() => {
+    if (!interests?.length) {
+      try {
+        const raw = localStorage.getItem("kibundo_interests");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length) setAnswers(parsed);
+        }
+      } catch {}
+    }
+  }, []);  
+
   const step = STEPS[stepIdx];
   const canNext = useMemo(() => !!answers[stepIdx], [answers, stepIdx]);
 
   const speak = () => {
     try {
       const u = new SpeechSynthesisUtterance(step.title);
+      u.lang = "de-DE";
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(u);
     } catch {}
@@ -96,14 +109,17 @@ export default function InterestsWizard() {
   const onNext = () => {
     if (stepIdx < STEPS.length - 1) setStepIdx((i) => i + 1);
     else {
-      setInterests(answers.filter(Boolean));
+      const final = answers.filter(Boolean);
+      setInterests(final);
+      try { localStorage.setItem("kibundo_interests", JSON.stringify(final)); } catch {}
       navigate("/student/onboarding/success");
     }
   };
 
   return (
     <div className="relative min-h-[100svh] md:min-h-screen overflow-hidden">
-      {/* ---------- HINTERGRUND ---------- */}
+       <DeviceFrame>
+      {/* Backgrounds */}
       <img
         src={globalBg}
         alt=""
@@ -117,25 +133,21 @@ export default function InterestsWizard() {
         draggable={false}
       />
 
-      {/* ---------- RIBBONS ---------- */}
-      <HomeRibbon />
-      <SettingsRibbon />
-
-      {/* ---------- SEITENINHALT ---------- */}
+      {/* Page content */}
       <div
         className="
           relative z-10 w-full max-w-[480px] mx-auto
           px-3 md:px-4 py-4
-          pt-[88px] md:pt-[104px]   /* Platz für Ribbons */
           min-h-[100svh] md:min-h-screen
           flex flex-col
         "
       >
-        {/* Kopfzeile */}
+        {/* Header */}
         <div className="flex items-center gap-2 mb-2">
           <button
             className="p-2 rounded-full hover:bg-neutral-100"
             onClick={onBack}
+            aria-label="Zurück"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -151,7 +163,7 @@ export default function InterestsWizard() {
           </button>
         </div>
 
-        {/* Frage + Buddy */}
+        {/* Buddy + question */}
         <div className="flex items-start gap-3 mb-4">
           <BuddyAvatar
             src={buddy?.img || "https://placekitten.com/200/201"}
@@ -165,16 +177,16 @@ export default function InterestsWizard() {
           </div>
         </div>
 
-        {/* Auswahlkarten */}
+        {/* Choices */}
         <div
-          className={`grid ${
-            step.grid === 2 ? "grid-cols-2" : "grid-cols-1"
-          } gap-3`}
+          className={`grid ${step.grid === 2 ? "grid-cols-2" : "grid-cols-1"} gap-3`}
+          role="radiogroup"
+          aria-label={step.title}
         >
           {step.choices.map((c) => {
             const isActive = answers[stepIdx] === c;
 
-            /* 🎨 Farbkästen */
+            // Color squares
             if (step.style === "colors") {
               const bg =
                 c === "Rot"
@@ -185,7 +197,16 @@ export default function InterestsWizard() {
                   ? "#22c55e"
                   : "#eab308";
               return (
-                <button key={c} onClick={() => choose(c)} className="w-full">
+                <button
+                  key={c}
+                  onClick={() => choose(c)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(c); }
+                  }}
+                  role="radio"
+                  aria-checked={isActive}
+                  className="w-full focus:outline-none focus:ring-2 focus:ring-blue-400 rounded-2xl"
+                >
                   <Card
                     className={`relative rounded-2xl border-2 ${
                       isActive
@@ -196,7 +217,6 @@ export default function InterestsWizard() {
                     hoverable
                   >
                     <div className="h-14 rounded-xl" style={{ background: bg }} />
-
                     {isActive && (
                       <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full p-1 shadow">
                         <Check className="w-4 h-4" />
@@ -207,14 +227,19 @@ export default function InterestsWizard() {
               );
             }
 
-            /* 🖼️ Bildkarten (Einhorn/Dino) */
+            // Image cards (Unicorn/Dino)
             if (step.style === "imageCards") {
               const imgSrc = step.images?.[c];
               return (
                 <button
                   key={c}
                   onClick={() => choose(c)}
-                  className="text-left"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(c); }
+                  }}
+                  role="radio"
+                  aria-checked={isActive}
+                  className="text-left focus:outline-none focus:ring-2 focus:ring-blue-400 rounded-2xl"
                   aria-label={c}
                 >
                   <Card
@@ -252,9 +277,18 @@ export default function InterestsWizard() {
               );
             }
 
-            /* 🔤 Standardkarten */
+            // Default text cards
             return (
-              <button key={c} onClick={() => choose(c)} className="w-full">
+              <button
+                key={c}
+                onClick={() => choose(c)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(c); }
+                }}
+                role="radio"
+                aria-checked={isActive}
+                className="w-full focus:outline-none focus:ring-2 focus:ring-blue-400 rounded-2xl"
+              >
                 <Card
                   className={`relative rounded-2xl border-2 ${
                     isActive
@@ -291,7 +325,11 @@ export default function InterestsWizard() {
             Weiter
           </Button>
         </div>
+
+       
       </div>
+       </DeviceFrame>
     </div>
+     
   );
 }

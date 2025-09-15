@@ -1,7 +1,6 @@
 // src/pages/parent/billing/BillingOverview.jsx
 import { useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import GradientShell from "@/components/GradientShell";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   Row,
@@ -27,6 +26,10 @@ import {
   ExclamationCircleOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+
+import DeviceFrame from "@/components/student/mobile/DeviceFrame";
+import BottomTabBar, { ParentTabSpacer } from "@/components/parent/BottomTabBar";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 
 const { Title, Text } = Typography;
 
@@ -146,78 +149,92 @@ export default function BillingOverview() {
   ];
 
   return (
-    <GradientShell>
-      <div className="p-4 md:p-6 mx-auto w-full max-w-[1200px] space-y-10">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-          <div>
-            <Title level={3} className="!mb-0">Billing Overview</Title>
-            <Text type="secondary">Your plan, invoices, and payment methods at a glance.</Text>
-          </div>
-          <Space wrap className="justify-start md:justify-end">
-            <Button icon={<FileDoneOutlined />} onClick={() => navigate("/parent/billing/invoices")}>
-              View Invoices
-            </Button>
-            <Button icon={<ReconciliationOutlined />} onClick={() => navigate("/parent/billing/subscription")}>
-              Manage Subscription
-            </Button>
-            <Button icon={<GiftOutlined />} onClick={() => navigate("/parent/billing/coupons")}>
-              Coupons
-            </Button>
-          </Space>
-        </div>
+    <DeviceFrame showFooterChat={false} className="bg-neutral-100">
+      <div
+        className="min-h-screen flex flex-col"
+        style={{
+          backgroundImage: `url(${globalBg})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          paddingTop: "env(safe-area-inset-top)",
+        }}
+      >
+        {/* Scroll container (BottomTabBar must live inside) */}
+        <main className="flex-1 overflow-y-auto px-5">
+          {/* Single-column layout inside phone frame */}
+          <div className="mx-auto w-full max-w-[520px] py-6 space-y-8">
+            {/* Header */}
+            <div className="flex flex-col gap-2">
+              <Title level={3} className="!mb-0">
+                Billing Overview
+              </Title>
+              <Text type="secondary">
+                Your plan, invoices, and payment methods at a glance.
+              </Text>
 
-        {/* Stats — 1 per row (xs), 2 per row (sm), 4 per row (lg) */}
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} lg={6}>
-            <Card className="shadow-sm rounded-2xl">
-              <div className="flex items-center justify-between">
-                <Statistic title="Current Plan" value={SUBSCRIPTION.plan} />
-                <Tag color={SUBSCRIPTION.status === "Active" ? "green" : "default"}>{SUBSCRIPTION.status}</Tag>
-              </div>
-              <div className="mt-2 text-sm text-gray-500">
-                {SUBSCRIPTION.children} {SUBSCRIPTION.children === 1 ? "child" : "children"} · Billed {SUBSCRIPTION.interval}
-              </div>
-            </Card>
-          </Col>
+              <Space wrap className="mt-2">
+                <Button icon={<FileDoneOutlined />} onClick={() => navigate("/parent/billing/invoices")}>
+                  View Invoices
+                </Button>
+                <Button icon={<ReconciliationOutlined />} onClick={() => navigate("/parent/billing/subscription")}>
+                  Manage Subscription
+                </Button>
+                <Button icon={<GiftOutlined />} onClick={() => navigate("/parent/billing/coupons")}>
+                  Coupons
+                </Button>
+              </Space>
+            </div>
 
-          <Col xs={24} sm={12} lg={6}>
-            <Card className="shadow-sm rounded-2xl">
-              <div className="flex items-center justify-between">
-                <Statistic title="Next Charge" value={money(SUBSCRIPTION.amount, SUBSCRIPTION.currency)} />
-                <ReconciliationOutlined className="text-gray-500 text-xl" />
-              </div>
-              <div className="mt-2 text-sm text-gray-500">
-                On {fmtDate(SUBSCRIPTION.next_renewal)}
-              </div>
-            </Card>
-          </Col>
+            {/* Stats */}
+            <Row gutter={[16, 16]}>
+              <Col xs={24} sm={12} lg={6}>
+                <Card className="shadow-sm rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <Statistic title="Current Plan" value={SUBSCRIPTION.plan} />
+                    <Tag color={SUBSCRIPTION.status === "Active" ? "green" : "default"}>
+                      {SUBSCRIPTION.status}
+                    </Tag>
+                  </div>
+                  <div className="mt-2 text-sm text-gray-500">
+                    {SUBSCRIPTION.children} {SUBSCRIPTION.children === 1 ? "child" : "children"} · Billed {SUBSCRIPTION.interval}
+                  </div>
+                </Card>
+              </Col>
 
-          <Col xs={24} sm={12} lg={6}>
-            <Card className="shadow-sm rounded-2xl">
-              <div className="flex items-center justify-between">
-                <Statistic title="Paid (30d)" value={paid30} />
-                <FileDoneOutlined className="text-gray-500 text-xl" />
-              </div>
-              <div className="mt-2 text-sm text-gray-500">Invoices paid last 30 days</div>
-            </Card>
-          </Col>
+              <Col xs={24} sm={12} lg={6}>
+                <Card className="shadow-sm rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <Statistic title="Next Charge" value={money(SUBSCRIPTION.amount, SUBSCRIPTION.currency)} />
+                    <ReconciliationOutlined className="text-gray-500 text-xl" />
+                  </div>
+                  <div className="mt-2 text-sm text-gray-500">
+                    On {fmtDate(SUBSCRIPTION.next_renewal)}
+                  </div>
+                </Card>
+              </Col>
 
-          <Col xs={24} sm={12} lg={6}>
-            <Card className="shadow-sm rounded-2xl">
-              <div className="flex items-center justify-between">
-                <Statistic title="Outstanding" value={money(outstanding, "EUR")} />
-                <ExclamationCircleOutlined className="text-gray-500 text-xl" />
-              </div>
-              <div className="mt-2 text-sm text-gray-500">Amount due</div>
-            </Card>
-          </Col>
-        </Row>
+              <Col xs={24} sm={12} lg={6}>
+                <Card className="shadow-sm rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <Statistic title="Paid (30d)" value={paid30} />
+                    <FileDoneOutlined className="text-gray-500 text-xl" />
+                  </div>
+                  <div className="mt-2 text-sm text-gray-500">Invoices paid last 30 days</div>
+                </Card>
+              </Col>
 
-        {/* Main grid — stacked on mobile, 16/8 split on desktop */}
-        <Row gutter={[16, 16]}>
-          {/* Left: invoices table */}
-          <Col xs={24} lg={16}>
+              <Col xs={24} sm={12} lg={6}>
+                <Card className="shadow-sm rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <Statistic title="Outstanding" value={money(outstanding, "EUR")} />
+                    <ExclamationCircleOutlined className="text-gray-500 text-xl" />
+                  </div>
+                  <div className="mt-2 text-sm text-gray-500">Amount due</div>
+                </Card>
+              </Col>
+            </Row>
+
+            {/* Invoices table */}
             <Card
               title={
                 <Space>
@@ -231,7 +248,6 @@ export default function BillingOverview() {
                   type="link"
                   onClick={() => navigate("/parent/billing/invoices")}
                   icon={<ArrowRightOutlined />}
-                  className="hidden md:inline-flex"
                   aria-label="See all invoices"
                 >
                   All invoices
@@ -256,22 +272,10 @@ export default function BillingOverview() {
                   scroll={{ x: 640 }}
                 />
               </div>
-              {/* Mobile “All invoices” action */}
-              <Button
-                type="link"
-                onClick={() => navigate("/parent/billing/invoices")}
-                icon={<ArrowRightOutlined />}
-                className="md:hidden mt-2"
-                aria-label="See all invoices"
-              >
-                All invoices
-              </Button>
             </Card>
-          </Col>
 
-          {/* Right: sticky card stack on desktop */}
-          <Col xs={24} lg={8}>
-            <div className="md:sticky md:top-20 space-y-4">
+            {/* Right column content becomes stacked cards on phone frame */}
+            <div className="space-y-4">
               {/* Subscription summary */}
               <Card className="shadow-sm rounded-2xl">
                 <Space className="w-full justify-between">
@@ -362,7 +366,11 @@ export default function BillingOverview() {
                     </List.Item>
                   )}
                 />
-                <Button block className="mt-2" onClick={() => navigate("/parent/billing/payment-methods/add")}>
+                <Button
+                  block
+                  className="mt-2"
+                  onClick={() => navigate("/parent/billing/payment-methods/add")}
+                >
                   Add New Card
                 </Button>
               </Card>
@@ -411,11 +419,13 @@ export default function BillingOverview() {
                 />
               </Card>
             </div>
-          </Col>
-        </Row>
 
-        <div className="h-8" />
+            {/* Space before bottom nav */}
+            <ParentTabSpacer />
+            <BottomTabBar />
+          </div>
+        </main>
       </div>
-    </GradientShell>
+    </DeviceFrame>
   );
 }

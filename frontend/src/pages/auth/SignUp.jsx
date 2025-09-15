@@ -1,3 +1,4 @@
+// src/pages/auth/SignUp.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
@@ -7,8 +8,8 @@ import api from "../../api/axios";
 import { ROLE_PATHS, ROLES } from "../../utils/roleMapper";
 import { useAuthContext } from "../../context/AuthContext";
 
-/* Keep this in sync with WelcomeIntro.jsx */
-const INTRO_LS_KEY = "kib_intro_seen_v1";
+// ✅ Onboarding flags (shared with WelcomeIntro / WelcomeTour)
+import { INTRO_LS_KEY, TOUR_LS_KEY } from "@/pages/student/onboarding/introFlags";
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -17,18 +18,15 @@ export default function SignUp() {
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-  const { login } = useAuthContext(); // ✅ we log in directly after signup
+  const { login } = useAuthContext(); // auto-login after signup
 
   const handleFinish = async (values) => {
     const { first_name, last_name, email, phone, password, confirm_password, role } = values;
 
-    const roleMap = {
-      teacher: 2,
-      student: 3,
-      parent: 4,
-    };
+    // Map UI role -> backend numeric role_id
+    const roleMap = { teacher: 2, student: 3, parent: 4 };
+    const role_id = roleMap[String(role)];
 
-    const role_id = roleMap[role];
     if (!role_id) {
       toast.error("Invalid role selected.");
       return;
@@ -48,27 +46,38 @@ export default function SignUp() {
       setLoading(true);
       const { data } = await api.post("/auth/signup", payload);
 
-      // ✅ Store auth (auto login)
-      login(data.user, data.token);
-
-      // ✅ Reset intro flag for students
-      if (role_id === ROLES.STUDENT) {
-        try {
-          localStorage.removeItem(INTRO_LS_KEY);
-        } catch {}
+      const user = data?.user;
+      const token = data?.token;
+      if (!user || !token) {
+        toast.error("Unexpected response. Please try again.");
+        return;
       }
 
+      // Persist session
+      login(user, token);
       toast.success("Account created! Redirecting…");
 
-      // ✅ Redirect to dashboards
       if (role_id === ROLES.STUDENT) {
-        navigate("/student/onboarding/intro", { replace: true });
-      } else {
-        const rolePath = ROLE_PATHS[role_id] || "/dashboard";
-        navigate(rolePath, { replace: true });
+        // Fresh onboarding for students: clear any previous flags
+        try {
+          localStorage.removeItem(INTRO_LS_KEY);
+          localStorage.removeItem(TOUR_LS_KEY);
+        } catch {}
+        // Go to the Intro first
+        navigate("/student/onboarding/welcome-intro", { replace: true });
+        return;
       }
+
+      // Non-students → role landing (teacher/parent/admin/etc.)
+      const resolvedRoleId = Number(user.role_id ?? user.roleId ?? user?.role?.id ?? role_id);
+      const rolePath = ROLE_PATHS[resolvedRoleId] || "/dashboard";
+      navigate(rolePath, { replace: true });
     } catch (err) {
-      toast.error(err.response?.data?.message || "Signup failed");
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        "Signup failed";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -82,13 +91,37 @@ export default function SignUp() {
           Create Your Account
         </Title>
 
-        <Form form={form} layout="vertical" onFinish={handleFinish} autoComplete="off" requiredMark={false}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleFinish}
+          autoComplete="off"
+          requiredMark={false}
+        >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Form.Item name="first_name" label="First Name" rules={[{ required: true, message: "Please enter your first name" }]}>
-              <Input prefix={<UserOutlined />} placeholder="First Name" />
+            <Form.Item
+              name="first_name"
+              label="First Name"
+              rules={[{ required: true, message: "Please enter your first name" }]}
+            >
+              <Input
+                prefix={<UserOutlined />}
+                placeholder="First Name"
+                autoComplete="given-name"
+                disabled={loading}
+              />
             </Form.Item>
-            <Form.Item name="last_name" label="Last Name" rules={[{ required: true, message: "Please enter your last name" }]}>
-              <Input prefix={<UserOutlined />} placeholder="Last Name" />
+            <Form.Item
+              name="last_name"
+              label="Last Name"
+              rules={[{ required: true, message: "Please enter your last name" }]}
+            >
+              <Input
+                prefix={<UserOutlined />}
+                placeholder="Last Name"
+                autoComplete="family-name"
+                disabled={loading}
+              />
             </Form.Item>
           </div>
 
@@ -100,7 +133,12 @@ export default function SignUp() {
               { type: "email", message: "Invalid email" },
             ]}
           >
-            <Input prefix={<MailOutlined />} placeholder="Email address" />
+            <Input
+              prefix={<MailOutlined />}
+              placeholder="Email address"
+              autoComplete="email"
+              disabled={loading}
+            />
           </Form.Item>
 
           <Form.Item
@@ -108,22 +146,41 @@ export default function SignUp() {
             label="Phone Number"
             rules={[
               { required: true, message: "Phone number is required" },
-              { pattern: /^[6-9]\d{9}$/, message: "Enter a valid 10-digit Indian mobile number (e.g. 9123456789)" },
+              { pattern: /^[6-9]\d{9}$/, message: "Enter a valid 10-digit mobile number" },
             ]}
           >
-            <Input prefix={<PhoneOutlined />} placeholder="Phone number" />
+            <Input
+              prefix={<PhoneOutlined />}
+              placeholder="Phone number"
+              autoComplete="tel"
+              disabled={loading}
+            />
           </Form.Item>
 
-          <Form.Item name="role" label="Role" rules={[{ required: true, message: "Please select a role" }]}>
-            <Select placeholder="Select Role">
+          <Form.Item
+            name="role"
+            label="Role"
+            rules={[{ required: true, message: "Please select a role" }]}
+          >
+            <Select placeholder="Select Role" disabled={loading}>
               <Option value="teacher">Teacher</Option>
               <Option value="student">Student</Option>
               <Option value="parent">Parent</Option>
             </Select>
           </Form.Item>
 
-          <Form.Item name="password" label="Password" rules={[{ required: true, message: "Enter a password" }]} hasFeedback>
-            <Input.Password prefix={<LockOutlined />} placeholder="Password" />
+          <Form.Item
+            name="password"
+            label="Password"
+            rules={[{ required: true, message: "Enter a password" }]}
+            hasFeedback
+          >
+            <Input.Password
+              prefix={<LockOutlined />}
+              placeholder="Password"
+              autoComplete="new-password"
+              disabled={loading}
+            />
           </Form.Item>
 
           <Form.Item
@@ -141,18 +198,32 @@ export default function SignUp() {
               }),
             ]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder="Confirm password" />
+            <Input.Password
+              prefix={<LockOutlined />}
+              placeholder="Confirm password"
+              autoComplete="new-password"
+              disabled={loading}
+            />
           </Form.Item>
 
           <Form.Item>
-            <Button type="primary" htmlType="submit" block loading={loading} className="bg-indigo-600 hover:bg-indigo-700">
+            <Button
+              type="primary"
+              htmlType="submit"
+              block
+              loading={loading}
+              className="bg-indigo-600 hover:bg-indigo-700"
+            >
               {loading ? "Creating account..." : "Sign Up"}
             </Button>
           </Form.Item>
 
           <Text className="block text-center">
             Already have an account?{" "}
-            <span className="text-indigo-600 cursor-pointer hover:underline" onClick={() => navigate("/signin")}>
+            <span
+              className="text-indigo-600 cursor-pointer hover:underline"
+              onClick={() => navigate("/signin")}
+            >
               Sign In
             </span>
           </Text>

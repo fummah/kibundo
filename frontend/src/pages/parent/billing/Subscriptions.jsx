@@ -12,9 +12,11 @@ import {
   Typography,
 } from "antd";
 import { ArrowRightOutlined, CheckCircleOutlined } from "@ant-design/icons";
-import GradientShell from "@/components/GradientShell";
-import BottomTabBarDE from "@/components/BottomTabBarDE";
 import { useNavigate } from "react-router-dom";
+
+import DeviceFrame from "@/components/student/mobile/DeviceFrame";
+import BottomTabBar, { ParentTabSpacer } from "@/components/parent/BottomTabBar";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 
 const { Text, Title } = Typography;
 
@@ -320,7 +322,7 @@ export default function Subscription() {
   const navigate = useNavigate();
 
   const [interval, setInterval] = useState("month"); // "week" | "month" | "year"
-  const [childrenCount, setChildrenCount] = useState(1); // 1 | 2 (Starter/Family)
+  const [childrenCount, setChildrenCount] = useState(1); // 1 | 2
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [promoCode, setPromoCode] = useState("");
 
@@ -349,135 +351,165 @@ export default function Subscription() {
   };
 
   const selectedPrice = currentSelected?.price_amount ?? 0;
-  const discount = promoCode.trim().toUpperCase() === "WELCOME20" ? +(selectedPrice * 0.2).toFixed(2) : 0;
+  const discount =
+    promoCode.trim().toUpperCase() === "WELCOME20"
+      ? +(selectedPrice * 0.2).toFixed(2)
+      : 0;
   const total = +(selectedPrice - discount).toFixed(2);
 
   return (
-    <GradientShell>
-      {/* Page header */}
-      <div className="px-5 md:px-8 pt-6">
-        <h1 className="text-2xl md:text-3xl font-extrabold text-neutral-800 m-0">
-          Subscriptions
-        </h1>
+    <DeviceFrame showFooterChat={false} className="bg-neutral-100">
+      <div
+        className="min-h-screen flex flex-col"
+        style={{
+          backgroundImage: `url(${globalBg})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          paddingTop: "env(safe-area-inset-top)",
+        }}
+      >
+        {/* Scrollable content — bottom tab bar lives inside this element */}
+        <main className="flex-1 overflow-y-auto px-5 md:px-8">
+          {/* Page header */}
+          <div className="pt-6">
+            <h1 className="text-2xl md:text-3xl font-extrabold text-neutral-800 m-0">
+              Subscriptions
+            </h1>
+          </div>
+
+          {/* Hero / Controls */}
+          <div>
+            <div className="mt-3 rounded-3xl bg-white/80 p-5 shadow">
+              <div className="md:flex md:items-center md:justify-between">
+                <div>
+                  <h2 className="text-xl md:text-2xl font-extrabold m-0">
+                    Choose Your Subscription
+                  </h2>
+                  <p className="mt-1 text-neutral-600">
+                    Flexible packages for 1 or 2 children. Change or cancel
+                    anytime.
+                  </p>
+                </div>
+
+                <div className="mt-4 md:mt-0 flex flex-col sm:flex-row gap-3">
+                  <Segmented
+                    size="large"
+                    options={[
+                      { label: "Weekly", value: "week" },
+                      { label: "Monthly", value: "month" },
+                      { label: "Yearly", value: "year" },
+                    ]}
+                    value={interval}
+                    onChange={setInterval}
+                    aria-label="Billing interval"
+                  />
+
+                  {/* Package selector (Starter/Family) */}
+                  <Radio.Group
+                    size="large"
+                    value={childrenCount}
+                    onChange={(e) => setChildrenCount(e.target.value)}
+                    className="bg-white rounded-full px-2 py-1"
+                    aria-label="Package"
+                  >
+                    <Radio.Button value={1}>Starter (1 child)</Radio.Button>
+                    <Radio.Button value={2}>Family (2 children)</Radio.Button>
+                  </Radio.Group>
+                </div>
+              </div>
+            </div>
+
+            {/* Layout */}
+            <div className="mt-5 grid grid-cols-1 gap-6 lg:max-w-6xl xl:max-w-7xl mx-auto md:grid-cols-3">
+              {/* Plans */}
+              <div className="md:col-span-2">
+                {/* Mobile list */}
+                <div className="grid grid-cols-1 gap-4 md:hidden">
+                  {filtered.map((p) => (
+                    <PlanCard
+                      key={p.id}
+                      plan={p}
+                      selected={currentSelected?.id === p.id}
+                      onSelect={setSelectedPlan}
+                    />
+                  ))}
+                </div>
+
+                {/* Desktop grid */}
+                <div className="hidden md:grid grid-cols-2 xl:grid-cols-3 gap-5">
+                  {filtered.map((p) => (
+                    <PlanCard
+                      key={p.id}
+                      plan={p}
+                      selected={currentSelected?.id === p.id}
+                      onSelect={setSelectedPlan}
+                    />
+                  ))}
+                </div>
+
+                {/* Comparison (desktop & tablet) */}
+                <div className="hidden md:block mt-6">
+                  <Comparison plans={allForComparison} />
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div className="md:col-span-1 md:relative">
+                {/* Sticky on desktop */}
+                <div className="hidden md:block md:sticky md:top-20">
+                  <PromoSummary
+                    selectedPlan={currentSelected}
+                    promoCode={promoCode}
+                    setPromoCode={setPromoCode}
+                  />
+                  <Button
+                    size="large"
+                    className="mt-4 h-12 w-full rounded-full bg-[#C7D425] text-neutral-900 border-none hover:!bg-[#b8c61d]"
+                    disabled={!currentSelected}
+                    onClick={handleContinue}
+                    icon={<ArrowRightOutlined />}
+                  >
+                    Continue to Checkout
+                  </Button>
+                </div>
+
+                {/* Mobile */}
+                <div className="md:hidden">
+                  <PromoSummary
+                    selectedPlan={currentSelected}
+                    promoCode={promoCode}
+                    setPromoCode={setPromoCode}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Give enough breathing room above the two bottom bars on mobile */}
+            <div className="h-24 md:h-10" />
+          </div>
+
+          {/* Spacer for the bottom tab bar (inside scroller) */}
+          <ParentTabSpacer />
+
+          {/* Bottom navigation (mobile fixed, desktop absolute-in-frame) */}
+          <BottomTabBar />
+        </main>
       </div>
 
-      {/* Hero / Controls */}
-      <div className="px-5 md:px-8">
-        <div className="mt-3 rounded-3xl bg-white/80 p-5 shadow">
-          <div className="md:flex md:items-center md:justify-between">
-            <div>
-              <h2 className="text-xl md:text-2xl font-extrabold m-0">
-                Choose Your Subscription
-              </h2>
-              <p className="mt-1 text-neutral-600">
-                Flexible packages for 1 or 2 children. Change or cancel anytime.
-              </p>
-            </div>
-
-            <div className="mt-4 md:mt-0 flex flex-col sm:flex-row gap-3">
-              <Segmented
-                size="large"
-                options={[
-                  { label: "Weekly", value: "week" },
-                  { label: "Monthly", value: "month" },
-                  { label: "Yearly", value: "year" },
-                ]}
-                value={interval}
-                onChange={setInterval}
-                aria-label="Billing interval"
-              />
-
-              {/* Package selector (Starter/Family) */}
-              <Radio.Group
-                size="large"
-                value={childrenCount}
-                onChange={(e) => setChildrenCount(e.target.value)}
-                className="bg-white rounded-full px-2 py-1"
-                aria-label="Package"
-              >
-                <Radio.Button value={1}>Starter (1 child)</Radio.Button>
-                <Radio.Button value={2}>Family (2 children)</Radio.Button>
-              </Radio.Group>
-            </div>
-          </div>
-        </div>
-
-        {/* Layout */}
-        <div className="mt-5 grid grid-cols-1 gap-6 lg:max-w-6xl xl:max-w-7xl mx-auto md:grid-cols-3">
-          {/* Plans */}
-          <div className="md:col-span-2">
-            {/* Mobile list */}
-            <div className="grid grid-cols-1 gap-4 md:hidden">
-              {filtered.map((p) => (
-                <PlanCard
-                  key={p.id}
-                  plan={p}
-                  selected={currentSelected?.id === p.id}
-                  onSelect={setSelectedPlan}
-                />
-              ))}
-            </div>
-
-            {/* Desktop grid */}
-            <div className="hidden md:grid grid-cols-2 xl:grid-cols-3 gap-5">
-              {filtered.map((p) => (
-                <PlanCard
-                  key={p.id}
-                  plan={p}
-                  selected={currentSelected?.id === p.id}
-                  onSelect={setSelectedPlan}
-                />
-              ))}
-            </div>
-
-            {/* Comparison (desktop & tablet) */}
-            <div className="hidden md:block mt-6">
-              <Comparison plans={allForComparison} />
-            </div>
-          </div>
-
-          {/* Summary */}
-          <div className="md:col-span-1 md:relative">
-            {/* Sticky on desktop */}
-            <div className="hidden md:block md:sticky md:top-20">
-              <PromoSummary
-                selectedPlan={currentSelected}
-                promoCode={promoCode}
-                setPromoCode={setPromoCode}
-              />
-              <Button
-                size="large"
-                className="mt-4 h-12 w-full rounded-full bg-[#C7D425] text-neutral-900 border-none hover:!bg-[#b8c61d]"
-                disabled={!currentSelected}
-                onClick={handleContinue}
-                icon={<ArrowRightOutlined />}
-              >
-                Continue to Checkout
-              </Button>
-            </div>
-
-            {/* Mobile */}
-            <div className="md:hidden pb-[calc(8.5rem+env(safe-area-inset-bottom))]">
-              <PromoSummary
-                selectedPlan={currentSelected}
-                promoCode={promoCode}
-                setPromoCode={setPromoCode}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="h-10" />
-      </div>
-
-      {/* Bottom sticky action bar (mobile) */}
-      <div className="fixed inset-x-0 bottom-0 z-40 md:hidden bg-white/95 backdrop-blur border-t border-neutral-200 px-4 py-3">
+      {/* Mobile sticky action bar — offset ABOVE the BottomTabBar */}
+      <div
+        className="fixed inset-x-0 md:hidden z-50 bg-white/95 backdrop-blur border-t border-neutral-200 px-4 py-3"
+        style={{ bottom: "calc(72px + env(safe-area-inset-bottom))" }}
+      >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="text-xs text-neutral-500">Selected package</div>
             <div className="text-sm font-semibold truncate">
               {currentSelected
-                ? `${currentSelected.name} · ${money(total || 0, "EUR")}/${currentSelected.billing_interval}`
+                ? `${currentSelected.name} · ${money(
+                    total || 0,
+                    "EUR"
+                  )}/${currentSelected.billing_interval}`
                 : "None"}
             </div>
           </div>
@@ -495,11 +527,6 @@ export default function Subscription() {
         </div>
         <div className="h-[env(safe-area-inset-bottom)]" />
       </div>
-
-      {/* Mobile bottom tabs */}
-      <div className="md:hidden">
-        <BottomTabBarDE />
-      </div>
-    </GradientShell>
+    </DeviceFrame>
   );
 }

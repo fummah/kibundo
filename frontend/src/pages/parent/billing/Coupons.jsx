@@ -24,13 +24,15 @@ import {
   ArrowRightOutlined,
   ReloadOutlined,
   LinkOutlined,
-  ArrowLeftOutlined, // ✅ added
+  ArrowLeftOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
-import GradientShell from "@/components/GradientShell";
-import BottomTabBarDE from "@/components/BottomTabBarDE";
+
+import DeviceFrame from "@/components/student/mobile/DeviceFrame";
+import BottomTabBar, { ParentTabSpacer } from "@/components/parent/BottomTabBar";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 
 const { Title, Text } = Typography;
 
@@ -254,221 +256,211 @@ export default function Coupons() {
   };
 
   return (
-    <GradientShell>
-      {/* Full-height scroll container */}
+    <DeviceFrame showFooterChat={false} className="bg-neutral-100">
       <div
-        className="w-full h-[100dvh] overflow-y-auto overscroll-y-contain touch-pan-y flex justify-center"
-        style={{ WebkitOverflowScrolling: "touch" }}
-        role="main"
-        aria-label={t("parent.billing.coupons.title")}
+        className="min-h-screen flex flex-col"
+        style={{
+          backgroundImage: `url(${globalBg})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          paddingTop: "env(safe-area-inset-top)",
+        }}
       >
-        <div className="w-full max-w-[520px] px-4 pt-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))] mx-auto space-y-6">
-          
-          {/* header with back + refresh */}
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2">
-              {/* ✅ Back arrow */}
-              <Button
-                icon={<ArrowLeftOutlined />}
-                onClick={() => navigate(-1)}
-                aria-label={t("common.back")}
-              />
-              <div>
-                <Title level={2} className="!m-0">
-                  {t("parent.billing.coupons.title")}
-                </Title>
-                <p className="text-gray-600 m-0">
-                  {t("parent.billing.coupons.subtitle")}
-                </p>
+        {/* Scrollable content — bottom bar lives inside this element */}
+        <main className="flex-1 overflow-y-auto px-5">
+          <div className="w-full max-w-[520px] mx-auto pt-6 space-y-6">
+            {/* header with back + refresh */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Button
+                  icon={<ArrowLeftOutlined />}
+                  onClick={() => navigate(-1)}
+                  aria-label={t("common.back")}
+                />
+                <div>
+                  <Title level={2} className="!m-0">
+                    {t("parent.billing.coupons.title")}
+                  </Title>
+                  <p className="text-gray-600 m-0">
+                    {t("parent.billing.coupons.subtitle")}
+                  </p>
+                </div>
               </div>
+
+              <Button icon={<ReloadOutlined />} onClick={refresh} aria-label="Refresh coupons">
+                {t("actions.refresh")}
+              </Button>
             </div>
 
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={refresh}
-              aria-label="Refresh coupons"
-            >
-              {t("actions.refresh")}
-            </Button>
-          </div>
+            {/* rules */}
+            <Space direction="vertical" className="w-full">
+              <Alert type="info" showIcon message={t("parent.billing.coupons.rules.oneActiveOnly")} />
+              <Alert type="warning" showIcon message={t("parent.billing.coupons.activeSubNoDiscount")} />
+            </Space>
 
-          {/* rules */}
-          <Space direction="vertical" className="w-full">
-            <Alert
-              type="info"
-              showIcon
-              message={t("parent.billing.coupons.rules.oneActiveOnly")}
-            />
-            <Alert
-              type="warning"
-              showIcon
-              message={t("parent.billing.coupons.activeSubNoDiscount")}
-            />
-          </Space>
-
-          {/* KPIs */}
-          <Row gutter={[12, 12]}>
-            <Col xs={8}>
-              <Card className="rounded-2xl shadow-sm text-center">
-                <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.active")}</div>
-                <div className="text-xl font-extrabold text-green-600">{kpis.actives}</div>
-              </Card>
-            </Col>
-            <Col xs={8}>
-              <Card className="rounded-2xl shadow-sm text-center">
-                <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.upcoming")}</div>
-                <div className="text-xl font-extrabold text-blue-600">{kpis.upcoming}</div>
-              </Card>
-            </Col>
-            <Col xs={8}>
-              <Card className="rounded-2xl shadow-sm text-center">
-                <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.expired")}</div>
-                <div className="text-xl font-extrabold text-red-500">{kpis.expired}</div>
-              </Card>
-            </Col>
-          </Row>
-
-          {/* filters */}
-          <Card className="rounded-2xl shadow-sm">
-            <Row gutter={[12, 12]} align="middle">
-              <Col xs={24}>
-                <Input
-                  allowClear
-                  prefix={<SearchOutlined />}
-                  placeholder={t("parent.billing.coupons.searchPh")}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="rounded-xl"
-                  aria-label="Search coupons"
-                />
+            {/* KPIs */}
+            <Row gutter={[12, 12]}>
+              <Col xs={8}>
+                <Card className="rounded-2xl shadow-sm text-center">
+                  <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.active")}</div>
+                  <div className="text-xl font-extrabold text-green-600">{kpis.actives}</div>
+                </Card>
               </Col>
-              <Col xs={24}>
-                <div className="w-full overflow-x-auto" style={{ WebkitOverflowScrolling: "touch" }}>
-                  <Segmented
-                    options={[
-                      { label: t("filters.active"), value: "active" },
-                      { label: t("filters.upcoming"), value: "upcoming" },
-                      { label: t("filters.expired"), value: "expired" },
-                      { label: t("filters.used"), value: "used" },
-                      { label: t("filters.all"), value: "all" },
-                    ]}
-                    value={seg}
-                    onChange={setSeg}
-                    size="large"
-                    aria-label="Filter coupons by status"
-                  />
-                </div>
+              <Col xs={8}>
+                <Card className="rounded-2xl shadow-sm text-center">
+                  <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.upcoming")}</div>
+                  <div className="text-xl font-extrabold text-blue-600">{kpis.upcoming}</div>
+                </Card>
+              </Col>
+              <Col xs={8}>
+                <Card className="rounded-2xl shadow-sm text-center">
+                  <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.expired")}</div>
+                  <div className="text-xl font-extrabold text-red-500">{kpis.expired}</div>
+                </Card>
               </Col>
             </Row>
-          </Card>
 
-          {/* internal coupons list */}
-          {filtered.length === 0 ? (
+            {/* filters */}
             <Card className="rounded-2xl shadow-sm">
-              <Empty description={t("parent.billing.coupons.empty")} />
-            </Card>
-          ) : (
-            <List
-              dataSource={filtered}
-              renderItem={(c) => (
-                <Card className="rounded-2xl shadow-sm mb-3" key={c.id}>
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-lime-200 grid place-items-center text-lime-800">
-                      <GiftOutlined />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold">{c.title}</span>
-                        {statusTag(c.status)}
-                        {c.min_spend > 0 && (
-                          <Tag color="purple" className="ml-1">
-                            {t("parent.billing.coupons.minSpend", {
-                              amount: money(c.min_spend, c.currency),
-                            })}
-                          </Tag>
-                        )}
-                      </div>
-                      <div className="text-gray-600 text-sm">{c.description}</div>
-
-                      <div className="mt-2 flex flex-wrap items-center gap-3">
-                        <Badge color="#c7d425" text={<strong>{c.code}</strong>} />
-                        <Tag color="magenta">
-                          {discountLabel(c)} {t("parent.billing.coupons.off")}
-                        </Tag>
-                        <Text type="secondary" className="text-xs">
-                          {dayjs(c.start_at).format("MMM D")} – {fmtDate(c.end_at)}
-                        </Text>
-                      </div>
-
-                      <Space className="mt-3">
-                        <Button onClick={() => copy(c.code)} icon={<CopyOutlined />} aria-label={`Copy ${c.code}`}>
-                          {t("actions.copy")}
-                        </Button>
-
-                        <Tooltip title={!canRedeem(c) ? blockedReason(c) : ""}>
-                          <Button
-                            type="primary"
-                            icon={<ArrowRightOutlined />}
-                            disabled={!canRedeem(c)}
-                            onClick={() => useNow(c)}
-                            aria-label={`Use ${c.code}`}
-                          >
-                            {t("actions.useNow")}
-                          </Button>
-                        </Tooltip>
-                      </Space>
-                    </div>
+              <Row gutter={[12, 12]} align="middle">
+                <Col xs={24}>
+                  <Input
+                    allowClear
+                    prefix={<SearchOutlined />}
+                    placeholder={t("parent.billing.coupons.searchPh")}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="rounded-xl"
+                    aria-label="Search coupons"
+                  />
+                </Col>
+                <Col xs={24}>
+                  <div className="w-full overflow-x-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+                    <Segmented
+                      options={[
+                        { label: t("filters.active"), value: "active" },
+                        { label: t("filters.upcoming"), value: "upcoming" },
+                        { label: t("filters.expired"), value: "expired" },
+                        { label: t("filters.used"), value: "used" },
+                        { label: t("filters.all"), value: "all" },
+                      ]}
+                      value={seg}
+                      onChange={setSeg}
+                      size="large"
+                      aria-label="Filter coupons by status"
+                    />
                   </div>
-                </Card>
-              )}
-            />
-          )}
+                </Col>
+              </Row>
+            </Card>
 
-          {/* External offers */}
-          <Card className="rounded-2xl shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <strong>{t("parent.billing.coupons.externalOffers.title")}</strong>
-              <Tag>{t("parent.billing.coupons.externalOffers.tag")}</Tag>
-            </div>
-            {DUMMY_OFFERS.length === 0 ? (
-              <Empty description={t("parent.billing.coupons.externalOffers.empty")} />
+            {/* internal coupons list */}
+            {filtered.length === 0 ? (
+              <Card className="rounded-2xl shadow-sm">
+                <Empty description={t("parent.billing.coupons.empty")} />
+              </Card>
             ) : (
               <List
-                dataSource={DUMMY_OFFERS}
-                renderItem={(o) => (
-                  <List.Item key={o.id} className="!px-0">
-                    <div className="flex-1">
-                      <div className="font-semibold">{o.title}</div>
-                      <div className="text-gray-600 text-sm">{o.description}</div>
-                      <Text type="secondary" className="text-xs">
-                        {t("parent.billing.coupons.validUntil", {
-                          date: fmtDate(o.end_at),
-                        })}
-                      </Text>
+                dataSource={filtered}
+                renderItem={(c) => (
+                  <Card className="rounded-2xl shadow-sm mb-3" key={c.id}>
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-lime-200 grid place-items-center text-lime-800">
+                        <GiftOutlined />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold">{c.title}</span>
+                          {statusTag(c.status)}
+                          {c.min_spend > 0 && (
+                            <Tag color="purple" className="ml-1">
+                              {t("parent.billing.coupons.minSpend", {
+                                amount: money(c.min_spend, c.currency),
+                              })}
+                            </Tag>
+                          )}
+                        </div>
+                        <div className="text-gray-600 text-sm">{c.description}</div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-3">
+                          <Badge color="#c7d425" text={<strong>{c.code}</strong>} />
+                          <Tag color="magenta">
+                            {discountLabel(c)} {t("parent.billing.coupons.off")}
+                          </Tag>
+                          <Text type="secondary" className="text-xs">
+                            {dayjs(c.start_at).format("MMM D")} – {fmtDate(c.end_at)}
+                          </Text>
+                        </div>
+
+                        <Space className="mt-3">
+                          <Button onClick={() => copy(c.code)} icon={<CopyOutlined />} aria-label={`Copy ${c.code}`}>
+                            {t("actions.copy")}
+                          </Button>
+
+                          <Tooltip title={!canRedeem(c) ? blockedReason(c) : ""}>
+                            <Button
+                              type="primary"
+                              icon={<ArrowRightOutlined />}
+                              disabled={!canRedeem(c)}
+                              onClick={() => useNow(c)}
+                              aria-label={`Use ${c.code}`}
+                            >
+                              {t("actions.useNow")}
+                            </Button>
+                          </Tooltip>
+                        </Space>
+                      </div>
                     </div>
-                    <Button
-                      type="default"
-                      icon={<LinkOutlined />}
-                      onClick={() => {
-                        track("coupon_applied", { type: "external", partnerId: o.partnerId });
-                        window.open(o.url, "_blank", "noopener,noreferrer");
-                      }}
-                      aria-label={`Open offer: ${o.title}`}
-                    >
-                      {t("actions.getOffer")}
-                    </Button>
-                  </List.Item>
+                  </Card>
                 )}
               />
             )}
-          </Card>
-        </div>
-      </div>
 
-      {/* mobile bottom tabs */}
-      <div className="md:hidden">
-        <BottomTabBarDE />
+            {/* External offers */}
+            <Card className="rounded-2xl shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <strong>{t("parent.billing.coupons.externalOffers.title")}</strong>
+                <Tag>{t("parent.billing.coupons.externalOffers.tag")}</Tag>
+              </div>
+              {DUMMY_OFFERS.length === 0 ? (
+                <Empty description={t("parent.billing.coupons.externalOffers.empty")} />
+              ) : (
+                <List
+                  dataSource={DUMMY_OFFERS}
+                  renderItem={(o) => (
+                    <List.Item key={o.id} className="!px-0">
+                      <div className="flex-1">
+                        <div className="font-semibold">{o.title}</div>
+                        <div className="text-gray-600 text-sm">{o.description}</div>
+                        <Text type="secondary" className="text-xs">
+                          {t("parent.billing.coupons.validUntil", {
+                            date: fmtDate(o.end_at),
+                          })}
+                        </Text>
+                      </div>
+                      <Button
+                        type="default"
+                        icon={<LinkOutlined />}
+                        onClick={() => {
+                          track("coupon_applied", { type: "external", partnerId: o.partnerId });
+                          window.open(o.url, "_blank", "noopener,noreferrer");
+                        }}
+                        aria-label={`Open offer: ${o.title}`}
+                      >
+                        {t("actions.getOffer")}
+                      </Button>
+                    </List.Item>
+                  )}
+                />
+              )}
+            </Card>
+
+            {/* Spacer + Bottom Tab Bar inside scroll container */}
+            <ParentTabSpacer />
+            <BottomTabBar />
+          </div>
+        </main>
       </div>
-    </GradientShell>
+    </DeviceFrame>
   );
 }

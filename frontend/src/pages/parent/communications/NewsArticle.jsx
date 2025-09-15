@@ -3,11 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { Spin, Tag, Empty, Button, Typography, message } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
-import GradientShell from "@/components/GradientShell";
-import BottomTabBar, { ParentTabSpacer } from "@/components/parent/BottomTabBar";
+import BottomTabBar from "@/components/parent/BottomTabBar";
+import ParentSpaceBar from "@/components/parent/ParentSpaceBar";
 import api from "@/api/axios";
-
-/* Optional background for visual parity */
 import globalBg from "@/assets/backgrounds/global-bg.png";
 
 const { Text, Title } = Typography;
@@ -25,7 +23,9 @@ export default function NewsArticle() {
 
   useEffect(() => {
     alive.current = true;
-    return () => { alive.current = false; };
+    return () => {
+      alive.current = false;
+    };
   }, []);
 
   const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
@@ -38,18 +38,16 @@ export default function NewsArticle() {
       raw.cover_image || raw.image_url || raw.thumbnail_url || raw.image || null;
     const content = raw.content ?? raw.body ?? "";
 
-    const tags =
-      Array.isArray(raw.tags)
-        ? raw.tags.filter(Boolean)
-        : typeof raw.tags === "string"
-        ? raw.tags.split(",").map((t) => t.trim()).filter(Boolean)
-        : [];
+    const tags = Array.isArray(raw.tags)
+      ? raw.tags.filter(Boolean)
+      : typeof raw.tags === "string"
+      ? raw.tags.split(",").map((t) => t.trim()).filter(Boolean)
+      : [];
 
-    const published_at =
-      raw.published_at || raw.created_at || raw.updated_at || null;
+    const published_at = raw.published_at || raw.created_at || raw.updated_at || null;
     const author = raw.author || raw.author_name || "";
 
-    // Try to collect additional images for a gallery
+    // Collect additional images for a gallery
     const imagesCandidates = [
       ...(Array.isArray(raw.images) ? raw.images : []),
       ...(Array.isArray(raw.gallery) ? raw.gallery : []),
@@ -153,121 +151,136 @@ export default function NewsArticle() {
   }, [article?.published_at]);
 
   return (
-    <GradientShell backgroundImage={globalBg}>
-      <div className="w-full min-h-[100dvh] flex justify-center">
-        {/* Single-column (phone) layout inside mockup */}
-        <section className="relative w-full max-w-[520px] px-4 pt-6 mx-auto space-y-6">
-          {/* Back / Breadcrumb (with icon) */}
-          <div className="flex items-center gap-2">
-            <Button
-              type="text"
-              icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(-1)}
-              className="!p-0 !h-auto text-neutral-700"
-              aria-label="Back"
-            />
-            <Text type="secondary">/</Text>
-            <Link to="/parent/communications/news">
-              <Button type="link" className="px-0">News</Button>
-            </Link>
-          </div>
+    // Desktop mock container with shared background
+    <div className="relative mx-auto max-w-[720px] w-full lg:shadow-2xl lg:rounded-[32px] overflow-hidden">
+      <div
+        className="min-h-screen flex flex-col"
+        style={{
+          backgroundImage: `url(${globalBg})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          paddingTop: "env(safe-area-inset-top)",
+        }}
+      >
+        {/* Scrollable area; sticky bottom tabs live inside this element */}
+        <main className="flex-1 overflow-y-auto">
+          <section className="relative w-full max-w-[520px] px-4 pt-6 mx-auto space-y-6">
+            {/* Back / Breadcrumb (with icon) */}
+            <div className="flex items-center gap-2">
+              <Button
+                type="text"
+                icon={<ArrowLeftOutlined />}
+                onClick={() => navigate(-1)}
+                className="!p-0 !h-auto text-neutral-700"
+                aria-label="Back"
+              />
+              <Text type="secondary">/</Text>
+              <Link to="/parent/communications/news">
+                <Button type="link" className="px-0">
+                  News
+                </Button>
+              </Link>
+            </div>
 
-          {/* Body */}
-          {loading ? (
-            <div className="flex justify-center items-center py-16">
-              <Spin size="large" />
-            </div>
-          ) : err === "not_found" ? (
-            <div className="py-12">
-              <Empty description="Article not found" />
-            </div>
-          ) : err === "load_error" ? (
-            <div className="py-12">
-              <Empty description="Failed to load article" />
-            </div>
-          ) : !article ? (
-            <div className="py-12">
-              <Empty description="No article data" />
-            </div>
-          ) : (
-            <>
-              {!!article.tags?.length && (
-                <div className="mb-2 flex flex-wrap gap-2">
-                  {article.tags.map((t, i) => (
-                    <Tag key={`${t}-${i}`} color="blue">
-                      {t}
-                    </Tag>
-                  ))}
-                </div>
-              )}
-
-              <Title level={3} className="!mb-2">{article.title}</Title>
-
-              <div className="mb-4">
-                <Text type="secondary">
-                  {article.author ? `${article.author} • ` : ""}
-                  {publishedLabel}
-                </Text>
+            {/* Body */}
+            {loading ? (
+              <div className="flex justify-center items-center py-16">
+                <Spin size="large" />
               </div>
-
-              {/* Cover image */}
-              {article.cover_image && (
-                <div className="rounded-2xl overflow-hidden ring-4 ring-white/60 mb-6">
-                  <img
-                    src={article.cover_image}
-                    alt={article.title}
-                    className="w-full max-h-[420px] object-cover"
-                    onError={(e) => (e.currentTarget.style.display = "none")}
-                  />
-                </div>
-              )}
-
-              {/* Optional excerpt */}
-              {article.excerpt && (
-                <p className="text-neutral-700 text-lg mb-4">{article.excerpt}</p>
-              )}
-
-              {/* Additional pictures/gallery (if provided by API fields) */}
-              {!!article.gallery?.length && (
-                <div className="mb-6">
-                  <div className="mb-2 font-semibold text-neutral-800">Pictures</div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {article.gallery.map((url, idx) => (
-                      <a
-                        key={`${url}-${idx}`}
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block rounded-xl overflow-hidden ring-4 ring-white/60 hover:opacity-95 transition"
-                        aria-label={`Open image ${idx + 1}`}
-                      >
-                        <img
-                          src={url}
-                          alt={`Article image ${idx + 1}`}
-                          className="w-full h-36 object-cover"
-                          onError={(e) => (e.currentTarget.style.display = "none")}
-                        />
-                      </a>
+            ) : err === "not_found" ? (
+              <div className="py-12">
+                <Empty description="Article not found" />
+              </div>
+            ) : err === "load_error" ? (
+              <div className="py-12">
+                <Empty description="Failed to load article" />
+              </div>
+            ) : !article ? (
+              <div className="py-12">
+                <Empty description="No article data" />
+              </div>
+            ) : (
+              <>
+                {!!article.tags?.length && (
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {article.tags.map((t, i) => (
+                      <Tag key={`${t}-${i}`} color="blue">
+                        {t}
+                      </Tag>
                     ))}
                   </div>
+                )}
+
+                <Title level={3} className="!mb-2">
+                  {article.title}
+                </Title>
+
+                <div className="mb-4">
+                  <Text type="secondary">
+                    {article.author ? `${article.author} • ` : ""}
+                    {publishedLabel}
+                  </Text>
                 </div>
-              )}
 
-              {/* Full content (may also include inline images) */}
-              <div
-                className="prose prose-lg max-w-none"
-                dangerouslySetInnerHTML={{ __html: sanitizedHTML }}
-              />
-            </>
-          )}
+                {/* Cover image */}
+                {article.cover_image && (
+                  <div className="rounded-2xl overflow-hidden ring-4 ring-white/60 mb-6">
+                    <img
+                      src={article.cover_image}
+                      alt={article.title}
+                      className="w-full max-h-[420px] object-cover"
+                      onError={(e) => (e.currentTarget.style.display = "none")}
+                    />
+                  </div>
+                )}
 
-          {/* Spacer so content never hides behind the footer */}
-          <ParentTabSpacer />
+                {/* Optional excerpt */}
+                {article.excerpt && (
+                  <p className="text-neutral-700 text-lg mb-4">{article.excerpt}</p>
+                )}
 
-          {/* Footer tab bar (mobile: fixed; desktop mockup: absolute inside frame) */}
+                {/* Additional pictures/gallery (if provided by API fields) */}
+                {!!article.gallery?.length && (
+                  <div className="mb-6">
+                    <div className="mb-2 font-semibold text-neutral-800">Pictures</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {article.gallery.map((url, idx) => (
+                        <a
+                          key={`${url}-${idx}`}
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block rounded-xl overflow-hidden ring-4 ring-white/60 hover:opacity-95 transition"
+                          aria-label={`Open image ${idx + 1}`}
+                        >
+                          <img
+                            src={url}
+                            alt={`Article image ${idx + 1}`}
+                            className="w-full h-36 object-cover"
+                            onError={(e) => (e.currentTarget.style.display = "none")}
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Full content (may also include inline images) */}
+                <div
+                  className="prose prose-lg max-w-none"
+                  dangerouslySetInnerHTML={{ __html: sanitizedHTML }}
+                />
+              </>
+            )}
+
+            {/* Space so content never hides behind the sticky bottom tabs */}
+            <ParentSpaceBar />
+          </section>
+
+          {/* Sticky bottom nav INSIDE the scroller */}
           <BottomTabBar />
-        </section>
+        </main>
       </div>
-    </GradientShell>
+    </div>
   );
 }
