@@ -5,7 +5,7 @@ const { getAllUsers, getAllRoles, addstudent, addteacher, addclass, addsubject, 
     getParentById, getAllParents, addparent, deleteParent, addproduct, getAllProducts, getProductById,
 deleteProduct, addsubscription, getAllSubscriptions, getSubscriptionById, deleteSubscription, addblogpost,getAllBlogPosts, 
 getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice, addcoupon, 
-getAllCoupons, getCouponById,deleteCoupon, addrole, adduser } = require("../controllers/user.controller");
+getAllCoupons, getCouponById,deleteCoupon, addrole, adduser,addquiz,  getQuizzes, getQuizById,  deleteQuiz } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
 
@@ -55,5 +55,9 @@ router.post("/addcoupon", verifyToken, addcoupon);
 router.get("/coupons", verifyToken, getAllCoupons);
 router.get('/coupon/:id', verifyToken,getCouponById);
 router.delete('/coupon/:id', verifyToken,deleteCoupon);
+router.post("/addquiz",verifyToken, addquiz);
+router.get('/quizzes', verifyToken,getQuizzes);
+router.get('/quiz/:id', verifyToken,getQuizById);
+router.delete('/quiz/:id', verifyToken,deleteQuiz);
 
 module.exports = router;

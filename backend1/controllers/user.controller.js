@@ -13,6 +13,8 @@ const Subscription = db.subscription;
 const BlogPost = db.blogpost;
 const Invoice = db.invoice;
 const Coupon = db.coupon;
+const Quiz = db.quiz;
+const QuizItem = db.quizItem;
 
 exports.adduser = async (req, res) => {
   try {
@@ -953,4 +955,101 @@ const created_by = req.user.id;
     res.status(500).json({ message: "Server error", error:err });
   }
 };
+
+// Create Quiz with Quiz Items
+exports.addquiz = async (req, res) => {
+  try {
+    const { title, description,tags, subject, grade, bundesland, difficulty, objectives, status, items } = req.body;
+
+    // 1️⃣ Create the quiz
+    const created_by = req.user.id;
+    const newQuiz = await Quiz.create(
+      { title, description, tags, subject, grade,  bundesland, difficulty, objectives, status, created_by  });
+
+    // 2️⃣ Create quiz items if provided
+    if (Array.isArray(items) && items.length > 0) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        await QuizItem.create(
+          {
+            quiz_id: newQuiz.id,
+            type: item.type,
+            prompt: item.prompt,
+            options: item.options,
+            answer_key: item.answer_key,
+            hints: item.hints,
+            position: item.position ?? i
+          }
+        );
+      }
+    }
+
+
+    return res.status(201).json({
+      message: 'Quiz created successfully',
+      quiz: newQuiz
+    });
+  } catch (error) {
+    console.error('Error creating quiz:', error);
+    return res.status(500).json({ error: 'Failed to create quiz' });
+  }
+};
+
+// 1️⃣ Get all quizzes
+exports.getQuizzes = async (req, res) => {
+  try {
+    const quizzes = await Quiz.findAll({
+      include: [{ model: QuizItem, as: 'items' }]
+    });
+    return res.json(quizzes);
+  } catch (error) {
+    console.error('Error fetching quizzes:', error);
+    return res.status(500).json({ error: 'Failed to fetch quizzes' });
+  }
+};
+
+// 2️⃣ Get a single quiz by ID
+exports.getQuizById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const quiz = await Quiz.findByPk(id, {
+      include: [{ model: QuizItem, as: 'items' }]
+    });
+
+    if (!quiz) {
+      return res.status(404).json({ error: 'Quiz not found' });
+    }
+
+    return res.json(quiz);
+  } catch (error) {
+    console.error('Error fetching quiz:', error);
+    return res.status(500).json({ error: 'Failed to fetch quiz' });
+  }
+};
+
+// 3️⃣ Delete a quiz (and its items)
+exports.deleteQuiz = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Delete items first
+    await QuizItem.destroy({ where: { quiz_id: id }, transaction: t });
+
+    // Delete quiz
+    const deleted = await Quiz.destroy({ where: { id }, transaction: t });
+
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Quiz not found' });
+    }
+
+    return res.json({ message: 'Quiz deleted successfully' });
+  } catch (error) {
+    await t.rollback();
+    console.error('Error deleting quiz:', error);
+    return res.status(500).json({ error: 'Failed to delete quiz' });
+  }
+};
+
+
   

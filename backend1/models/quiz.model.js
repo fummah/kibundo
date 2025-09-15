@@ -17,5 +17,15 @@ module.exports = (sequelize, DataTypes) => {
     tableName: 'quizzes',
     timestamps: false
   });
+
+  Quiz.associate = (models) => {
+
+    Quiz.hasMany(models.quizitems, {
+      foreignKey: 'quiz_id',
+      as: 'items'
+    });
+
+    
+};
   return Quiz;
 };

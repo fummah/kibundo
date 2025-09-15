@@ -12,5 +12,15 @@ module.exports = (sequelize, DataTypes) => {
     tableName: 'quiz_items',
     timestamps: false
   });
+
+   QuizItem.associate = (models) => {
+
+    QuizItem.belongsTo(models.quiz, {
+      foreignKey: 'quiz_id',
+      as: 'quiz'
+    });
+};
   return QuizItem;
 };
+
+
