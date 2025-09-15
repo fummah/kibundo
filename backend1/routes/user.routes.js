@@ -5,12 +5,13 @@ const { getAllUsers, getAllRoles, addstudent, addteacher, addclass, addsubject, 
     getParentById, getAllParents, addparent, deleteParent, addproduct, getAllProducts, getProductById,
 deleteProduct, addsubscription, getAllSubscriptions, getSubscriptionById, deleteSubscription, addblogpost,getAllBlogPosts, 
 getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice, addcoupon, 
-getAllCoupons, getCouponById,deleteCoupon, addrole } = require("../controllers/user.controller");
+getAllCoupons, getCouponById,deleteCoupon, addrole, adduser } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
 
 // Protected route to get all users
 router.get("/users", verifyToken, getAllUsers);
+router.post("/adduser", verifyToken, adduser);
 router.get("/analytics/dashboard", verifyToken, getDashboard);
 router.get("/statistics/dashboard", verifyToken, getStatisticsDashboard);
 router.get("/reports/filters", verifyToken, getReportFilters);
