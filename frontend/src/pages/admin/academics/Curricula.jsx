@@ -1,3 +1,4 @@
+// src/pages/academics/Curricula.jsx
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   Button, Card, Form, Input, Select, Space, Tag,
@@ -16,6 +17,8 @@ import FluidTable from "@/components/FluidTable.jsx";
 import { SafeText, SafeDate, SafeTags, safe } from "@/utils/safe";
 
 import { BUNDESLAENDER, GRADES, CURRICULUM_STATUSES } from "./_constants";
+
+/* 👉 updated imports: split API layer under src/api/academics */
 import {
   listCurricula,
   getCurriculum,
@@ -25,12 +28,22 @@ import {
   publishCurriculum,
   listVersions,
   restoreVersion,
-  // linking/search
-  searchQuizzes, linkQuizzes, unlinkQuiz,
-  searchWorksheets, linkWorksheets,
   searchGames, linkGames,
   searchReading, linkReading,
-} from "./_api";
+} from "@/api/academics/curricula";
+
+import {
+  listQuizzes,
+  getQuiz,
+  createQuiz,
+  updateQuiz,
+  deleteQuiz,
+  searchQuizzes,
+  linkQuizzes,
+  unlinkQuiz,
+} from "@/api/academics/quizzes";
+
+import { searchWorksheets, linkWorksheets } from "@/api/academics/worksheets";
 
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";

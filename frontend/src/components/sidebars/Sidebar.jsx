@@ -81,7 +81,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
         { href: "/admin/academics", label: "Overview", icon: ReadOutlined },
         { href: "/admin/academics/curricula", label: "Curricula", icon: ReadOutlined },
         { href: "/admin/academics/worksheet", label: "Worksheet", icon: FileTextOutlined },
-        { href: "/admin/academics/quiz", label: "Quiz", icon: ExperimentOutlined },
+        { href: "/admin/academics/quizzes", label: "Quizzes", icon: ExperimentOutlined },
         { href: "/admin/academics/game", label: "Game", icon: ProjectOutlined },
         { href: "/admin/academics/kibundo", label: "Kibundo AI", icon: RobotOutlined },
         { href: "/admin/academics/subjects", label: "Subjects", icon: BookOutlined },
