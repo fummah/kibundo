@@ -15,6 +15,7 @@ const Invoice = db.invoice;
 const Coupon = db.coupon;
 const Quiz = db.quiz;
 const QuizItem = db.quizItem;
+const Curriculum = db.curriculum;
 
 exports.adduser = async (req, res) => {
   try {
@@ -1048,6 +1049,82 @@ exports.deleteQuiz = async (req, res) => {
     await t.rollback();
     console.error('Error deleting quiz:', error);
     return res.status(500).json({ error: 'Failed to delete quiz' });
+  }
+};
+
+
+// Create Curriculum
+exports.addcurriculum = async (req, res) => {
+  try {
+    const { bundesland, subject, grade, content, status = 'draft' } = req.body;
+
+    // 1️⃣ Create the Curriculum
+    const created_by = req.user.id;
+    const newCurriculum = await Quiz.create(
+      { bundesland, subject, grade, content, status, created_by, published_at: status === 'published' ? new Date() : null  }
+    );
+
+    return res.status(201).json({
+      message: 'Curriculum created successfully',
+      curriculum: newCurriculum
+    });
+  } catch (error) {
+    console.error('Error creating curriculum:', error);
+    return res.status(500).json({ error: 'Failed to create curriculum' });
+  }
+};
+
+// 1️⃣ Get all Curriculum
+exports.getAllCurriculum = async (req, res) => {
+  try {
+    const curriculums = await Curriculum.findAll({
+      include: []
+    });
+    return res.json(curriculums);
+  } catch (error) {
+    console.error('Error fetching curriculums:', error);
+    return res.status(500).json({ error: 'Failed to fetch curriculums' });
+  }
+};
+
+// 2️⃣ Get a single Curriculum by ID
+exports.getCurriculumById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const curriculum = await Curriculum.findByPk(id, {
+      include: []
+    });
+
+    if (!curriculum) {
+      return res.status(404).json({ error: 'Curriculum not found' });
+    }
+
+    return res.json(curriculum);
+  } catch (error) {
+    console.error('Error fetching Curriculum:', error);
+    return res.status(500).json({ error: 'Failed to fetch Curriculum' });
+  }
+};
+
+// 3️⃣ Delete a Curriculum
+exports.deleteCurriculum = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+
+    // Delete Curriculum
+    const deleted = await Curriculum.destroy({ where: { id }, transaction: t });
+
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Curriculum not found' });
+    }
+
+    return res.json({ message: 'Curriculum deleted successfully' });
+  } catch (error) {
+    await t.rollback();
+    console.error('Error deleting Curriculum:', error);
+    return res.status(500).json({ error: 'Failed to delete Curriculum' });
   }
 };
 
