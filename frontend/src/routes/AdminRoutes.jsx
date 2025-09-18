@@ -1,4 +1,5 @@
-import React, { lazy } from "react";
+// src/routes/AdminRoutes.jsx
+import React, { lazy, Suspense } from "react";
 import { Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import GlobalLayout from "@/components/layouts/GlobalLayout.jsx";
@@ -33,17 +34,21 @@ import Newsletter from "@/pages/admin/newsletter/Newsletter.jsx";
 /* Academics */
 import AcademicsOverview from "@/pages/admin/academics/AcademicsOverview.jsx";
 import Game from "@/pages/admin/academics/Game.jsx";
-import Quiz from "@/pages/admin/academics/Quiz.jsx";
+// ❌ removed old single Quiz import
+// import Quiz from "@/pages/admin/academics/Quiz.jsx";
 import Curricula from "@/pages/admin/academics/Curricula.jsx";
 import Worksheet from "@/pages/admin/academics/Worksheet.jsx";
 import AIAgent from "@/pages/admin/academics/AIAgent.jsx";
 import OCRWorkspace from "@/pages/admin/academics/ocr/OCRWorkspace.jsx";
 import ScansOverview from "@/pages/admin/academics/ocr/ScansOverview.jsx";
 
-/* Subjects (under Academics) */
+/* Academics → Subjects */
 import SubjectsList from "@/pages/admin/academics/subjects/SubjectsList.jsx";
 import SubjectForm from "@/pages/admin/academics/subjects/SubjectForm.jsx";
 import SubjectDetail from "@/pages/admin/academics/subjects/SubjectDetail.jsx";
+
+/* Academics → Quizzes (new structure) */
+import QuizPage from "@/pages/admin/academics/quizzes/quiz.jsx";
 
 /* Parents */
 import ParentsList from "@/pages/admin/parents/ParentsList.jsx";
@@ -80,7 +85,7 @@ import TaskForm from "@/pages/admin/tasks/TaskForm.jsx";
 import DatabaseOverview from "@/pages/admin/database/DatabaseOverview.jsx";
 import DatabaseManagement from "@/pages/admin/database/DatabaseManagement.jsx";
 
-/* Analytics: Student Analytics page (lazy) */
+/* Lazy pages */
 const StudentAnalytics = lazy(() => import("@/pages/admin/analytics/StudentAnalytics.jsx"));
 
 export default function AdminRoutes() {
@@ -93,10 +98,17 @@ export default function AdminRoutes() {
           <Route index element={<AdminDashboard />} />
           <Route path="dashboard" element={<AdminDashboard />} />
 
-          {/* Analytics (nested) */}
+          {/* Analytics */}
           <Route path="analytics">
             <Route index element={<AnalyticsDashboard />} />
-            <Route path="students" element={<StudentAnalytics />} />
+            <Route
+              path="students"
+              element={
+                <Suspense fallback={<div>Loading student analytics…</div>}>
+                  <StudentAnalytics />
+                </Suspense>
+              }
+            />
           </Route>
 
           <Route path="statistics" element={<StatisticsDashboard />} />
@@ -122,15 +134,10 @@ export default function AdminRoutes() {
           {/* Content */}
           <Route path="content">
             <Route index element={<ContentOverview />} />
-            {/* Create / publish page (supports optional ?id for legacy edit) */}
             <Route path="publish" element={<PublishBlogPost />} />
             <Route path="publish/:id" element={<PublishBlogPost />} />
             <Route path="new" element={<PublishBlogPost />} />
-
-            {/* ✅ FIX: use a RELATIVE child path here */}
             <Route path="blog/preview/:id" element={<BlogPreviewPage />} />
-
-            {/* Dedicated edit page */}
             <Route path="edit/:id" element={<BlogPostEdit />} />
           </Route>
 
@@ -142,8 +149,13 @@ export default function AdminRoutes() {
             <Route index element={<AcademicsOverview />} />
             <Route path="curricula" element={<Curricula />} />
             <Route path="worksheet" element={<Worksheet />} />
-            <Route path="quiz" element={<Quiz />} />
             <Route path="game" element={<Game />} />
+
+            {/* NEW: Quizzes main page (plural path) */}
+            <Route path="quizzes" element={<QuizPage />} />
+
+            {/* Back-compat: redirect singular /quiz → plural /quizzes */}
+            <Route path="quiz" element={<Navigate to="/admin/academics/quizzes" replace />} />
 
             {/* Canonical AI agent route */}
             <Route path="kibundo" element={<AIAgent />} />
@@ -221,6 +233,9 @@ export default function AdminRoutes() {
             <Route index element={<DatabaseOverview />} />
             <Route path="management" element={<DatabaseManagement />} />
           </Route>
+
+          {/* Back-compat redirect for any nested old quizzes paths */}
+          <Route path="quizzes/*" element={<Navigate to="/admin/academics/quizzes" replace />} />
         </Route>
       </Route>
     </>

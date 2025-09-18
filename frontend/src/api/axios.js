@@ -2,12 +2,6 @@
 import axios from "axios";
 import { message } from "antd";
 
-/**
- * Base URL
- * - In dev, prefer same-origin `/api` with a Vite proxy.
- * - In prod, override with VITE_API_BASE (e.g., https://api.example.com/api).
- * This file normalizes the base to avoid double slashes and missing /api segments.
- */
 const normalizeBase = (raw) => {
   if (!raw) return "/api";
   let base = String(raw).trim();

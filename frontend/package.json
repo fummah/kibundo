@@ -2,7 +2,6 @@
   "name": "kibundo-vite-tailwind-router",
   "version": "0.0.1",
   "private": true,
-  
   "scripts": {
     "dev": "vite",
     "dev:trace-dep": "cross-env NODE_OPTIONS=--trace-deprecation vite",
@@ -23,6 +22,7 @@
     "antd": "^5.26.7",
     "axios": "^1.11.0",
     "dayjs": "^1.11.13",
+    "dompurify": "^3.2.6",
     "file-saver": "^2.0.5",
     "framer-motion": "^12.23.11",
     "html2canvas": "^1.4.1",

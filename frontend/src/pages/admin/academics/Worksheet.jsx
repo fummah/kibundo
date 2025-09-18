@@ -7,7 +7,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PlusOutlined, ReloadOutlined, SaveOutlined, MoreOutlined } from "@ant-design/icons";
 
 import { BUNDESLAENDER, GRADES } from "./_constants";
-import { listWorksheets, createWorksheet, updateWorksheet, deleteWorksheet } from "./_api";
+import {
+ listWorksheets,
+ createWorksheet,
+updateWorksheet,
+deleteWorksheet,
+} from "@/api/academics/worksheets";
 
 import PageHeader from "@/components/PageHeader.jsx";
 import ResponsiveFilters from "@/components/ResponsiveFilters.jsx";

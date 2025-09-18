@@ -10,13 +10,20 @@ import {
   ArrowUpOutlined, ArrowDownOutlined, CopyOutlined, DeleteOutlined, EyeOutlined
 } from "@ant-design/icons";
 import { BUNDESLAENDER, GRADES } from "./_constants";
-import { listQuizzes, createQuiz, updateQuiz, deleteQuiz, publishQuiz } from "./_api";
 import PageHeader from "@/components/PageHeader.jsx";
 import ResponsiveFilters from "@/components/ResponsiveFilters.jsx";
 import FluidTable from "@/components/FluidTable.jsx";
 import { SafeText, SafeTags, safe, safeJoin } from "@/utils/safe";
 
-/* 🧠 Rich text editor */
+/* ✅ Use your real API module */
+import {
+  listQuizzes,   // ({ page, pageSize, ...filters }) -> { items, total }
+  createQuiz,    // payload; if payload.id exists, backend updates
+  deleteQuiz,    // (id)
+  // getQuiz        // if you need it elsewhere
+} from "@/api/academics/quizzes.js";
+
+/* Rich text */
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 
@@ -33,38 +40,99 @@ const newQuestion = (type = "mcq") => {
   if (type === "mcq") {
     return {
       type,
-      prompt: "",       // HTML string from Quill
+      prompt: "",  // HTML from Quill
       points: 1,
       choices: [{ text: "" }, { text: "" }, { text: "" }, { text: "" }],
       answerIndex: 0,
       tags: [],
     };
   }
-  if (type === "short") {
-    return { type, prompt: "", points: 1, answerText: "", tags: [] };
-  }
+  if (type === "short") return { type, prompt: "", points: 1, answerText: "", tags: [] };
   return { type: "true_false", prompt: "", points: 1, answerBool: true, tags: [] };
 };
 
-/* A tiny wrapper to keep Quill consistent inside forms */
-const RichText = ({ value, onChange, placeholder }) => {
-  const modules = {
-    toolbar: [
-      [{ header: [1, 2, 3, false] }],
-      ["bold", "italic", "underline", "strike"],
-      [{ color: [] }, { background: [] }],
-      [{ list: "ordered" }, { list: "bullet" }],
-      ["link", "blockquote", "code-block"],
-      ["clean"],
-    ],
+/* ---- item transforms (internal <-> API) ---- */
+const fromApiItem = (it = {}) => {
+  const t = String(it.type || "").toLowerCase();
+  if (t === "multiple-choice" || t === "multiple_choice") {
+    const options = Array.isArray(it.options) ? it.options : [];
+    const answerStr = Array.isArray(it.answer_key) ? it.answer_key[0] : undefined;
+    const answerIndex = Math.max(0, options.findIndex((o) => String(o) === String(answerStr)));
+    return {
+      type: "mcq",
+      prompt: it.prompt || "",
+      points: Number(it.points) || 1,
+      choices: options.map((o) => ({ text: String(o ?? "") })),
+      answerIndex: answerIndex >= 0 ? answerIndex : 0,
+      tags: [],
+    };
+  }
+  if (t === "true-false" || t === "true_false") {
+    const answerStr = Array.isArray(it.answer_key) ? it.answer_key[0] : "true";
+    return {
+      type: "true_false",
+      prompt: it.prompt || "",
+      points: Number(it.points) || 1,
+      answerBool: String(answerStr).toLowerCase() === "true",
+      tags: [],
+    };
+  }
+  const ans = Array.isArray(it.answer_key) ? it.answer_key[0] : "";
+  return { type: "short", prompt: it.prompt || "", points: Number(it.points) || 1, answerText: ans ?? "", tags: [] };
+};
+
+const toApiItem = (q = {}, idx = 0) => {
+  const base = {
+    prompt: q.prompt || "",
+    hints: Array.isArray(q.hints) ? q.hints : [],
+    position: Number(idx) + 1,
+    points: Number(q.points) || 1,
   };
-  const formats = [
-    "header",
-    "bold", "italic", "underline", "strike",
-    "color", "background",
-    "list", "bullet",
-    "link", "blockquote", "code-block",
-  ];
+  if (q.type === "mcq") {
+    const options = (q.choices || []).map((c) => c?.text ?? "");
+    const i = Math.max(0, Math.min(options.length - 1, Number(q.answerIndex) || 0));
+    const answer = options[i] ?? "";
+    return { ...base, type: "multiple-choice", options, answer_key: [answer] };
+  }
+  if (q.type === "true_false") {
+    return { ...base, type: "true-false", options: ["true", "false"], answer_key: [q.answerBool ? "true" : "false"] };
+  }
+  return { ...base, type: "short-answer", options: [], answer_key: q.answerText ? [String(q.answerText)] : [""] };
+};
+
+/* Stable Quill wrapper so typing doesn’t “eat” characters */
+const RichText = React.memo(function RichText({ value, onChange, placeholder }) {
+  const modules = useMemo(
+    () => ({
+      toolbar: [
+        [{ header: [1, 2, 3, false] }],
+        ["bold", "italic", "underline", "strike"],
+        [{ color: [] }, { background: [] }],
+        [{ list: "ordered" }, { list: "bullet" }],
+        ["link", "blockquote", "code-block"],
+        ["clean"],
+      ],
+    }),
+    []
+  );
+  const formats = useMemo(
+    () => [
+      "header",
+      "bold",
+      "italic",
+      "underline",
+      "strike",
+      "color",
+      "background",
+      "list",
+      "bullet",
+      "link",
+      "blockquote",
+      "code-block",
+    ],
+    []
+  );
+
   return (
     <div className="richtext">
       <ReactQuill
@@ -74,21 +142,16 @@ const RichText = ({ value, onChange, placeholder }) => {
         modules={modules}
         formats={formats}
         placeholder={placeholder}
+        bounds=".richtext"
+        preserveWhitespace
       />
       <style>{`
-        .richtext .ql-container {
-          min-height: 140px;
-          border-bottom-left-radius: 8px;
-          border-bottom-right-radius: 8px;
-        }
-        .richtext .ql-toolbar {
-          border-top-left-radius: 8px;
-          border-top-right-radius: 8px;
-        }
+        .richtext .ql-container { min-height: 140px; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
+        .richtext .ql-toolbar { border-top-left-radius: 8px; border-top-right-radius: 8px; }
       `}</style>
     </div>
   );
-};
+});
 
 export default function Quiz() {
   const [form] = Form.useForm();
@@ -109,11 +172,11 @@ export default function Quiz() {
         return { items: [], total: 0 };
       }
     },
-    keepPreviousData: true
+    keepPreviousData: true,
   });
 
-  const items = Array.isArray(data?.items) ? data.items : [];
-  const total = Number.isFinite(data?.total) ? data.total : items.length;
+  const rows = Array.isArray(data?.items) ? data.items : [];
+  const total = Number.isFinite(data?.total) ? data.total : rows.length;
 
   // UI state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -122,21 +185,37 @@ export default function Quiz() {
   const [viewOpen, setViewOpen] = useState(false);
   const [viewRec, setViewRec] = useState(null);
 
-  const createMut = useMutation({
-    mutationFn: (payload) => createQuiz(payload),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["quizzes"] }); setDrawerOpen(false); }
+  // Visible columns (toggle via dropdown)
+  const [visibleCols, setVisibleCols] = useState({
+    id: true,
+    title: true,
+    subject: true,
+    grade: true,
+    bundesland: true,
+    difficulty: true,
+    items: true,
+    status: true,
+    tags: true,
+    actions: true,
   });
-  const updateMut = useMutation({
-    mutationFn: (payload) => updateQuiz(editId, payload),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["quizzes"] }); setDrawerOpen(false); }
+  const toggleCol = (k) => setVisibleCols((p) => ({ ...p, [k]: !p[k] }));
+
+  /* Mutations backed by your quizzes.js API */
+  const saveMut = useMutation({
+    mutationFn: (payload) => createQuiz(payload), // works for create & update if payload.id exists
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["quizzes"] });
+      setDrawerOpen(false);
+    },
   });
-  const del = useMutation({
+  const delMut = useMutation({
     mutationFn: (id) => deleteQuiz(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["quizzes"] }); }
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["quizzes"] }),
   });
-  const pub = useMutation({
-    mutationFn: ({ id, publish }) => publishQuiz(id, publish),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["quizzes"] }); }
+  const publishMut = useMutation({
+    // Use createQuiz to update only the status field
+    mutationFn: ({ id, publish }) => createQuiz({ id, status: publish ? "live" : "draft" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["quizzes"] }),
   });
 
   const openCreate = () => {
@@ -147,8 +226,8 @@ export default function Quiz() {
       difficulty: "easy",
       grade: 1,
       objectives: [],
-      description: "", // HTML
-      items: [],       // question array
+      description: "",
+      items: [],
     });
     setActiveDrawerTab("details");
     setDrawerOpen(true);
@@ -156,9 +235,10 @@ export default function Quiz() {
 
   const openEdit = (r) => {
     setEditId(r.id);
+    const rawItems = Array.isArray(r.items) ? r.items : Array.isArray(r.questions) ? r.questions : [];
     editForm.setFieldsValue({
       title: r.title,
-      description: r.description || "", // rich text HTML
+      description: r.description || "",
       tags: r.tags || [],
       subject: r.subject,
       grade: r.grade,
@@ -166,7 +246,7 @@ export default function Quiz() {
       difficulty: r.difficulty || "medium",
       objectives: r.objectives || [],
       status: r.status || "draft",
-      items: Array.isArray(r.items) ? r.items : (Array.isArray(r.questions) ? r.questions : []),
+      items: rawItems.map(fromApiItem), // normalize for editor
     });
     setActiveDrawerTab("details");
     setDrawerOpen(true);
@@ -174,12 +254,13 @@ export default function Quiz() {
 
   const onSubmit = async () => {
     const values = await editForm.validateFields();
+    const editorItems = Array.isArray(values.items) ? values.items : [];
     const payload = {
       ...values,
-      // values.description is HTML
-      // each items[i].prompt is HTML
+      items: editorItems.map(toApiItem), // convert to API shape
+      ...(editId ? { id: editId } : {}),
     };
-    if (editId) updateMut.mutate(payload); else createMut.mutate(payload);
+    saveMut.mutate(payload);
   };
 
   const confirmDelete = (id) => {
@@ -189,116 +270,208 @@ export default function Quiz() {
       okType: "danger",
       okText: "Delete",
       onOk: () =>
-        del.mutate(id, {
+        delMut.mutate(id, {
           onSuccess: () => {
             if (viewRec?.id === id) setViewOpen(false);
-          }
-        })
+          },
+        }),
     });
   };
 
   /* ---------------- columns ---------------- */
-  const columns = useMemo(() => [
-    { title: "Title", dataIndex: "title", render: (v) => <SafeText value={v} /> },
-    { title: "Subject", dataIndex: "subject", width: 140, render: (v) => <SafeText value={v} /> },
-    { title: "Grade", dataIndex: "grade", width: 90, render: (v) => <SafeText value={v} /> },
-    { title: "State", dataIndex: "bundesland", width: 180, render: (v) => <SafeText value={v} /> },
-    {
-      title: "Difficulty", dataIndex: "difficulty", width: 120,
-      render: (d) => (
-        <Tag color={d === "easy" ? "green" : d === "hard" ? "volcano" : "geekblue"}>
-          <SafeText value={d} />
-        </Tag>
-      )
-    },
-    {
-      title: "Items", dataIndex: "items", width: 90,
-      render: (arr, r) => <SafeText value={Array.isArray(arr) ? arr.length : (Array.isArray(r?.questions) ? r.questions.length : 0)} />
-    },
-    {
-      title: "Status", dataIndex: "status", width: 120,
-      render: (s) => (
-        <Tag color={s === "live" ? "green" : s === "review" ? "geekblue" : "default"}>
-          <SafeText value={s} />
-        </Tag>
-      )
-    },
-    { title: "Tags", dataIndex: "tags", render: (tags) => <SafeTags value={tags} /> },
-    {
-      title: "Actions",
-      key: "actions",
-      width: 80,
-      fixed: screens.md ? "right" : undefined,
-      render: (_, r) => {
-        const isLive = r.status === "live";
-        const menu = {
-          items: [
-            { key: "view", label: "View" },
-            { type: "divider" },
-            { key: "edit", label: "Edit" },
-            { key: "toggle", label: isLive ? "Unpublish" : "Publish (live)" },
-            { key: "delete", label: <span style={{ color: "#ff4d4f" }}>Delete</span> },
-          ],
-          onClick: ({ key, domEvent }) => {
-            domEvent?.stopPropagation?.();
-            if (key === "view") {
-              setViewRec(r); setViewOpen(true);
-            } else if (key === "edit") {
-              openEdit(r);
-            } else if (key === "toggle") {
-              pub.mutate({ id: r.id, publish: !isLive });
-            } else if (key === "delete") {
-              confirmDelete(r.id);
+  const columnDefs = useMemo(
+    () => [
+      { title: "ID", dataIndex: "id", key: "id", width: 160, render: (v) => <SafeText value={v} /> },
+      { title: "Title", dataIndex: "title", key: "title", render: (v) => <SafeText value={v} /> },
+      { title: "Subject", dataIndex: "subject", key: "subject", width: 140, render: (v) => <SafeText value={v} /> },
+      { title: "Grade", dataIndex: "grade", key: "grade", width: 90, render: (v) => <SafeText value={v} /> },
+      { title: "State", dataIndex: "bundesland", key: "bundesland", width: 180, render: (v) => <SafeText value={v} /> },
+      {
+        title: "Difficulty",
+        dataIndex: "difficulty",
+        key: "difficulty",
+        width: 120,
+        render: (d) => (
+          <Tag color={d === "easy" ? "green" : d === "hard" ? "volcano" : "geekblue"}>
+            <SafeText value={d} />
+          </Tag>
+        ),
+      },
+      {
+        title: "Items",
+        dataIndex: "items",
+        key: "items",
+        width: 90,
+        render: (arr, r) => (
+          <SafeText
+            value={
+              Array.isArray(arr) ? arr.length : Array.isArray(r?.questions) ? r.questions.length : 0
             }
-          }
-        };
-        return (
-          <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
-            <Button
-              size="small"
-              type="text"
-              icon={<MoreOutlined />}
-              aria-label="More actions"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </Dropdown>
-        );
-      }
-    }
-  ], [screens.md, pub.isPending, del.isPending]);
+          />
+        ),
+      },
+      {
+        title: "Status",
+        dataIndex: "status",
+        key: "status",
+        width: 120,
+        render: (s) => (
+          <Tag color={s === "live" ? "green" : s === "review" ? "geekblue" : "default"}>
+            <SafeText value={s} />
+          </Tag>
+        ),
+      },
+      { title: "Tags", dataIndex: "tags", key: "tags", render: (tags) => <SafeTags value={tags} /> },
+      {
+        title: "Actions",
+        key: "actions",
+        width: 80,
+        fixed: screens.md ? "right" : undefined,
+        render: (_, r) => {
+          const isLive = r.status === "live";
+          const menu = {
+            items: [
+              { key: "view", label: "View" },
+              { type: "divider" },
+              { key: "edit", label: "Edit" },
+              { key: "toggle", label: isLive ? "Unpublish" : "Publish (live)" },
+              { key: "delete", label: <span style={{ color: "#ff4d4f" }}>Delete</span> },
+            ],
+            onClick: ({ key, domEvent }) => {
+              domEvent?.stopPropagation?.();
+              if (key === "view") {
+                setViewRec(r);
+                setViewOpen(true);
+              } else if (key === "edit") {
+                openEdit(r);
+              } else if (key === "toggle") {
+                publishMut.mutate({ id: r.id, publish: !isLive });
+              } else if (key === "delete") {
+                confirmDelete(r.id);
+              }
+            },
+          };
+          return (
+            <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
+              <Button
+                size="small"
+                type="text"
+                icon={<MoreOutlined />}
+                aria-label="More actions"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </Dropdown>
+          );
+        },
+      },
+    ],
+    [screens.md, publishMut.isPending, delMut.isPending]
+  );
+
+  // Filter columns by visibility
+  const columns = useMemo(() => {
+    return columnDefs.filter((c) => {
+      const key = c.key || c.dataIndex;
+      return key && visibleCols[key] !== false;
+    });
+  }, [columnDefs, visibleCols]);
+
+  // Show/Hide columns dropdown items
+  const columnLabels = {
+    id: "ID",
+    title: "Title",
+    subject: "Subject",
+    grade: "Grade",
+    bundesland: "State",
+    difficulty: "Difficulty",
+    items: "Items",
+    status: "Status",
+    tags: "Tags",
+    actions: "Actions",
+  };
+
+  const columnMenuItems = Object.keys(visibleCols).map((k) => ({
+    key: k,
+    label: (
+      <div onClick={(e) => e.stopPropagation()}>
+        <label style={{ cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={!!visibleCols[k]}
+            onChange={() => toggleCol(k)}
+            style={{ marginRight: 8 }}
+          />
+          {columnLabels[k] || k}
+        </label>
+      </div>
+    ),
+  }));
 
   /* ---------------- export ---------------- */
   const onExport = () => {
-    const rows = (items ?? []).map(q => ({
-      id: safe(q.id), title: safe(q.title), subject: safe(q.subject),
-      grade: safe(q.grade), bundesland: safe(q.bundesland),
-      difficulty: safe(q.difficulty), status: safe(q.status),
+    const out = (rows ?? []).map((q) => ({
+      id: safe(q.id),
+      title: safe(q.title),
+      subject: safe(q.subject),
+      grade: safe(q.grade),
+      bundesland: safe(q.bundesland),
+      difficulty: safe(q.difficulty),
+      status: safe(q.status),
       tags: safeJoin(q.tags, "|"),
-      items_count: Array.isArray(q.items) ? q.items.length : (Array.isArray(q.questions) ? q.questions.length : 0)
+      items_count: Array.isArray(q.items)
+        ? q.items.length
+        : Array.isArray(q.questions)
+        ? q.questions.length
+        : 0,
     }));
     const header = "id,title,subject,grade,bundesland,difficulty,status,tags,items_count";
-    const csv = [header, ...rows.map(r => [r.id,r.title,r.subject,r.grade,r.bundesland,r.difficulty,r.status,r.tags,r.items_count].join(","))].join("\n");
+    const csv = [header, ...out.map((r) => [r.id,r.title,r.subject,r.grade,r.bundesland,r.difficulty,r.status,r.tags,r.items_count].join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob); const a = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
     a.href = url; a.download = "quizzes.csv"; a.click(); URL.revokeObjectURL(url);
   };
 
   /* ---------------- editor helpers ---------------- */
-  const swapItems = (list, i, j) => {
-    const a = [...list];
-    const t = a[i]; a[i] = a[j]; a[j] = t;
-    return a;
-  };
-  const duplicateItem = (list, i) => {
-    const a = [...list];
-    a.splice(i + 1, 0, JSON.parse(JSON.stringify(a[i] || {})));
-    return a;
-  };
+  const swapItems = (list, i, j) => { const a = [...list]; const t = a[i]; a[i] = a[j]; a[j] = t; return a; };
+  const duplicateItem = (list, i) => { const a = [...list]; a.splice(i + 1, 0, JSON.parse(JSON.stringify(a[i] || {}))); return a; };
   const setItems = (next) => editForm.setFieldsValue({ items: next });
   const addQuestionOfType = (type) => {
     const curr = editForm.getFieldValue("items") || [];
     setItems([...(curr || []), newQuestion(type)]);
     setActiveDrawerTab("editor");
+  };
+
+  const renderPreview = (q) => {
+    if (!q) return <div>-</div>;
+    if (q.type === "mcq") {
+      return (
+        <div>
+          <div className="font-medium mb-2" dangerouslySetInnerHTML={{ __html: q.prompt || "" }} />
+          <ol className="list-decimal pl-5">
+            {(q.choices || []).map((c, i) => (
+              <li key={i} className={i === Number(q.answerIndex) ? "font-semibold" : ""}>
+                <SafeText value={c?.text} />
+              </li>
+            ))}
+          </ol>
+        </div>
+      );
+    }
+    if (q.type === "short") {
+      return (
+        <div>
+          <div className="font-medium mb-2" dangerouslySetInnerHTML={{ __html: q.prompt || "" }} />
+          <div className="text-gray-500">Answer: <SafeText value={q.answerText || "—"} /></div>
+        </div>
+      );
+    }
+    return (
+      <div>
+        <div className="font-medium mb-2" dangerouslySetInnerHTML={{ __html: q.prompt || "" }} />
+        <div className="text-gray-500">Answer: {String(q.answerBool ?? true)}</div>
+      </div>
+    );
   };
 
   const QuestionEditor = () => {
@@ -323,20 +496,9 @@ export default function Quiz() {
             <div className="space-y-12">
               {fields.map(({ key, name, ...rest }, idx) => {
                 const t = editForm.getFieldValue(["items", name, "type"]) || "mcq";
-                const moveUp = () => {
-                  const curr = editForm.getFieldValue("items") || [];
-                  if (idx <= 0) return;
-                  setItems(swapItems(curr, idx, idx - 1));
-                };
-                const moveDown = () => {
-                  const curr = editForm.getFieldValue("items") || [];
-                  if (idx >= curr.length - 1) return;
-                  setItems(swapItems(curr, idx, idx + 1));
-                };
-                const duplicate = () => {
-                  const curr = editForm.getFieldValue("items") || [];
-                  setItems(duplicateItem(curr, idx));
-                };
+                const moveUp = () => { const curr = editForm.getFieldValue("items") || []; if (idx > 0) setItems(swapItems(curr, idx, idx - 1)); };
+                const moveDown = () => { const curr = editForm.getFieldValue("items") || []; if (idx < curr.length - 1) setItems(swapItems(curr, idx, idx + 1)); };
+                const duplicate = () => { const curr = editForm.getFieldValue("items") || []; setItems(duplicateItem(curr, idx)); };
 
                 return (
                   <Card
@@ -351,7 +513,9 @@ export default function Quiz() {
                     extra={
                       <Space>
                         <Tooltip title="Preview">
-                          <Button icon={<EyeOutlined />} size="small"
+                          <Button
+                            icon={<EyeOutlined />}
+                            size="small"
                             onClick={() => {
                               Modal.info({
                                 title: "Preview",
@@ -369,7 +533,7 @@ export default function Quiz() {
                   >
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-12">
                       <div className="sm:col-span-3">
-                        {/* 🔥 Rich Text Prompt */}
+                        {/* Rich text prompt (stable) */}
                         <Form.Item
                           {...rest}
                           name={[name, "prompt"]}
@@ -427,12 +591,7 @@ export default function Quiz() {
 
                         {t === "true_false" && (
                           <Form.Item name={[name, "answerBool"]} label="Correct Answer" initialValue>
-                            <Select
-                              options={[
-                                { value: true, label: "True" },
-                                { value: false, label: "False" },
-                              ]}
-                            />
+                            <Select options={[{ value: true, label: "True" }, { value: false, label: "False" }]} />
                           </Form.Item>
                         )}
                       </div>
@@ -459,47 +618,6 @@ export default function Quiz() {
     );
   };
 
-  const renderPreview = (q) => {
-    if (!q) return <div>-</div>;
-    if (q.type === "mcq") {
-      return (
-        <div>
-          <div
-            className="font-medium mb-2"
-            dangerouslySetInnerHTML={{ __html: q.prompt || "" }}
-          />
-          <ol className="list-decimal pl-5">
-            {(q.choices || []).map((c, i) => (
-              <li key={i} className={i === Number(q.answerIndex) ? "font-semibold" : ""}>
-                <SafeText value={c?.text} />
-              </li>
-            ))}
-          </ol>
-        </div>
-      );
-    }
-    if (q.type === "short") {
-      return (
-        <div>
-          <div
-            className="font-medium mb-2"
-            dangerouslySetInnerHTML={{ __html: q.prompt || "" }}
-          />
-          <div className="text-gray-500">Answer: <SafeText value={q.answerText || "—"} /></div>
-        </div>
-      );
-    }
-    return (
-      <div>
-        <div
-          className="font-medium mb-2"
-          dangerouslySetInnerHTML={{ __html: q.prompt || "" }}
-        />
-        <div className="text-gray-500">Answer: {String(q.answerBool ?? true)}</div>
-      </div>
-    );
-  };
-
   /* ---------------- render ---------------- */
   return (
     <div className="flex flex-col min-h-0">
@@ -508,6 +626,9 @@ export default function Quiz() {
         subtitle="Create, edit and publish quizzes. Use the rich-text editor to build questions."
         extra={
           <Space wrap>
+            <Dropdown menu={{ items: columnMenuItems }} trigger={["click"]}>
+              <Button>Columns</Button>
+            </Dropdown>
             <Button icon={<ReloadOutlined />} onClick={() => refetch()} />
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>New Quiz</Button>
           </Space>
@@ -541,13 +662,13 @@ export default function Quiz() {
             rowKey="id"
             loading={isFetching}
             columns={columns}
-            dataSource={items}
+            dataSource={rows}
             pagination={{
               current: page, pageSize, total, showSizeChanger: true,
               onChange: (p, ps) => { setPage(p); setPageSize(ps); }
             }}
           />
-          {!isFetching && items.length === 0 && (
+          {!isFetching && rows.length === 0 && (
             <div className="px-6 py-8 text-sm text-gray-500 dark:text-gray-400">
               No quizzes yet — create one to get started.
             </div>
@@ -555,29 +676,30 @@ export default function Quiz() {
         </Card>
       </div>
 
-      {/* Create/Edit Drawer with Rich Text + Editor */}
+      {/* Create/Edit Drawer */}
       <Drawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         title={editId ? "Edit Quiz" : "New Quiz"}
         width={Math.min(900, typeof window !== "undefined" ? window.innerWidth - 32 : 900)}
-        extra={
-          <Space>
+        footer={
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
             <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
             <Button
               type="primary"
               icon={<SaveOutlined />}
-              loading={createMut.isPending || updateMut.isPending}
+              loading={saveMut.isPending}
               onClick={onSubmit}
             >
               {editId ? "Save" : "Create"}
             </Button>
-          </Space>
+          </div>
         }
       >
         <Tabs
           activeKey={activeDrawerTab}
           onChange={setActiveDrawerTab}
+          destroyInactiveTabPane={false}  // keep Quill mounted
           items={[
             {
               key: "details",
@@ -590,7 +712,6 @@ export default function Quiz() {
                 >
                   <Form.Item name="title" label="Title" rules={[{ required: true }]}><Input /></Form.Item>
 
-                  {/* 🔥 Rich Text Description */}
                   <Form.Item
                     name="description"
                     label="Description"
@@ -642,12 +763,17 @@ export default function Quiz() {
           viewRec ? (
             <Space>
               <Button onClick={() => { setViewOpen(false); openEdit(viewRec); }}>Edit</Button>
-              <Button onClick={() => pub.mutate({ id: viewRec.id, publish: viewRec.status !== "live" })}>
+              <Button onClick={() => publishMut.mutate({ id: viewRec.id, publish: viewRec.status !== "live" })}>
                 {viewRec.status === "live" ? "Unpublish" : "Publish"}
               </Button>
               <Button danger onClick={() => confirmDelete(viewRec.id)}>Delete</Button>
             </Space>
           ) : null
+        }
+        footer={
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <Button onClick={() => setViewOpen(false)}>Close</Button>
+          </div>
         }
       >
         {viewRec ? (
@@ -668,19 +794,36 @@ export default function Quiz() {
             </Descriptions.Item>
             <Descriptions.Item label="Tags"><SafeTags value={viewRec.tags} /></Descriptions.Item>
 
-            {/* 🔎 Render rich text description */}
+            {/* rich text description */}
             <Descriptions.Item label="Description">
               <div dangerouslySetInnerHTML={{ __html: viewRec.description || "" }} />
             </Descriptions.Item>
 
             <Descriptions.Item label="Items">
               <div className="space-y-4">
-                {(viewRec.items || viewRec.questions || []).map((q, i) => (
-                  <Card key={i} size="small" title={`Q${i + 1} • ${q.type}`}>
-                    {/* preview renders prompt as HTML */}
-                    {renderPreview(q)}
-                  </Card>
-                ))}
+                {(viewRec.items || viewRec.questions || []).map((raw, i) => {
+                  const q = raw && typeof raw.type === "string" && raw.type.includes("multiple")
+                    ? fromApiItem(raw)
+                    : raw;
+                  return (
+                    <Card key={i} size="small" title={`Q${i + 1} • ${q.type}`}>
+                      <div className="font-medium mb-2" dangerouslySetInnerHTML={{ __html: q.prompt || "" }} />
+                      {q.type === "mcq" ? (
+                        <ol className="list-decimal pl-5">
+                          {(q.choices || []).map((c, idx) => (
+                            <li key={idx} className={idx === Number(q.answerIndex) ? "font-semibold" : ""}>
+                              <SafeText value={c?.text} />
+                            </li>
+                          ))}
+                        </ol>
+                      ) : q.type === "short" ? (
+                        <div className="text-gray-500">Answer: <SafeText value={q.answerText || "—"} /></div>
+                      ) : (
+                        <div className="text-gray-500">Answer: {String(q.answerBool ?? true)}</div>
+                      )}
+                    </Card>
+                  );
+                })}
               </div>
             </Descriptions.Item>
           </Descriptions>

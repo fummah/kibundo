@@ -20,21 +20,75 @@ import {
   ClockCircleOutlined
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import api from "@/api/axios"; // your configured axios (adds baseURL, token, etc.)
+import { listQuizzes } from "@/api/academics/quizzes.js";
 
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
+
+/* Helpers */
+function fmtDate(input) {
+  if (!input) return "";
+  const d = new Date(input);
+  return Number.isNaN(d.getTime()) ? String(input) : d.toLocaleString();
+}
+const safeLen = (v) => (Array.isArray(v) ? v.length : 0);
 
 export default function NicePage() {
   const screens = useBreakpoint();
   const navigate = useNavigate();
 
-  /* ---------------- KPI (Overview) ---------------- */
-  // Overview requires number of scans
+  /* ---------------- Live data from your API ---------------- */
+  // GET /allstudents (protected)
+  const studentsQ = useQuery({
+    queryKey: ["allstudents"],
+    queryFn: async () => {
+      const { data } = await api.get("/allstudents");
+      return Array.isArray(data) ? data : [];
+    },
+    keepPreviousData: true,
+  });
+
+  // GET /allsubjects (protected)
+  const subjectsQ = useQuery({
+    queryKey: ["allsubjects"],
+    queryFn: async () => {
+      const { data } = await api.get("/allsubjects");
+      return Array.isArray(data) ? data : [];
+    },
+    keepPreviousData: true,
+  });
+
+  // GET /quizzes (protected) — use your existing helper to normalize shapes
+  const quizzesQ = useQuery({
+    queryKey: ["quizzes", { page: 1, pageSize: 50 }],
+    queryFn: async () => listQuizzes({ page: 1, pageSize: 50 }),
+    keepPreviousData: true,
+  });
+
+  const studentsCount = safeLen(studentsQ.data);
+  const subjectsCount = safeLen(subjectsQ.data);
+  const quizItems = Array.isArray(quizzesQ.data?.items) ? quizzesQ.data.items : [];
+  const quizzesTotal =
+    Number.isFinite(quizzesQ.data?.total) ? quizzesQ.data.total : quizItems.length;
+
+  // Recent quizzes (newest first by created_at / createdAt)
+  const recentQuizzes = [...quizItems]
+    .sort(
+      (a, b) =>
+        new Date(b?.created_at ?? b?.createdAt ?? 0) -
+        new Date(a?.created_at ?? a?.createdAt ?? 0)
+    )
+    .slice(0, 5);
+
+  /* ---------------- KPIs ---------------- */
+  // Replaced “Curricula” with “Subjects” (you don't have curricula routes; subjects are closest)
   const kpis = [
-    { title: "Students",  value: 1240, icon: <TeamOutlined />,       gradient: "from-indigo-600 to-violet-600" },
-    { title: "Curricula", value: 42,   icon: <ReadOutlined />,       gradient: "from-sky-500 to-cyan-500" },
-    { title: "Quizzes",   value: 318,  icon: <ExperimentOutlined />, gradient: "from-emerald-500 to-teal-500" },
-    { title: "Scans",     value: 827,  icon: <FileTextOutlined />,   gradient: "from-rose-500 to-orange-500" }
+    { title: "Students",  value: studentsCount, icon: <TeamOutlined />,       gradient: "from-indigo-600 to-violet-600" },
+    { title: "Subjects",  value: subjectsCount, icon: <ReadOutlined />,       gradient: "from-sky-500 to-cyan-500" },
+    { title: "Quizzes",   value: quizzesTotal,  icon: <ExperimentOutlined />, gradient: "from-emerald-500 to-teal-500" },
+    { title: "Scans",     value: 0,             icon: <FileTextOutlined />,   gradient: "from-rose-500 to-orange-500" }, // no scans route provided
   ];
 
   /* ---------------- Features ---------------- */
@@ -44,12 +98,11 @@ export default function NicePage() {
       title: "Curricula",
       desc: "Tie each subject to state • grade • year. Link quizzes, games & worksheets.",
       onClick: () => navigate("/admin/academics/curricula"),
-      // Quick links (only to existing routes)
       footer: (
         <Space wrap size={[6, 6]}>
           <Button
             size="small"
-            onClick={(e) => { e.stopPropagation(); navigate("/admin/academics/quiz"); }}
+            onClick={(e) => { e.stopPropagation(); navigate("/admin/academics/quizzes"); }}
           >
             Quizzes
           </Button>
@@ -65,7 +118,6 @@ export default function NicePage() {
           >
             Worksheets
           </Button>
-          {/* No dedicated upload route in AdminRoutes → point to Curricula page */}
           <Button
             size="small"
             icon={<UploadOutlined />}
@@ -80,35 +132,35 @@ export default function NicePage() {
       icon: <ExperimentOutlined style={{ fontSize: 26, color: "#52c41a" }} />,
       title: "Quiz Studio",
       desc: "Editor (form builder) for adaptive quizzes. Version & publish.",
-      onClick: () => navigate("/admin/academics/quiz")
+      onClick: () => navigate("/admin/academics/quizzes"),
     },
     {
       icon: <FileTextOutlined style={{ fontSize: 26, color: "#fa8c16" }} />,
       title: "Worksheet Editor",
       desc: "Rich editor; supports partial worksheet (Q&A mode).",
-      onClick: () => navigate("/admin/academics/worksheet")
+      onClick: () => navigate("/admin/academics/worksheet"),
     },
     {
       icon: <PlayCircleOutlined style={{ fontSize: 26, color: "#13c2c2" }} />,
       title: "Games",
       desc: "Skill practice — placeholder for future.",
-      onClick: () => navigate("/admin/academics/game")
+      onClick: () => navigate("/admin/academics/game"),
     },
     {
       icon: <BulbOutlined style={{ fontSize: 26, color: "#eb2f96" }} />,
       title: "Kibundo (Manage & Train)",
       desc: "Fine-tune prompts, datasets & guardrails for the AI assistant.",
-      onClick: () => navigate("/admin/academics/ai-agent")
+      onClick: () => navigate("/admin/academics/kibundo"),
     },
     {
       icon: <BookOutlined style={{ fontSize: 26, color: "#2f54eb" }} />,
       title: "Subjects",
       desc: "List of offered subjects & availability, tied to curricula.",
-      onClick: () => navigate("/admin/academics/subjects")
-    }
+      onClick: () => navigate("/admin/academics/subjects"),
+    },
   ];
 
-  /* ---------------- What's New / Roadmap ---------------- */
+  /* ---------------- Static panels (unchanged) ---------------- */
   const updates = [
     { title: "Reading exercises added",      tag: "New",      color: "green",  by: "Content",   when: "2d ago" },
     { title: "Curricula links: all assets",  tag: "Improved", color: "blue",   by: "Platform",  when: "5d ago" },
@@ -122,8 +174,6 @@ export default function NicePage() {
     { c: "Subject catalog revamp",   color: "gray" }
   ];
 
-  /* ---------------- Scans Panel ---------------- */
-  // OCR language defaults to German; each item shows description, publisher tag, time
   const scans = [
     { id: 1, description: "Worksheet Scan: Fractions Practice", publisher: "Teacher Desk", time: "2h ago", language: "German" },
     { id: 2, description: "Reading Passage OCR: Die Bremer Stadtmusikanten", publisher: "Content Team", time: "Yesterday", language: "German" },
@@ -140,14 +190,13 @@ export default function NicePage() {
             <Col xs={24} md={14}>
               <Space direction="vertical" size={8} className="w-full">
                 <Title level={2} className="!mb-1">Academics</Title>
-              
               </Space>
             </Col>
           </Row>
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs (live counts for Students / Subjects / Quizzes) */}
       <div className="mx-auto max-w-7xl px-4 -mt-6 md:-mt-8">
         <Row gutter={[16, 16]}>
           {kpis.map((k) => (
@@ -156,6 +205,11 @@ export default function NicePage() {
                 hoverable
                 className={`rounded-xl text-white bg-gradient-to-br ${k.gradient}`}
                 styles={{ body: { minHeight: 110, display: "flex", alignItems: "center" } }}
+                loading={
+                  (k.title === "Students" && studentsQ.isFetching) ||
+                  (k.title === "Subjects" && subjectsQ.isFetching) ||
+                  (k.title === "Quizzes" && quizzesQ.isFetching)
+                }
               >
                 <div className="w-full flex items-center justify-between">
                   <Space>
@@ -165,7 +219,17 @@ export default function NicePage() {
                       <div className="text-2xl md:text-3xl font-bold leading-none">{k.value}</div>
                     </div>
                   </Space>
-                  <Tooltip title="Sample metric">
+                  <Tooltip
+                    title={
+                      k.title === "Students"
+                        ? "/allstudents"
+                        : k.title === "Subjects"
+                        ? "/allsubjects"
+                        : k.title === "Quizzes"
+                        ? "/quizzes"
+                        : "placeholder"
+                    }
+                  >
                     <SmileOutlined />
                   </Tooltip>
                 </div>
@@ -209,7 +273,7 @@ export default function NicePage() {
             </Card>
           </Col>
 
-          {/* Updates & Roadmap */}
+          {/* What's New + Roadmap */}
           <Col xs={24} lg={10}>
             <Space direction="vertical" size="middle" style={{ width: "100%" }}>
               <Card hoverable title="What’s New">
@@ -240,17 +304,67 @@ export default function NicePage() {
           </Col>
         </Row>
 
-        {/* Scans Panel (under Academics) */}
+        {/* Recent Quizzes (live from /quizzes) */}
         <Row gutter={[16, 16]} className="mt-2">
           <Col xs={24}>
             <Card
               hoverable
-              title={
-                <Space>
-                  <FileTextOutlined />
-                  Scans
-                </Space>
+              title={<Space><ExperimentOutlined /> Recent Quizzes</Space>}
+              extra={
+                <Button type="link" onClick={() => navigate("/admin/academics/quizzes")}>
+                  Open Quizzes <ArrowRightOutlined />
+                </Button>
               }
+            >
+              <List
+                loading={quizzesQ.isFetching}
+                dataSource={recentQuizzes}
+                locale={{ emptyText: "No quizzes yet" }}
+                renderItem={(q) => (
+                  <List.Item
+                    onClick={() => navigate("/admin/academics/quizzes")}
+                    style={{ cursor: "pointer" }}
+                    actions={[
+                      <Tag
+                        key="status"
+                        color={q.status === "live" ? "green" : q.status === "review" ? "geekblue" : "default"}
+                      >
+                        {q.status || "draft"}
+                      </Tag>,
+                      <Text key="added" type="secondary">
+                        Added: {fmtDate(q.created_at ?? q.createdAt)}
+                      </Text>,
+                    ]}
+                  >
+                    <List.Item.Meta
+                      avatar={<Avatar icon={<ExperimentOutlined />} />}
+                      title={<span className="font-medium">{q.title || "(Untitled quiz)"} </span>}
+                      description={
+                        <Space size="small" wrap>
+                          {q.subject ? <Tag>{q.subject}</Tag> : null}
+                          {q.grade ? <Tag color="blue">Grade {q.grade}</Tag> : null}
+                          {q.bundesland ? <Tag color="purple">{q.bundesland}</Tag> : null}
+                          {q.difficulty ? (
+                            <Tag color={q.difficulty === "easy" ? "green" : q.difficulty === "hard" ? "volcano" : "geekblue"}>
+                              {q.difficulty}
+                            </Tag>
+                          ) : null}
+                        </Space>
+                      }
+                    />
+                  </List.Item>
+                )}
+              />
+            </Card>
+          </Col>
+        </Row>
+
+        {/* Scans Panel (placeholder; no scan route provided) */}
+        <Row gutter={[16, 16]} className="mt-2">
+          <Col xs={24}>
+            <Card
+              hoverable
+              title={<Space><FileTextOutlined /> Scans</Space>}
               extra={
                 <Space>
                   <span className="text-gray-500">OCR Language</span>
@@ -261,8 +375,7 @@ export default function NicePage() {
                     style={{ width: 120 }}
                     onChange={() => {}}
                   />
-                  {/* No /scans/new route → navigate to scans overview */}
-                  <Button type="primary" onClick={() => navigate("/admin/academics/scans")}>
+                  <Button type="primary" onClick={() => navigate("/admin/academics/ocr")}>
                     Open Scans
                   </Button>
                 </Space>
@@ -277,7 +390,7 @@ export default function NicePage() {
                         <Badge status="processing" text={s.language} />
                       </Tooltip>,
                     ]}
-                    onClick={() => navigate("/admin/academics/scans")}
+                    onClick={() => navigate("/admin/academics/ocr")}
                     style={{ cursor: "pointer" }}
                   >
                     <List.Item.Meta
@@ -298,11 +411,7 @@ export default function NicePage() {
         </Row>
 
         {/* CTA */}
-        <Card
-          className="mt-4 rounded-2xl"
-          styles={{ body: { padding: screens.md ? 24 : 16 } }}
-          hoverable
-        >
+        <Card className="mt-4 rounded-2xl" styles={{ body: { padding: screens.md ? 24 : 16 } }} hoverable>
           <Row justify="space-between" align="middle" gutter={[16, 16]}>
             <Col xs={24} md={16}>
               <Title level={4} className="!mb-1">Ready to build your next unit?</Title>
@@ -312,7 +421,7 @@ export default function NicePage() {
             </Col>
             <Col xs={24} md={8} style={{ textAlign: screens.md ? "right" : "left" }}>
               <Space wrap>
-                <Button onClick={() => navigate("/admin/academics/quiz")}>Create Quiz</Button>
+                <Button onClick={() => navigate("/admin/academics/quizzes")}>Create Quiz</Button>
                 <Button type="primary" onClick={() => navigate("/admin/academics/curricula")}>
                   New Curriculum
                 </Button>
