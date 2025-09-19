@@ -199,6 +199,7 @@ function RichTextArea({ value, onChange, onImageUpload }) {
 export default function Invoices() {
   const screens = useBreakpoint();
   const drawerWidth = useResponsiveDrawerWidth();
+  const [messageApi, contextHolder] = message.useMessage();
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -213,6 +214,7 @@ export default function Invoices() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form] = Form.useForm();
+  const notesHtml = Form.useWatch("notes_html", form);
 
   // detail drawer
   const [viewOpen, setViewOpen] = useState(false);
@@ -286,9 +288,9 @@ export default function Invoices() {
   const resend = async (id) => {
     try {
       await api.post(`/invoice/${id}/resend`);
-      message.success("Invoice resent");
+      messageApi.success("Invoice resent");
     } catch {
-      message.success("Invoice resent (simulated)");
+      messageApi.success("Invoice resent (simulated)");
     }
   };
 
@@ -338,7 +340,7 @@ export default function Invoices() {
     if (viewRec && (viewRec.id || viewRec.stripe_invoice_id) === (row.id || row.stripe_invoice_id)) {
       closeView();
     }
-    message.success("Deleted");
+    messageApi.success("Deleted");
   };
 
   const askDelete = (row) => {
@@ -371,7 +373,7 @@ export default function Invoices() {
         closeView();
       }
       setSelectedRowKeys([]);
-      message.success("Selected invoices deleted");
+      messageApi.success("Selected invoices deleted");
       setBulkOpen(false);
     } finally {
       setBulkLoading(false);
@@ -402,13 +404,13 @@ export default function Invoices() {
           (x.id || x.stripe_invoice_id) === editingId ? { ...x, ...payload } : x
         )
       );
-      message.success("Invoice updated");
+      messageApi.success("Invoice updated");
     } else {
       try {
         await api.post(`/invoices`, payload);
       } catch {}
       setData((prev) => [{ ...payload }, ...prev]);
-      message.success("Invoice added");
+      messageApi.success("Invoice added");
     }
     setModalOpen(false);
   };
@@ -427,7 +429,7 @@ export default function Invoices() {
           : idOrRecord;
       const rec =
         data.find((x) => String(x.id || x.stripe_invoice_id) === String(id)) || null;
-      if (!rec) return message.error("Invoice not found.");
+      if (!rec) return messageApi.error("Invoice not found.");
       setViewRec(rec);
       setViewOpen(true);
     },
@@ -598,6 +600,7 @@ export default function Invoices() {
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 md:p-6 max-w-[1600px] mx-auto">
+      {contextHolder}
       {/* KPI strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card size="small" className="rounded-xl">
@@ -689,7 +692,7 @@ export default function Invoices() {
             {/* RICH TEXT NOTES */}
             <Form.Item name="notes_html" label="Notes / Terms" className="md:col-span-2">
               <RichTextArea
-                value={Form.useWatch("notes_html", form)}
+                value={notesHtml}
                 onChange={(html) => form.setFieldsValue({ notes_html: html })}
                 onImageUpload={uploadImage}
               />

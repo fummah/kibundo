@@ -125,6 +125,7 @@
     "save": "Speichern",
     "create": "Erstellen",
     "edit": "Bearbeiten",
+    "view": "Ansehen",
     "delete": "Löschen",
     "close": "Schließen",
     "publish": "Veröffentlichen",
@@ -273,6 +274,43 @@
           "added": "Hinzugefügt: {{date}}"
         }
       }
+    }
+  }
+  ,
+  "entityList": {
+    "header": { "list": "Liste" },
+    "tabs": { "all": "Alle {{name}}", "activeOnly": "Nur aktiv" },
+    "addTooltip": "{{singular}} hinzufügen",
+    "record": "Eintrag",
+    "actions": { "label": "Aktionen" },
+    "show": "Zeige",
+    "entries": "Einträge",
+    "searchPh": "Tabellensuche",
+    "more": { "columns": "Spalten ein/ausblenden" },
+    "modal": {
+      "columnsTitle": "Spalten ein/ausblenden",
+      "done": "Fertig",
+      "selectAll": "Alle auswählen",
+      "reset": "Zurücksetzen"
+    },
+    "status": {
+      "label": "Status",
+      "allSelected": "Alle ausgewählt",
+      "active": "Aktiv",
+      "suspended": "Gesperrt",
+      "blocked": "Blockiert"
+    },
+    "toast": {
+      "statusChanged": "Status geändert zu {{status}}"
+    },
+    "confirm": {
+      "deleteTitle": "Lösche {{what}}?",
+      "deleteContent": "Möchten Sie wirklich löschen"
+    },
+    "bulk": {
+      "setActive": "Status setzen: Aktiv",
+      "setSuspended": "Status setzen: Gesperrt",
+      "setBlocked": "Status setzen: Blockiert"
     }
   }
 }

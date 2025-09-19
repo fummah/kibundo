@@ -2,23 +2,24 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   Button, Card, Form, Input, Select, Space, Tag,
-  Drawer, Divider, Upload, Descriptions, List, Empty,
+  Drawer, Divider, Descriptions, List, Empty,
   Modal, Grid, Skeleton, Dropdown
 } from "antd";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { message } from "antd";
 import {
   DownloadOutlined, PlusOutlined, ReloadOutlined,
-  SaveOutlined, UploadOutlined, MoreOutlined
+  SaveOutlined, MoreOutlined
 } from "@ant-design/icons";
 
-import PageHeader from "@/components/PageHeader.jsx";
 import ResponsiveFilters from "@/components/ResponsiveFilters.jsx";
 import FluidTable from "@/components/FluidTable.jsx";
 import { SafeText, SafeDate, SafeTags, safe } from "@/utils/safe";
+import { useAuthContext } from "@/context/AuthContext.jsx";
 
 import { BUNDESLAENDER, GRADES, CURRICULUM_STATUSES } from "./_constants";
 
-/* 👉 updated imports: split API layer under src/api/academics */
+/* 👉 API layer */
 import {
   listCurricula,
   getCurriculum,
@@ -33,14 +34,7 @@ import {
 } from "@/api/academics/curricula";
 
 import {
-  listQuizzes,
-  getQuiz,
-  createQuiz,
-  updateQuiz,
-  deleteQuiz,
-  searchQuizzes,
-  linkQuizzes,
-  unlinkQuiz,
+  searchQuizzes, linkQuizzes, unlinkQuiz,
 } from "@/api/academics/quizzes";
 
 import { searchWorksheets, linkWorksheets } from "@/api/academics/worksheets";
@@ -110,13 +104,19 @@ function RichTextArea({ value, onChange, onImageUpload }) {
 
 /* ================================== Page ================================== */
 export default function Curricula() {
+  const [messageApi, contextHolder] = message.useMessage();
   const [form] = Form.useForm();
   const qc = useQueryClient();
   const screens = useBreakpoint();
+  const { user } = useAuthContext() || {};
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+
+  // Watch all filter fields on this form
   const filters = Form.useWatch([], form);
+  // Watch notes_html for editor binding (must be top-level to keep hooks order)
+  const notesHtml = Form.useWatch("notes_html", form);
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ["curricula", { page, pageSize, ...filters }],
@@ -127,15 +127,21 @@ export default function Curricula() {
     keepPreviousData: true
   });
 
-  const items = Array.isArray(data?.items) ? data.items : [];
+  const items = Array.isArray(data?.items)
+    ? data.items.map((r) => ({ ...r, id: r?.id ?? r?._id }))
+    : [];
   const total = Number.isFinite(data?.total) ? data.total : items.length;
 
   // UI state
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editId, setEditId] = useState(null);
-  const [contentJson, setContentJson] = useState("{}");
+  const [editId,   setEditId]   = useState(null);
+  // Removed JSON content editor
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [detailId, setDetailId] = useState(null);
+  // Hidden content passthrough to satisfy backend JSONB NOT NULL
+  const [content, setContent] = useState({});
+  // Defer mount of rich text editor to avoid addRange() race when drawer opens
+  const [showEditor, setShowEditor] = useState(false);
 
   const [linkQuizzesOpen, setLinkQuizzesOpen] = useState(false);
   const [linkWorksheetsOpen, setLinkWorksheetsOpen] = useState(false);
@@ -146,16 +152,19 @@ export default function Curricula() {
 
   const openCreate = () => {
     setEditId(null);
-    setContentJson("{}");
     form.resetFields();
+    setContent({});
     setDrawerOpen(true);
+    // mount editor after open
+    setTimeout(() => setShowEditor(true), 0);
   };
 
   const openEdit = async (id) => {
     try {
       const item = await getCurriculum(id);
       if (!item) return;
-      setEditId(id);
+      setEditId(item.id || id);
+      setContent(item?.content ?? {});
       form.setFieldsValue({
         title: item.title || "",
         bundesland: item.bundesland || undefined,
@@ -165,22 +174,111 @@ export default function Curricula() {
         tags: item.tags || [],
         notes_html: item.notes_html || "",
       });
-      setContentJson(JSON.stringify(item.content ?? {}, null, 2));
       setDrawerOpen(true);
+      // mount editor after open
+      setTimeout(() => setShowEditor(true), 0);
     } catch {}
   };
 
   const createMut = useMutation({
-    mutationFn: (payload) => createCurriculum(payload),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["curricula"] }); setDrawerOpen(false); },
+    mutationFn: async (payload) => {
+      try {
+        const hasToken = !!localStorage.getItem("token");
+        console.log("[Curricula#createMut] mutationFn called", {
+          keys: Object.keys(payload || {}),
+          hasToken
+        });
+        if (!hasToken) {
+          message.warning("No auth token found. Backend will likely return 401.");
+        }
+      } catch {}
+      try {
+        // Ensure required fields are present
+        if (!payload.title) {
+          throw new Error('Title is required');
+        }
+        if (!payload.subject) {
+          throw new Error('Subject is required');
+        }
+        if (!payload.bundesland) {
+          throw new Error('State (Bundesland) is required');
+        }
+        if (!payload.grade) {
+          throw new Error('Grade is required');
+        }
+        
+        // Add content and ensure it's not empty
+        const curriculumData = {
+          ...payload,
+          content: Object.keys(content).length > 0 ? content : { sections: [] },
+          created_by: user?.id,
+          updated_by: user?.id,
+        };
+        
+        return await createCurriculum(curriculumData);
+      } catch (error) {
+        console.error('Error creating curriculum:', error);
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      messageApi.success({
+        content: 'Curriculum created successfully!',
+        duration: 3,
+      });
+      qc.invalidateQueries({ queryKey: ["curricula"] });
+      setDrawerOpen(false);
+      form.resetFields();
+      setContent({});
+    },
+    onError: (err) => {
+      console.error('Error creating curriculum:', err);
+      messageApi.error({
+        content: err?.response?.data?.message || err?.message || "Failed to create curriculum. Please try again.",
+        duration: 5,
+      });
+    },
   });
+
   const updateMut = useMutation({
-    mutationFn: (payload) => updateCurriculum(editId, payload),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["curricula"] }); setDrawerOpen(false); },
+    mutationFn: async (payload) => {
+      console.log("[Curricula#updateMut] mutationFn called", { keys: Object.keys(payload || {}) });
+      try {
+        if (!editId) throw new Error('No curriculum ID provided for update');
+        
+        const updateData = {
+          ...payload,
+          content: Object.keys(content).length > 0 ? content : { sections: [] },
+          updated_by: user?.id,
+        };
+        
+        return await updateCurriculum(editId, updateData);
+      } catch (error) {
+        console.error('Error updating curriculum:', error);
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      messageApi.success({
+        content: 'Curriculum updated successfully!',
+        duration: 3,
+      });
+      qc.invalidateQueries({ queryKey: ["curricula"] });
+      setDrawerOpen(false);
+    },
+    onError: (err) => messageApi.error(
+      err?.response?.data?.message || err?.message || "Failed to save curriculum"
+    ),
   });
   const del = useMutation({
     mutationFn: (id) => deleteCurriculum(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["curricula"] }); },
+    onSuccess: () => {
+      messageApi.success("Curriculum deleted");
+      qc.invalidateQueries({ queryKey: ["curricula"] });
+    },
+    onError: (err) => messageApi.error(
+      err?.response?.data?.message || err?.message || "Failed to delete"
+    ),
   });
   const pub = useMutation({
     mutationFn: ({ id, publish }) => publishCurriculum(id, publish),
@@ -196,6 +294,8 @@ export default function Curricula() {
       onOk: () => del.mutate(id, { onSuccess: () => { if (detailId === id) setDetailId(null); } })
     });
   };
+
+  const getId = (r) => r?.id ?? r?._id;
 
   const columns = useMemo(() => [
     { title: "Subject", dataIndex: "subject", ellipsis: true, render: (v) => <SafeText value={v} /> },
@@ -234,15 +334,16 @@ export default function Curricula() {
           ],
           onClick: ({ key, domEvent }) => {
             domEvent?.stopPropagation?.();
-            if (key === "view") setDetailId(r.id);
-            else if (key === "edit") openEdit(r.id);
-            else if (key === "versions") { setDetailId(r.id); setVersionsOpen(true); }
-            else if (key === "link_quizzes") { setDetailId(r.id); setLinkQuizzesOpen(true); }
-            else if (key === "link_worksheets") { setDetailId(r.id); setLinkWorksheetsOpen(true); }
-            else if (key === "link_games") { setDetailId(r.id); setLinkGamesOpen(true); }
-            else if (key === "link_reading") { setDetailId(r.id); setLinkReadingOpen(true); }
-            else if (key === "toggle") pub.mutate({ id: r.id, publish: !isPublished });
-            else if (key === "delete") confirmDelete(r.id);
+            const id = getId(r);
+            if (key === "view") setDetailId(id);
+            else if (key === "edit") openEdit(id);
+            else if (key === "versions") { setDetailId(id); setVersionsOpen(true); }
+            else if (key === "link_quizzes") { setDetailId(id); setLinkQuizzesOpen(true); }
+            else if (key === "link_worksheets") { setDetailId(id); setLinkWorksheetsOpen(true); }
+            else if (key === "link_games") { setDetailId(id); setLinkGamesOpen(true); }
+            else if (key === "link_reading") { setDetailId(id); setLinkReadingOpen(true); }
+            else if (key === "toggle") pub.mutate({ id, publish: !isPublished });
+            else if (key === "delete") confirmDelete(id);
           }
         };
         return (
@@ -252,7 +353,8 @@ export default function Curricula() {
         );
       }
     }
-  ], [screens.md, pub.isPending, del.isPending, canWrite]);
+  // include reactive deps you reference
+  ], [screens.md, pub, del, canWrite]);
 
   const onExport = () => {
     const rows = (items ?? []).map((r) => ({
@@ -270,18 +372,74 @@ export default function Curricula() {
   };
 
   const onSubmit = async () => {
-    const values = await form.validateFields();
-    let parsed = {};
-    try { parsed = contentJson ? JSON.parse(contentJson) : {}; } catch { return; }
-    const payload = { ...values, content: parsed, notes_html: values?.notes_html || "" };
-    if (editId) updateMut.mutate(payload); else createMut.mutate(payload);
+    try {
+      console.log('[Curricula#onSubmit] start');
+      const values = await form.validateFields();
+      console.log('[Curricula#onSubmit] after validateFields', { keys: Object.keys(values || {}) });
+      const payload = {
+        ...values,
+        grade: values?.grade != null ? Number(values.grade) : undefined,
+        content: Object.keys(content).length > 0 ? content : { sections: [] },
+        status: values.status || 'draft',
+        tags: Array.isArray(values?.tags) ? values.tags : [],
+        notes_html: values?.notes_html || "",
+        created_by: user?.id,
+        updated_by: user?.id,
+      };
+
+      // Show loading state
+      messageApi.loading({
+        content: editId ? 'Saving curriculum...' : 'Creating curriculum...',
+        key: 'saving',
+        duration: 0
+      });
+
+      if (editId) {
+        console.log('[Curricula#onSubmit] calling updateMut.mutateAsync');
+        await updateMut.mutateAsync(payload);
+        messageApi.success({
+          content: 'Curriculum updated successfully!',
+          key: 'saving',
+          duration: 3
+        });
+      } else {
+        console.log('[Curricula#onSubmit] calling createMut.mutateAsync');
+        await createMut.mutateAsync(payload);
+        messageApi.success({
+          content: 'Curriculum created successfully!',
+          key: 'saving',
+          duration: 3
+        });
+      }
+
+      // Invalidate queries and reset form
+      qc.invalidateQueries({ queryKey: ["curricula"] });
+      setDrawerOpen(false);
+      form.resetFields();
+      setContent({});
+      
+    } catch (error) {
+      console.error('Form submission error:', error);
+      
+      if (error.errorFields) {
+        // Handle form validation errors
+        messageApi.error({
+          content: 'Please fill in all required fields',
+          key: 'saving',
+          duration: 3
+        });
+      } else {
+        // Handle API errors
+        messageApi.error({
+          content: error.response?.data?.message || error.message || 'An error occurred. Please try again.',
+          key: 'saving',
+          duration: 5
+        });
+      }
+    }
   };
 
-  const beforeUpload = async (file) => {
-    const text = await file.text();
-    try { JSON.parse(text); setContentJson(text); } catch {}
-    return false;
-  };
+  // Removed beforeUpload and JSON handling
 
   // Detail (quiet)
   const { data: detailData, refetch: refetchDetail, isLoading: loadingDetail } = useQuery({
@@ -299,45 +457,63 @@ export default function Curricula() {
 
   return (
     <div className="flex flex-col min-h-0">
-      <PageHeader
-        title="Curricula"
-        subtitle="Maintain curricula by state, subject, and grade. Link quizzes, worksheets, games, and reading."
-        extra={
+      {contextHolder}
+      <div className="p-4 bg-white rounded-lg shadow-sm mb-6">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-800">Curriculum Management</h1>
+            <p className="text-gray-500">Maintain curricula by state, subject, and grade</p>
+          </div>
           <Space wrap>
-            <Button icon={<ReloadOutlined />} onClick={() => refetch()} />
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>New Curriculum</Button>
+            <Button 
+              icon={<ReloadOutlined />} 
+              onClick={() => refetch()}
+              className="flex items-center"
+            >
+              Refresh
+            </Button>
+            <Button 
+              type="primary" 
+              icon={<PlusOutlined />} 
+              onClick={openCreate}
+              className="flex items-center"
+            >
+              New Curriculum
+            </Button>
           </Space>
-        }
-      />
+        </div>
 
-      <ResponsiveFilters>
-        <Form.Item name="q">
-          <Input allowClear placeholder="Search title/subject/tags…" style={{ width: 260 }} />
-        </Form.Item>
-        <Form.Item name="bundesland" label="State">
-          <Select allowClear options={BUNDESLAENDER.map(b => ({ value: b, label: b }))} style={{ minWidth: 180 }} />
-        </Form.Item>
-        <Form.Item name="subject" label="Subject">
-          <Input allowClear placeholder="e.g. Deutsch" style={{ minWidth: 160 }} />
-        </Form.Item>
-        <Form.Item name="grade" label="Grade">
-          <Select allowClear options={GRADES.map(g => ({ value: g, label: `Grade ${g}` }))} style={{ minWidth: 120 }} />
-        </Form.Item>
-        <Form.Item name="status" label="Status">
-          <Select allowClear options={CURRICULUM_STATUSES.map(s => ({ value: s, label: s }))} style={{ minWidth: 140 }} />
-        </Form.Item>
-        <Form.Item>
-          <Space>
-            <Button onClick={() => form.resetFields()}>Reset</Button>
-            <Button icon={<DownloadOutlined />} onClick={onExport}>Export CSV</Button>
-          </Space>
-        </Form.Item>
-      </ResponsiveFilters>
+      {/* Wrap filter items in a real Form so Form.useWatch works */}
+      <Form form={form} layout="inline">
+        <ResponsiveFilters>
+          <Form.Item name="q">
+            <Input allowClear placeholder="Search title/subject/tags…" style={{ width: 260 }} />
+          </Form.Item>
+          <Form.Item name="bundesland" label="State">
+            <Select allowClear options={BUNDESLAENDER.map(b => ({ value: b, label: b }))} style={{ minWidth: 180 }} />
+          </Form.Item>
+          <Form.Item name="subject" label="Subject">
+            <Input allowClear placeholder="e.g. Deutsch" style={{ minWidth: 160 }} />
+          </Form.Item>
+          <Form.Item name="grade" label="Grade">
+            <Select allowClear options={GRADES.map(g => ({ value: g, label: `Grade ${g}` }))} style={{ minWidth: 120 }} />
+          </Form.Item>
+          <Form.Item name="status" label="Status">
+            <Select allowClear options={CURRICULUM_STATUSES.map(s => ({ value: s, label: s }))} style={{ minWidth: 140 }} />
+          </Form.Item>
+          <Form.Item>
+            <Space>
+              <Button onClick={() => form.resetFields()}>Reset</Button>
+              <Button icon={<DownloadOutlined />} onClick={onExport}>Export CSV</Button>
+            </Space>
+          </Form.Item>
+        </ResponsiveFilters>
+      </Form>
 
       <div className="p-3 md:p-4">
         <Card bodyStyle={{ padding: 0 }} className="overflow-hidden">
           <FluidTable
-            rowKey="id"
+            rowKey={(r) => r?.id ?? r?._id}
             loading={isFetching}
             columns={columns}
             dataSource={items}
@@ -348,63 +524,57 @@ export default function Curricula() {
           />
           {!isFetching && items.length === 0 && (
             <div className="py-10">
-              <Empty description="No curricula found">
-                <Button type="primary" onClick={openCreate}>Create Curriculum</Button>
-              </Empty>
+              <Empty description="No curricula found" />
             </div>
           )}
         </Card>
+      </div>
       </div>
 
       {/* Create/Edit Drawer */}
       <Drawer
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => { setShowEditor(false); setDrawerOpen(false); }}
         title={editId ? "Edit Curriculum" : "New Curriculum"}
         width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 32 : 720)}
-        extra={
-          <Space>
-            <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
-            <Button type="primary" icon={<SaveOutlined />} loading={createMut.isPending || updateMut.isPending} onClick={onSubmit}>
-              {editId ? "Save" : "Create"}
-            </Button>
-          </Space>
+        destroyOnClose
+        footer={
+          <div style={{ textAlign: "right" }}>
+            <Space>
+              <Button onClick={() => { setShowEditor(false); setDrawerOpen(false); }}>Close</Button>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                loading={(createMut.isPending ?? createMut.isLoading) || (updateMut.isPending ?? updateMut.isLoading)}
+                disabled={(createMut.isPending ?? createMut.isLoading) || (updateMut.isPending ?? updateMut.isLoading)}
+                onClick={onSubmit}
+              >
+                {editId ? "Save" : "Add"}
+              </Button>
+            </Space>
+          </div>
         }
       >
-        <Form form={form} layout="vertical" initialValues={{ status: "draft", grade: 1, notes_html: "" }}>
+        <Form form={form} layout="vertical" initialValues={{ status: "draft", grade: 1, notes_html: "" }} scrollToFirstError={false}>
           <Form.Item name="title" label="Title"><Input placeholder="Optional title e.g. Deutsch – BW – Grade 2" /></Form.Item>
-          <Form.Item name="bundesland" label="Bundesland" rules={[{ required: true }]}>
+          <Form.Item name="bundesland" label="Bundesland" rules={[{ required: true, message: "Please select a state (Bundesland)" }]}>
             <Select options={BUNDESLAENDER.map(b => ({ value: b, label: b }))} />
           </Form.Item>
-          <Form.Item name="subject" label="Subject" rules={[{ required: true }]}><Input placeholder="e.g. Deutsch, Mathematik" /></Form.Item>
-          <Form.Item name="grade" label="Grade" rules={[{ required: true }]}><Select options={GRADES.map(g => ({ value: g, label: `Grade ${g}` }))} /></Form.Item>
+          <Form.Item name="subject" label="Subject" rules={[{ required: true, message: "Please enter a subject" }]}><Input placeholder="e.g. Deutsch, Mathematik" /></Form.Item>
+          <Form.Item name="grade" label="Grade" rules={[{ required: true, message: "Please select a grade" }]}><Select options={GRADES.map(g => ({ value: g, label: `Grade ${g}` }))} /></Form.Item>
           <Form.Item name="status" label="Status"><Select options={CURRICULUM_STATUSES.map(s => ({ value: s, label: s }))} /></Form.Item>
           <Form.Item name="tags" label="Tags"><Select mode="tags" placeholder="press Enter to add" /></Form.Item>
 
           <Divider />
 
           <Form.Item name="notes_html" label="Notes (Rich Text)">
-            <RichTextArea
-              value={Form.useWatch("notes_html", form)}
-              onChange={(html) => form.setFieldsValue({ notes_html: html })}
-              onImageUpload={uploadImage}
-            />
-          </Form.Item>
-
-          <Divider />
-
-          <Form.Item label="Content (JSON / Blocks)">
-            <Space direction="vertical" style={{ width: "100%" }}>
-              <Upload accept=".json,application/json" beforeUpload={beforeUpload} maxCount={1} showUploadList={false}>
-                <Button icon={<UploadOutlined />}>Import JSON</Button>
-              </Upload>
-              <Input.TextArea
-                rows={12}
-                value={contentJson}
-                onChange={(e) => setContentJson(e.target.value)}
-                placeholder='{"units":[{"title":"…","outcomes":[…]}]}'
+            {drawerOpen && showEditor ? (
+              <RichTextArea
+                value={notesHtml}
+                onChange={(html) => form.setFieldsValue({ notes_html: html })}
+                onImageUpload={uploadImage}
               />
-            </Space>
+            ) : null}
           </Form.Item>
         </Form>
       </Drawer>
@@ -586,7 +756,7 @@ function VersionsModal({ open, onClose, curriculumId, afterRestore }) {
       key: "actions",
       width: 140,
       render: (_, r) => (
-        <Button size="small" onClick={() => restore.mutate(r.id)} loading={restore.isPending}>
+        <Button size="small" onClick={() => restore.mutate(r.id)} loading={restore.isPending ?? restore.isLoading}>
           Restore
         </Button>
       )
@@ -628,7 +798,7 @@ function LinkQuizzesDrawer({ open, onClose, curriculum, afterLink }) {
       onClose={onClose}
       title="Link Quizzes"
       width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 32 : 720)}
-      extra={<Button type="primary" disabled={!selected.length} loading={link.isPending} onClick={() => link.mutate()}>Link {selected.length ? `(${selected.length})` : ""}</Button>}
+      extra={<Button type="primary" disabled={!selected.length} loading={link.isPending ?? link.isLoading} onClick={() => link.mutate()}>Link {selected.length ? `(${selected.length})` : ""}</Button>}
     >
       <SearchFilters filters={filters} setFilters={setFilters} refetch={refetch} isFetching={isFetching} />
       <FluidTable
@@ -676,7 +846,7 @@ function LinkWorksheetsDrawer({ open, onClose, curriculum, afterLink }) {
       onClose={onClose}
       title="Link Worksheets"
       width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 32 : 720)}
-      extra={<Button type="primary" disabled={!selected.length} loading={link.isPending} onClick={() => link.mutate()}>Link {selected.length ? `(${selected.length})` : ""}</Button>}
+      extra={<Button type="primary" disabled={!selected.length} loading={link.isPending ?? link.isLoading} onClick={() => link.mutate()}>Link {selected.length ? `(${selected.length})` : ""}</Button>}
     >
       <SearchFilters filters={filters} setFilters={setFilters} refetch={refetch} isFetching={isFetching} />
       <FluidTable
@@ -718,7 +888,7 @@ function LinkGamesDrawer({ open, onClose, curriculum, afterLink }) {
       onClose={onClose}
       title="Link Games (stub)"
       width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 32 : 720)}
-      extra={<Button type="primary" disabled={!selected.length} loading={link.isPending} onClick={() => link.mutate()}>Link {selected.length ? `(${selected.length})` : ""}</Button>}
+      extra={<Button type="primary" disabled={!selected.length} loading={link.isPending ?? link.isLoading} onClick={() => link.mutate()}>Link {selected.length ? `(${selected.length})` : ""}</Button>}
     >
       <p className="text-gray-500 mb-3">Search returns empty for now; this is a placeholder so UI compiles.</p>
       <FluidTable
@@ -757,7 +927,7 @@ function LinkReadingDrawer({ open, onClose, curriculum, afterLink }) {
       onClose={onClose}
       title="Link Reading (stub)"
       width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 32 : 720)}
-      extra={<Button type="primary" disabled={!selected.length} loading={link.isPending} onClick={() => link.mutate()}>Link {selected.length ? `(${selected.length})` : ""}</Button>}
+      extra={<Button type="primary" disabled={!selected.length} loading={link.isPending ?? link.isLoading} onClick={() => link.mutate()}>Link {selected.length ? `(${selected.length})` : ""}</Button>}
     >
       <p className="text-gray-500 mb-3">Search returns empty for now; this is a placeholder so UI compiles.</p>
       <FluidTable
@@ -778,41 +948,43 @@ function LinkReadingDrawer({ open, onClose, curriculum, afterLink }) {
 /* ------------- common small filter strip used in link drawers ------------- */
 function SearchFilters({ filters, setFilters, refetch, isFetching }) {
   return (
-    <ResponsiveFilters>
-      <Form.Item label="Bundesland">
-        <Select
-          placeholder="Any" style={{ minWidth: 180 }}
-          allowClear value={filters.bundesland}
-          onChange={(v) => setFilters(f => ({ ...f, bundesland: v || "" }))}
-          options={[{ value: "", label: "Any" }, ...BUNDESLAENDER.map(b => ({ value: b, label: b }))]}
-        />
-      </Form.Item>
-      <Form.Item label="Subject">
-        <Input
-          placeholder="Subject" style={{ minWidth: 160 }}
-          value={filters.subject}
-          onChange={(e) => setFilters(f => ({ ...f, subject: e.target.value }))}
-        />
-      </Form.Item>
-      <Form.Item label="Grade">
-        <Select
-          placeholder="Any" style={{ minWidth: 120 }}
-          allowClear value={filters.grade}
-          onChange={(v) => setFilters(f => ({ ...f, grade: v || "" }))}
-          options={GRADES.map(g => ({ value: g, label: `Grade ${g}` }))}
-        />
-      </Form.Item>
-      <Form.Item label="Search">
-        <Input
-          placeholder="Title/tags" style={{ minWidth: 180 }}
-          value={filters.q}
-          onChange={(e) => setFilters(f => ({ ...f, q: e.target.value }))}
-          onPressEnter={() => refetch()}
-        />
-      </Form.Item>
-      <Form.Item>
-        <Button onClick={() => refetch()} loading={isFetching}>Search</Button>
-      </Form.Item>
-    </ResponsiveFilters>
+    <Form layout="inline"> {/* ensure items have a Form context */}
+      <ResponsiveFilters>
+        <Form.Item label="Bundesland">
+          <Select
+            placeholder="Any" style={{ minWidth: 180 }}
+            allowClear value={filters.bundesland}
+            onChange={(v) => setFilters(f => ({ ...f, bundesland: v || "" }))}
+            options={[{ value: "", label: "Any" }, ...BUNDESLAENDER.map(b => ({ value: b, label: b }))]}
+          />
+        </Form.Item>
+        <Form.Item label="Subject">
+          <Input
+            placeholder="Subject" style={{ minWidth: 160 }}
+            value={filters.subject}
+            onChange={(e) => setFilters(f => ({ ...f, subject: e.target.value }))}
+          />
+        </Form.Item>
+        <Form.Item label="Grade">
+          <Select
+            placeholder="Any" style={{ minWidth: 120 }}
+            allowClear value={filters.grade}
+            onChange={(v) => setFilters(f => ({ ...f, grade: v || "" }))}
+            options={GRADES.map(g => ({ value: g, label: `Grade ${g}` }))}
+          />
+        </Form.Item>
+        <Form.Item label="Search">
+          <Input
+            placeholder="Title/tags" style={{ minWidth: 180 }}
+            value={filters.q}
+            onChange={(e) => setFilters(f => ({ ...f, q: e.target.value }))}
+            onPressEnter={() => refetch()}
+          />
+        </Form.Item>
+        <Form.Item>
+          <Button onClick={() => refetch()} loading={isFetching}>Search</Button>
+        </Form.Item>
+      </ResponsiveFilters>
+    </Form>
   );
 }

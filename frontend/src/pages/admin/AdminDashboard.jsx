@@ -31,19 +31,16 @@ const { Text } = Typography;
 
 /* ------------------------------ Data Layer ------------------------------ */
 
-async function getJson(path, token) {
+async function getJson(path) {
   try {
-    const { data } = await api.get(path, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      withCredentials: true,
-    });
+    const { data } = await api.get(path);
     return data ?? null;
   } catch {
     return null;
   }
 }
 
-async function fetchDashboardBundle(token) {
+async function fetchDashboardBundle() {
   const [
     overview,
     users,
@@ -56,19 +53,19 @@ async function fetchDashboardBundle(token) {
     subscriptions,
     blogposts,
   ] = await Promise.all([
-    getJson("/admin/dashboard", token),
-    getJson("/users", token),
-    getJson("/parents", token),
-    getJson("/allstudents", token),
-    getJson("/allteachers", token),
-    getJson("/allclasses", token),
-    getJson("/allsubjects", token),
-    getJson("/products", token),
-    getJson("/subscriptions", token),
-    getJson("/blogposts", token),
+    getJson("/admin/dashboard"),
+    getJson("/users"),
+    getJson("/parents"),
+    getJson("/allstudents"),
+    getJson("/allteachers"),
+    getJson("/allclasses"),
+    getJson("/allsubjects"),
+    getJson("/products"),
+    getJson("/subscriptions"),
+    getJson("/blogposts"),
   ]);
 
-  const len = (x) => (Array.isArray(x) ? x.length : 0);
+  const len = (x) => (Array.isArray(x) ? x.length : (Array.isArray(x?.data) ? x.data.length : 0));
 
   return {
     overview,
@@ -101,11 +98,11 @@ const FALLBACK = {
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const token = user?.token;
+  const token = user?.token; // no longer needed for headers; kept if future logic requires
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ["admin-dashboard-bundle"],
-    queryFn: () => fetchDashboardBundle(token),
+    queryFn: () => fetchDashboardBundle(),
     keepPreviousData: true,
     refetchOnWindowFocus: false,
   });

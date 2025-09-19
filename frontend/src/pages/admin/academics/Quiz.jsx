@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from "react";
 import {
   Button, Card, Form, Input, Select, Space, Tag, Drawer, Divider,
-  Grid, Dropdown, Modal, Descriptions, Tabs, InputNumber, Tooltip
+  Grid, Dropdown, Modal, Descriptions, Tabs, InputNumber, Tooltip, message
 } from "antd";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -203,10 +203,14 @@ export default function Quiz() {
   /* Mutations backed by your quizzes.js API */
   const saveMut = useMutation({
     mutationFn: (payload) => createQuiz(payload), // works for create & update if payload.id exists
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
+      message.success(vars?.id ? "Quiz updated successfully" : "Quiz created successfully");
       qc.invalidateQueries({ queryKey: ["quizzes"] });
       setDrawerOpen(false);
     },
+    onError: (err) => {
+      message.error(err?.response?.data?.message || err?.message || "Failed to save quiz");
+    }
   });
   const delMut = useMutation({
     mutationFn: (id) => deleteQuiz(id),

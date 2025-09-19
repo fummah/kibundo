@@ -84,14 +84,18 @@ export default function StudentsList() {
               return {
                 id: student.id,
                 name: fallback(fullName),
-                class_name: fallback(student.class?.class_name ?? student.class_name),
-                grade: fallback(student.grade ?? student.user?.grade),
+                // Put class data into the grade column per request
+                grade: fallback(
+                  student.class?.class_name ??
+                  student.class_name ??
+                  student.grade ??
+                  student.user?.grade
+                ),
                 school: fallback(schoolName),                   // ← School only
                 parent_name: fallback(parentFullName),          // ← Parent linkage
                 parent_email: fallback(parentEmail),            // ← Parent linkage
                 status: fallback(student.user?.status ?? student.status),
                 user_id: student.user_id,
-                class_id: student.class_id,
                 created_at: student.created_at,
               };
             });
@@ -104,7 +108,6 @@ export default function StudentsList() {
           status: F.status("status"),
           id: F.idLink("ID", "/admin/students", "id", navigate),
           name: F.text("Full name", "name"),
-          class_name: F.text("Class", "class_name"),
           grade: F.text("Grade", "grade"),
           school: F.text("School", "school"),
           parent_name: F.text("Parent", "parent_name"),
@@ -116,7 +119,6 @@ export default function StudentsList() {
           "status",
           "id",
           "name",
-          "class_name",
           "grade",
           "school",
           "parent_name",

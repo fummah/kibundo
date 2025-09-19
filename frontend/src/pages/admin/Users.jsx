@@ -12,8 +12,8 @@ import {
 } from "antd";
 import { PlusOutlined, DeleteOutlined, EditOutlined, DownloadOutlined } from "@ant-design/icons";
 import { DownloadTableExcel } from "react-export-table-to-excel";
-import { useAuth } from "../../hooks/useAuth";
-import axios from "axios";
+import { useAuth } from "@/hooks/useAuth";
+import api from "@/api/axios";
 
 const { Option } = Select;
 
@@ -34,8 +34,8 @@ export default function UserManagementPage() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const res = await axios.get("/api/users");
-      setUsers(res.data);
+      const { data } = await api.get("/users");
+      setUsers(data);
     } catch (err) {
       message.error("Failed to load users");
     } finally {
@@ -57,7 +57,7 @@ export default function UserManagementPage() {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`/api/users/${id}`);
+      await api.delete(`/users/${id}`);
       message.success("User deleted");
       fetchUsers();
     } catch {
@@ -68,10 +68,10 @@ export default function UserManagementPage() {
   const handleSave = async (values) => {
     try {
       if (editingUser) {
-        await axios.put(`/api/users/${editingUser.id}`, values);
+        await api.put(`/users/${editingUser.id}`, values);
         message.success("User updated");
       } else {
-        await axios.post("/api/users", values);
+        await api.post("/users", values);
         message.success("User added");
       }
       fetchUsers();

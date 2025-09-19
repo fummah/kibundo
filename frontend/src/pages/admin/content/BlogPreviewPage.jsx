@@ -8,6 +8,7 @@ import api from "@/api/axios";
 export default function BlogPreviewPage() {
   const { id } = useParams();
   const nav = useNavigate();
+  const [messageApi, contextHolder] = message.useMessage();
   const [loading, setLoading] = useState(true);
   const [post, setPost] = useState(null);
 
@@ -19,7 +20,7 @@ export default function BlogPreviewPage() {
         if (!alive) return;
         setPost(data?.data ?? data ?? null);
       } catch (e) {
-        message.error("Could not load post");
+        messageApi.error("Could not load post");
       } finally {
         if (alive) setLoading(false);
       }
@@ -44,6 +45,7 @@ export default function BlogPreviewPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-4">
+      {contextHolder}
       <BlogPost
         title={post.title}
         subtitle={post.subtitle}

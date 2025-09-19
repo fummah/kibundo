@@ -31,9 +31,9 @@ import {
   YAxis,
   Tooltip as RechartsTooltip,
 } from "recharts";
-import axios from "axios";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import api from "@/api/axios";
 
 const { Title, Text } = Typography;
 
@@ -43,16 +43,17 @@ export default function DatabaseManager() {
   const [search, setSearch] = useState("");
   const [statsData, setStatsData] = useState([]);
 
-  const fetchData = () => {
+  const fetchData = async () => {
     setLoading(true);
-    axios
-      .get("/api/database/overview")
-      .then((res) => {
-        setDatabase(res.data.tables);
-        setStatsData(res.data.stats);
-      })
-      .catch(() => message.error("Failed to fetch database info"))
-      .finally(() => setLoading(false));
+    try {
+      const { data } = await api.get("/database/overview");
+      setDatabase(data.tables);
+      setStatsData(data.stats);
+    } catch (err) {
+      message.error("Failed to fetch database info");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {

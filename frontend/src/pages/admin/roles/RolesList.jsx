@@ -18,7 +18,7 @@ import {
   Divider,
   Typography,
   Modal,
-  App,
+  message,
 } from "antd";
 import {
   PlusOutlined,
@@ -111,7 +111,7 @@ const buildCreatePayload = (endpoint, base) => {
 
 /* -------------------------------- component ------------------------------- */
 export default function RolesLocal() {
-  const { message } = App.useApp?.() ?? { message: { success: () => {}, error: () => {}, info: () => {}, warning: () => {} } };
+  const [messageApi, contextHolder] = message.useMessage();
 
   /* ------------------------------- state ------------------------------ */
   const [roles, setRoles] = useState([]);
@@ -176,12 +176,12 @@ export default function RolesLocal() {
       const normalized = (Array.isArray(data) ? data : []).map((r) => ({
         id: r.id,
         name: r.name || r.role_name || r.title || String(r.id),
-        permissions: Array.isArray(r.permissions) ? r.permissions : [],
+        permissions: r.permissions,
       }));
       setRoles(normalized);
     } catch (err) {
       console.error("fetchRoles error:", err);
-      message.error("Failed to load roles from the database.");
+      messageApi.error("Failed to load roles from the database.");
     } finally {
       setRolesLoading(false);
     }
@@ -190,7 +190,7 @@ export default function RolesLocal() {
   const fetchUsers = async () => {
     setUsersLoading(true);
     try {
-      const { data } = await api.get("/users");
+      const { data } = await api.get("/allusers");
       const list = Array.isArray(data) ? data : [];
       const normalized = list.map((u) => ({
         id: u.id,
@@ -208,7 +208,7 @@ export default function RolesLocal() {
       setUsers(normalized);
     } catch (err) {
       console.error("fetchUsers error:", err);
-      message.error("Failed to load users from the database.");
+      messageApi.error("Failed to load users from the database.");
     } finally {
       setUsersLoading(false);
     }
@@ -216,7 +216,7 @@ export default function RolesLocal() {
 
   const refreshAll = async () => {
     await Promise.all([fetchRoles(), fetchUsers()]);
-    message.success("Reloaded from database.");
+    messageApi.success("Reloaded from database.");
   };
 
   /* --------------------------------- init --------------------------------- */
@@ -230,6 +230,7 @@ export default function RolesLocal() {
     setEditingRole(null);
     roleForm.resetFields();
     roleForm.setFieldsValue({ name: "", permissions: ["users:read"] });
+  
     setOpenRole(true);
   };
 
@@ -259,13 +260,14 @@ export default function RolesLocal() {
 
   const submitRole = async () => {
     const vals = await roleForm.validateFields();
+    console.log(vals);
     const payload = {
-      name: String(vals.name || "").trim(),
-      permissions: Array.isArray(vals.permissions) ? vals.permissions : [],
+      role_name: String(vals.name || "").trim(),
+      permissions: String(vals.permissions || "").trim(),
     };
-    if (!payload.name) return message.error("Role name is required.");
+    if (!payload.role_name) return messageApi.error("Role name is required.");
     if (!isAdmin && payload.permissions.some((p) => p.startsWith("agent:"))) {
-      return message.warning("Only Admin can edit Kibundo Agent permissions.");
+      return messageApi.warning("Only Admin can edit Kibundo Agent permissions.");
     }
 
     try {
@@ -273,10 +275,10 @@ export default function RolesLocal() {
         await trySeveral(
           ROLE_API.update(editingRole.id).map((url) => () => api.put(url, payload))
         );
-        message.success("Role updated.");
+        messageApi.success("Role updated.");
       } else {
         await trySeveral(ROLE_API.create.map((url) => () => api.post(url, payload)));
-        message.success("Role created.");
+        messageApi.success("Role created.");
       }
       setOpenRole(false);
       setEditingRole(null);
@@ -284,9 +286,9 @@ export default function RolesLocal() {
     } catch (err) {
       console.error("role submit error:", err);
       if (err?.response?.status === 404) {
-        message.error("Your API does not expose create/update role endpoints yet. Only listing is available.");
+        messageApi.error("Your API does not expose create/update role endpoints yet. Only listing is available.");
       } else {
-        message.error("Failed to save role.");
+        messageApi.error("Failed to save role.");
       }
     }
   };
@@ -299,14 +301,14 @@ export default function RolesLocal() {
       onOk: async () => {
         try {
           await trySeveral(ROLE_API.delete(row.id).map((url) => () => api.delete(url)));
-          message.success("Role deleted.");
+          messageApi.success("Role deleted.");
           fetchRoles();
         } catch (err) {
           console.error("delete role error:", err);
           if (err?.response?.status === 404) {
-            message.error("Your API does not expose delete role endpoint.");
+            messageApi.error("Your API does not expose delete role endpoint.");
           } else {
-            message.error("Failed to delete role.");
+            messageApi.error("Failed to delete role.");
           }
         }
       },
@@ -331,6 +333,7 @@ export default function RolesLocal() {
       permissions: defaultPerms,
       password: "",
       confirm_password: "",
+      state: "",
     });
     setOpenUser(true);
   };
@@ -350,13 +353,14 @@ export default function RolesLocal() {
       permissions: Array.isArray(row.permissions) ? row.permissions : getRolePermsById(row.role_id),
       password: "",
       confirm_password: "",
+      state: "",
     });
     setOpenUser(true);
   };
 
   const sendResetMail = (email, first = false) => {
     const label = first ? "Initial password setup email sent" : "Password reset email sent";
-    message.success(`${label} to ${email}`);
+    messageApi.success(`${label} to ${email}`);
   };
 
   const submitUser = async () => {
@@ -364,14 +368,14 @@ export default function RolesLocal() {
     const email = String(vals.email || "").trim().toLowerCase();
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return message.error("Enter a valid email.");
+      return messageApi.error("Enter a valid email.");
     }
 
     const inheritPerms = !!vals.inheritPerms;
     const chosenPerms = inheritPerms ? getRolePermsById(vals.role_id) : vals.permissions || [];
 
     if (!isAdmin && chosenPerms.some((p) => p.startsWith("agent:"))) {
-      return message.warning("Only Admin can assign Kibundo Agent permissions.");
+      return messageApi.warning("Only Admin can assign Kibundo Agent permissions.");
     }
 
     const base = {
@@ -379,6 +383,7 @@ export default function RolesLocal() {
       first_name: vals.first_name.trim(),
       last_name: vals.last_name.trim(),
       email,
+      state: vals.state || null,
       status: vals.status || "Pending",
       contact_number: vals.contact_number || null,
       password: vals.password,
@@ -387,27 +392,18 @@ export default function RolesLocal() {
       inheritPerms,
       created_at: new Date().toISOString(),
     };
-
-    if (editingUser) {
-      setOpenUser(false);
-      setEditingUser(null);
-      message.info("User editing via API is not wired yet. Reloading list.");
-      fetchUsers();
-      return;
-    }
-
-    if (!USE_API_CREATE_USER) {
-      return message.error("API creation is disabled in this build.");
-    }
-
     try {
-      const roleName = getRoleNameById(roles, base.role_id);
-      const endpoint = ROLE_CREATE_ENDPOINTS[roleName] || "/users";
-      const body = buildCreatePayload(endpoint, base);
+      // Use unified backend endpoint for creating users
+      const body = {
+        first_name: base.first_name,
+        last_name: base.last_name,
+        email: base.email,
+        role_id: base.role_id,
+        state: base.state,
+      };
+      await api.post("/adduser", body);
 
-      await api.post(endpoint, body);
-
-      message.success(endpoint === "/users" ? "User created." : `${roleName} created.`);
+      messageApi.success("User created.");
       sendResetMail(base.email, true);
       setOpenUser(false);
       setEditingUser(null);
@@ -419,14 +415,14 @@ export default function RolesLocal() {
         status === 401
           ? "Unauthorized. Check your token (verifyToken)."
           : status === 404
-          ? "Endpoint not found. Confirm route is mounted under /api."
+          ? "Endpoint not found. Confirm /adduser is mounted under /api."
           : "API error creating user.";
-      message.error(text);
+      messageApi.error(text);
     }
   };
 
   const toggleUserActive = async (row) => {
-    message.info("Implement an API endpoint to toggle user active state.");
+    messageApi.info("Implement an API endpoint to toggle user active state.");
   };
 
   const resetPassword = (row) => {
@@ -443,7 +439,7 @@ export default function RolesLocal() {
       okType: "danger",
       okText: "Delete",
       onOk: async () => {
-        message.info("Implement DELETE /users/:id and call it here.");
+        messageApi.info("Implement DELETE /users/:id and call it here.");
       },
     });
   };
@@ -471,7 +467,7 @@ export default function RolesLocal() {
   /* ------------------------------ Roles table columns ------------------------------ */
   const roleColumns = [
     { title: "Role", dataIndex: "name", key: "name", ellipsis: true },
-    { title: "Permissions", key: "perms", render: (_, r) => renderPerms(r.permissions) },
+    { title: "Permissions", dataIndex: "permissions",key: "permissions", ellipsis: true},
     {
       title: "",
       key: "actions",
@@ -613,6 +609,7 @@ export default function RolesLocal() {
 
   return (
     <Space direction="vertical" size="large" className="w-full">
+      {contextHolder}
       {/* PAGE HEADER */}
       <Card bordered={false} style={{ paddingBottom: 0 }}>
         <Space direction="vertical" size={4} style={{ width: "100%" }}>
@@ -919,6 +916,9 @@ export default function RolesLocal() {
                 showSearch
                 optionFilterProp="label"
               />
+            </Form.Item>
+            <Form.Item name="state" label="State (Bundesland)">
+              <Input placeholder="e.g. Bayern" />
             </Form.Item>
             <Form.Item name="status" label="Status" tooltip="Back-end string; default is 'Pending'">
               <Select

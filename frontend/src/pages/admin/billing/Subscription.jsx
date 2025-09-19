@@ -102,6 +102,7 @@ const SUB_STATUS_OPTIONS = [
 export default function Subscriptions() {
   const navigate = useNavigate();
   const drawerWidth = useResponsiveDrawerWidth();
+  const [messageApi, contextHolder] = message.useMessage();
 
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -142,7 +143,7 @@ export default function Subscriptions() {
     } catch (err) {
       if (isCanceled(err)) return;
       console.error("Load error:", err);
-      message.error("Failed to load subscriptions data.");
+      messageApi.error("Failed to load subscriptions data.");
     } finally {
       setLoading(false);
     }
@@ -223,7 +224,7 @@ export default function Subscriptions() {
         if (isCanceled(err)) return;
         const fallback = (rows || []).find((r) => String(r.id) === String(id));
         setViewRec(fallback || null);
-        if (!fallback) message.error("Failed to load subscription.");
+        if (!fallback) messageApi.error("Failed to load subscription.");
       } finally {
         setViewLoading(false);
       }
@@ -242,7 +243,7 @@ export default function Subscriptions() {
     try {
       setDeleting(true);
       await api.delete(API_ROUTES.SUBSCRIPTION_ID(deleteRec.id));
-      message.success("Subscription deleted.");
+      messageApi.success("Subscription deleted.");
       setSubs((prev) => prev.filter((s) => s.id !== deleteRec.id));
       if (viewOpen && viewRec?.id === deleteRec.id) closeView();
       setSelectedRowKeys((ks) => ks.filter((k) => k !== deleteRec.id));
@@ -251,7 +252,7 @@ export default function Subscriptions() {
     } catch (err) {
       if (isCanceled(err)) return;
       console.error(err);
-      message.error("Delete failed.");
+      messageApi.error("Delete failed.");
     } finally {
       setDeleting(false);
     }
@@ -269,14 +270,14 @@ export default function Subscriptions() {
           : null,
       };
       await api.post(API_ROUTES.SUBSCRIPTIONS, payload);
-      message.success("Subscription created.");
+      messageApi.success("Subscription created.");
       setCreateOpen(false);
       const res = await api.get(API_ROUTES.SUBSCRIPTIONS);
       setSubs(toArray(res?.data));
     } catch (err) {
       if (err?.errorFields || isCanceled(err)) return;
       console.error(err);
-      message.error("Create failed.");
+      messageApi.error("Create failed.");
     }
   };
 
@@ -420,6 +421,7 @@ export default function Subscriptions() {
   /* ---------------------------------- UI ---------------------------------- */
   return (
     <div className="space-y-4 sm:space-y-6 p-4 md:p-6 max-w-[1700px] mx-auto">
+      {contextHolder}
       <BillingEntityList
         title="Subscriptions"
         data={filtered}

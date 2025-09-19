@@ -15,6 +15,7 @@ import "./index.css";
 
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import AppTheme from "./AppTheme.jsx";
 
 // 🌍 i18n
 import "./i18n"; // <-- 👈 add this line to initialize translations
@@ -48,7 +49,9 @@ root.render(
       <BrowserRouter>
         <AuthProvider>
           <ErrorBoundary>
-            <App />
+            <AppTheme>
+              <App />
+            </AppTheme>
           </ErrorBoundary>
         </AuthProvider>
       </BrowserRouter>

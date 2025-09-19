@@ -91,6 +91,7 @@
   "actions.publish": "Publish",
   "actions.unpublish": "Unpublish",
   "actions.bulkActions": "Bulk actions",
+  "actions.view": "View",
 
   "parent.addChild.title": "Add a Child",
   "parent.addChild.yourChildren": "Your Children",
@@ -247,5 +248,31 @@
 
   "admin.academics.quizzes.recent.title": "Recent Quizzes",
   "admin.academics.quizzes.recent.open": "Open Quizzes",
-  "admin.academics.quizzes.recent.added": "Added: {{date}}"
+  "admin.academics.quizzes.recent.added": "Added: {{date}}",
+
+  "entityList.header.list": "List",
+  "entityList.tabs.all": "All {{name}}",
+  "entityList.tabs.activeOnly": "Active only",
+  "entityList.addTooltip": "Add {{singular}}",
+  "entityList.record": "record",
+  "entityList.actions.label": "Actions",
+  "entityList.show": "Show",
+  "entityList.entries": "entries",
+  "entityList.searchPh": "Table search",
+  "entityList.more.columns": "Show / Hide columns",
+  "entityList.modal.columnsTitle": "Show / Hide columns",
+  "entityList.modal.done": "Done",
+  "entityList.modal.selectAll": "Select all",
+  "entityList.modal.reset": "Reset",
+  "entityList.status.label": "Status",
+  "entityList.status.allSelected": "All selected",
+  "entityList.status.active": "Active",
+  "entityList.status.suspended": "Suspended",
+  "entityList.status.blocked": "Blocked",
+  "entityList.toast.statusChanged": "Status changed to {{status}}",
+  "entityList.confirm.deleteTitle": "Delete {{what}}?",
+  "entityList.confirm.deleteContent": "Are you sure you want to delete",
+  "entityList.bulk.setActive": "Set status: Active",
+  "entityList.bulk.setSuspended": "Set status: Suspended",
+  "entityList.bulk.setBlocked": "Set status: Blocked"
 }
