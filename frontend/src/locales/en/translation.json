@@ -1,251 +1,114 @@
 {
-  "parent.nav.home": "Home",
-  "parent.nav.addChild": "Add Child",
-  "parent.nav.news": "News",
-  "parent.nav.feedback": "Feedback",
-  "parent.nav.settings": "Settings",
-
-  "parent.home.title": "Home",
-  "parent.home.subtitle": "Overview of your family’s learning and billing.",
-  "parent.home.activities": "Activities",
-  "parent.home.myFamily": "My Family",
-  "parent.home.newsInsights": "News & Insights",
-  "parent.home.notices": "Notices",
-  "parent.home.addChild": "Add Child",
-  "parent.home.stats.activeChildren": "Active Children",
-  "parent.home.stats.thisWeekActivity": "This Week’s Activity",
-  "parent.home.stats.badgesEarned": "Badges Earned",
-  "parent.home.stats.unpaidInvoices": "Unpaid Invoices",
-
-  "parent.student.title": "Child Details",
-  "parent.student.defaultName": "Child Name",
-  "parent.student.defaultAge": "Age X",
-  "parent.student.status.active": "Active",
-  "parent.student.plan.current": "Current Plan",
-  "parent.student.plan.active": "Active",
-  "parent.student.plan.premiumMonthly": "Premium (Monthly)",
-  "parent.student.plan.changeToYearly": "Switch to yearly",
-  "parent.student.activity.title": "Activity",
-  "parent.student.activity.lessonsCompleted": "Lessons Completed",
-  "parent.student.activity.timeSpent": "Time Spent Learning",
-  "parent.student.activities": "Activities",
-  "parent.student.recentScans": "Recent Scans",
-  "parent.student.focusTopics": "Focus Topics",
-  "parent.student.focusTopicsChooseTwo": "Choose two focus areas",
-  "parent.student.progress.title": "14-Day Progress",
-
-  "parent.achievements.title": "Achievements",
-  "parent.achievements.subtitle": "Badges earned by your children.",
-  "parent.achievements.allBadges": "All Badges",
-  "parent.achievements.viewChild": "View Child",
-  "parent.achievements.empty": "No badges earned yet.",
-  "parent.achievements.badge": "Badge",
-  "parent.achievements.earned": "Earned",
-  "parent.achievements.earnedOn": "Earned on {{date}}",
-
-  "parent.billing.coupons.title": "Coupons",
-  "parent.billing.coupons.subtitle": "Manage your active, upcoming and expired coupons.",
-  "parent.billing.coupons.rules.oneActiveOnly": "Only one coupon can be active at a time.",
-  "parent.billing.coupons.rules.activeSubNoDiscount": "Active subscriptions cannot receive a discount.",
-  "parent.billing.coupons.kpi.active": "Active",
-  "parent.billing.coupons.kpi.upcoming": "Upcoming",
-  "parent.billing.coupons.kpi.expired": "Expired",
-  "parent.billing.coupons.off": "off",
-  "parent.billing.coupons.minSpend": "Minimum spend: {{amount}}",
-  "parent.billing.coupons.searchPh": "Search by code, title or description",
-  "parent.billing.coupons.empty": "No coupons found.",
-  "parent.billing.coupons.refreshed": "Coupons refreshed.",
-  "parent.billing.coupons.applyNavigating": "Applying coupon and opening subscription…",
-  "parent.billing.coupons.errors.notActive": "This coupon is not active.",
-  "parent.billing.coupons.errors.hasActiveCoupon": "You already have an active coupon.",
-
-  "parent.billing.coupons.externalOffers.title": "Partner Offers",
-  "parent.billing.coupons.externalOffers.tag": "External",
-  "parent.billing.coupons.externalOffers.empty": "No partner offers available.",
-  "parent.billing.coupons.validUntil": "Valid until {{date}}",
-
-  "filters.active": "Active",
-  "filters.upcoming": "Upcoming",
-  "filters.expired": "Expired",
-  "filters.used": "Used",
-  "filters.all": "All",
-
-  "common.cancel": "Cancel",
-  "common.back": "Back",
-
-  "actions.refresh": "Refresh",
-  "actions.copy": "Copy",
-  "actions.useNow": "Use now",
-  "actions.getOffer": "Get offer",
-  "actions.copiedCode": "Copied {{code}}",
-  "actions.copyFailed": "Could not copy. Please try again.",
-  "actions.reset": "Reset",
-  "actions.exportCsv": "Export CSV",
-  "actions.columns": "Columns",
-  "actions.new": "New",
-  "actions.save": "Save",
-  "actions.create": "Create",
-  "actions.edit": "Edit",
-  "actions.delete": "Delete",
-  "actions.close": "Close",
-  "actions.publish": "Publish",
-  "actions.unpublish": "Unpublish",
-  "actions.bulkActions": "Bulk actions",
-
-  "parent.addChild.title": "Add a Child",
-  "parent.addChild.yourChildren": "Your Children",
-  "parent.addChild.intro.headline": "Create a child account",
-  "parent.addChild.intro.copy": "So your child can use the app independently and safely, create the child account now.",
-  "parent.addChild.intro.cta": "Add Child",
-  "parent.addChild.intro.illustrationAlt": "Mascot illustration",
-
-  "parent.addChild.children.empty": "No children yet.",
-  "parent.addChild.children.status": "Status: {{status}}",
-  "parent.addChild.children.view": "View",
-  "parent.addChild.children.addAnother": "Add another child",
-
-  "parent.addChild.form.title": "Child Details",
-  "parent.addChild.form.firstName": "First name",
-  "parent.addChild.form.firstName_ph": "Enter first name",
-  "parent.addChild.form.age": "Age",
-  "parent.addChild.form.grade": "Grade",
-  "parent.addChild.form.schoolType": "School type",
-  "parent.addChild.form.schoolType_ph": "Select school type",
-  "parent.addChild.form.schoolType.primary": "Primary",
-  "parent.addChild.form.schoolType.secondary": "Secondary",
-  "parent.addChild.form.schoolType.other": "Other",
-  "parent.addChild.form.city": "City",
-  "parent.addChild.form.city_ph": "Enter city",
-  "parent.addChild.form.schoolName": "School name",
-  "parent.addChild.form.schoolName_ph": "Enter school name",
-  "parent.addChild.form.create": "Create",
-
-  "parent.addChild.success.title": "Success",
-  "parent.addChild.success.headline": "All set!",
-  "parent.addChild.success.copy": "We’ll take you back to the home screen. Your child can log in independently from there.",
-  "parent.addChild.success.goHome": "Continue",
-  "parent.addChild.success.addAnother": "Add another child",
-  "parent.addChild.success.illustrationAlt": "Confetti mascot",
-
-  "parent.addChild.toast.created": "Child created",
-  "parent.addChild.toast.createFailed": "Could not create child. Please try again.",
-
-  "errors.required": "This field is required.",
-  "errors.minChars": "Please enter at least {{n}} characters.",
-  "errors.ageRange": "Age must be between 4 and 18.",
-
-
-
-  "admin.academics.quizzes.title": "Quizzes",
-  "admin.academics.quizzes.subtitle": "Create, edit and publish quizzes.",
-  "admin.academics.quizzes.empty": "No quizzes yet — create one to get started.",
-
-  "admin.academics.quizzes.buttons.columns": "Columns",
-  "admin.academics.quizzes.buttons.reload": "Reload",
-  "admin.academics.quizzes.buttons.newQuiz": "New Quiz",
-  "admin.academics.quizzes.buttons.bulk": "Bulk actions ({{count}})",
-
-  "admin.academics.quizzes.bulk.publishSelected": "Publish selected",
-  "admin.academics.quizzes.bulk.unpublishSelected": "Unpublish selected",
-  "admin.academics.quizzes.bulk.deleteSelected": "Delete selected",
-  "admin.academics.quizzes.bulk.published": "Selected quizzes published",
-  "admin.academics.quizzes.bulk.unpublished": "Selected quizzes unpublished",
-  "admin.academics.quizzes.bulk.deleted": "Selected quizzes deleted",
-  "admin.academics.quizzes.bulk.confirmDeleteTitle": "Delete {{count}} quizzes?",
-  "admin.academics.quizzes.bulk.confirmDeleteContent": "This action cannot be undone.",
-
-  "admin.academics.quizzes.filters.q": "Search title/tags…",
-  "admin.academics.quizzes.filters.state": "State",
-  "admin.academics.quizzes.filters.subject": "Subject",
-  "admin.academics.quizzes.filters.grade": "Grade",
-  "admin.academics.quizzes.filters.status": "Status",
-  "admin.academics.quizzes.filters.difficulty": "Difficulty",
-  "admin.academics.quizzes.filters.created": "Created",
-  "admin.academics.quizzes.filters.reset": "Reset",
-  "admin.academics.quizzes.filters.exportCsv": "Export CSV",
-
-  "admin.academics.quizzes.columns.id": "ID",
-  "admin.academics.quizzes.columns.title": "Title",
-  "admin.academics.quizzes.columns.subject": "Subject",
-  "admin.academics.quizzes.columns.grade": "Grade",
-  "admin.academics.quizzes.columns.bundesland": "State",
-  "admin.academics.quizzes.columns.difficulty": "Difficulty",
-  "admin.academics.quizzes.columns.items": "Items",
-  "admin.academics.quizzes.columns.status": "Status",
-  "admin.academics.quizzes.columns.tags": "Tags",
-  "admin.academics.quizzes.columns.created_at": "Added",
-  "admin.academics.quizzes.columns.updated_at": "Updated",
-  "admin.academics.quizzes.columns.actions": "Actions",
-
-  "admin.academics.quizzes.status.draft": "draft",
-  "admin.academics.quizzes.status.review": "review",
-  "admin.academics.quizzes.status.live": "live",
-
-  "admin.academics.quizzes.difficulty.easy": "easy",
-  "admin.academics.quizzes.difficulty.medium": "medium",
-  "admin.academics.quizzes.difficulty.hard": "hard",
-
-  "admin.academics.quizzes.types.mcq": "Multiple Choice",
-  "admin.academics.quizzes.types.short": "Short Answer",
-  "admin.academics.quizzes.types.true_false": "True / False",
-
-  "admin.academics.quizzes.confirm.deleteTitle": "Delete this quiz?",
-  "admin.academics.quizzes.confirm.deleteContent": "This action cannot be undone.",
-
-  "admin.academics.quizzes.drawer.newTitle": "New Quiz",
-  "admin.academics.quizzes.drawer.editTitle": "Edit Quiz",
-  "admin.academics.quizzes.drawer.tabs.details": "Details",
-  "admin.academics.quizzes.drawer.tabs.editor": "Editor",
-  "admin.academics.quizzes.drawer.fields.title": "Title",
-  "admin.academics.quizzes.drawer.fields.description": "Description",
-  "admin.academics.quizzes.drawer.fields.bundesland": "Bundesland",
-  "admin.academics.quizzes.drawer.fields.subject": "Subject",
-  "admin.academics.quizzes.drawer.fields.grade": "Grade",
-  "admin.academics.quizzes.drawer.fields.difficulty": "Difficulty",
-  "admin.academics.quizzes.drawer.fields.objectives": "Learning Goals",
-  "admin.academics.quizzes.drawer.fields.tags": "Tags",
-  "admin.academics.quizzes.drawer.fields.status": "Status",
-  "admin.academics.quizzes.drawer.fields.items": "Items",
-  "admin.academics.quizzes.drawer.actions.cancel": "Cancel",
-  "admin.academics.quizzes.drawer.actions.create": "Create",
-  "admin.academics.quizzes.drawer.actions.save": "Save",
-
-  "admin.academics.quizzes.question.questionN": "Question {{n}}",
-  "admin.academics.quizzes.question.type": "Type",
-  "admin.academics.quizzes.question.points": "Points",
-  "admin.academics.quizzes.question.tags": "Tags",
-  "admin.academics.quizzes.question.prompt": "Prompt",
-  "admin.academics.quizzes.question.choices": "Choices",
-  "admin.academics.quizzes.question.addChoice": "Add a choice",
-  "admin.academics.quizzes.question.correctChoiceIndex": "Correct Choice (0-based index)",
-  "admin.academics.quizzes.question.expectedAnswer": "Expected Answer",
-  "admin.academics.quizzes.question.correctAnswer": "Correct Answer",
-  "admin.academics.quizzes.question.preview": "Preview",
-  "admin.academics.quizzes.question.moveUp": "Move up",
-  "admin.academics.quizzes.question.moveDown": "Move down",
-  "admin.academics.quizzes.question.duplicate": "Duplicate",
-  "admin.academics.quizzes.question.remove": "Remove",
-  "admin.academics.quizzes.question.mcqShort": "MCQ",
-  "admin.academics.quizzes.question.shortShort": "Short",
-  "admin.academics.quizzes.question.tfShort": "T/F",
-
-  "admin.academics.quizzes.view.title": "Quiz",
-  "admin.academics.quizzes.view.labels.Title": "Title",
-  "admin.academics.quizzes.view.labels.State": "State",
-  "admin.academics.quizzes.view.labels.Subject": "Subject",
-  "admin.academics.quizzes.view.labels.Grade": "Grade",
-  "admin.academics.quizzes.view.labels.Difficulty": "Difficulty",
-  "admin.academics.quizzes.view.labels.Status": "Status",
-  "admin.academics.quizzes.view.labels.Tags": "Tags",
-  "admin.academics.quizzes.view.labels.Description": "Description",
-  "admin.academics.quizzes.view.labels.Items": "Items",
-  "admin.academics.quizzes.view.edit": "Edit",
-  "admin.academics.quizzes.view.publish": "Publish",
-  "admin.academics.quizzes.view.unpublish": "Unpublish",
-  "admin.academics.quizzes.view.delete": "Delete",
-  "admin.academics.quizzes.view.close": "Close",
-
-  "admin.academics.quizzes.recent.title": "Recent Quizzes",
-  "admin.academics.quizzes.recent.open": "Open Quizzes",
-  "admin.academics.quizzes.recent.added": "Added: {{date}}"
+  "rolesList": {
+    "accessControl": {
+      "title": "Access Control",
+      "subtitle": "Manage roles, permissions, and users in one place."
+    },
+    "tabs": {
+      "roles": "Roles",
+      "users": "Users"
+    },
+    "empty": {
+      "roles": "No roles found",
+      "users": "No users found"
+    },
+    "roles": {
+      "title": "Roles & Permissions",
+      "count": "({{count}})",
+      "new": "New Role"
+    },
+    "users": {
+      "title": "Users",
+      "count": "({{count}})",
+      "new": "New User"
+    },
+    "role": {
+      "name": {
+        "label": "Role Name",
+        "required": "Role name is required",
+        "maxLength": "Keep it under 50 characters"
+      },
+      "edit": "Edit Role",
+      "create": "Create Role"
+    },
+    "user": {
+      "edit": "Edit User",
+      "create": "Create User",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "contactNumber": "Contact Number",
+      "email": {
+        "required": "Email is required",
+        "invalid": "Enter a valid email"
+      },
+      "role": {
+        "placeholder": "Select a role"
+      },
+      "state": "State (Bundesland)",
+      "status": {
+        "tooltip": "Back-end string; default is 'Pending'"
+      },
+      "active": "Active?",
+      "password": {
+        "required": "Password is required for new users",
+        "minLength": "Use at least 6 characters",
+        "placeholder": "Set a password",
+        "keepCurrent": "(leave blank to keep current)"
+      },
+      "confirmPassword": "Confirm Password",
+      "passwordsMismatch": "Passwords do not match",
+      "permissions": {
+        "tooltip": "Inherit from selected role or override with a custom set.",
+        "validator": "Select at least one permission or enable 'Inherit from role'",
+        "placeholder": "Select permissions"
+      },
+      "inheritFromRole": "Inherit from role",
+      "inheritingFromRole": "Inheriting from role…"
+    }
+  },
+  "entityList": {
+    "header": {
+      "list": "List"
+    },
+    "tabs": {
+      "all": "All {{name}}",
+      "activeOnly": "Active only"
+    },
+    "status": {
+      "label": "Status",
+      "allSelected": "All selected",
+      "active": "Active",
+      "suspended": "Suspended",
+      "blocked": "Blocked"
+    },
+    "show": "Show",
+    "entries": "entries",
+    "record": "record",
+    "actions": {
+      "label": "Actions"
+    },
+    "addTooltip": "Add {{singular}}",
+    "confirm": {
+      "deleteTitle": "Delete {{what}}?",
+      "deleteContent": "Are you sure you want to delete"
+    },
+    "bulk": {
+      "setActive": "Set status: Active",
+      "setSuspended": "Set status: Suspended",
+      "setBlocked": "Set status: Blocked"
+    },
+    "toast": {
+      "statusChanged": "Status changed to {{status}}"
+    },
+    "searchPh": "Table search",
+    "more": {
+      "columns": "Show / Hide columns"
+    },
+    "modal": {
+      "columnsTitle": "Show / Hide columns",
+      "done": "Done",
+      "selectAll": "Select all",
+      "reset": "Reset"
+    }
+  }
 }

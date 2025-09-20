@@ -1,13 +1,13 @@
 export const KIB = {
   colors: {
-    primary: "#ff4d4f",
-    accent:  "#ffb08f",
+    primary: "#1677ff", // Ant Design blue-6
+    accent:  "#91caff", // Ant Design blue-3 (lighter accent)
     success: "#9CE16C",
     bgTop:   "#ffffff",
     bgLow:   "#f6f7fb",
     text:    "#4d4d4d",
     subtext: "#6b7280",
-    ring:    "rgba(255,77,79,0.7)",
+    ring:    "rgba(22, 119, 255, 0.6)",
     card:    "#ffffff",
   },
   radii: { xl: "16px", full: "999px" },

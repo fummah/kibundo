@@ -2,13 +2,15 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Card, Typography, Input, Select, Tag, Table, Button, Space,
-  Modal, Dropdown, Tabs, Tooltip, Breadcrumb, Checkbox, Divider
+  Modal, Dropdown, Tabs, Tooltip, Checkbox, Divider, message
 } from "antd";
 import {
-  PlusOutlined, ReloadOutlined, DownOutlined, SearchOutlined,
-  SettingOutlined, ColumnHeightOutlined, MoreOutlined
+  PlusOutlined, SearchOutlined,
+  SettingOutlined, MoreOutlined, TeamOutlined, DownOutlined
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import i18next from "i18next";
 import api from "@/api/axios";
 
 const { Title, Text } = Typography;
@@ -24,11 +26,21 @@ const fmtDate = (d) => {
   const yyyy = dt.getFullYear();
   return `${dd}/${mm}/${yyyy}`;
 };
-const statusChip = (s) => (
-  <Tag color={s === "active" ? "green" : s === "suspended" ? "orange" : "red"} className="!m-0 !px-3 !py-[2px] !rounded">
-    {s === "active" ? "Active" : s === "disabled" ? "Blocked" : s ? "Suspended" : "-"}
-  </Tag>
-);
+const statusChip = (s) => {
+  const norm = String(s || "").toLowerCase();
+  const baseCls = "!m-0 !px-3 !py-[2px] !rounded";
+  if (!norm) return <Tag className={baseCls}>-</Tag>;
+
+  // Treat pending-like states as Active
+  if (norm === "active" || norm === "pending" || norm === "invited" || norm === "invite_sent") {
+    return <Tag color="green" className={baseCls}>{i18next.t("entityList.status.active")}</Tag>;
+  }
+  if (norm === "suspended") return <Tag color="orange" className={baseCls}>{i18next.t("entityList.status.suspended")}</Tag>;
+  if (norm === "disabled" || norm === "blocked" || norm === "inactive") return <Tag color="red" className={baseCls}>{i18next.t("entityList.status.blocked")}</Tag>;
+
+  // Fallback: show the actual status text with a neutral/blue tag
+  return <Tag color="blue" className={baseCls}>{s}</Tag>;
+};
 const getByPath = (obj, path) => {
   if (!obj) return undefined;
   if (Array.isArray(path)) return path.reduce((acc, k) => (acc == null ? acc : acc[k]), obj);
@@ -77,6 +89,7 @@ const REQUIRED_REMOVE_PATH = {
  * }
  */
 export default function EntityList({ cfg }) {
+  const { t } = useTranslation();
   const {
     entityKey,
     titlePlural,
@@ -90,6 +103,7 @@ export default function EntityList({ cfg }) {
     defaultVisible,
     rowClassName,
     pathBuilders = {},
+    iconNode,
   } = cfg;
 
   // Lock to required endpoints by default
@@ -106,6 +120,7 @@ export default function EntityList({ cfg }) {
   const COLS_LS_KEY = `${entityKey}.visibleCols.v1`;
   const PAGE_SIZE_LS_KEY = `${entityKey}.pageSize.v1`;
   const BILLING_FILTER_LS_KEY = `${entityKey}.billingFilter.v1`;
+  const DENSITY_LS_KEY = `${entityKey}.density.v1`;
 
   const readCols = () => {
     try {
@@ -114,6 +129,23 @@ export default function EntityList({ cfg }) {
       if (Array.isArray(parsed)) return parsed;
     } catch {}
     return (defaultVisible || []).slice();
+  };
+
+  // Unified table change handler to track sort and billing filter
+  const handleTableChange = (_pagination, filters, sorter) => {
+    if (billingFilter) {
+      const f = filters?.billingStatus;
+      setBilling(Array.isArray(f) && f.length ? f[0] : null);
+    }
+
+    const s = Array.isArray(sorter) ? sorter[0] : sorter;
+    if (s && s.field) {
+      const field = Array.isArray(s.field) ? s.field.join('.') : String(s.field);
+      setSortState({ field, order: s.order || undefined });
+      if (s.order) setHasSorted(true);
+    } else {
+      setSortState(null);
+    }
   };
   const readPageSize = () => {
     try {
@@ -133,6 +165,15 @@ export default function EntityList({ cfg }) {
     }
   };
 
+  const readDensity = () => {
+    try {
+      const v = localStorage.getItem(DENSITY_LS_KEY);
+      return v === "default" || v === "compact" ? v : "compact"; // default to compact per design
+    } catch {
+      return "compact";
+    }
+  };
+
   /* --------- state --------- */
   const [tab, setTab] = useState("all");
   const [status, setStatus] = useState("All");
@@ -147,6 +188,9 @@ export default function EntityList({ cfg }) {
   const [visibleCols, setVisibleCols] = useState(readCols);
   const [colModalOpen, setColModalOpen] = useState(false);
   const [billing, setBilling] = useState(readBillingFilter);
+  const [density, setDensity] = useState(readDensity);
+  const [sortState, setSortState] = useState(null); // { field, order } after user sorts
+  const [hasSorted, setHasSorted] = useState(false);
 
   /* debounce search */
   useEffect(() => {
@@ -177,6 +221,19 @@ export default function EntityList({ cfg }) {
     } catch {}
   }, [billing, billingFilter]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(DENSITY_LS_KEY, density);
+    } catch {}
+  }, [density]);
+
+  // Ensure toasts appear below top nav and above overlays
+  useEffect(() => {
+    try {
+      message.config({ top: 80, zIndex: 2000 });
+    } catch {}
+  }, []);
+
   /* loader */
   const load = useCallback(async () => {
     setLoading(true);
@@ -184,10 +241,15 @@ export default function EntityList({ cfg }) {
       const effectiveStatus = tab === "active" ? "active" : status;
 
       // benign query params; backend can ignore
+      const normalizedStatusParam =
+        statusFilter && effectiveStatus !== "All"
+          ? String(effectiveStatus).toLowerCase()
+          : undefined;
+
       const { data } = await api.get(listPath, {
         params: {
           q,
-          status: statusFilter && effectiveStatus !== "All" ? effectiveStatus : undefined,
+          status: normalizedStatusParam,
           billingStatus: billingFilter ? billing || undefined : undefined,
           pageSize: 1000,
           sort: "createdAt:desc",
@@ -195,17 +257,31 @@ export default function EntityList({ cfg }) {
         withCredentials: true,
       });
 
+
       const rawList = data?.data ?? data;
       const list = typeof apiCfg.parseList === "function"
         ? (apiCfg.parseList(rawList) || [])
         : (Array.isArray(rawList) ? rawList : []);
-      setRows(Array.isArray(list) ? list : []);
+
+      // Pre-sort by ID ascending without showing sort highlight on the header
+      const arr = Array.isArray(list) ? list.slice() : [];
+      try {
+        arr.sort((a, b) => {
+          const av = a?.[idField];
+          const bv = b?.[idField];
+          const an = Number(av);
+          const bn = Number(bv);
+          if (!isNaN(an) && !isNaN(bn)) return an - bn;
+          return String(av ?? "").localeCompare(String(bv ?? ""));
+        });
+      } catch {}
+      setRows(arr);
     } catch {
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [q, status, tab, billing, listPath, statusFilter, billingFilter, apiCfg]);
+  }, [q, status, tab, billing, listPath, statusFilter, billingFilter, apiCfg, idField]);
 
   useEffect(() => {
     load();
@@ -234,6 +310,18 @@ export default function EntityList({ cfg }) {
   const goToEdit   = (rid) => navigate(buildEditPath(rid));
 
   let columns = [...visibleCols.map((k) => ALL_COLUMNS_MAP[k]).filter(Boolean)];
+  // Apply controlled sort order only after user interacts
+  if (sortState && sortState.field) {
+    columns = columns.map((c) => {
+      const fieldKey = Array.isArray(c.dataIndex)
+        ? c.dataIndex.join('.')
+        : (typeof c.dataIndex === 'string' && c.dataIndex) || c.key;
+      return {
+        ...c,
+        sortOrder: fieldKey === sortState.field ? sortState.order : undefined,
+      };
+    });
+  }
   if (!columns.length) {
     columns = [{ title: "—", key: "__placeholder__", render: () => "-" }];
   }
@@ -250,9 +338,9 @@ export default function EntityList({ cfg }) {
         trigger={["click"]}
         menu={{
           items: [
-            { key: "view", label: "View" },
-            { key: "edit", label: "Edit" },
-            ...(canDelete ? [{ key: "delete", label: "Delete", danger: true }] : []),
+            { key: "view", label: t("actions.view", "View") },
+            { key: "edit", label: t("actions.edit") },
+            ...(canDelete ? [{ key: "delete", label: t("actions.delete"), danger: true }] : []),
             ...(cfg.rowActions?.extraItems || []),
           ],
           onClick: async ({ key, domEvent }) => {
@@ -262,16 +350,15 @@ export default function EntityList({ cfg }) {
 
             if (key === "delete" && canDelete) {
               Modal.confirm({
-                title: `Delete ${cfg.titleSingular || titleSingular || "record"}?`,
+                title: t("entityList.confirm.deleteTitle", { what: cfg.titleSingular || titleSingular || t("entityList.record") }),
                 content: (
                   <>
-                    Are you sure you want to delete{" "}
-                    <strong>{dash(r?.name) !== "-" ? r?.name : `#${dash(r?.[idField])}`}</strong>?
+                    {t("entityList.confirm.deleteContent")} <strong>{dash(r?.name) !== "-" ? r?.name : `#${dash(r?.[idField])}`}</strong>
                   </>
                 ),
-                okText: "Delete",
+                okText: t("actions.delete"),
                 okButtonProps: { danger: true },
-                cancelText: "Cancel",
+                cancelText: t("common.cancel", "Cancel"),
                 onOk: async () => {
                   try {
                     await api.delete(removePathBuilder(r[idField]), { withCredentials: true });
@@ -297,15 +384,15 @@ export default function EntityList({ cfg }) {
     items: [
       ...(statusFilter
         ? [
-            { key: "reactivate", label: "Set status: Active" },
-            { key: "suspend", label: "Set status: Suspended" },
-            { key: "disable", label: "Set status: Blocked" },
+            { key: "reactivate", label: t("entityList.bulk.setActive") },
+            { key: "suspend", label: t("entityList.bulk.setSuspended") },
+            { key: "disable", label: t("entityList.bulk.setBlocked") },
             { type: "divider" },
           ]
         : []),
-      { key: "export_all", label: "Export current table to CSV" },
+      { key: "export_all", label: t("actions.exportCsv") },
       { type: "divider" },
-      { key: "reset", label: "Reset filters" },
+      { key: "reset", label: t("actions.reset") },
     ],
     onClick: async ({ key }) => {
       if (key === "export_all") {
@@ -342,7 +429,9 @@ export default function EntityList({ cfg }) {
       const newStatus = key === "reactivate" ? "active" : key === "suspend" ? "suspended" : "disabled";
       try {
         await Promise.all(
-          selectedRowKeys.map((id) => api.patch(apiCfg.updateStatusPath(id), { status: newStatus }, { withCredentials: true }))
+          selectedRowKeys.map((id) =>
+            api.patch(apiCfg.updateStatusPath(id), { status: newStatus }, { withCredentials: true })
+          )
         );
         setSelectedRowKeys([]);
         load();
@@ -350,41 +439,68 @@ export default function EntityList({ cfg }) {
     },
   };
 
-  const statusSelect = (
-    <div className="hidden sm:flex items-center gap-2">
-      <Text type="secondary">Status</Text>
-      <Select
-        value={status}
-        onChange={setStatus}
-        options={[
-          { value: "All", label: "All selected" },
-          { value: "active", label: "Active" },
-          { value: "suspended", label: "Suspended" },
-          { value: "disabled", label: "Blocked" },
-        ]}
-        style={{ width: 160 }}
-      />
-    </div>
-  );
-
   const effectiveRows = useMemo(() => {
-    if (!billingFilter || !billing) return rows;
-    const norm = String(billing).toLowerCase();
-    return rows.filter((r) =>
-      String(r?.billingStatus || r?.activePlan?.interval || "").toLowerCase() === norm
-    );
-  }, [rows, billing, billingFilter]);
+    let out = rows;
+
+    // Apply billing filter (if enabled)
+    if (billingFilter && billing) {
+      const norm = String(billing).toLowerCase();
+      out = out.filter((r) =>
+        String(r?.billingStatus || r?.activePlan?.interval || "").toLowerCase() === norm
+      );
+    }
+
+    // Apply tab filter: Active only
+    if (tab === "active") {
+      const activeSet = new Set(["active", "pending", "invited", "invite_sent"]);
+      out = out.filter((r) => activeSet.has(String(r?.status || "").toLowerCase()));
+    } else if (statusFilter && status && status !== "All") {
+      // Apply status dropdown filter only when not on 'Active only' tab
+      const s = String(status).toLowerCase();
+      let wanted;
+      if (s === "active") wanted = new Set(["active", "pending", "invited", "invite_sent"]);
+      else if (s === "suspended") wanted = new Set(["suspended"]);
+      else if (s === "disabled") wanted = new Set(["disabled", "blocked", "inactive"]);
+      else wanted = null;
+      if (wanted) out = out.filter((r) => wanted.has(String(r?.status || "").toLowerCase()));
+    }
+
+    // Apply client-side search across visible columns
+    const query = String(q || "").trim().toLowerCase();
+    if (query) {
+      const searchableCols = (columns || [])
+        .filter(Boolean)
+        .filter((c) => c.key !== "actions");
+
+      const getCellString = (c, r) => {
+        const di = c.dataIndex;
+        let raw;
+        if (Array.isArray(di) || typeof di === "string") raw = getByPath(r, di);
+        else if (c.key && r && Object.prototype.hasOwnProperty.call(r, c.key)) raw = r[c.key];
+        else raw = undefined;
+
+        if (raw == null) return "";
+        if (typeof raw === "object") {
+          try { return JSON.stringify(raw).toLowerCase(); } catch { return ""; }
+        }
+        return String(raw).toLowerCase();
+      };
+
+      out = out.filter((r) =>
+        searchableCols.some((c) => getCellString(c, r).includes(query))
+      );
+    }
+
+    return out;
+  }, [rows, billing, billingFilter, q, columns, tab, status, statusFilter]);
 
   // highlight by status
   const defaultRowHighlight = (r) => {
     const s = String(r?.status || "").toLowerCase();
-    return s === "active"
-      ? "row-status-active"
-      : s === "suspended"
-      ? "row-status-suspended"
-      : s === "disabled"
-      ? "row-status-disabled"
-      : "";
+    if (["active", "pending", "invited", "invite_sent"].includes(s)) return "row-status-active";
+    if (s === "suspended") return "row-status-suspended";
+    if (s === "disabled") return "row-status-disabled";
+    return "";
   };
 
   const appliedRowClassName = (r) => {
@@ -393,25 +509,96 @@ export default function EntityList({ cfg }) {
     return [custom || def, "row-clickable"].filter(Boolean).join(" ");
   };
 
+  const exportCurrentTable = () => {
+    const visible = columns.filter(Boolean).filter((c) => c.key !== "actions");
+    const cellValue = (c, r) => {
+      try { if (typeof c.csv === "function") return c.csv(r); } catch {}
+      const di = c.dataIndex;
+      let raw;
+      if (Array.isArray(di) || typeof di === "string") raw = getByPath(r, di);
+      else if (c.key && r && Object.prototype.hasOwnProperty.call(r, c.key)) raw = r[c.key];
+      if (raw == null) return "-";
+      if (typeof raw === "object") { try { return JSON.stringify(raw); } catch { return "-"; } }
+      return String(raw);
+    };
+    const header = visible.length ? visible.map((c) => c.title || c.key) : ["-"];
+    const safeRows = rows.length ? rows : [{}];
+    const lines = safeRows.map((r) =>
+      (visible.length ? visible : [{ key: "__placeholder__" }]).map((c) => dash(cellValue(c, r)))
+    );
+    const esc = (v) => `"${String(v ?? "-").replace(/"/g, '""')}"`;
+    const csv = [header, ...lines].map((row) => row.map(esc).join(",")).join("\n") + "\n";
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${entityKey}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const moreMenu = {
+    items: [
+      { key: "columns", icon: <SettingOutlined />, label: t("entityList.more.columns") },
+    ],
+    onClick: ({ key }) => {
+      if (key === "columns") return setColModalOpen(true);
+    },
+  };
+
+  const handleStatusChange = (val) => {
+    setStatus(val);
+    const display = val === "disabled"
+      ? t("entityList.status.blocked")
+      : val === "All"
+      ? t("entityList.status.allSelected")
+      : t(`entityList.status.${String(val).toLowerCase()}`, String(val));
+    try { message.success(t("entityList.toast.statusChanged", { status: display })); } catch {}
+  };
+
+  const statusSelect = (
+    <div className="hidden sm:flex items-center gap-2">
+      <Text type="secondary">{t("entityList.status.label")}</Text>
+      <Select
+        value={status}
+        onChange={handleStatusChange}
+        options={[
+          { value: "All", label: t("entityList.status.allSelected") },
+          { value: "active", label: t("entityList.status.active") },
+          { value: "suspended", label: t("entityList.status.suspended") },
+          { value: "disabled", label: t("entityList.status.blocked") },
+        ]}
+        style={{ width: 160 }}
+      />
+    </div>
+  );
+
   return (
-    <div className="w-full h-[calc(100vh-6.5rem)] px-2 md:px-3">
-      <div className="mb-2">
-        <Breadcrumb items={[{ title: titlePlural }, { title: "List" }]} />
-        <Title level={3} className="!mb-0">List</Title>
+    <div className={`entitylist-container w-full h-[calc(100vh-6.5rem)] px-2 md:px-3 ${density === 'compact' ? 'density-compact' : ''} ${hasSorted ? '' : 'no-initial-sort'}`}>
+      <div className="mb-3 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-[#7C4DFF] text-white flex items-center justify-center">
+          {iconNode || <TeamOutlined />}
+        </div>
+        <div className="leading-tight">
+          <div className="text-gray-500 text-sm">{titlePlural} /</div>
+          <Title level={3} className="!m-0">{t("entityList.header.list")}</Title>
+        </div>
       </div>
 
-      <Card className="!rounded-2xl h-[calc(100%-3rem)] flex flex-col">
+      <Card bordered={false} className="!rounded-2xl h-[calc(100%-3rem)] flex flex-col !bg-transparent !shadow-none" bodyStyle={{ background: "transparent", border: "none" }} style={{ background: "transparent", border: "none", boxShadow: "none" }}>
         {/* Tabs + right controls */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
           <Tabs
             activeKey={tab}
             onChange={setTab}
-            items={[{ key: "all", label: `All ${titlePlural.toLowerCase()}` }, { key: "active", label: "Active only" }]}
+            items={[
+              { key: "all", label: t("entityList.tabs.all", { name: titlePlural.toLowerCase() }) },
+              { key: "active", label: t("entityList.tabs.activeOnly") },
+            ]}
           />
           <Space wrap>
             {statusFilter && statusSelect}
-
-            <Tooltip title={`Add ${titleSingular || cfg.titleSingular || "record"}`}>
+            <Tooltip title={t("entityList.addTooltip", { singular: titleSingular || cfg.titleSingular || t("entityList.record") })}>
               <Button
                 type="primary"
                 shape="circle"
@@ -419,46 +606,43 @@ export default function EntityList({ cfg }) {
                 onClick={() => navigate(`${routeBase}/new`)}
               />
             </Tooltip>
-
-            <Tooltip title="Reload">
-              <Button shape="circle" icon={<ReloadOutlined />} onClick={load} />
-            </Tooltip>
           </Space>
         </div>
 
         {/* Toolbar row */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
           <Space wrap>
-            <Dropdown menu={bulkMenu}><Button>Actions <DownOutlined /></Button></Dropdown>
+            <Dropdown menu={bulkMenu}><Button>{t("entityList.actions.label")} <DownOutlined /></Button></Dropdown>
             <div className="inline-flex items-center gap-2">
-              <Text type="secondary">Show</Text>
+              <Text type="secondary">{t("entityList.show")}</Text>
               <Select
                 value={pageSize}
                 onChange={onChangePageSize}
                 options={[10, 25, 50, 100].map((n) => ({ value: n, label: n }))}
                 style={{ width: 90 }}
               />
-              <Text type="secondary">entries</Text>
+              <Text type="secondary">{t("entityList.entries")}</Text>
             </div>
           </Space>
 
           <Space wrap>
             <Input
               prefix={<SearchOutlined />}
-              placeholder="Table search"
+              placeholder={t("entityList.searchPh")}
               allowClear
               value={typedQ}
               onChange={(e) => setTypedQ(e.target.value)}
               onPressEnter={() => setQ(typedQ)}
               className="w-full lg:w-[320px]"
             />
-            <Tooltip title="Row density"><Button icon={<ColumnHeightOutlined />} /></Tooltip>
-            <Tooltip title="Show / Hide columns"><Button icon={<SettingOutlined />} onClick={() => setColModalOpen(true)} /></Tooltip>
+            <Dropdown menu={moreMenu} placement="bottomRight" trigger={["click"]}>
+              <Button icon={<MoreOutlined />} />
+            </Dropdown>
           </Space>
         </div>
 
         {/* Table */}
-        <div className="flex-1 overflow-hidden rounded-lg border">
+        <div className="flex-1 overflow-hidden rounded-lg">
           <Table
             columns={columns}
             dataSource={effectiveRows || []}
@@ -466,6 +650,7 @@ export default function EntityList({ cfg }) {
             rowKey={idField}
             rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys, preserveSelectedRowKeys: true }}
             pagination={{ pageSize, showSizeChanger: false }}
+            size={density === 'compact' ? 'small' : 'middle'}
             scroll={{ x: 1200, y: "calc(100vh - 310px)" }}
             sticky
             childrenColumnName="__none__"
@@ -483,30 +668,23 @@ export default function EntityList({ cfg }) {
             })}
             rowClassName={appliedRowClassName}
             locale={{ emptyText: <div className="text-gray-400">-</div> }}
-            {...(billingFilter
-              ? {
-                  onChange: (_, filters) => {
-                    const f = filters?.billingStatus;
-                    setBilling(Array.isArray(f) && f.length ? f[0] : null);
-                  },
-                }
-              : {})}
+            onChange={handleTableChange}
           />
         </div>
       </Card>
 
       {/* Column modal */}
       <Modal
-        title="Show / Hide columns"
+        title={t("entityList.modal.columnsTitle")}
         open={colModalOpen}
         onCancel={() => setColModalOpen(false)}
         onOk={() => setColModalOpen(false)}
-        okText="Done"
+        okText={t("entityList.modal.done")}
       >
         <div className="mb-2">
           <Space wrap>
-            <Button onClick={() => setVisibleCols(Object.keys(ALL_COLUMNS_MAP))}>Select all</Button>
-            <Button onClick={() => setVisibleCols((defaultVisible || []).slice())}>Reset</Button>
+            <Button onClick={() => setVisibleCols(Object.keys(ALL_COLUMNS_MAP))}>{t("entityList.modal.selectAll")}</Button>
+            <Button onClick={() => setVisibleCols((defaultVisible || []).slice())}>{t("entityList.modal.reset")}</Button>
           </Space>
         </div>
 
@@ -548,12 +726,86 @@ export default function EntityList({ cfg }) {
         .row-status-active:hover,
         .row-status-suspended:hover,
         .row-status-disabled:hover {
-          filter: brightness(0.97);
+          filter: none;
         }
 
         .row-clickable { cursor: pointer; }
-        .row-clickable:hover { background-color: rgba(0,0,0,0.03) !important; }
+        .row-clickable:hover { /* keep original background color */ }
+
+        /* Prevent AntD default hover grey */
+        .entitylist-container .ant-table-tbody > tr:hover > td {
+          background-color: transparent !important;
+        }
+        .entitylist-container .ant-table-row:hover { background-color: transparent !important; }
+        .entitylist-container .ant-table-cell-row-hover { background-color: transparent !important; }
+
+        /* Ensure colored rows keep color even on hover by setting TR/TDs */
+        .entitylist-container .ant-table-tbody > tr.row-status-active,
+        .entitylist-container .ant-table-tbody > tr.row-status-active:hover { background-color: #d9f7be !important; }
+        .entitylist-container .ant-table-tbody > tr.row-status-suspended,
+        .entitylist-container .ant-table-tbody > tr.row-status-suspended:hover { background-color: #fff7e6 !important; }
+        .entitylist-container .ant-table-tbody > tr.row-status-disabled,
+        .entitylist-container .ant-table-tbody > tr.row-status-disabled:hover { background-color: #ffd6d6 !important; }
+
+        .entitylist-container .ant-table-tbody > tr.row-status-active > td,
+        .entitylist-container .ant-table-row.row-status-active > td { background-color: #d9f7be !important; }
+        .entitylist-container .ant-table-tbody > tr.row-status-suspended > td,
+        .entitylist-container .ant-table-row.row-status-suspended > td { background-color: #fff7e6 !important; }
+        .entitylist-container .ant-table-tbody > tr.row-status-disabled > td,
+        .entitylist-container .ant-table-row.row-status-disabled > td { background-color: #ffd6d6 !important; }
+
+        .entitylist-container .ant-table-tbody > tr.row-status-active:hover > td,
+        .entitylist-container .ant-table-row.row-status-active:hover > td,
+        .entitylist-container .ant-table-tbody > tr.row-status-active.ant-table-row-selected > td { background-color: #d9f7be !important; }
+        .entitylist-container .ant-table-tbody > tr.row-status-suspended:hover > td,
+        .entitylist-container .ant-table-row.row-status-suspended:hover > td,
+        .entitylist-container .ant-table-tbody > tr.row-status-suspended.ant-table-row-selected > td { background-color: #fff7e6 !important; }
+        .entitylist-container .ant-table-tbody > tr.row-status-disabled:hover > td,
+        .entitylist-container .ant-table-row.row-status-disabled:hover > td,
+        .entitylist-container .ant-table-tbody > tr.row-status-disabled.ant-table-row-selected > td { background-color: #ffd6d6 !important; }
+
+        /* Fix sticky cells so they inherit row color */
+        .entitylist-container .ant-table-tbody > tr.row-status-active > td.ant-table-cell-fix-left,
+        .entitylist-container .ant-table-tbody > tr.row-status-active > td.ant-table-cell-fix-right { background-color: #d9f7be !important; }
+        .entitylist-container .ant-table-tbody > tr.row-status-suspended > td.ant-table-cell-fix-left,
+        .entitylist-container .ant-table-tbody > tr.row-status-suspended > td.ant-table-cell-fix-right { background-color: #fff7e6 !important; }
+        .entitylist-container .ant-table-tbody > tr.row-status-disabled > td.ant-table-cell-fix-left,
+        .entitylist-container .ant-table-tbody > tr.row-status-disabled > td.ant-table-cell-fix-right { background-color: #ffd6d6 !important; }
+        .entitylist-container .ant-table-tbody > tr.row-status-active > td.ant-table-cell-fix-left::before,
+        .entitylist-container .ant-table-tbody > tr.row-status-active > td.ant-table-cell-fix-right::before { background-color: #d9f7be !important; }
+        .entitylist-container .ant-table-tbody > tr.row-status-suspended > td.ant-table-cell-fix-left::before,
+        .entitylist-container .ant-table-tbody > tr.row-status-suspended > td.ant-table-cell-fix-right::before { background-color: #fff7e6 !important; }
+        .entitylist-container .ant-table-tbody > tr.row-status-disabled > td.ant-table-cell-fix-left::before,
+        .entitylist-container .ant-table-tbody > tr.row-status-disabled > td.ant-table-cell-fix-right::before { background-color: #ffd6d6 !important; }
+
+        /* Compact density paddings */
+        .density-compact .ant-table-thead > tr > th,
+        .density-compact .ant-table-tbody > tr > td {
+          padding-top: 8px !important;
+          padding-bottom: 8px !important;
+        }
+        .density-compact .ant-table-tbody > tr > td {
+          font-size: 12.5px;
+        }
+
+        /* Transparent, borderless card within EntityList only */
+        .entitylist-container .ant-card,
+        .entitylist-container .ant-card-body {
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+        }
+
+        /* Hide any accidental initial active-sort highlight until user sorts */
+        .entitylist-container.no-initial-sort .ant-table-column-sorter-up.active .anticon,
+        .entitylist-container.no-initial-sort .ant-table-column-sorter-down.active .anticon {
+          color: rgba(0,0,0,0.45) !important;
+        }
+        .entitylist-container.no-initial-sort th.ant-table-column-sort {
+          background: transparent !important;
+        }
       `}</style>
+
     </div>
   );
 }

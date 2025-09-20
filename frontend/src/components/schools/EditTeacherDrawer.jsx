@@ -2,8 +2,7 @@
 
 import { Drawer, Form, Input, Select, Button, message, Spin } from "antd";
 import { useEffect, useState } from "react";
-import axios from "axios";
-import api from "../../api/axios";
+import api from "@/api/axios";
 
 const { Option } = Select;
 

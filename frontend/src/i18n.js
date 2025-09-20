@@ -4,8 +4,8 @@ import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 
 // Vite can import JSON from /src directly
-import de from "@/locales/de/translation.json";
-import en from "@/locales/en/translation.json";
+import de from "./locales/de/translation.json";
+import en from "./locales/en/translation.json";
 
 i18n
   .use(LanguageDetector)

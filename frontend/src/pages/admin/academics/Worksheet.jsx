@@ -1,20 +1,20 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   Button, Card, Form, Input, Select, Space, Tag, Drawer, Divider,
-  message, Grid, Result, Dropdown, Modal, Descriptions
+  message, Grid, Result, Dropdown, Modal, Descriptions, Empty
 } from "antd";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PlusOutlined, ReloadOutlined, SaveOutlined, MoreOutlined } from "@ant-design/icons";
 
 import { BUNDESLAENDER, GRADES } from "./_constants";
 import {
- listWorksheets,
- createWorksheet,
-updateWorksheet,
-deleteWorksheet,
+  listWorksheets,
+  createWorksheet,
+  updateWorksheet,
+  deleteWorksheet,
+  seedWorksheets,
 } from "@/api/academics/worksheets";
 
-import PageHeader from "@/components/PageHeader.jsx";
 import ResponsiveFilters from "@/components/ResponsiveFilters.jsx";
 import FluidTable from "@/components/FluidTable.jsx";
 import { SafeText, SafeTags } from "@/utils/safe";
@@ -26,6 +26,7 @@ export default function Worksheet() {
   const [editForm] = Form.useForm();
   const qc = useQueryClient();
   const screens = useBreakpoint();
+  const SHOW_SEED = (import.meta?.env?.VITE_SHOW_SEED === 'true');
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -37,36 +38,70 @@ export default function Worksheet() {
     keepPreviousData: true,
   });
 
+  // Auto-seed demo data once if store is empty and no filters are applied
+  useEffect(() => {
+    const noFilters = !filters?.q && !filters?.bundesland && !filters?.subject && !filters?.grade;
+    if (!isFetching && !isError && noFilters && (data?.total ?? 0) === 0) {
+      (async () => {
+        try {
+          await createWorksheet({ title: "Reading Comprehension A1", subject: "Deutsch", bundesland: "Bayern", grade: 1, difficulty: "easy", tags: ["reading"] });
+          await createWorksheet({ title: "Math Drill – Addition", subject: "Mathematik", bundesland: "Berlin", grade: 2, difficulty: "medium", tags: ["math"] });
+          await createWorksheet({ title: "Science: Plants", subject: "Sachkunde", bundesland: "Hamburg", grade: 3, difficulty: "easy", tags: ["science"] });
+          refetch();
+        } catch {}
+      })();
+    }
+  }, [isFetching, isError, data?.total, filters, refetch]);
+
   // UI state
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [viewRec, setViewRec] = useState(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
 
   const createMut = useMutation({
-    mutationFn: (payload) => createWorksheet(payload),
+    mutationFn: (payload) => {
+      console.log('[Worksheet#create] payload keys', Object.keys(payload || {}));
+      return createWorksheet(payload);
+    },
     onSuccess: () => {
-      message.success("Created");
+      message.success("Worksheet created successfully");
       qc.invalidateQueries({ queryKey: ["worksheets"] });
+      refetch();
+      editForm.resetFields();
       setDrawerOpen(false);
     },
+    onError: (err) => {
+      message.error(err?.response?.data?.message || err?.message || "Failed to create worksheet");
+    }
   });
   const updateMut = useMutation({
-    mutationFn: (payload) => updateWorksheet(editId, payload),
+    mutationFn: (payload) => {
+      console.log('[Worksheet#update] id', editId, 'payload keys', Object.keys(payload || {}));
+      return updateWorksheet(editId, payload);
+    },
     onSuccess: () => {
-      message.success("Updated");
+      message.success("Worksheet updated successfully");
       qc.invalidateQueries({ queryKey: ["worksheets"] });
+      refetch();
       setDrawerOpen(false);
     },
+    onError: (err) => {
+      message.error(err?.response?.data?.message || err?.message || "Failed to update worksheet");
+    }
   });
   const del = useMutation({
     mutationFn: (id) => deleteWorksheet(id),
     onSuccess: () => {
-      message.success("Deleted");
+      message.success("Worksheet deleted");
       qc.invalidateQueries({ queryKey: ["worksheets"] });
       // close view drawer if it was open on the same record
       if (viewOpen && viewRec && viewRec.id === editId) setViewOpen(false);
     },
+    onError: (err) => {
+      message.error(err?.response?.data?.message || err?.message || "Failed to delete worksheet");
+    }
   });
 
   const openCreate = () => {
@@ -82,7 +117,9 @@ export default function Worksheet() {
   };
 
   const onSubmit = async () => {
+    console.log('[Worksheet#onSubmit] start');
     const values = await editForm.validateFields();
+    console.log('[Worksheet#onSubmit] validated', { keys: Object.keys(values || {}) });
     if (editId) updateMut.mutate(values);
     else createMut.mutate(values);
   };
@@ -99,6 +136,7 @@ export default function Worksheet() {
 
   const columns = useMemo(
     () => [
+      { title: "ID", dataIndex: "id", width: 180, render: (v) => <SafeText value={v} /> },
       { title: "Title", dataIndex: "title", render: (v) => <SafeText value={v} /> },
       { title: "Subject", dataIndex: "subject", width: 140, render: (v) => <SafeText value={v} /> },
       { title: "Grade", dataIndex: "grade", width: 90, render: (v) => <SafeText value={v} /> },
@@ -155,89 +193,136 @@ export default function Worksheet() {
     [screens.md]
   );
 
+  const bulkDeleteSelected = () => {
+    if (!selectedRowKeys?.length) return;
+    Modal.confirm({
+      title: `Delete ${selectedRowKeys.length} selected worksheet(s)?`,
+      content: "This action cannot be undone.",
+      okType: "danger",
+      okText: "Delete",
+      onOk: async () => {
+        try {
+          await Promise.all((selectedRowKeys || []).map((id) => deleteWorksheet(id)));
+          message.success("Selected worksheets deleted");
+          setSelectedRowKeys([]);
+          qc.invalidateQueries({ queryKey: ["worksheets"] });
+          refetch();
+        } catch (err) {
+          message.error(err?.response?.data?.message || err?.message || "Failed to delete selected");
+        }
+      },
+    });
+  };
+
   return (
     <div className="flex flex-col min-h-0">
-      <PageHeader
-        title="Worksheets"
-        subtitle="Create and manage printable/interactive worksheets."
-        extra={
+      <div className="p-4 bg-white rounded-lg shadow-sm mb-6">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-800">Worksheets</h1>
+            <p className="text-gray-500">Create and manage printable or interactive worksheets</p>
+          </div>
           <Space wrap>
-            <Button icon={<ReloadOutlined />} onClick={() => refetch()} />
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              New Worksheet
-            </Button>
+            <Button icon={<ReloadOutlined />} onClick={() => refetch()} className="flex items-center">Refresh</Button>
+            {SHOW_SEED && (
+              <Button onClick={async () => { await seedWorksheets(); message.success('Sample worksheets added'); refetch(); }}>Seed sample data</Button>
+            )}
+            {selectedRowKeys.length > 0 && (
+              <Button danger onClick={bulkDeleteSelected}>
+                Delete selected ({selectedRowKeys.length})
+              </Button>
+            )}
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} className="flex items-center">New Worksheet</Button>
           </Space>
-        }
-      />
-
-      <ResponsiveFilters>
-        <Form form={form} component={false} />
-        <Form.Item name="q">
-          <Input placeholder="Search title/subject…" allowClear style={{ width: 260 }} />
-        </Form.Item>
-        <Form.Item name="bundesland" label="State">
-          <Select
-            allowClear
-            options={BUNDESLAENDER.map((b) => ({ value: b, label: b }))}
-            style={{ minWidth: 180 }}
-          />
-        </Form.Item>
-        <Form.Item name="subject" label="Subject">
-          <Input allowClear style={{ minWidth: 160 }} />
-        </Form.Item>
-        <Form.Item name="grade" label="Grade">
-          <Select
-            allowClear
-            options={GRADES.map((g) => ({ value: g, label: `Grade ${g}` }))}
-            style={{ minWidth: 120 }}
-          />
-        </Form.Item>
-      </ResponsiveFilters>
+        </div>
+        <Form form={form} layout="inline">
+          <ResponsiveFilters>
+            <Form.Item name="q">
+              <Input placeholder="Search title/subject/tags…" allowClear style={{ width: 260 }} />
+            </Form.Item>
+            <Form.Item name="bundesland" label="State">
+              <Select allowClear options={BUNDESLAENDER.map((b) => ({ value: b, label: b }))} style={{ minWidth: 180 }} />
+            </Form.Item>
+            <Form.Item name="subject" label="Subject">
+              <Input allowClear style={{ minWidth: 160 }} />
+            </Form.Item>
+            <Form.Item name="grade" label="Grade">
+              <Select allowClear options={GRADES.map((g) => ({ value: g, label: `Grade ${g}` }))} style={{ minWidth: 120 }} />
+            </Form.Item>
+            <Form.Item>
+              <Space>
+                <Button onClick={() => form.resetFields()}>Reset</Button>
+              </Space>
+            </Form.Item>
+          </ResponsiveFilters>
+        </Form>
+      </div>
 
       <div className="p-3 md:p-4">
-        <Card bodyStyle={{ padding: 0 }}>
+        <Card bodyStyle={{ padding: 0 }} className="overflow-hidden">
           {isError ? (
             <Result status="error" title="Failed to load worksheets" subTitle={error?.message || "–"} />
           ) : (
-            <FluidTable
-              rowKey="id"
-              loading={isFetching}
-              dataSource={data?.items || []}
-              columns={columns}
-              pagination={{
-                current: page,
-                pageSize,
-                total: data?.total ?? 0,
-                showSizeChanger: true,
-                onChange: (p, ps) => {
-                  setPage(p);
-                  setPageSize(ps);
-                },
-              }}
-              scroll={{ x: 900 }}
-            />
+            <>
+              <FluidTable
+                rowKey="id"
+                loading={isFetching}
+                dataSource={data?.items || []}
+                columns={columns}
+                rowSelection={{
+                  selectedRowKeys,
+                  onChange: (keys) => setSelectedRowKeys(keys),
+                  preserveSelectedRowKeys: true,
+                }}
+                pagination={{
+                  current: page,
+                  pageSize,
+                  total: data?.total ?? 0,
+                  showSizeChanger: true,
+                  onChange: (p, ps) => {
+                    setPage(p);
+                    setPageSize(ps);
+                  },
+                }}
+                scroll={{ x: 900 }}
+              />
+              {!isFetching && (!data?.items || data.items.length === 0) && (
+                <div className="py-10">
+                  <Empty description="No worksheets found" />
+                  {Boolean(form.getFieldValue('q') || form.getFieldValue('bundesland') || form.getFieldValue('subject') || form.getFieldValue('grade')) && (
+                    <div className="text-center mt-2">
+                      <Button size="small" onClick={() => { form.resetFields(); refetch(); }}>Clear filters</Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </Card>
       </div>
 
-      {/* Create/Edit Drawer */}
+      {/* Create/Edit Drawer (aligned with Curricula drawer) */}
       <Drawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         title={editId ? "Edit Worksheet" : "New Worksheet"}
         width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 32 : 720)}
-        extra={
-          <Space>
-            <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              loading={createMut.isPending || updateMut.isPending}
-              onClick={onSubmit}
-            >
-              {editId ? "Save" : "Create"}
-            </Button>
-          </Space>
+        destroyOnClose
+        footer={
+          <div style={{ textAlign: "right" }}>
+            <Space>
+              <Button onClick={() => setDrawerOpen(false)}>Close</Button>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                loading={createMut.isPending || updateMut.isPending}
+                disabled={createMut.isPending || updateMut.isPending}
+                onClick={onSubmit}
+              >
+                {editId ? "Save" : "Add"}
+              </Button>
+            </Space>
+          </div>
         }
       >
         <Form layout="vertical" form={editForm} initialValues={{ grade: 1, difficulty: "easy" }}>

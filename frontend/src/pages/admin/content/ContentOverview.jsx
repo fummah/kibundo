@@ -36,6 +36,7 @@ const isPublished = (row) => row?.status === "published";
 
 export default function ContentOverview() {
   const navigate = useNavigate();
+  const [messageApi, contextHolder] = message.useMessage();
   const [usersMap, setUsersMap] = useState({});
 
   useEffect(() => {
@@ -144,15 +145,17 @@ export default function ContentOverview() {
   const markAsPublished = async (id) => {
     try {
       await api.put(`/blogpost/${id}`, { status: "published" });
-      message.success("Post marked as published");
+      messageApi.success("Post marked as published");
     } catch (err) {
       console.error(err);
-      message.error("Failed to mark as published");
+      messageApi.error("Failed to mark as published");
     }
   };
 
   return (
-    <EntityList
+    <>
+      {contextHolder}
+      <EntityList
       cfg={{
         entityKey: "blogposts",
         titlePlural: "Blog Posts",
@@ -204,5 +207,6 @@ export default function ContentOverview() {
         },
       }}
     />
+    </>
   );
 }

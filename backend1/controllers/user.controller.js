@@ -953,7 +953,7 @@ exports.addrole = async (req, res) => {
     const { role_name, permissions } = req.body;
 const created_by = req.user.id;
     const newRole = await Role.create({
-   role_name, 
+   name:role_name, 
    permissions,
     created_by,
     });
@@ -1068,7 +1068,7 @@ exports.addcurriculum = async (req, res) => {
 
     // 1️⃣ Create the Curriculum
     const created_by = req.user.id;
-    const newCurriculum = await Quiz.create(
+    const newCurriculum = await Curriculum.create(
       { bundesland, subject, grade, content, status, created_by, published_at: status === 'published' ? new Date() : null  }
     );
 

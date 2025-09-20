@@ -159,6 +159,7 @@ export default function BlogPostEdit() {
   const navigate = useNavigate();
   const params = useParams();
   const [searchParams] = useSearchParams();
+  const [messageApi, contextHolder] = message.useMessage();
 
   const routeId = params?.id ?? searchParams.get("id");
   const editingId = useMemo(() => {
@@ -248,7 +249,7 @@ export default function BlogPostEdit() {
         if (Number.isFinite(newId)) {
           navigate(`/admin/content/edit/${newId}`, { replace: true });
         } else {
-          message.warning("Saved, but no valid ID returned from server.");
+          messageApi.warning("Saved, but no valid ID returned from server.");
         }
       } else {
         queryClient.invalidateQueries({ queryKey: ["blogpost", editingId] });
@@ -260,7 +261,7 @@ export default function BlogPostEdit() {
         err?.response?.data ||
         err?.message;
       console.error("Save failed:", serverMsg);
-      message.error(`Save failed: ${serverMsg || "Server error"}`);
+      messageApi.error(`Save failed: ${serverMsg || "Server error"}`);
     },
   });
 
@@ -278,10 +279,10 @@ export default function BlogPostEdit() {
           localStorage.removeItem(LS_SHADOW_KEY);
         }
       } catch {}
-      message.success("Post deleted");
+      messageApi.success("Post deleted");
       navigate("/admin/content");
     },
-    onError: () => message.error("Failed to delete"),
+    onError: () => messageApi.error("Failed to delete"),
   });
 
   // editor image upload (mock)
@@ -294,7 +295,7 @@ export default function BlogPostEdit() {
     const url = URL.createObjectURL(file);
     form.setFieldsValue({ thumbnail_url: url });
     setThumbPreview(url);
-    message.success(`Thumbnail loaded: ${file.name}`);
+    messageApi.success(`Thumbnail loaded: ${file.name}`);
     return false;
   };
 
@@ -308,13 +309,13 @@ export default function BlogPostEdit() {
     try {
       const v = await form.validateFields();
       if (!v.body_html || !stripHtml(v.body_html)) {
-        message.error("Post body cannot be blank");
+        messageApi.error("Post body cannot be blank");
         return;
       }
 
       const currentUser = JSON.parse(localStorage.getItem("user") || "null");
       if (!currentUser?.id) {
-        message.error("No logged-in user found.");
+        messageApi.error("No logged-in user found.");
         return;
       }
 
@@ -353,7 +354,7 @@ export default function BlogPostEdit() {
       }
 
       await createOrUpdate.mutateAsync({ payload, id: editingId || undefined });
-      message.success(editingId ? "Post updated" : "Post created");
+      messageApi.success(editingId ? "Post updated" : "Post created");
     } catch {
       // antd validation errors are expected
     }
@@ -370,6 +371,7 @@ export default function BlogPostEdit() {
 
   return (
     <div className="max-w-[1400px] mx-auto px-3 md:px-4">
+      {contextHolder}
       <div className="flex items-center justify-between mb-3">
         <Space wrap>
           <Title level={3} className="!mb-0">

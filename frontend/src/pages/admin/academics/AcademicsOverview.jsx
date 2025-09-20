@@ -1,5 +1,5 @@
-// src/pages/NicePage.jsx
-import React from "react";
+// src/pages/admin/academics/AcademicsOverview.jsx
+import React, { useEffect } from "react";
 import {
   Row, Col, Card, Typography, Space, Button, Tag,
   List, Avatar, Timeline, Grid, Tooltip, Badge, Select
@@ -21,8 +21,11 @@ import {
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
 import api from "@/api/axios"; // your configured axios (adds baseURL, token, etc.)
+import { message } from "antd";
 import { listQuizzes } from "@/api/academics/quizzes.js";
+import { useTopbar } from "@/components/layouts/GlobalLayout.jsx";
 
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
@@ -38,14 +41,21 @@ const safeLen = (v) => (Array.isArray(v) ? v.length : 0);
 export default function NicePage() {
   const screens = useBreakpoint();
   const navigate = useNavigate();
+  const topbar = useTopbar();
+  const [messageApi, contextHolder] = message.useMessage();
 
   /* ---------------- Live data from your API ---------------- */
-  // GET /allstudents (protected)
+  // GET /allstudents (protected) — kept in case you still need it elsewhere
   const studentsQ = useQuery({
     queryKey: ["allstudents"],
     queryFn: async () => {
-      const { data } = await api.get("/allstudents");
-      return Array.isArray(data) ? data : [];
+      try {
+        const { data } = await api.get("/allstudents");
+        return Array.isArray(data) ? data : [];
+      } catch (error) {
+        messageApi.error("Failed to fetch students");
+        return [];
+      }
     },
     keepPreviousData: true,
   });
@@ -54,8 +64,13 @@ export default function NicePage() {
   const subjectsQ = useQuery({
     queryKey: ["allsubjects"],
     queryFn: async () => {
-      const { data } = await api.get("/allsubjects");
-      return Array.isArray(data) ? data : [];
+      try {
+        const { data } = await api.get("/allsubjects");
+        return Array.isArray(data) ? data : [];
+      } catch (error) {
+        messageApi.error("Failed to fetch subjects");
+        return [];
+      }
     },
     keepPreviousData: true,
   });
@@ -63,15 +78,57 @@ export default function NicePage() {
   // GET /quizzes (protected) — use your existing helper to normalize shapes
   const quizzesQ = useQuery({
     queryKey: ["quizzes", { page: 1, pageSize: 50 }],
-    queryFn: async () => listQuizzes({ page: 1, pageSize: 50 }),
+    queryFn: async () => {
+      try {
+        // Ensure we await the helper; some helpers return a Promise of { items, total }
+        return await listQuizzes({ page: 1, pageSize: 50 });
+      } catch (error) {
+        messageApi.error("Failed to fetch quizzes");
+        return [];
+      }
+    },
     keepPreviousData: true,
   });
 
-  const studentsCount = safeLen(studentsQ.data);
+  // GET /curiculums (protected) — note the route spelling you provided
+  const curriculaQ = useQuery({
+    queryKey: ["curiculums"],
+    queryFn: async () => {
+      try {
+        const { data } = await api.get("/curiculums");
+        // Support either a plain array or { items: [...] }
+        if (Array.isArray(data)) return data;
+        if (Array.isArray(data?.items)) return data.items;
+        return [];
+      } catch (error) {
+        messageApi.error("Failed to fetch curricula");
+        return [];
+      }
+    },
+    keepPreviousData: true,
+  });
+
   const subjectsCount = safeLen(subjectsQ.data);
-  const quizItems = Array.isArray(quizzesQ.data?.items) ? quizzesQ.data.items : [];
-  const quizzesTotal =
-    Number.isFinite(quizzesQ.data?.total) ? quizzesQ.data.total : quizItems.length;
+  // Quizzes may be returned as an array or as { items, total }
+  const quizItems = Array.isArray(quizzesQ.data?.items)
+    ? quizzesQ.data.items
+    : (Array.isArray(quizzesQ.data) ? quizzesQ.data : []);
+  const quizzesTotal = Number.isFinite(quizzesQ.data?.total)
+    ? quizzesQ.data.total
+    : quizItems.length;
+
+  const curriculaItems = Array.isArray(curriculaQ.data) ? curriculaQ.data : [];
+  const curriculaCount = safeLen(curriculaItems);
+
+  // Debug: Log the first quiz item to see its structure
+  useEffect(() => {
+    if (quizItems.length > 0) {
+      console.log('Quiz items:', quizItems);
+      console.log('First quiz item:', quizItems[0]);
+      console.log('First quiz item keys:', Object.keys(quizItems[0]));
+      console.log('First quiz item values:', JSON.stringify(quizItems[0], null, 2));
+    }
+  }, [quizItems]);
 
   // Recent quizzes (newest first by created_at / createdAt)
   const recentQuizzes = [...quizItems]
@@ -82,14 +139,53 @@ export default function NicePage() {
     )
     .slice(0, 5);
 
+  // Recent curricula (newest by updated_at/created_at)
+  const recentCurricula = [...curriculaItems]
+    .sort((a, b) => {
+      const bTime = new Date(b?.updated_at ?? b?.updatedAt ?? b?.created_at ?? b?.createdAt ?? 0).getTime();
+      const aTime = new Date(a?.updated_at ?? a?.updatedAt ?? a?.created_at ?? a?.createdAt ?? 0).getTime();
+      return bTime - aTime;
+    })
+    .slice(0, 5);
+
   /* ---------------- KPIs ---------------- */
-  // Replaced “Curricula” with “Subjects” (you don't have curricula routes; subjects are closest)
+  // Replaced “Students” with “Curricula” and bound to /curiculums
   const kpis = [
-    { title: "Students",  value: studentsCount, icon: <TeamOutlined />,       gradient: "from-indigo-600 to-violet-600" },
-    { title: "Subjects",  value: subjectsCount, icon: <ReadOutlined />,       gradient: "from-sky-500 to-cyan-500" },
-    { title: "Quizzes",   value: quizzesTotal,  icon: <ExperimentOutlined />, gradient: "from-emerald-500 to-teal-500" },
-    { title: "Scans",     value: 0,             icon: <FileTextOutlined />,   gradient: "from-rose-500 to-orange-500" }, // no scans route provided
+    { title: "Curricula", value: curriculaCount, icon: <ReadOutlined />,       gradient: "from-indigo-600 to-violet-600" },
+    { title: "Subjects",  value: subjectsCount,  icon: <ReadOutlined />,       gradient: "from-sky-500 to-cyan-500" },
+    { title: "Quizzes",   value: quizzesTotal,   icon: <ExperimentOutlined />, gradient: "from-emerald-500 to-teal-500" },
+    { title: "Scans",     value: 0,              icon: <FileTextOutlined />,   gradient: "from-rose-500 to-orange-500" }, // no scans route provided
   ];
+
+  /* ---------------- Topbar integration ---------------- */
+  useEffect(() => {
+    if (!topbar) return;
+    topbar.setTopbar({
+      title: "Academics",
+      subtitle: "Curricula, subjects, quizzes and scans",
+      tagCount: quizzesTotal,
+      rightExtra: (
+        <Space>
+          <Button size="small" onClick={() => navigate("/admin/academics/quizzes")}>Quizzes</Button>
+          <Button size="small" type="primary" onClick={() => navigate("/admin/academics/curricula")}>Curricula</Button>
+        </Space>
+      ),
+      onRefresh: async () => {
+        try {
+          await Promise.all([
+            subjectsQ.refetch(),
+            quizzesQ.refetch(),
+            curriculaQ.refetch(),
+            studentsQ.refetch(),
+          ]);
+        } catch (error) {
+          messageApi.error("Failed to refresh data");
+        }
+      },
+    });
+    return () => topbar.resetTopbar && topbar.resetTopbar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quizzesTotal]);
 
   /* ---------------- Features ---------------- */
   const features = [
@@ -185,7 +281,7 @@ export default function NicePage() {
       {/* Hero */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10 bg-gradient-to-br from-indigo-50 via-white to-violet-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800" />
-        <div className="mx-auto max-w-7xl px-4 py-10 md:py-14">
+        <div className="mx-auto max-w-7xl px-4 py-6 md:py-8">
           <Row gutter={[24, 24]} align="middle">
             <Col xs={24} md={14}>
               <Space direction="vertical" size={8} className="w-full">
@@ -196,17 +292,21 @@ export default function NicePage() {
         </div>
       </div>
 
-      {/* KPIs (live counts for Students / Subjects / Quizzes) */}
+      {/* KPIs (Curricula / Subjects / Quizzes) */}
       <div className="mx-auto max-w-7xl px-4 -mt-6 md:-mt-8">
         <Row gutter={[16, 16]}>
           {kpis.map((k) => (
             <Col key={k.title} xs={12} md={6}>
               <Card
                 hoverable
-                className={`rounded-xl text-white bg-gradient-to-br ${k.gradient}`}
-                styles={{ body: { minHeight: 110, display: "flex", alignItems: "center" } }}
+                className={
+                  "rounded-xl text-white bg-gradient-to-br " + (k.gradient || "")
+                }
+                styles={{
+                  body: { minHeight: 110, display: "flex", alignItems: "center" },
+                }}
                 loading={
-                  (k.title === "Students" && studentsQ.isFetching) ||
+                  (k.title === "Curricula" && curriculaQ.isFetching) ||
                   (k.title === "Subjects" && subjectsQ.isFetching) ||
                   (k.title === "Quizzes" && quizzesQ.isFetching)
                 }
@@ -216,13 +316,15 @@ export default function NicePage() {
                     <Avatar className="bg-white/20" icon={k.icon} />
                     <div>
                       <span className="text-white/80 text-xs">{k.title}</span>
-                      <div className="text-2xl md:text-3xl font-bold leading-none">{k.value}</div>
+                      <div className="text-2xl md:text-3xl font-bold leading-none">
+                        {k.value}
+                      </div>
                     </div>
                   </Space>
                   <Tooltip
                     title={
-                      k.title === "Students"
-                        ? "/allstudents"
+                      k.title === "Curricula"
+                        ? "/curiculums"
                         : k.title === "Subjects"
                         ? "/allsubjects"
                         : k.title === "Quizzes"
@@ -237,10 +339,16 @@ export default function NicePage() {
             </Col>
           ))}
         </Row>
+
       </div>
 
       {/* Content sections */}
-      <div className="mx-auto max-w-7xl px-4 py-8">
+      <div className="container mx-auto px-4 py-6">
+        {contextHolder}
+        <div className="mb-6">
+          <Title level={2} className="mb-1">Academics Overview</Title>
+          <Text type="secondary">Manage your educational content and activities</Text>
+        </div>
         <Row gutter={[16, 16]}>
           {/* Features */}
           <Col xs={24} lg={14}>
@@ -304,6 +412,58 @@ export default function NicePage() {
           </Col>
         </Row>
 
+        {/* Recent Curricula (live from /curiculums) */}
+        <Row gutter={[16, 16]} className="mt-2">
+          <Col xs={24}>
+            <Card
+              hoverable
+              title={<Space><ReadOutlined /> Recent Curricula</Space>}
+              extra={
+                <Button type="link" onClick={() => navigate("/admin/academics/curricula")}>
+                  Open Curricula <ArrowRightOutlined />
+                </Button>
+              }
+            >
+              <List
+                loading={curriculaQ.isFetching}
+                dataSource={recentCurricula}
+                locale={{ emptyText: "No curricula yet" }}
+                renderItem={(c) => {
+                  const id = c?.id ?? c?._id ?? c?.uuid;
+                  const when =
+                    c?.updated_at ?? c?.updatedAt ?? c?.created_at ?? c?.createdAt;
+                  return (
+                    <List.Item
+                      onClick={() => id && navigate(`/curriculum/${id}`)}
+                      style={{ cursor: id ? "pointer" : "default" }}
+                      actions={[
+                        c?.status ? <Tag key="status" color={c.status === "live" ? "green" : "default"}>{c.status}</Tag> : null,
+                        when ? <Text key="when" type="secondary">Updated: {fmtDate(when)}</Text> : null,
+                      ]}
+                    >
+                      <List.Item.Meta
+                        avatar={<Avatar icon={<ReadOutlined />} />}
+                        title={
+                          <span className="font-medium">
+                            {c?.title || `${c?.subject ?? "Subject"} • Grade ${c?.grade ?? "?"}`}
+                          </span>
+                        }
+                        description={
+                          <Space size="small" wrap>
+                            {c?.bundesland ? <Tag color="purple">{c.bundesland}</Tag> : null}
+                            {c?.subject ? <Tag>{c.subject}</Tag> : null}
+                            {c?.grade ? <Tag color="blue">Grade {c.grade}</Tag> : null}
+                          </Space>
+                        }
+                      />
+                    </List.Item>
+                  );
+                }}
+              />
+            </Card>
+          </Col>
+        </Row>
+
         {/* Recent Quizzes (live from /quizzes) */}
         <Row gutter={[16, 16]} className="mt-2">
           <Col xs={24}>
@@ -336,22 +496,42 @@ export default function NicePage() {
                       </Text>,
                     ]}
                   >
-                    <List.Item.Meta
-                      avatar={<Avatar icon={<ExperimentOutlined />} />}
-                      title={<span className="font-medium">{q.title || "(Untitled quiz)"} </span>}
-                      description={
-                        <Space size="small" wrap>
-                          {q.subject ? <Tag>{q.subject}</Tag> : null}
-                          {q.grade ? <Tag color="blue">Grade {q.grade}</Tag> : null}
-                          {q.bundesland ? <Tag color="purple">{q.bundesland}</Tag> : null}
-                          {q.difficulty ? (
-                            <Tag color={q.difficulty === "easy" ? "green" : q.difficulty === "hard" ? "volcano" : "geekblue"}>
-                              {q.difficulty}
-                            </Tag>
-                          ) : null}
-                        </Space>
-                      }
-                    />
+                    <div style={{ display: 'flex', width: '100%' }}>
+                      <div style={{ marginRight: 16 }}>
+                        <Avatar icon={<ExperimentOutlined />} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 4 }}>
+                        {q.title ? (
+                          <div dangerouslySetInnerHTML={{ __html: q.title }} />
+                        ) : q.description ? (
+                          <div dangerouslySetInnerHTML={{ __html: q.description }} />
+                        ) : (
+                          "(Untitled quiz)"
+                        )}
+                      </div>
+                      {q.description && q.title && q.title !== q.description && (
+                        <div style={{ fontSize: 14, color: '#666', marginTop: 2 }}>
+                          <div dangerouslySetInnerHTML={{ __html: q.description }} />
+                        </div>
+                      )}  
+                        <div>
+                          <Space size={[4, 8]} wrap>
+                            {q.subject && <Tag>{q.subject}</Tag>}
+                            {q.grade && <Tag color="blue">Grade {q.grade}</Tag>}
+                            {q.bundesland && <Tag color="purple">{q.bundesland}</Tag>}
+                            {q.difficulty && (
+                              <Tag color={q.difficulty === "easy" ? "green" : q.difficulty === "hard" ? "volcano" : "geekblue"}>
+                                {q.difficulty}
+                              </Tag>
+                            )}
+                            <Text type="secondary" style={{ fontSize: '12px' }}>
+                              {fmtDate(q.created_at)}
+                            </Text>
+                          </Space>
+                        </div>
+                      </div>
+                    </div>
                   </List.Item>
                 )}
               />

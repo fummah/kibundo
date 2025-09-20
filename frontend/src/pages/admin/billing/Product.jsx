@@ -130,6 +130,7 @@ export default function Product() {
   const isMdUp = screens.md;
 
   const drawerWidth = useResponsiveDrawerWidth();
+  const [messageApi, contextHolder] = message.useMessage();
 
   const [products, setProducts] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -167,7 +168,7 @@ export default function Product() {
       setProducts(res.data || []);
     } catch (err) {
       console.error("Failed to load products", err);
-      message.error("Failed to load products.");
+      messageApi.error("Failed to load products.");
     } finally {
       setLoadingTable(false);
     }
@@ -235,7 +236,7 @@ export default function Product() {
       if (!isCanceled(err)) {
         const fallback = (products || []).find((p) => String(p.id) === String(id));
         setViewRec(fallback || null);
-        if (!fallback) message.error("Failed to load product.");
+        if (!fallback) messageApi.error("Failed to load product.");
       }
     } finally {
       setViewLoading(false);
@@ -274,7 +275,7 @@ export default function Product() {
     } catch (err) {
       if (!isCanceled(err)) {
         console.error(err);
-        message.error("Failed to load product.");
+        messageApi.error("Failed to load product.");
         setOpen(false);
       }
     } finally {
@@ -288,7 +289,7 @@ export default function Product() {
       const payload = toApiPayload(values, editingId || undefined);
       setSaving(true);
       await api.post("/addproduct", payload);
-      message.success(editingId ? "Product saved." : "Product created.");
+      messageApi.success(editingId ? "Product saved." : "Product created.");
       setOpen(false);
       fetchProducts();
       if (viewOpen && viewRec?.id && viewRec?.id === editingId) {
@@ -298,7 +299,7 @@ export default function Product() {
       if (err?.errorFields) return;
       if (!isCanceled(err)) {
         console.error(err);
-        message.error("Save failed.");
+        messageApi.error("Save failed.");
       }
     } finally {
       setSaving(false);
@@ -308,14 +309,14 @@ export default function Product() {
   const onDelete = async (id) => {
     try {
       await api.delete(`/product/${id}`);
-      message.success("Product deleted.");
+      messageApi.success("Product deleted.");
       fetchProducts();
       if (viewOpen && viewRec?.id === id) closeView();
       setSelectedRowKeys((ks) => ks.filter((k) => k !== id));
     } catch (err) {
       if (!isCanceled(err)) {
         console.error(err);
-        message.error("Delete failed.");
+        messageApi.error("Delete failed.");
       }
     }
   };
@@ -324,7 +325,7 @@ export default function Product() {
     if (!selectedRowKeys.length) return;
     try {
       await Promise.all(selectedRowKeys.map((id) => api.delete(`/product/${id}`)));
-      message.success("Selected products deleted.");
+      messageApi.success("Selected products deleted.");
       setSelectedRowKeys([]);
       fetchProducts();
       if (viewOpen && viewRec && selectedRowKeys.includes(viewRec.id)) {
@@ -332,7 +333,7 @@ export default function Product() {
       }
     } catch (e) {
       console.error(e);
-      message.error("Bulk delete failed.");
+      messageApi.error("Bulk delete failed.");
     }
   };
 
@@ -544,6 +545,7 @@ export default function Product() {
   /* ---------------------------------- UI ---------------------------------- */
   return (
     <div className="space-y-4 sm:space-y-6 p-4 md:p-6 max-w-[1600px] mx-auto">
+      {contextHolder}
       <BillingEntityList
         title="Products"
         data={filteredProducts}

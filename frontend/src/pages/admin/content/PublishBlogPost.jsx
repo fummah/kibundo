@@ -283,6 +283,7 @@ export default function PublishBlogPost() {
   const [form] = Form.useForm();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const [messageApi, contextHolder] = message.useMessage();
 
   const rawId = params.get("id");
   const editingId =
@@ -355,7 +356,7 @@ export default function PublishBlogPost() {
     const url = URL.createObjectURL(file);
     form.setFieldsValue({ thumbnail_url: url });
     setThumbPreview(url);
-    message.success(`Thumbnail loaded: ${file.name}`);
+    messageApi.success(`Thumbnail loaded: ${file.name}`);
     return false;
   };
 
@@ -370,13 +371,13 @@ export default function PublishBlogPost() {
     try {
       const v = await form.validateFields();
       if (!v.body_html || !stripHtml(v.body_html)) {
-        message.error("Post body cannot be blank");
+        messageApi.error("Post body cannot be blank");
         return null;
       }
 
       const currentUser = JSON.parse(localStorage.getItem("user"));
       if (!currentUser?.id) {
-        message.error("No logged-in user found.");
+        messageApi.error("No logged-in user found.");
         return null;
       }
 
@@ -386,7 +387,7 @@ export default function PublishBlogPost() {
           seoJson = JSON.parse(v.seo);
         } catch {
           seoJson = {};
-          message.warning("Invalid SEO JSON, default will be used.");
+          messageApi.warning("Invalid SEO JSON, default will be used.");
         }
       }
 
@@ -422,11 +423,11 @@ export default function PublishBlogPost() {
         if (Number.isFinite(newId)) {
           navigate(`/admin/content/publish?id=${newId}`);
         } else {
-          message.warning("Saved, but no valid ID returned from server.");
+          messageApi.warning("Saved, but no valid ID returned from server.");
         }
       }
 
-      message.success(editingId ? "Post version updated" : "Post created");
+      messageApi.success(editingId ? "Post version updated" : "Post created");
       return saved || null;
     } finally {
       setSaving(false);
@@ -464,20 +465,21 @@ export default function PublishBlogPost() {
         window.open(`/admin/content/blog/preview/${id}`, "_blank");
       }
     } else {
-      message.error("Could not open preview: missing post ID.");
+      messageApi.error("Could not open preview: missing post ID.");
     }
   };
 
   const onDelete = async () => {
     if (!editingId) return;
     await apiDelete(editingId);
-    message.success("Post deleted");
+    messageApi.success("Post deleted");
     navigate("/admin/content");
   };
 
   // -------------------- Render --------------------
   return (
     <div className="max-w-[1400px] mx-auto px-3 md:px-4">
+      {contextHolder}
       <div className="flex items-center justify-between mb-3">
         <Space wrap>
           <Title level={3} className="!mb-0">

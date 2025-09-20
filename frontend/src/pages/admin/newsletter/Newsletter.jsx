@@ -133,6 +133,7 @@ const FEEDBACK_SUBJECT = "Quick feedback? 💬";
 /* -------------------------------------------------------------------------- */
 
 export default function Newsletter() {
+  const [messageApi, contextHolder] = message.useMessage();
   const [templates, setTemplates] = useState(DUMMY_TEMPLATES);
   const [campaigns, setCampaigns] = useState(DUMMY_CAMPAIGNS);
   const [optin, setOptin] = useState(DUMMY_OPTIN);
@@ -190,7 +191,7 @@ export default function Newsletter() {
       okButtonProps: { danger: true },
       onOk: () => {
         setTemplates((prev) => prev.filter((t) => t.id !== id));
-        message.success("Template deleted");
+        messageApi.success("Template deleted");
       },
     });
   };
@@ -227,7 +228,7 @@ export default function Newsletter() {
         subject: t?.subject,
       }));
     setLogs((prev) => [...newLogs, ...prev]);
-    message.success(`Campaign "${record.name}" sent to ${newLogs.length} recipients`);
+    messageApi.success(`Campaign "${record.name}" sent to ${newLogs.length} recipients`);
   };
   const scheduleCampaign = (record) => {
     setCampaigns((prev) =>
@@ -235,7 +236,7 @@ export default function Newsletter() {
         c.id === record.id ? { ...c, status: "scheduled", scheduled_for: dayjs().add(1, "day").toISOString() } : c
       )
     );
-    message.success(`Campaign "${record.name}" scheduled for tomorrow`);
+    messageApi.success(`Campaign "${record.name}" scheduled for tomorrow`);
   };
   const deleteCampaign = (id) => {
     Modal.confirm({
@@ -243,7 +244,7 @@ export default function Newsletter() {
       okButtonProps: { danger: true },
       onOk: () => {
         setCampaigns((prev) => prev.filter((c) => c.id !== id));
-        message.success("Campaign deleted");
+        messageApi.success("Campaign deleted");
       },
     });
   };
@@ -253,13 +254,13 @@ export default function Newsletter() {
       { ...record, id: nextId, name: `${record.name} (copy)`, status: "draft", scheduled_for: null, sent_at: null },
       ...prev,
     ]);
-    message.success("Campaign duplicated");
+    messageApi.success("Campaign duplicated");
   };
   const testSendCampaign = (record) => {
     Modal.confirm({
       title: "Send test email?",
       content: "A sample will be sent to the configured test inbox.",
-      onOk: () => message.success(`Test of "${record.name}" sent (simulated)`),
+      onOk: () => messageApi.success(`Test of "${record.name}" sent (simulated)`),
     });
   };
 
@@ -288,7 +289,7 @@ export default function Newsletter() {
     });
     setReactResults(results);
     setReactDrawerOpen(true);
-    message.success("Preview generated");
+    messageApi.success("Preview generated");
   };
 
   const runReactivation = async () => {
@@ -319,14 +320,14 @@ export default function Newsletter() {
     setReactDrawerOpen(true);
     setReactRunning(false);
     const awarded = results.filter((r) => r.action === "award").length;
-    message.success(`Run complete: ${awarded} coupon email(s) sent`);
+    messageApi.success(`Run complete: ${awarded} coupon email(s) sent`);
   };
 
   /* ---------------------- Feedback (paid / trial-ended) ---------------------- */
   // Uses dummy opt-in list; writes to logs immediately (no async scheduling here).
   const sendFeedbackEmails = (reason, delayHours) => {
     const recipients = optin.filter((o) => o.opted_in);
-    if (!recipients.length) return message.info("No opted-in recipients.");
+    if (!recipients.length) return messageApi.info("No opted-in recipients.");
     const baseId = Math.max(0, ...logs.map((l) => l.id)) + 1;
 
     const subject =
@@ -346,7 +347,7 @@ export default function Newsletter() {
     }));
 
     setLogs((prev) => [...entries, ...prev]);
-    message.success(`Feedback emails sent (simulated) — ${reason}, delay: ${delayHours}h`);
+    messageApi.success(`Feedback emails sent (simulated) — ${reason}, delay: ${delayHours}h`);
   };
 
   /* --------------------------------- forms --------------------------------- */
@@ -364,14 +365,14 @@ export default function Newsletter() {
             : t
         )
       );
-      message.success("Template updated");
+      messageApi.success("Template updated");
     } else {
       const nextId = Math.max(0, ...templates.map((t) => t.id)) + 1;
       setTemplates((prev) => [
         ...prev,
         { id: nextId, created_by: 1, updated_at: new Date().toISOString(), ...values, body_text: cleanText },
       ]);
-      message.success("Template created");
+      messageApi.success("Template created");
     }
     setTemplateModalOpen(false);
   };
@@ -389,7 +390,7 @@ export default function Newsletter() {
             : c
         )
       );
-      message.success("Campaign updated");
+      messageApi.success("Campaign updated");
     } else {
       const nextId = Math.max(0, ...campaigns.map((c) => c.id)) + 1;
       setCampaigns((prev) => [
@@ -402,7 +403,7 @@ export default function Newsletter() {
           ...values,
         },
       ]);
-      message.success("Campaign created");
+      messageApi.success("Campaign created");
     }
     setCampaignModalOpen(false);
   };
