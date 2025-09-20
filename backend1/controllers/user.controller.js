@@ -485,10 +485,9 @@ exports.deleteParent = async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
-
 exports.addproduct = async (req, res) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, price } = req.body;
     const created_by = req.user.id;
 
     // 1️⃣ Create product in Stripe
@@ -496,21 +495,29 @@ exports.addproduct = async (req, res) => {
       name,
       description,
     });
-   
 
-    // 2️⃣ Save product to your DB with stripe product id
+    // 2️⃣ Create price in Stripe (attach to product)
+    const stripePrice = await stripe.prices.create({
+      unit_amount: Math.round(price * 100), // price in cents
+      currency: 'usd', // or your preferred currency
+      product: stripeProduct.id,
+    });
+
+    // 3️⃣ Save product to your DB with stripe product id + local price
     const newProduct = await Product.create({
       stripe_product_id: stripeProduct.id,
       name,
       description,
+      price,
       created_by,
     });
 
-    // 3️⃣ Return response
+    // 4️⃣ Return response
     res.status(201).json({ 
       message: "New product registered",
       product: newProduct,
-      stripe_product: stripeProduct
+      stripe_product: stripeProduct,
+      stripe_price: stripePrice
     });
 
   } catch (err) {
@@ -518,6 +525,7 @@ exports.addproduct = async (req, res) => {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
+
 
 exports.getAllProducts = async (req, res) => {
   try {
