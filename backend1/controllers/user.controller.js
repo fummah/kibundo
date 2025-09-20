@@ -16,6 +16,7 @@ const Coupon = db.coupon;
 const Quiz = db.quiz;
 const QuizItem = db.quizItem;
 const Curriculum = db.curriculum;
+const Worksheet = db.worksheet;
 
 exports.adduser = async (req, res) => {
   try {
@@ -1136,5 +1137,82 @@ exports.deleteCurriculum = async (req, res) => {
   }
 };
 
+
+// 1️⃣ Create Worksheet
+exports.addWorksheet = async (req, res) => {
+  try {
+    const { title, description, subject, grade_level, file_url, status = 'draft' } = req.body;
+    const created_by = req.user.id;
+
+    const newWorksheet = await Worksheet.create({
+      title,
+      description,
+      subject,
+      grade_level,
+      file_url,
+      status,
+      created_by,
+      published_at: status === 'published' ? new Date() : null
+    });
+
+    return res.status(201).json({
+      message: 'Worksheet created successfully',
+      worksheet: newWorksheet
+    });
+  } catch (error) {
+    console.error('Error creating worksheet:', error);
+    return res.status(500).json({ error: 'Failed to create worksheet' });
+  }
+};
+
+// 2️⃣ Get all Worksheets
+exports.getAllWorksheets = async (req, res) => {
+  try {
+    const worksheets = await Worksheet.findAll({
+      include: []
+    });
+    return res.json(worksheets);
+  } catch (error) {
+    console.error('Error fetching worksheets:', error);
+    return res.status(500).json({ error: 'Failed to fetch worksheets' });
+  }
+};
+
+// 3️⃣ Get a single Worksheet by ID
+exports.getWorksheetById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const worksheet = await Worksheet.findByPk(id, {
+      include: []
+    });
+
+    if (!worksheet) {
+      return res.status(404).json({ error: 'Worksheet not found' });
+    }
+
+    return res.json(worksheet);
+  } catch (error) {
+    console.error('Error fetching worksheet:', error);
+    return res.status(500).json({ error: 'Failed to fetch worksheet' });
+  }
+};
+
+// 4️⃣ Delete a Worksheet
+exports.deleteWorksheet = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const deleted = await Worksheet.destroy({ where: { id } });
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Worksheet not found' });
+    }
+
+    return res.json({ message: 'Worksheet deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting worksheet:', error);
+    return res.status(500).json({ error: 'Failed to delete worksheet' });
+  }
+};
 
   
