@@ -1,30 +1,48 @@
-const OpenAI = require("openai");
-const db = require("../models");
-const User = db.user;
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const { buildContext } = require('../services/contextBuilder');
+const OpenAI = require('openai');
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEYFake });
 
-
-exports.chatWithAgent  = async (req, res) => {
+exports.chatWithAgent = async (req, res) => {
   try {
-    const { question, context } = req.body;
-const role = req.user.id;
-       const prompt = `
-  You are an AI assistant for an education system.
-  Role: ${role}.
-  Context: ${context}
-  
-  Question: ${question}
-  Answer in a helpful and clear way.
-  `;
+    const { question } = req.body;
 
-  const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "system", content: prompt }],
-  });
+    // Build structured context
+    const contextObj = await buildContext(req);
 
-  res.status(200).json(response.choices[0].message.content);
+    // Optionally summarize/trim the context before sending (see tips below)
+    const trimmedContext = summarizeContext(contextObj);
+
+    // Send to OpenAI as part of the system prompt
+    const systemContent = `You are an AI assistant for Kibundo Education System.
+Context: ${JSON.stringify(trimmedContext)}`;
+
+    const resp = await client.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemContent },
+        { role: 'user', content: question }
+      ]
+    });
+
+    const answer = resp.choices?.[0]?.message?.content || '';
+    res.json({ answer, context: trimmedContext });
+
   } catch (err) {
-    console.error("Error chatgpt:", err);
-    res.status(500).json({ message: "Failed to get chatgpt" });
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 };
+
+// small helper to reduce context size
+function summarizeContext(ctx) {
+  return {
+    user: ctx.user,
+    subscription: ctx.subscription ? { plan: ctx.subscription.plan, status: ctx.subscription.status, ends_at: ctx.subscription.ends_at } : null,
+    children: (ctx.children || []).slice(0, 3).map(c => ({
+      id: c.id, name: c.name, grade_level: c.grade_level,
+      recent_grade: c.latest_reports?.[0]?.grade || null
+    })),
+    recent_invoices_count: (ctx.recent_invoices || []).length,
+    last_active: ctx.last_active
+  };
+}
