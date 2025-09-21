@@ -6,7 +6,7 @@ const { getAllUsers, getAllRoles, addstudent, addteacher, addclass, addsubject, 
 deleteProduct, addsubscription, getAllSubscriptions, getSubscriptionById, deleteSubscription, addblogpost,getAllBlogPosts, 
 getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice, addcoupon, 
 getAllCoupons, getCouponById,deleteCoupon, addrole, adduser,addquiz,  getQuizzes, getQuizById,  deleteQuiz, 
-addcurriculum, getAllCurriculum,getCurriculumById, deleteCurriculum } = require("../controllers/user.controller");
+addcurriculum, getAllCurriculum,getCurriculumById, deleteCurriculum, addWorksheet, getAllWorksheets, getWorksheetById, deleteWorksheet } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
 
@@ -64,5 +64,9 @@ router.post("/addcurriculum",verifyToken, addcurriculum);
 router.get('/curiculums', verifyToken,getAllCurriculum);
 router.get('/curriculum/:id', verifyToken,getCurriculumById);
 router.delete('/curriculum/:id', verifyToken,deleteCurriculum);
+router.post("/addworksheet",verifyToken, addWorksheet);
+router.get('/worksheets', verifyToken,getAllWorksheets);
+router.get('/worksheet/:id', verifyToken,getWorksheetById);
+router.delete('/worksheet/:id', verifyToken,deleteWorksheet);
 
 module.exports = router;

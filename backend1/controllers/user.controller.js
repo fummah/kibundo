@@ -16,6 +16,7 @@ const Coupon = db.coupon;
 const Quiz = db.quiz;
 const QuizItem = db.quizItem;
 const Curriculum = db.curriculum;
+const Worksheet = db.worksheet;
 
 exports.adduser = async (req, res) => {
   try {
@@ -485,10 +486,9 @@ exports.deleteParent = async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
-
 exports.addproduct = async (req, res) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, price } = req.body;
     const created_by = req.user.id;
 
     // 1️⃣ Create product in Stripe
@@ -496,21 +496,29 @@ exports.addproduct = async (req, res) => {
       name,
       description,
     });
-   
 
-    // 2️⃣ Save product to your DB with stripe product id
+    // 2️⃣ Create price in Stripe (attach to product)
+    const stripePrice = await stripe.prices.create({
+      unit_amount: Math.round(price * 100), // price in cents
+      currency: 'usd', // or your preferred currency
+      product: stripeProduct.id,
+    });
+
+    // 3️⃣ Save product to your DB with stripe product id + local price
     const newProduct = await Product.create({
       stripe_product_id: stripeProduct.id,
       name,
       description,
+      price,
       created_by,
     });
 
-    // 3️⃣ Return response
+    // 4️⃣ Return response
     res.status(201).json({ 
       message: "New product registered",
       product: newProduct,
-      stripe_product: stripeProduct
+      stripe_product: stripeProduct,
+      stripe_price: stripePrice
     });
 
   } catch (err) {
@@ -518,6 +526,7 @@ exports.addproduct = async (req, res) => {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
+
 
 exports.getAllProducts = async (req, res) => {
   try {
@@ -1128,5 +1137,82 @@ exports.deleteCurriculum = async (req, res) => {
   }
 };
 
+
+// 1️⃣ Create Worksheet
+exports.addWorksheet = async (req, res) => {
+  try {
+    const { title, description, subject, grade_level, file_url, status = 'draft' } = req.body;
+    const created_by = req.user.id;
+
+    const newWorksheet = await Worksheet.create({
+      title,
+      description,
+      subject,
+      grade_level,
+      file_url,
+      status,
+      created_by,
+      published_at: status === 'published' ? new Date() : null
+    });
+
+    return res.status(201).json({
+      message: 'Worksheet created successfully',
+      worksheet: newWorksheet
+    });
+  } catch (error) {
+    console.error('Error creating worksheet:', error);
+    return res.status(500).json({ error: 'Failed to create worksheet' });
+  }
+};
+
+// 2️⃣ Get all Worksheets
+exports.getAllWorksheets = async (req, res) => {
+  try {
+    const worksheets = await Worksheet.findAll({
+      include: []
+    });
+    return res.json(worksheets);
+  } catch (error) {
+    console.error('Error fetching worksheets:', error);
+    return res.status(500).json({ error: 'Failed to fetch worksheets' });
+  }
+};
+
+// 3️⃣ Get a single Worksheet by ID
+exports.getWorksheetById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const worksheet = await Worksheet.findByPk(id, {
+      include: []
+    });
+
+    if (!worksheet) {
+      return res.status(404).json({ error: 'Worksheet not found' });
+    }
+
+    return res.json(worksheet);
+  } catch (error) {
+    console.error('Error fetching worksheet:', error);
+    return res.status(500).json({ error: 'Failed to fetch worksheet' });
+  }
+};
+
+// 4️⃣ Delete a Worksheet
+exports.deleteWorksheet = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const deleted = await Worksheet.destroy({ where: { id } });
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Worksheet not found' });
+    }
+
+    return res.json({ message: 'Worksheet deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting worksheet:', error);
+    return res.status(500).json({ error: 'Failed to delete worksheet' });
+  }
+};
 
   
