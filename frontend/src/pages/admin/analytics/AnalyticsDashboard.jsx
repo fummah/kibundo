@@ -1,4 +1,4 @@
-// src/pages/admin/AnalyticsDashboard.jsx
+// src/pages/admin/analytics/AnalyticsDashboard.jsx
 import { useEffect, useRef, useState } from "react";
 import {
   Typography,
@@ -47,115 +47,142 @@ const clampNum = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : 
 const formatNumber = (num) =>
   Number(clampNum(num)).toLocaleString("en-US", { maximumFractionDigits: 0 });
 
-// Fetch total users same way as AdminDashboard
-async function getJson(path, token) {
+// Fetch dashboard data
+async function fetchDashboardBundle(token) {
   try {
-    const { data } = await api.get(path, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      withCredentials: true,
-    });
-    return data ?? null;
-  } catch {
-    return null;
+    const [overviewRes, parentsRes, studentsRes] = await Promise.all([
+      api.get('/admin/dashboard', {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        withCredentials: true,
+      }),
+      api.get('/parents', {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        withCredentials: true,
+      }),
+      api.get('/allstudents', {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        withCredentials: true,
+      })
+    ]);
+
+    return {
+      overview: overviewRes?.data || {},
+      counts: {
+        parents: Array.isArray(parentsRes?.data) ? parentsRes.data.length : 0,
+        students: Array.isArray(studentsRes?.data) ? studentsRes.data.length : 0,
+      }
+    };
+  } catch (error) {
+    console.error('Error fetching dashboard data:', error);
+    throw error;
   }
 }
 
-async function fetchDashboardBundle(token) {
-  const [overview, parents, students] = await Promise.all([
-    getJson("/admin/dashboard", token),
-    getJson("/parents", token),
-    getJson("/allstudents", token),
-  ]);
-
-  const len = (x) => (Array.isArray(x) ? x.length : 0);
-
-  return {
-    overview,
-    counts: {
-      parents: len(parents),
-      students: len(students),
-    },
-  };
-}
-
 function adaptAnalyticsPayload(payload = {}) {
-  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  if (!payload || typeof payload !== 'object') {
+    return {
+      stats: { totalUsers: 0, activeUsers: 0, newUsers: 0 },
+      trials: { inTrial: 0, endingToday: 0, endingTomorrow: 0, usersInTrial: [], usersEndingToday: [] },
+      customerInsights: { satisfaction: 0, sessionDuration: 0, retentionRate: 0 },
+      revenue: { total: 0, subscriptions: 0, renewalRate: 0, currency: 'ZAR' },
+      lineData: [],
+      barData: [],
+      deviceUsage: []
+    };
+  }
+
+  // Helper functions
+  const num = (v, fallback = 0) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  
   const pct = (v) => {
     const n = Number(v);
     if (!Number.isFinite(n)) return 0;
-    return n > 1 ? n : Math.round(n * 100);
-  };
-  const toRand = (v) => {
-    const n = Number(v) || 0;
-    return n > 1000 ? n / 100 : n; // cents heuristic
+    return n > 1 ? Math.round(n) : Math.round(n * 100);
   };
 
+  // Safely get nested properties
+  const safeGet = (obj, path, defaultValue) => {
+    return path.split('.').reduce((o, p) => (o && o[p] !== undefined ? o[p] : defaultValue), obj);
+  };
+
+  // Extract stats
   const stats = {
-    totalUsers: num(payload?.stats?.totalUsers ?? payload?.stats?.total_users ?? payload?.stats?.total ?? 0),
-    activeUsers: num(payload?.stats?.activeUsers ?? payload?.stats?.active_users ?? payload?.stats?.active ?? 0),
-    newUsers: num(payload?.stats?.newUsers ?? payload?.stats?.new_users ?? payload?.stats?.new ?? 0),
+    totalUsers: num(safeGet(payload, 'stats.totalUsers', safeGet(payload, 'total_users', 0))),
+    activeUsers: num(safeGet(payload, 'stats.activeUsers', safeGet(payload, 'active_users', 0))),
+    newUsers: num(safeGet(payload, 'stats.newUsers', safeGet(payload, 'new_users', 0))),
   };
 
-  const t = payload.trials ?? {};
+  // Extract trials data
   const trials = {
-    inTrial: num(t.inTrial ?? t.in_trial ?? t.count ?? 0),
-    endingToday: num(t.endingToday ?? t.ending_today ?? t.ends_today ?? 0),
-    endingTomorrow: num(t.endingTomorrow ?? t.ending_tomorrow ?? t.ends_tomorrow ?? 0),
-    usersInTrial: Array.isArray(t.usersInTrial ?? t.users_in_trial) ? (t.usersInTrial ?? t.users_in_trial) : [],
-    usersEndingToday: Array.isArray(t.usersEndingToday ?? t.users_ending_today) ? (t.usersEndingToday ?? t.users_ending_today) : [],
+    inTrial: num(safeGet(payload, 'trials.inTrial', safeGet(payload, 'trials.count', 0))),
+    endingToday: num(safeGet(payload, 'trials.endingToday', safeGet(payload, 'trials.ends_today', 0))),
+    endingTomorrow: num(safeGet(payload, 'trials.endingTomorrow', safeGet(payload, 'trials.ends_tomorrow', 0))),
+    usersInTrial: Array.isArray(safeGet(payload, 'trials.usersInTrial', safeGet(payload, 'trials.users', []))) 
+      ? safeGet(payload, 'trials.usersInTrial', safeGet(payload, 'trials.users', [])) 
+      : [],
+    usersEndingToday: Array.isArray(safeGet(payload, 'trials.usersEndingToday', safeGet(payload, 'trials.ending_users', [])))
+      ? safeGet(payload, 'trials.usersEndingToday', safeGet(payload, 'trials.ending_users', []))
+      : []
   };
 
-  const ci = payload.customerInsights ?? payload.customer_insights ?? {};
+  // Extract customer insights
   const customerInsights = {
-    satisfaction: pct(ci.satisfaction ?? ci.satisfaction_pct ?? ci.csat ?? 0),
-    sessionDuration: num(ci.sessionDuration ?? ci.session_duration ?? ci.avg_session_mins ?? 0),
-    retentionRate: pct(ci.retentionRate ?? ci.retention_rate_pct ?? ci.retention ?? 0),
+    satisfaction: pct(safeGet(payload, 'customerInsights.satisfaction', safeGet(payload, 'csat_score', 0))),
+    sessionDuration: num(safeGet(payload, 'customerInsights.sessionDuration', safeGet(payload, 'avg_session_minutes', 0))),
+    retentionRate: pct(safeGet(payload, 'customerInsights.retentionRate', safeGet(payload, 'retention_rate', 0))),
   };
 
-  const r = payload.revenue ?? {};
+  // Extract revenue data
   const revenue = {
-    total: toRand(r.total_cents ?? r.total ?? r.revenue_cents ?? r.revenue ?? 0),
-    subscriptions: num(r.subscriptions ?? r.active_subscriptions ?? r.subs ?? 0),
-    renewalRate: pct(r.renewalRate ?? r.renewal_rate_pct ?? r.renewal ?? 0),
-    currency: (r.currency || "ZAR").toUpperCase(),
+    total: num(safeGet(payload, 'revenue.total', safeGet(payload, 'total_revenue', 0))),
+    subscriptions: num(safeGet(payload, 'revenue.subscriptions', safeGet(payload, 'active_subscriptions', 0))),
+    renewalRate: pct(safeGet(payload, 'revenue.renewalRate', safeGet(payload, 'renewal_rate', 0))),
+    currency: safeGet(payload, 'revenue.currency', 'ZAR').toUpperCase(),
   };
 
-  const lineRaw = payload.series?.user_growth ?? payload.series?.userGrowth ?? payload.series?.users ?? payload.lineData ?? [];
-  const lineData = (Array.isArray(lineRaw) ? lineRaw : []).map((p) => ({
-    date: String(p.date ?? p.day ?? p.label ?? ""),
-    value: num(p.value ?? p.count ?? p.total ?? 0),
-  }));
+  // Process time series data
+  const lineData = (safeGet(payload, 'series.user_growth', safeGet(payload, 'user_growth', [])) || [])
+    .map(item => ({
+      date: String(item.date || item.day || ''),
+      value: num(item.value || item.count || 0)
+    }));
 
-  const barRaw = payload.series?.quarterly_revenue ?? payload.series?.revenue ?? payload.barData ?? payload.quarters ?? [];
-  const barData = (Array.isArray(barRaw) ? barRaw : []).map((p) => ({
-    label: String(p.label ?? p.quarter ?? p.period ?? ""),
-    value: toRand(p.value_cents ?? p.value ?? p.amount_cents ?? p.amount ?? 0),
-  }));
+  const barData = (safeGet(payload, 'series.quarterly_revenue', safeGet(payload, 'quarterly_revenue', [])) || [])
+    .map(item => ({
+      label: String(item.label || item.quarter || ''),
+      value: num(item.value || item.amount || 0)
+    }));
 
-  const dev = payload.deviceUsage ?? payload.devices ?? {};
-  const desktop = num(dev.desktop ?? dev.web ?? dev.pc ?? 0);
-  const mobile  = num(dev.mobile  ?? dev.phone ?? 0);
-  const tablet  = num(dev.tablet  ?? dev.tab   ?? 0);
-  const sum = desktop + mobile + tablet;
-  const looksLikeShare = [desktop, mobile, tablet].every((v) => v <= 1);
+  // Process device usage
+  const deviceUsage = (() => {
+    const devices = safeGet(payload, 'deviceUsage', safeGet(payload, 'devices', {}));
+    const desktop = num(devices.desktop || devices.web || 0);
+    const mobile = num(devices.mobile || devices.phone || 0);
+    const tablet = num(devices.tablet || 0);
+    const total = desktop + mobile + tablet;
 
-  const deviceUsage = looksLikeShare
-    ? [
-        { name: "Desktop", value: desktop },
-        { name: "Mobile",  value: mobile  },
-        { name: "Tablet",  value: tablet  },
-      ]
-    : sum > 0
-      ? [
-          { name: "Desktop", value: desktop / sum },
-          { name: "Mobile",  value: mobile  / sum },
-          { name: "Tablet",  value: tablet  / sum },
-        ]
-      : [];
+    if (total === 0) return [];
 
-  return { stats, trials, customerInsights, revenue, lineData, barData, deviceUsage };
+    return [
+      { name: 'Desktop', value: desktop / total },
+      { name: 'Mobile', value: mobile / total },
+      { name: 'Tablet', value: tablet / total }
+    ];
+  })();
+
+  return {
+    stats,
+    trials,
+    customerInsights,
+    revenue,
+    lineData,
+    barData,
+    deviceUsage
+  };
 }
-
 
 export default function AnalyticsDashboard() {
   const { user } = useAuthContext();
@@ -165,12 +192,14 @@ export default function AnalyticsDashboard() {
   const [overviewData, setOverviewData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("7");
-
   const refreshRef = useRef(false);
 
   const fetchData = async () => {
     try {
       setLoading(true);
+      setData(null);
+      setOverviewData(null);
+
       const [analyticsRes, overviewRes] = await Promise.allSettled([
         api.get("/analytics/dashboard", {
           params: { days: filter },
@@ -186,14 +215,17 @@ export default function AnalyticsDashboard() {
         setData(adapted);
       } else {
         message.error("Failed to load analytics dashboard");
+        console.error("Analytics error:", analyticsRes.reason);
       }
 
       if (overviewRes.status === "fulfilled") {
         setOverviewData(overviewRes.value);
       } else {
+        console.error("Overview error:", overviewRes.reason);
         setOverviewData(null);
       }
     } catch (e) {
+      console.error("Fetch error:", e);
       message.error("Failed to load analytics/overview data");
     } finally {
       setLoading(false);
@@ -202,7 +234,7 @@ export default function AnalyticsDashboard() {
 
   useEffect(() => {
     fetchData();
-  }, [filter]);
+  }, [filter, token]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -212,7 +244,11 @@ export default function AnalyticsDashboard() {
   }, []);
 
   const handleExport = (type, rows, title = "Export") => {
-    if (!rows?.length) return;
+    if (!rows?.length) {
+      message.warning("No data to export");
+      return;
+    }
+
     const head = Object.keys(rows[0] ?? {});
 
     if (type === "pdf") {
@@ -229,16 +265,20 @@ export default function AnalyticsDashboard() {
 
     const csvContent = [
       head.join(","),
-      ...rows.map((r) => head.map((k) => String(r?.[k] ?? "")).join(",")),
+      ...rows.map((r) => head.map((k) => `"${String(r?.[k] ?? "").replace(/"/g, '""')}"`).join(",")),
     ].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv" });
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `${title}.csv`;
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${title}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
   };
 
-  if (loading || !data) {
+  if (loading && !data) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <Spin size="large" />
@@ -246,32 +286,15 @@ export default function AnalyticsDashboard() {
     );
   }
 
-  const statsRaw = data?.stats ?? { totalUsers: 0, activeUsers: 0, newUsers: 0 };
-
-  const parentsCount = clampNum(overviewData?.counts?.parents ?? 0);
-  const studentsCount = clampNum(overviewData?.counts?.students ?? 0);
-  const totalUsersFromAdmin = parentsCount + studentsCount;
-
-  const stats = {
-    ...statsRaw,
-    totalUsers:
-      Number.isFinite(totalUsersFromAdmin) && (parentsCount || studentsCount)
-        ? totalUsersFromAdmin
-        : clampNum(statsRaw.totalUsers ?? 0),
-  };
-
-  const trials = data?.trials ?? { inTrial: 0, endingToday: 0, endingTomorrow: 0, usersInTrial: [], usersEndingToday: [] };
-
-  const customerInsights = data?.customerInsights ?? { satisfaction: 0, sessionDuration: 0, retentionRate: 0 };
-
-  const revenue = data?.revenue ?? { total: 0, subscriptions: 0, renewalRate: 0 };
-
-  const lineData = Array.isArray(data?.lineData) ? data.lineData : [];
-  const barData = Array.isArray(data?.barData) ? data.barData : [];
-
-  const deviceUsage = Array.isArray(data?.deviceUsage)
-    ? data.deviceUsage
-    : data.deviceUsage;
+  const { 
+    stats = { totalUsers: 0, activeUsers: 0, newUsers: 0 },
+    trials = { inTrial: 0, endingToday: 0, endingTomorrow: 0, usersInTrial: [], usersEndingToday: [] },
+    customerInsights = { satisfaction: 0, sessionDuration: 0, retentionRate: 0 },
+    revenue = { total: 0, subscriptions: 0, renewalRate: 0, currency: 'ZAR' },
+    lineData = [],
+    barData = [],
+    deviceUsage = []
+  } = data || {};
 
   const trialCols = [
     { title: "User", dataIndex: "name", key: "name", render: (v, r) => v || r.email || "-" },
@@ -284,23 +307,45 @@ export default function AnalyticsDashboard() {
   const usersInTrial = Array.isArray(trials.usersInTrial) ? trials.usersInTrial : [];
   const usersEndingToday = Array.isArray(trials.usersEndingToday) ? trials.usersEndingToday : [];
 
+  // Calculate derived values
+  const totalUsersFromAdmin = (overviewData?.counts?.parents || 0) + (overviewData?.counts?.students || 0);
+  const finalStats = {
+    ...stats,
+    totalUsers: totalUsersFromAdmin || stats.totalUsers
+  };
+
   return (
     <div className="p-4 sm:p-6 dark:bg-gray-900 min-h-screen max-w-[1600px] mx-auto">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
         <Title level={3} className="!mb-0">📊 Analytics Dashboard</Title>
         <div className="flex gap-2">
-          <Select defaultValue={filter} onChange={setFilter} style={{ width: 160 }}>
+          <Select 
+            value={filter} 
+            onChange={setFilter} 
+            style={{ width: 160 }}
+            disabled={loading}
+          >
             <Option value="7">Last 7 days</Option>
             <Option value="30">Last 30 days</Option>
             <Option value="90">Last 90 days</Option>
           </Select>
-          <Button icon={<ReloadOutlined />} onClick={fetchData}>Refresh</Button>
+          <Button 
+            icon={<ReloadOutlined />} 
+            onClick={fetchData}
+            loading={loading}
+          >
+            Refresh
+          </Button>
         </div>
       </div>
 
       {/* Stats */}
       <Row gutter={[16, 16]}>
-        {[{ title: "Total Users", value: stats.totalUsers }, { title: "Active Users", value: stats.activeUsers }, { title: "New Users", value: stats.newUsers }].map((item, idx) => (
+        {[
+          { title: "Total Users", value: finalStats.totalUsers }, 
+          { title: "Active Users", value: finalStats.activeUsers }, 
+          { title: "New Users", value: finalStats.newUsers }
+        ].map((item, idx) => (
           <Col xs={24} sm={12} md={8} key={idx}>
             <Card hoverable className="transition-all shadow-sm" variant="outlined">
               <Text type="secondary">{item.title}</Text>
@@ -350,7 +395,7 @@ export default function AnalyticsDashboard() {
 
       <Row gutter={[16, 16]} className="mt-2">
         {[
-          { title: "Total Revenue", value: `R ${formatNumber(revenue.total)}` },
+          { title: "Total Revenue", value: `${revenue.currency} ${formatNumber(revenue.total)}` },
           { title: "Subscriptions", value: formatNumber(revenue.subscriptions) },
           { title: "Renewal Rate", value: `${revenue.renewalRate}%` },
         ].map((item, idx) => (
@@ -373,11 +418,19 @@ export default function AnalyticsDashboard() {
             title={
               <Space>
                 <LineChartOutlined /> User Growth
-                <Button size="small" onClick={() => handleExport("pdf", lineData, "User Growth")}>
-                  PDF
-                </Button>
-                <Button size="small" onClick={() => handleExport("csv", lineData, "User Growth")}>
+                <Button 
+                  size="small" 
+                  onClick={() => handleExport("csv", lineData, "User Growth")}
+                  disabled={!lineData?.length}
+                >
                   CSV
+                </Button>
+                <Button 
+                  size="small" 
+                  onClick={() => handleExport("pdf", lineData, "User Growth")}
+                  disabled={!lineData?.length}
+                >
+                  PDF
                 </Button>
               </Space>
             }
@@ -389,11 +442,18 @@ export default function AnalyticsDashboard() {
                   <XAxis dataKey="date" />
                   <YAxis />
                   <RechartsTooltip />
-                  <Line type="monotone" dataKey="value" stroke="#1890ff" strokeWidth={2} isAnimationActive />
+                  <Line 
+                    type="monotone" 
+                    dataKey="value" 
+                    stroke="#1890ff" 
+                    strokeWidth={2} 
+                    dot={{ r: 3 }} 
+                    activeDot={{ r: 5 }} 
+                  />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
-              <Empty description="No data" />
+              <Empty description="No data available" />
             )}
           </Card>
         </Col>
@@ -406,11 +466,19 @@ export default function AnalyticsDashboard() {
             title={
               <Space>
                 <BarChartOutlined /> Quarterly Revenue
-                <Button size="small" onClick={() => handleExport("pdf", barData, "Quarterly Revenue")}>
-                  PDF
-                </Button>
-                <Button size="small" onClick={() => handleExport("csv", barData, "Quarterly Revenue")}>
+                <Button 
+                  size="small" 
+                  onClick={() => handleExport("csv", barData, "Quarterly Revenue")}
+                  disabled={!barData?.length}
+                >
                   CSV
+                </Button>
+                <Button 
+                  size="small" 
+                  onClick={() => handleExport("pdf", barData, "Quarterly Revenue")}
+                  disabled={!barData?.length}
+                >
+                  PDF
                 </Button>
               </Space>
             }
@@ -421,19 +489,34 @@ export default function AnalyticsDashboard() {
                 <BarChart data={barData}>
                   <XAxis dataKey="label" />
                   <YAxis />
-                  <RechartsTooltip />
-                  <Bar dataKey="value" fill="#52c41a" barSize={40} isAnimationActive />
+                  <RechartsTooltip 
+                    formatter={(value) => [`${revenue.currency} ${formatNumber(value)}`, "Revenue"]}
+                  />
+                  <Bar 
+                    dataKey="value" 
+                    fill="#52c41a" 
+                    barSize={40} 
+                    radius={[4, 4, 0, 0]}
+                  >
+                    {barData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={`hsl(${(index * 60) % 360}, 70%, 50%)`} 
+                      />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <Empty description="No data" />
+              <Empty description="No data available" />
             )}
           </Card>
         </Col>
       </Row>
 
-      {/* Device Usage (includes Tablets) */}
+      {/* Device Usage & Trial Lists */}
       <Row gutter={[16, 16]} className="mt-6">
+        {/* Device Usage */}
         <Col xs={24} md={12}>
           <Card
             hoverable
@@ -443,25 +526,29 @@ export default function AnalyticsDashboard() {
               <Space>
                 <Button
                   size="small"
-                  onClick={() =>
-                    handleExport(
-                      "csv",
-                      deviceUsage.map((d) => ({ device: d.name, share: d.value })),
-                      "Device Usage"
-                    )
-                  }
+                  onClick={() => handleExport(
+                    "csv",
+                    deviceUsage.map(d => ({ 
+                      device: d.name, 
+                      percentage: `${Math.round(d.value * 100)}%` 
+                    })),
+                    "Device Usage"
+                  )}
+                  disabled={!deviceUsage?.length}
                 >
                   CSV
                 </Button>
                 <Button
                   size="small"
-                  onClick={() =>
-                    handleExport(
-                      "pdf",
-                      deviceUsage.map((d) => ({ device: d.name, share: d.value })),
-                      "Device Usage"
-                    )
-                  }
+                  onClick={() => handleExport(
+                    "pdf",
+                    deviceUsage.map(d => ({ 
+                      device: d.name, 
+                      percentage: `${Math.round(d.value * 100)}%` 
+                    })),
+                    "Device Usage"
+                  )}
+                  disabled={!deviceUsage?.length}
                 >
                   PDF
                 </Button>
@@ -477,18 +564,24 @@ export default function AnalyticsDashboard() {
                     nameKey="name"
                     innerRadius={60}
                     outerRadius={100}
-                    label={(d) => `${d.name}: ${(d.value * 100).toFixed(0)}%`}
+                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    labelLine={false}
                   >
-                    {deviceUsage.map((entry, i) => (
-                      <Cell key={`cell-${i}`} fill={DEVICE_COLORS[i % DEVICE_COLORS.length]} />
+                    {deviceUsage.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={DEVICE_COLORS[index % DEVICE_COLORS.length]} 
+                      />
                     ))}
                   </Pie>
                   <Legend />
-                  <RechartsTooltip formatter={(v) => `${(v * 100).toFixed(1)}%`} />
+                  <RechartsTooltip 
+                    formatter={(value) => [`${(value * 100).toFixed(1)}%`]}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <Empty description="No data" />
+              <Empty description="No device usage data available" />
             )}
           </Card>
         </Col>
@@ -503,37 +596,15 @@ export default function AnalyticsDashboard() {
               <Space>
                 <Button
                   size="small"
-                  onClick={() =>
-                    handleExport(
-                      "csv",
-                      (usersInTrial ?? []).map((u) => ({
-                        name: u.name ?? "",
-                        email: u.email ?? "",
-                        state: u.state ?? "",
-                        grade: u.grade ?? "",
-                        ends_at: u.ends_at ?? "",
-                      })),
-                      "Users in Free Trial"
-                    )
-                  }
+                  onClick={() => handleExport("csv", usersInTrial, "Users in Free Trial")}
+                  disabled={!usersInTrial?.length}
                 >
                   CSV
                 </Button>
                 <Button
                   size="small"
-                  onClick={() =>
-                    handleExport(
-                      "pdf",
-                      (usersInTrial ?? []).map((u) => ({
-                        name: u.name ?? "",
-                        email: u.email ?? "",
-                        state: u.state ?? "",
-                        grade: u.grade ?? "",
-                        ends_at: u.ends_at ?? "",
-                      })),
-                      "Users in Free Trial"
-                    )
-                  }
+                  onClick={() => handleExport("pdf", usersInTrial, "Users in Free Trial")}
+                  disabled={!usersInTrial?.length}
                 >
                   PDF
                 </Button>
@@ -542,11 +613,15 @@ export default function AnalyticsDashboard() {
             className="mb-4"
           >
             <Table
-              rowKey={(r) => r.id ?? r.email}
+              rowKey={(r) => r.id || r.email || `trial-${Math.random()}`}
               columns={trialCols}
               dataSource={usersInTrial}
               size="small"
               pagination={{ pageSize: 5 }}
+              scroll={{ x: true }}
+              locale={{
+                emptyText: <Empty description="No users in trial" />
+              }}
             />
           </Card>
 
@@ -558,37 +633,15 @@ export default function AnalyticsDashboard() {
               <Space>
                 <Button
                   size="small"
-                  onClick={() =>
-                    handleExport(
-                      "csv",
-                      (usersEndingToday ?? []).map((u) => ({
-                        name: u.name ?? "",
-                        email: u.email ?? "",
-                        state: u.state ?? "",
-                        grade: u.grade ?? "",
-                        ends_at: u.ends_at ?? "",
-                      })),
-                      "Trials Ending Today"
-                    )
-                  }
+                  onClick={() => handleExport("csv", usersEndingToday, "Trials Ending Today")}
+                  disabled={!usersEndingToday?.length}
                 >
                   CSV
                 </Button>
                 <Button
                   size="small"
-                  onClick={() =>
-                    handleExport(
-                      "pdf",
-                      (usersEndingToday ?? []).map((u) => ({
-                        name: u.name ?? "",
-                        email: u.email ?? "",
-                        state: u.state ?? "",
-                        grade: u.grade ?? "",
-                        ends_at: u.ends_at ?? "",
-                      })),
-                      "Trials Ending Today"
-                    )
-                  }
+                  onClick={() => handleExport("pdf", usersEndingToday, "Trials Ending Today")}
+                  disabled={!usersEndingToday?.length}
                 >
                   PDF
                 </Button>
@@ -596,11 +649,15 @@ export default function AnalyticsDashboard() {
             }
           >
             <Table
-              rowKey={(r) => r.id ?? r.email}
+              rowKey={(r) => r.id || r.email || `ending-${Math.random()}`}
               columns={trialCols}
               dataSource={usersEndingToday}
               size="small"
               pagination={{ pageSize: 5 }}
+              scroll={{ x: true }}
+              locale={{
+                emptyText: <Empty description="No trials ending today" />
+              }}
             />
           </Card>
         </Col>

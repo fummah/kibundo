@@ -1,6 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, unstable_HistoryRouter as HistoryRouter } from "react-router-dom";
+import { createBrowserHistory } from "history";
+
+// Create a custom history object to access navigation outside components
+const history = createBrowserHistory({
+  future: {
+    v7_startTransition: true,
+    v7_relativeSplatPath: true,
+  },
+});
 
 // 🔐 Auth Context
 import { AuthProvider } from "./context/AuthContext";
@@ -46,7 +55,10 @@ root.render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       {/* <ReactQueryDevtools initialIsOpen={false} /> */}
-      <BrowserRouter>
+      <HistoryRouter history={history} future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true,
+      }}>
         <AuthProvider>
           <ErrorBoundary>
             <AppTheme>
@@ -54,7 +66,7 @@ root.render(
             </AppTheme>
           </ErrorBoundary>
         </AuthProvider>
-      </BrowserRouter>
+      </HistoryRouter>
     </QueryClientProvider>
   </React.StrictMode>
 );
