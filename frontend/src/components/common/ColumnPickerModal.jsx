@@ -21,7 +21,7 @@ export default function ColumnPickerModal({
   const uniq = (arr) => Array.from(new Set(arr || []));
 
   return (
-    <Modal title={title} open={open} onCancel={onClose} onOk={onClose} okText={okText} destroyOnClose>
+    <Modal title={title} open={open} onCancel={onClose} onOk={onClose} okText={okText} destroyOnClose={false}>
       <div className="mb-2">
         <Space wrap>
           <Button onClick={() => onChange(keys)}>Select all</Button>

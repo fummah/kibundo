@@ -40,7 +40,9 @@ export default function ConfirmDrawer({
       closable={closable}
       // 👇 keep panel and mask below the header
       style={{ top: topOffset }}
-      maskStyle={{ top: topOffset }}
+      styles={{
+        mask: { top: topOffset }
+      }}
       extra={
         <Space>
           {showCloseButton && (

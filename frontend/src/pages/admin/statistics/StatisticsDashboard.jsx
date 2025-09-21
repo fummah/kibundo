@@ -1,11 +1,38 @@
-// src/pages/admin/statistics/StatisticsDashboard.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import { Row, Col, Card, Statistic, Tabs, Table, Tag, Spin, message } from "antd";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { 
+  Row, 
+  Col, 
+  Card, 
+  Statistic, 
+  Button, 
+  Spin, 
+  message, 
+  DatePicker,
+  Space,
+  Typography,
+  Table,
+  Tag,
+  Tooltip,
+  Tabs,
+  Select
+} from "antd";
 import {
   Users as UsersIcon,
   CreditCard as SubIcon,
+  CreditCard,  // Add this line
   CheckCircle as ActiveIcon,
   XCircle as ExpiredIcon,
+  Clock as PendingIcon,
+  RefreshCw as RefreshIcon,
+  UserPlus as NewUsersIcon,
+  TrendingUp as GrowthIcon,  // This is the existing import
+  BarChart2 as BarChartIcon,
+  PieChart as PieChartIcon,
+  Download as DownloadIcon,
+  Filter as FilterIcon,
+  XCircle,
+  TrendingUp  // Add this line
 } from "lucide-react";
 import {
   AreaChart,
@@ -13,24 +40,33 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
+  BarChart,
+  Bar,
+  Legend,
+  PieChart,
+  Pie,
+  Cell
 } from "recharts";
+import { ClockCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
+import api from "@/api/axios";
 
-// ------- CONFIG -------
-const API_BASE =
-  import.meta?.env?.VITE_API_BASE_URL?.replace(/\/+$/, "") || "/api"; // e.g. http://localhost:5000/api
-const TOKEN_GETTER = () => localStorage.getItem("token"); // adjust if your token key differs
+dayjs.extend(customParseFormat);
+const { RangePicker } = DatePicker;
+const { Title, Text } = Typography;
+const { Option } = Select;
 
-// ------- UTILS -------
+// Utility functions
 const safeDate = (v) => {
   if (!v) return null;
   const d = new Date(v);
   return isNaN(d.getTime()) ? null : d;
 };
 
-const formatDay = (d) =>
-  new Intl.DateTimeFormat("en-GB", { year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+const formatDay = (d) => dayjs(d).format('YYYY-MM-DD');
 
 const withinDays = (date, days) => {
   const d = safeDate(date);
@@ -49,381 +85,652 @@ const pickCreatedAt = (obj) =>
   null;
 
 const pickStatus = (sub) => {
-  // Normalize subscription status -> "active" | "expired" | "pending" | "canceled" | "unknown"
   const now = new Date();
-  const status = String(sub?.status || "").toLowerCase();
+  const status = String(sub?.status || '').toLowerCase();
   const activeFlag = sub?.active === true;
   const start = safeDate(sub?.startDate || sub?.start_date);
   const end = safeDate(sub?.endDate || sub?.end_date);
 
   if (status) {
-    if (["active", "trialing"].includes(status)) return "active";
-    if (["expired"].includes(status)) return "expired";
-    if (["canceled", "cancelled"].includes(status)) return "canceled";
-    if (["pending", "unpaid", "incomplete"].includes(status)) return "pending";
+    if (['active', 'trialing'].includes(status)) return 'active';
+    if (['expired'].includes(status)) return 'expired';
+    if (['canceled', 'cancelled'].includes(status)) return 'canceled';
+    if (['pending', 'unpaid', 'incomplete'].includes(status)) return 'pending';
   }
-  if (activeFlag) return "active";
-  if (end && end < now) return "expired";
-  if (start && start > now) return "pending";
-  return "unknown";
+  if (activeFlag) return 'active';
+  if (end && end < now) return 'expired';
+  if (start && start > now) return 'pending';
+  return 'unknown';
 };
 
 const aggregateByDay = (items, createdAtPicker = pickCreatedAt, windowDays = 90) => {
-  // Build a date map over the window to make the chart continuous
   const now = new Date();
   const map = new Map();
+  
   for (let i = windowDays - 1; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
-    map.set(formatDay(d), 0);
+    map.set(formatDay(d), { date: formatDay(d), count: 0 });
   }
+
   items.forEach((it) => {
     const d = createdAtPicker(it);
     if (!d) return;
     const key = formatDay(d);
-    if (map.has(key)) map.set(key, map.get(key) + 1);
+    if (map.has(key)) {
+      map.get(key).count += 1;
+    }
   });
-  return Array.from(map.entries()).map(([date, count]) => ({ date, count }));
+
+  return Array.from(map.values());
 };
 
-// ------- DATA FETCH -------
-async function apiGet(path) {
-  const token = TOKEN_GETTER();
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token ? `Bearer ${token}` : "",
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText} — ${text}`);
-  }
-  return res.json();
-}
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+
+const StatusTag = ({ status }) => {
+  const statusMap = {
+    active: { color: 'green', icon: <ActiveIcon size={14} />, label: 'Active' },
+    expired: { color: 'red', icon: <ExpiredIcon size={14} />, label: 'Expired' },
+    pending: { color: 'blue', icon: <PendingIcon size={14} />, label: 'Pending' },
+    canceled: { color: 'orange', icon: <XCircle size={14} />, label: 'Canceled' }, // Updated this line
+    unknown: { color: 'gray', icon: <ClockCircleOutlined />, label: 'Unknown' }
+  };
+
+  const { color, icon, label } = statusMap[status] || statusMap.unknown;
+
+  return (
+    <Tag color={color} className="flex items-center gap-1">
+      {icon}
+      {label}
+    </Tag>
+  );
+};
 
 export default function StatisticsDashboard() {
-  const [activeTab, setActiveTab] = useState("30"); // 7 | 30 | 90
+  const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [subs, setSubs] = useState([]);
   const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [dateRange, setDateRange] = useState([
+    dayjs().subtract(30, 'day'),
+    dayjs()
+  ]);
+  const [statusFilter, setStatusFilter] = useState([]);
+  
+  const { token } = useAuth();
 
-  const windowDays = Number(activeTab); // convert "30" -> 30
-
-  useEffect(() => {
-    let mounted = true;
+  const fetchData = useCallback(async () => {
+    if (!token) return;
+    
     setLoading(true);
     setError(null);
 
-    (async () => {
-      try {
-        // IMPORTANT: uses your APIs (no dummy data)
-        const [usersData, subsData] = await Promise.all([
-          apiGet("/users"), // router.get("/users", verifyToken, getAllUsers);
-          apiGet("/subscriptions"), // router.get("/subscriptions", verifyToken, getAllSubscriptions);
-        ]);
-        if (!mounted) return;
+    try {
+      const [startDate, endDate] = dateRange;
+      
+      const [usersRes, subsRes] = await Promise.all([
+        api.get('/users', {
+          params: {
+            startDate: startDate.format('YYYY-MM-DD'),
+            endDate: endDate.format('YYYY-MM-DD')
+          }
+        }),
+        api.get('/subscriptions', {
+          params: {
+            startDate: startDate.format('YYYY-MM-DD'),
+            endDate: endDate.format('YYYY-MM-DD')
+          }
+        })
+      ]);
 
-        // Some APIs return {data: []}, some return [] directly — normalize
-        setUsers(Array.isArray(usersData) ? usersData : usersData?.data || []);
-        setSubs(Array.isArray(subsData) ? subsData : subsData?.data || []);
-      } catch (e) {
-        console.error(e);
-        if (mounted) {
-          setError(e.message);
-          message.error("Failed to load statistics. Check API base URL and token.");
-        }
-      } finally {
-        mounted && setLoading(false);
-      }
-    })();
+      setUsers(usersRes.data || []);
+      setSubs(subsRes.data || []);
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setError(error.message);
+      message.error('Failed to load statistics');
+    } finally {
+      setLoading(false);
+    }
+  }, [token, dateRange]);
 
-    return () => {
-      mounted = false;
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Process data for charts and statistics
+  const { totalUsers, newUsersCount, usersByDay } = useMemo(() => {
+    const daysInRange = dateRange[1].diff(dateRange[0], 'day') + 1;
+    const usersInWindow = users.filter(u => withinDays(pickCreatedAt(u), daysInRange));
+    const usersByDay = aggregateByDay(users, pickCreatedAt, daysInRange);
+    
+    return {
+      totalUsers: users.length,
+      newUsersCount: usersInWindow.length,
+      usersByDay
     };
-  }, []); // initial load
+  }, [users, dateRange]);
 
-  // ------- METRICS -------
-  const totalUsers = users.length;
-
-  const usersInWindow = useMemo(
-    () => users.filter((u) => withinDays(pickCreatedAt(u), windowDays)),
-    [users, windowDays]
-  );
-  const newUsersCount = usersInWindow.length;
-
-  const totalSubs = subs.length;
-
-  const subStatusCounts = useMemo(() => {
+  const { 
+    totalSubs, 
+    activeSubs, 
+    expiredSubs, 
+    pendingSubs,
+    canceledSubs,
+    unknownSubs,
+    subsByDay,
+    statusDistribution 
+  } = useMemo(() => {
     const counts = { active: 0, expired: 0, pending: 0, canceled: 0, unknown: 0 };
-    subs.forEach((s) => {
-      const st = pickStatus(s);
-      counts[st] = (counts[st] || 0) + 1;
+    subs.forEach(s => {
+      const status = pickStatus(s);
+      counts[status] = (counts[status] || 0) + 1;
     });
-    return counts;
-  }, [subs]);
+    
+    const daysInRange = dateRange[1].diff(dateRange[0], 'day') + 1;
+    const filteredSubs = statusFilter.length > 0 
+      ? subs.filter(s => statusFilter.includes(pickStatus(s)))
+      : subs;
+    
+    return {
+      totalSubs: subs.length,
+      activeSubs: counts.active,
+      expiredSubs: counts.expired,
+      pendingSubs: counts.pending,
+      canceledSubs: counts.canceled,
+      unknownSubs: counts.unknown,
+      subsByDay: aggregateByDay(filteredSubs, pickCreatedAt, daysInRange),
+      statusDistribution: Object.entries(counts).map(([name, value]) => ({
+        name,
+        value,
+        color: COLORS[Object.keys(counts).indexOf(name) % COLORS.length]
+      }))
+    };
+  }, [subs, dateRange, statusFilter]);
 
-  const subsInWindow = useMemo(
-    () => subs.filter((s) => withinDays(pickCreatedAt(s), windowDays)),
-    [subs, windowDays]
+  const handleDateRangeChange = (dates) => {
+    if (dates && dates[0] && dates[1]) {
+      setDateRange(dates);
+    }
+  };
+
+  const handleStatusFilterChange = (values) => {
+    setStatusFilter(values);
+  };
+
+  const handleRefresh = () => {
+    fetchData();
+  };
+
+  const handleExport = () => {
+    // Implement export functionality
+    message.info('Export functionality will be implemented here');
+  };
+
+  const renderOverviewTab = () => (
+    <>
+      {/* Stats Cards */}
+      <Row gutter={[16, 16]} className="mb-6">
+        <Col xs={24} sm={12} md={6}>
+          <Card className="rounded-2xl shadow h-full hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3">
+              <UsersIcon className="text-blue-500" size={20} />
+              <Statistic 
+                title="Total Users" 
+                value={totalUsers} 
+                loading={loading}
+                prefix={<GrowthIcon size={16} className="text-green-500 mr-1" />}
+              />
+            </div>
+            <div className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+              <NewUsersIcon size={14} />
+              <span>{newUsersCount} new in period</span>
+            </div>
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} md={6}>
+          <Card className="rounded-2xl shadow h-full hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3">
+              <SubIcon className="text-purple-500" size={20} />
+              <Statistic 
+                title="Total Subscriptions" 
+                value={totalSubs} 
+                loading={loading}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 mt-2">
+              <span className="text-green-500">
+                <ActiveIcon size={12} className="inline mr-1" />
+                {activeSubs} Active
+              </span>
+              <span className="text-red-500">
+                <ExpiredIcon size={12} className="inline mr-1" />
+                {expiredSubs} Expired
+              </span>
+              <span className="text-blue-500">
+                <PendingIcon size={12} className="inline mr-1" />
+                {pendingSubs} Pending
+              </span>
+              <span className="text-orange-500">
+                <XCircle size={12} className="inline mr-1" />
+                {canceledSubs} Canceled
+              </span>
+            </div>
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} md={6}>
+          <Card className="rounded-2xl shadow h-full hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3">
+              <BarChartIcon className="text-green-500" size={20} />
+              <Statistic 
+                title="Active Rate" 
+                value={`${Math.round((activeSubs / Math.max(totalSubs, 1)) * 100)}%`} 
+                loading={loading}
+              />
+            </div>
+            <div className="text-xs text-gray-500 mt-2">
+              {activeSubs} out of {totalSubs} subscriptions
+            </div>
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} md={6}>
+  <Card className="rounded-2xl shadow h-full hover:shadow-md transition-shadow">
+    <div className="flex items-center gap-3">
+      <TrendingUp className="text-yellow-500" size={20} />
+      <Statistic 
+        title="Avg. Daily Signups" 
+        value={Math.round(newUsersCount / Math.max(dateRange[1].diff(dateRange[0], 'day') + 1, 1))} 
+        loading={loading}
+      />
+    </div>
+    <div className="text-xs text-gray-500 mt-2">
+      Over {dateRange[1].diff(dateRange[0], 'day') + 1} days
+    </div>
+  </Card>
+</Col>
+      </Row>
+
+      {/* Charts */}
+      <Row gutter={[16, 16]} className="mb-6">
+        <Col xs={24} lg={16}>
+          <Card 
+            title="User Activity" 
+            className="rounded-2xl shadow h-full"
+            loading={loading}
+            extra={
+              <div className="flex items-center gap-2">
+                <Select
+                  mode="multiple"
+                  placeholder="Filter by status"
+                  style={{ width: 200 }}
+                  onChange={handleStatusFilterChange}
+                  value={statusFilter}
+                  options={[
+                    { value: 'active', label: 'Active' },
+                    { value: 'expired', label: 'Expired' },
+                    { value: 'pending', label: 'Pending' },
+                    { value: 'canceled', label: 'Canceled' }
+                  ]}
+                />
+                <Button
+                  icon={<RefreshIcon size={14} />}
+                  onClick={handleRefresh}
+                  loading={loading}
+                  size="small"
+                />
+              </div>
+            }
+          >
+            <div style={{ height: 400 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={subsByDay}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <RechartsTooltip />
+                  <Legend />
+                  <Bar 
+                    dataKey="count" 
+                    name="Subscriptions" 
+                    fill="#8b5cf6" 
+                    radius={[4, 4, 0, 0]} 
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </Col>
+        
+        <Col xs={24} lg={8}>
+          <Card 
+            title="Subscription Status" 
+            className="rounded-2xl shadow h-full"
+            loading={loading}
+          >
+            <div style={{ height: 400 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={statusDistribution}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    outerRadius={120}
+                    fill="#8884d8"
+                    dataKey="value"
+                    label={({ name, percent }) => 
+                      `${name}: ${(percent * 100).toFixed(0)}%`
+                    }
+                  >
+                    {statusDistribution.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.color || COLORS[index % COLORS.length]} 
+                      />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip 
+                    formatter={(value, name) => [value, name]}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </Col>
+      </Row>
+    </>
   );
-  const newSubsCount = subsInWindow.length;
 
-  // Charts
-  const usersSeries = useMemo(() => aggregateByDay(users, pickCreatedAt, windowDays), [users, windowDays]);
-  const subsSeries = useMemo(() => aggregateByDay(subs, pickCreatedAt, windowDays), [subs, windowDays]);
+  const renderUsersTab = () => (
+    <Card 
+      title="User Analytics" 
+      className="rounded-2xl shadow"
+      extra={
+        <Button
+          icon={<DownloadIcon size={14} />}
+          onClick={handleExport}
+          disabled={loading}
+        >
+          Export
+        </Button>
+      }
+    >
+      <div className="mb-6" style={{ height: 400 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={usersByDay}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" />
+            <YAxis />
+            <RechartsTooltip />
+            <Legend />
+            <Area
+              type="monotone"
+              dataKey="count"
+              name="New Users"
+              stroke="#4f46e5"
+              fill="#4f46e5"
+              fillOpacity={0.2}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      
+      <Table
+        rowKey={(record) => record.id || record._id || Math.random().toString(36).substr(2, 9)}
+        dataSource={users.slice(0, 10)}
+        columns={[
+          {
+            title: 'User',
+            dataIndex: 'email',
+            key: 'email',
+            render: (email, record) => (
+              <div>
+                <div className="font-medium">
+                  {record.name || `${record.firstName || ''} ${record.lastName || ''}`.trim() || '—'}
+                </div>
+                <div className="text-gray-500 text-sm">{email || '—'}</div>
+              </div>
+            )
+          },
+          {
+            title: 'Status',
+            dataIndex: 'status',
+            key: 'status',
+            render: (status) => <StatusTag status={status?.toLowerCase()} />
+          },
+          {
+            title: 'Joined',
+            dataIndex: 'createdAt',
+            key: 'createdAt',
+            render: (date) => date ? dayjs(date).format('MMM D, YYYY') : '—',
+            sorter: (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+          }
+        ]}
+        loading={loading}
+        pagination={false}
+      />
+    </Card>
+  );
 
-  // Tables
-const usersColumns = [
-  {
-    title: "Name",
-    key: "name",
-    render: (_, r) => {
-      const first = r.first_name || "";
-      const last = r.last_name || "";
-      return (first + " " + last).trim() || "—";
-    },
-  },
-  {
-    title: "Email",
-    dataIndex: "email",
-    key: "email",
-    render: (v) => v || "—",
-  },
-  {
-    title: "Created",
-    key: "created",
-    render: (_, r) => {
-      const d = pickCreatedAt(r);
-      return d ? d.toLocaleString() : "—";
-    },
-  },
-];
+  const renderSubscriptionsTab = () => (
+    <Card 
+      title="Subscription Management" 
+      className="rounded-2xl shadow"
+      extra={
+        <Space>
+          <Select
+            mode="multiple"
+            placeholder="Filter by status"
+            style={{ width: 200 }}
+            onChange={handleStatusFilterChange}
+            value={statusFilter}
+            options={[
+              { value: 'active', label: 'Active' },
+              { value: 'expired', label: 'Expired' },
+              { value: 'pending', label: 'Pending' },
+              { value: 'canceled', label: 'Canceled' }
+            ]}
+          />
+          <Button
+            icon={<DownloadIcon size={14} />}
+            onClick={handleExport}
+            disabled={loading}
+          >
+            Export
+          </Button>
+        </Space>
+      }
+    >
+      <Table
+        rowKey={(record) => record.id || record._id || Math.random().toString(36).substr(2, 9)}
+        dataSource={subs}
+        columns={[
+          {
+            title: 'ID',
+            dataIndex: 'id',
+            key: 'id',
+            render: (id) => <Text copyable>{`#${id?.substring(0, 8) || 'N/A'}`}</Text>,
+            sorter: (a, b) => (a.id || '').localeCompare(b.id || ''),
+          },
+          {
+            title: 'Status',
+            dataIndex: 'status',
+            key: 'status',
+            render: (_, record) => <StatusTag status={pickStatus(record)} />,
+            sorter: (a, b) => pickStatus(a).localeCompare(pickStatus(b)),
+            filters: [
+              { text: 'Active', value: 'active' },
+              { text: 'Expired', value: 'expired' },
+              { text: 'Pending', value: 'pending' },
+              { text: 'Canceled', value: 'canceled' },
+            ],
+            onFilter: (value, record) => pickStatus(record) === value,
+          },
+          {
+            title: 'User',
+            key: 'user',
+            render: (_, record) => record?.user?.email || record?.userId || '—',
+          },
+          {
+            title: 'Plan',
+            dataIndex: 'plan',
+            key: 'plan',
+            render: (plan) => plan?.name || plan || '—',
+            sorter: (a, b) => (a.plan?.name || '').localeCompare(b.plan?.name || ''),
+          },
+          {
+            title: 'Start Date',
+            dataIndex: 'startDate',
+            key: 'startDate',
+            render: (date) => (date ? dayjs(date).format('MMM D, YYYY') : '—'),
+            sorter: (a, b) => new Date(a.startDate || 0) - new Date(b.startDate || 0),
+          },
+          {
+            title: 'End Date',
+            dataIndex: 'endDate',
+            key: 'endDate',
+            render: (date) => (date ? dayjs(date).format('MMM D, YYYY') : '—'),
+            sorter: (a, b) => new Date(a.endDate || 0) - new Date(b.endDate || 0),
+          },
+          {
+            title: 'Created At',
+            dataIndex: 'createdAt',
+            key: 'createdAt',
+            render: (date) => (date ? dayjs(date).format('MMM D, YYYY') : '—'),
+            sorter: (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0),
+            defaultSortOrder: 'descend',
+          }
+        ]}
+        loading={loading}
+        pagination={{
+          pageSize: 10,
+          showSizeChanger: true,
+          pageSizeOptions: ['10', '20', '50', '100'],
+          showTotal: (total) => `Total ${total} subscriptions`,
+        }}
+        scroll={{ x: 'max-content' }}
+        size="middle"
+        bordered
+      />
+    </Card>
+  );
 
-
-  const subsColumns = [
-  {
-    title: "User",
-    key: "user",
-    render: (_, r) => {
-      const first = r.user?.first_name || "";
-      const last = r.user?.last_name || "";
-      const fullName = (first + " " + last).trim();
-      const email = r.user?.email || r.userEmail || r.customerEmail || "—";
-      return fullName ? `${fullName} (${email})` : email;
-    },
-  },
-  {
-    title: "Plan",
-    dataIndex: "plan",
-    key: "plan",
-    render: (v, r) => v || r.planName || r.tier || "—",
-  },
-  {
-    title: "Status",
-    key: "status",
-    render: (_, r) => {
-      const s = pickStatus(r);
-      const color =
-        s === "active"
-          ? "green"
-          : s === "expired"
-          ? "red"
-          : s === "pending"
-          ? "gold"
-          : s === "canceled"
-          ? "volcano"
-          : "default";
-      return <Tag color={color}>{s?.toUpperCase?.() || "—"}</Tag>;
-    },
-  },
-  {
-    title: "Start",
-    key: "start",
-    render: (_, r) => {
-      const d = safeDate(r.startDate || r.start_date);
-      return d ? d.toLocaleDateString() : "—";
-    },
-  },
-  {
-    title: "End",
-    key: "end",
-    render: (_, r) => {
-      const d = safeDate(r.endDate || r.end_date);
-      return d ? d.toLocaleDateString() : "—";
-    },
-  },
-  {
-    title: "Created",
-    key: "created",
-    render: (_, r) => {
-      const d = pickCreatedAt(r);
-      return d ? d.toLocaleString() : "—";
-    },
-  },
-];
+  if (loading && !lastUpdated) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Spin size="large" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6">
-      <Row gutter={[16, 16]}>
-        <Col span={24}>
-          <Tabs
-            activeKey={activeTab}
-            onChange={setActiveTab}
-            items={[
-              { key: "7", label: "Last 7 days" },
-              { key: "30", label: "Last 30 days" },
-              { key: "90", label: "Last 90 days" },
-            ]}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div>
+          <Title level={2} className="!mb-1">Analytics Dashboard</Title>
+          {lastUpdated && (
+            <Text type="secondary" className="text-sm">
+              Last updated: {dayjs(lastUpdated).format('MMM D, YYYY h:mm A')}
+            </Text>
+          )}
+        </div>
+        
+        <Space>
+          <RangePicker
+            value={dateRange}
+            onChange={handleDateRangeChange}
+            disabledDate={(current) => current && current > dayjs().endOf('day')}
+            className="w-full md:w-auto"
+            format="MMM D, YYYY"
+            allowClear={false}
           />
-        </Col>
+          <Button
+            icon={<RefreshIcon size={16} />}
+            onClick={handleRefresh}
+            loading={loading}
+          >
+            Refresh
+          </Button>
+        </Space>
+      </div>
 
-        {/* KPI CARDS */}
-        <Col xs={24} md={6}>
-          <Card className="rounded-2xl shadow">
-            <div className="flex items-center gap-3">
-              <UsersIcon size={20} />
-              <Statistic title="Total Users" value={totalUsers} />
-            </div>
-            <div className="text-xs text-gray-500 mt-2">New in window: {newUsersCount}</div>
-          </Card>
-        </Col>
-        <Col xs={24} md={6}>
-          <Card className="rounded-2xl shadow">
-            <div className="flex items-center gap-3">
-              <SubIcon size={20} />
-              <Statistic title="Total Subscriptions" value={totalSubs} />
-            </div>
-            <div className="text-xs text-gray-500 mt-2">New in window: {newSubsCount}</div>
-          </Card>
-        </Col>
-        <Col xs={24} md={4}>
-          <Card className="rounded-2xl shadow">
-            <div className="flex items-center gap-3">
-              <ActiveIcon size={20} />
-              <Statistic title="Active Subs" value={subStatusCounts.active || 0} />
-            </div>
-          </Card>
-        </Col>
-        <Col xs={24} md={4}>
-          <Card className="rounded-2xl shadow">
-            <div className="flex items-center gap-3">
-              <ExpiredIcon size={20} />
-              <Statistic title="Expired Subs" value={subStatusCounts.expired || 0} />
-            </div>
-          </Card>
-        </Col>
-        <Col xs={24} md={4}>
-          <Card className="rounded-2xl shadow">
-            <div className="flex items-center gap-3">
-              <Statistic title="Other Subs" value={(subStatusCounts.pending || 0) + (subStatusCounts.canceled || 0) + (subStatusCounts.unknown || 0)} />
-            </div>
-          </Card>
-        </Col>
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={[
+          {
+            key: 'overview',
+            label: (
+              <span>
+                <BarChartIcon size={16} className="mr-2" />
+                Overview
+              </span>
+            ),
+            children: renderOverviewTab()
+          },
+          {
+            key: 'users',
+            label: (
+              <span>
+                <UsersIcon size={16} className="mr-2" />
+                Users
+              </span>
+            ),
+            children: renderUsersTab()
+          },
+          {
+            key: 'subscriptions',
+            label: (
+              <span>
+                <SubIcon size={16} className="mr-2" />  {/* Changed from CreditCard to SubIcon */}
+                Subscriptions
+              </span>
+            ),
+            children: renderSubscriptionsTab()
+          }
+        ]}
+      />
 
-        {/* CHARTS */}
-        <Col xs={24} md={12}>
-          <Card title="New Users" className="rounded-2xl shadow" bodyStyle={{ height: 320 }}>
-            {loading ? (
-              <div className="flex justify-center items-center h-72">
-                <Spin />
+      {error && (
+        <div className="mt-6">
+          <Card className="border-red-200 bg-red-50">
+            <div className="flex items-start gap-3">
+              <CloseCircleOutlined className="text-red-500 text-lg mt-0.5" />
+              <div>
+                <div className="text-red-600 font-medium">Failed to load data</div>
+                <div className="text-gray-600 text-sm mt-1">{error}</div>
+                <div className="mt-3 text-sm">
+                  <div className="font-medium mb-1">Troubleshooting steps:</div>
+                  <ul className="list-disc ml-5 space-y-1">
+                    <li>Verify your backend is running and accessible</li>
+                    <li>Check your network connection</li>
+                    <li>Ensure your authentication token is valid</li>
+                    <li>Review browser console for detailed error messages</li>
+                  </ul>
+                </div>
+                <Button
+                  type="primary"
+                  danger
+                  size="small"
+                  className="mt-3"
+                  onClick={handleRefresh}
+                  loading={loading}
+                  icon={<RefreshIcon size={14} />}
+                >
+                  Retry
+                </Button>
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={usersSeries} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="usersGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8884d8" stopOpacity={0.6} />
-                      <stop offset="95%" stopColor="#8884d8" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="count" stroke="#8884d8" fillOpacity={1} fill="url(#usersGradient)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
+            </div>
           </Card>
-        </Col>
-
-        <Col xs={24} md={12}>
-          <Card title="New Subscriptions" className="rounded-2xl shadow" bodyStyle={{ height: 320 }}>
-            {loading ? (
-              <div className="flex justify-center items-center h-72">
-                <Spin />
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={subsSeries} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="subsGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#82ca9d" stopOpacity={0.6} />
-                      <stop offset="95%" stopColor="#82ca9d" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="count" stroke="#82ca9d" fillOpacity={1} fill="url(#subsGradient)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </Card>
-        </Col>
-
-        {/* TABLES */}
-        <Col span={24}>
-          <Card title="Recent Users" className="rounded-2xl shadow">
-            <Table
-              rowKey={(r) => r.id || r._id || r.email || r.name}
-              dataSource={users
-                .filter((u) => withinDays(pickCreatedAt(u), windowDays))
-                .sort((a, b) => (pickCreatedAt(b)?.getTime() || 0) - (pickCreatedAt(a)?.getTime() || 0))
-                .slice(0, 20)}
-              columns={usersColumns}
-              loading={loading}
-              pagination={false}
-              size="small"
-            />
-          </Card>
-        </Col>
-
-        <Col span={24}>
-          <Card title="Recent Subscriptions" className="rounded-2xl shadow">
-            <Table
-              rowKey={(r) => r.id || r._id || r.subscriptionId}
-              dataSource={subs
-                .filter((s) => withinDays(pickCreatedAt(s), windowDays))
-                .sort((a, b) => (pickCreatedAt(b)?.getTime() || 0) - (pickCreatedAt(a)?.getTime() || 0))
-                .slice(0, 20)}
-              columns={subsColumns}
-              loading={loading}
-              pagination={false}
-              size="small"
-            />
-          </Card>
-        </Col>
-
-        {error && (
-          <Col span={24}>
-            <Card className="rounded-2xl border-red-200">
-              <div className="text-red-600 font-medium">Error: {error}</div>
-              <div className="text-xs text-gray-500 mt-2">
-                Check that:
-                <ul className="list-disc ml-6 mt-1">
-                  <li>Backend is running and exposes <code>GET /users</code> and <code>GET /subscriptions</code>.</li>
-                  <li><code>VITE_API_BASE_URL</code> is correct or remove it to use <code>/api</code> proxy.</li>
-                  <li>A valid <code>token</code> exists in <code>localStorage</code> (Bearer auth).</li>
-                </ul>
-              </div>
-            </Card>
-          </Col>
-        )}
-      </Row>
+        </div>
+      )}
     </div>
   );
 }

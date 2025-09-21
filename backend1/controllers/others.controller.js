@@ -60,28 +60,116 @@ exports.getDashboard = async (req, res) => {
 
 exports.getStatisticsDashboard = async (req, res) => {
   try {
-    // Later you can replace these with dynamic values
+    const { range = '30' } = req.query;
+    const days = parseInt(range, 10);
+    
+    // Generate date-based data based on the range
+    const generateDateRange = (days) => {
+      const result = [];
+      const now = new Date();
+      
+      for (let i = days; i >= 0; i--) {
+        const date = new Date(now);
+        date.setDate(date.getDate() - i);
+        result.push({
+          date: date.toISOString().split('T')[0],
+          value: Math.floor(Math.random() * 1000) + 500, // Random values for demo
+          packageA: Math.floor(Math.random() * 300) + 100,
+          packageB: Math.floor(Math.random() * 200) + 50,
+          packageC: Math.floor(Math.random() * 150) + 30,
+          b2b: Math.floor(Math.random() * 400) + 100,
+          b2c: Math.floor(Math.random() * 600) + 200,
+        });
+      }
+      return result;
+    };
+    
+    const dateData = generateDateRange(days);
+    
+    // Format data for charts
+    const byPackage = dateData.map(d => ({
+      date: d.date,
+      'Package A': d.packageA,
+      'Package B': d.packageB,
+      'Package C': d.packageC,
+    }));
+    
+    const byMarketplace = dateData.map(d => ({
+      date: d.date,
+      'Web': Math.floor(d.value * 0.6),
+      'Mobile': Math.floor(d.value * 0.4),
+    }));
+    
+    const byClientType = dateData.map(d => ({
+      date: d.date,
+      'B2B': d.b2b,
+      'B2C': d.b2c,
+    }));
+    
+    // Get user stats
+    const totalUsers = await User.count();
+    const activeUsers = await User.count({ where: { isActive: true } });
+    
+    // Prepare response
     const dashboardData = {
-      chartData: [
-        { name: "Jan", value: 1000 },
-        { name: "Feb", value: 1200 },
-      ],
+      chartData: {
+        byPackage,
+        byMarketplace,
+        byClientType,
+      },
       stats: {
-        totalUsers: 1250,
-        activeSubscriptions: 875
+        totalUsers,
+        activeUsers,
+        newUsers: Math.floor(totalUsers * 0.15), // 15% of total as new users
+        totalRevenue: (totalUsers * 29.99).toFixed(2),
+        activeSubscriptions: Math.floor(totalUsers * 0.7), // 70% have active subs
+        monthlyGrowth: 12.5, // percentage
       },
       insights: {
-        b2bB2c: "60% B2B / 40% B2C",
-        deviceUsage: {Mobile: 55, Desktop: 45},
-        engagement: {Avg_Session: 25}
+        b2bB2c: "35% B2B / 65% B2C",
+        deviceUsage: {
+          Mobile: 62,
+          Desktop: 38,
+        },
+        engagement: {
+          avgSession: 8.5, // minutes
+          pagesPerSession: 4.2,
+          bounceRate: 42.3,
+        },
+        topPerforming: {
+          product: "Premium Package",
+          growth: 24.5,
+        },
       },
       subscriptions: [
-        { key: "1", package: "Basic", total: 500, active: 400, renewal: 80 },
-        { key: "2", package: "Premium", total: 300, active: 250, renewal: 83 }
-      ]
+        {
+          key: "1",
+          package: "Basic",
+          total: Math.floor(totalUsers * 0.5),
+          active: Math.floor(totalUsers * 0.35),
+          renewal: 78,
+          price: "$19.99",
+        },
+        {
+          key: "2",
+          package: "Premium",
+          total: Math.floor(totalUsers * 0.3),
+          active: Math.floor(totalUsers * 0.25),
+          renewal: 85,
+          price: "$49.99",
+        },
+        {
+          key: "3",
+          package: "Enterprise",
+          total: Math.floor(totalUsers * 0.2),
+          active: Math.floor(totalUsers * 0.1),
+          renewal: 92,
+          price: "$99.99",
+        },
+      ],
     };
 
-    res.status(200).json(dashboardData);
+    res.status(200).json({ data: dashboardData });
   } catch (err) {
     console.error("Error fetching statistics dashboard:", err);
     res.status(500).json({ message: "Failed to load statistics dashboard" });
