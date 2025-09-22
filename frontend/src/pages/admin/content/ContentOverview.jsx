@@ -1,7 +1,8 @@
 import { Tag, Button, message } from "antd"; // removed Space
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import EntityList, { columnFactories as CF } from "@/components/EntityList.jsx";
+import EntityList from "@/components/EntityList.jsx";
+import { columnFactories as CF } from "@/components/entityList/columnFactories.jsx";
 import api from "@/api/axios";
 
 const dash = (v) =>

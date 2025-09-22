@@ -1,5 +1,6 @@
 // src/pages/students/StudentsList.jsx
-import EntityList, { columnFactories as F } from "@/components/EntityList";
+import EntityList from "@/components/EntityList.jsx";
+import { columnFactories as F } from "@/components/entityList/columnFactories.jsx";
 
 export default function StudentsList() {
   return (
@@ -16,87 +17,28 @@ export default function StudentsList() {
           removePath: (id) => `/students/${id}`,
           // Normalize BE → UI (robust to differing shapes)
           parseList: (data) => {
-            const src = Array.isArray(data)
-              ? data
-              : (Array.isArray(data?.data) ? data.data : []);
-
-            const fallback = (v) => {
-              if (v === undefined || v === null) return "-";
-              const s = String(v).trim();
-              return s === "" ? "-" : s;
-            };
-
-            const pickParent = (student) => {
-              // Accept a single object or an array of guardians
-              const maybeArray =
-                student.parents ??
-                student.guardians ??
-                student.parent ??
-                student.guardian ??
-                student.linked_parent;
-
-              if (Array.isArray(maybeArray)) {
-                // Prefer payer, else first
-                const payer = maybeArray.find((g) => g?.is_payer);
-                return payer || maybeArray[0];
-              }
-              return maybeArray || null;
-            };
+            const src = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+            const fallback = (v) => (v === undefined || v === null || String(v).trim() === "") ? "-" : String(v).trim();
 
             return src.map((student) => {
-              // ---- student name ----
-              const fullName = [
-                student.user?.first_name,
-                student.user?.last_name,
-              ]
-                .filter(Boolean)
-                .join(" ")
-                .trim();
+              const user = student.user || {};
+              const parent = student.parent || {};
+              const parentUser = parent.user || {};
 
-              // ---- school name (Location = School only) ----
-              const schoolName =
-                student.school?.name ??
-                student.school_name ??
-                student.school ??
-                student.location ??
-                "-";
-
-              // ---- parent linkage ----
-              const parent = pickParent(student);
-
-              const parentFullName = parent
-                ? (
-                    [
-                      parent.name,
-                      parent.full_name,
-                      [parent.first_name, parent.last_name].filter(Boolean).join(" "),
-                      [parent.user?.first_name, parent.user?.last_name].filter(Boolean).join(" "),
-                    ].find((x) => x && String(x).trim() !== "") || "-"
-                  )
-                : "-";
-
-              const parentEmail =
-                parent?.email ??
-                parent?.user?.email ??
-                parent?.contact_email ??
-                "-";
+              const fullName = fallback([user.first_name, user.last_name].filter(Boolean).join(' '));
+              const parentFullName = fallback([parentUser.first_name, parentUser.last_name].filter(Boolean).join(' '));
+              const schoolName = fallback(student.school?.name || student.school_name || student.school);
+              const grade = fallback(student.class?.class_name || student.class_name || student.grade || user.grade);
 
               return {
                 id: student.id,
-                name: fallback(fullName),
-                // Put class data into the grade column per request
-                grade: fallback(
-                  student.class?.class_name ??
-                  student.class_name ??
-                  student.grade ??
-                  student.user?.grade
-                ),
-                school: fallback(schoolName),                   // ← School only
-                parent_name: fallback(parentFullName),          // ← Parent linkage
-                parent_email: fallback(parentEmail),            // ← Parent linkage
-                status: fallback(student.user?.status ?? student.status),
-                user_id: student.user_id,
-                created_at: student.created_at,
+                name: fullName,
+                email: fallback(user.email),
+                grade,
+                // school: schoolName,
+                parent_name: parentFullName,
+                status: fallback(user.status || student.status),
+                created_at: user.created_at || student.created_at,
               };
             });
           },
@@ -109,9 +51,9 @@ export default function StudentsList() {
           id: F.idLink("ID", "/admin/students", "id", navigate),
           name: F.text("Full name", "name"),
           grade: F.text("Grade", "grade"),
-          school: F.text("School", "school"),
+          // school: F.text("School", "school"),
           parent_name: F.text("Parent", "parent_name"),
-          parent_email: F.email("parent_email"),
+          email: F.text("Email", "email"),
           created_at: F.date("Date added", "created_at"),
         }),
 
@@ -120,9 +62,8 @@ export default function StudentsList() {
           "id",
           "name",
           "grade",
-          "school",
           "parent_name",
-          "parent_email",
+          "email",
           "created_at",
         ],
 

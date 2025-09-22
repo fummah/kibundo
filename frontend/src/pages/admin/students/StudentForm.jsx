@@ -1,4 +1,5 @@
 import EntityForm from "@/components/form/EntityForm";
+import { useLocation } from "react-router-dom";
 
 const statusOptions = [
   { value: "active", label: "Active" },
@@ -7,10 +8,14 @@ const statusOptions = [
 ];
 
 export default function StudentForm() {
+  const location = useLocation();
+  const prefill = location.state?.prefill || {};
+
   return (
     <EntityForm
       titleNew="Add Student"
       titleEdit="Edit Student"
+      initialValues={prefill}
       apiCfg={{
         getPath:   (id) => `/students/${id}`,
         createPath: "/addstudent",
@@ -26,28 +31,55 @@ export default function StudentForm() {
         { name: "email",  label: "Email", placeholder: "student@example.com", rules: [{ type: "email", message: "Invalid email" }] },
 
         {
+          name: "subjects",
+          label: "Subjects",
+          input: "select",
+          mode: "multiple", // Enable multi-select
+          placeholder: "Search for subjects...",
+          optionsUrl: "/allsubjects",
+          serverSearch: true,
+          searchParam: "q",
+          optionValue: "id",
+          optionLabel: "subject_name",
+          rules: [{ required: false }],
+        },
+
+        {
           name: "grade",
           label: "Grade",
           input: "select",
-          placeholder: "Search grade…",
-          optionsUrl: "/grades",
+          placeholder: "Search for a grade/class...",
+          optionsUrl: "/allclasses",
           serverSearch: true,
           searchParam: "q",
-          optionValue: "value",
-          optionLabel: "label",
-          autoloadOptions: false,
+          optionValue: "id",
+          optionLabel: "class_name",
           rules: [{ required: true, message: "Grade is required" }],
         },
 
-        { name: "status", label: "Status", input: "select", options: statusOptions, placeholder: "Select status" },
+        // Parent Linkage (now optional)
+        {
+          name: "parent_id",
+          label: "Parent ",
+          input: "select",
+          placeholder: "Search for a parent...",
+          optionsUrl: "/parents",
+          serverSearch: true,
+          searchParam: "q", // Assuming backend supports search on 'q'
+          optionValue: "id",
+          // Format the label to show the parent's full name
+          optionLabel: (item) => `${item.user?.first_name || ''} ${item.user?.last_name || ''}`.trim(),
+          disabled: !!prefill.parent_id, // Disable if pre-filled
+          initialOptions: prefill.parent_id ? [{ value: prefill.parent_id, label: prefill.parent_name }] : [],
+        },
 
         // Location = School only
-        { name: "school", label: "School", placeholder: "e.g., South Campus" },
+        { name: "school", label: "School (Optional)", placeholder: "e.g., South Campus" },
 
         // Bundesland (DB-backed)
         {
           name: "bundesland",
-          label: "Bundesland",
+          label: "bundesland",
           input: "select",
           placeholder: "Search Bundesland…",
           optionsUrl: "/bundeslaender",
@@ -58,11 +90,7 @@ export default function StudentForm() {
         },
 
         // 🔗 Optional: link a parent immediately by email
-        { name: "parent_email", label: "Link Parent by Email (optional)", placeholder: "parent@example.com", rules: [{ type: "email", message: "Invalid email" }] },
-        { name: "is_payer", label: "Parent is Payer", input: "switch", initialValue: true },
-
-        // Extras (optional)
-        { name: "interests", label: "Interests", input: "tags", placeholder: "Type and press Enter" },
+       // { name: "parent_email", label: "Link Parent by Email (optional)", placeholder: "parent@example.com", rules: [{ type: "email", message: "Invalid email" }] },
       ]}
       // Optional: map form payload before submit to match your API
       transformSubmit={(vals) => {
@@ -71,17 +99,15 @@ export default function StudentForm() {
           last_name: vals.last_name,
           email: vals.email,
           grade: vals.grade,
-          status: vals.status,
           school: vals.school,
           bundesland: vals.bundesland,
-          interests: vals.interests ?? [],
+          parent_id: vals.parent_id,
         };
 
         // If a parent email is provided, include linkage instructions
         if (vals.parent_email) {
           payload.parent_link = {
             email: vals.parent_email,
-            is_payer: Boolean(vals.is_payer),
           };
         }
         return payload;

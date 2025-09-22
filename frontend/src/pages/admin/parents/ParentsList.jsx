@@ -1,6 +1,7 @@
 // src/pages/parents/ParentsList.jsx
 import { useNavigate } from "react-router-dom";
-import EntityList, { columnFactories as F } from "@/components/EntityList";
+import EntityList from "@/components/EntityList.jsx";
+import { columnFactories as F } from "@/components/entityList/columnFactories.jsx";
 
 export default function ParentsList() {
   return (
@@ -32,7 +33,7 @@ export default function ParentsList() {
                 name: fb(name),
                 email: fb(u.email || p.email),
                 status: fb(u.status || p.status),
-                school: fb(p.school?.name || p.school_name || p.location),
+                // school: fb(p.school?.name || p.school_name || p.location),
                 bundesland: fb(p.bundesland),
                 created_at: p.created_at || u.created_at || null,
 
@@ -88,12 +89,13 @@ export default function ParentsList() {
           },
 
           email: F.email("email"),
-          school: F.text("School", "school"),
+          // school: F.text("School", "school"),
           bundesland: F.text("Bundesland", "bundesland"),
+          
           created_at: F.date("Date added", "created_at"),
         }),
 
-        defaultVisible: ["status", "id", "name", "email", "school", "bundesland", "created_at"],
+        defaultVisible: ["status", "id", "name", "email", "bundesland", "created_at"],
       }}
     />
   );
