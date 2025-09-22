@@ -92,8 +92,13 @@ export default function EntityForm({
   const computeUpdatePath = (rid) => (apiCfg.updatePath ? apiCfg.updatePath(rid) : `${baseRoute}/${rid}`);
   const computeCreatePath = () => (apiCfg.createPath ? apiCfg.createPath : baseRoute);
 
-  const goToList = () => (basePath ? navigate(basePath) : navigate(toListRelative));
-  const goToDetail = (rid) => (basePath ? navigate(`${basePath}/${rid}`) : navigate(toDetailRelative(rid)));
+  const goToList = useCallback(() => {
+    basePath ? navigate(basePath) : navigate(toListRelative);
+  }, [navigate, basePath, toListRelative]);
+
+  const goToDetail = useCallback((rid) => {
+    basePath ? navigate(`${basePath}/${rid}`) : navigate(toDetailRelative(rid));
+  }, [navigate, basePath, toDetailRelative]);
 
   // load entity
   const load = useCallback(async () => {
@@ -123,7 +128,7 @@ export default function EntityForm({
     } finally {
       setLoading(false);
     }
-  }, [isEdit, id, form, messageApi, fields, initialValues]);
+  }, [isEdit, id, form, messageApi, fields, initialValues, goToList]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -354,7 +359,7 @@ export default function EntityForm({
       {/* Header */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <Space wrap>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>Back</Button>
+          {/*  <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>Back</Button>*/}
           <div>
             <Title level={3} className="!mb-0">{isEdit ? titleEdit : titleNew}</Title>
           </div>

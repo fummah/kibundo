@@ -1,14 +1,13 @@
 // src/pages/admin/parents/ParentDetail.jsx
 import React from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { Tag, Button } from "antd";
+import { useLocation } from "react-router-dom";
+import { Tag } from "antd";
 import EntityDetail from "@/components/EntityDetail.jsx";
-import BillingTab from './BillingTab';
+import BillingTab from "./BillingTab";
 
 export default function ParentDetail() {
   const location = useLocation();
-  const navigate = useNavigate();
-  const prefill = location.state?.prefill || null; // ← comes from list
+  const prefill = location.state?.prefill || null;
 
   const cfg = {
     titleSingular: "Parent",
@@ -25,43 +24,49 @@ export default function ParentDetail() {
 
       parseEntity: (payload) => {
         const p = payload?.data ?? payload ?? {};
-        const u = p.user || {};
+        const u = p?.user ?? {};
+      
         const name = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
         const member_since = u.created_at
           ? new Date(u.created_at).toLocaleDateString()
           : "-";
-
+      
         return {
           id: p.id,
           user_id: u.id,
           name,
           email: u.email,
           status: u.status,
-          created_at: u.created_at, // raw (kept)
-          member_since,             // formatted (used in info panel)
-          contact_number: u.contact_number,
-          bundesland: u.state,
-          students: p.students || [],
+          created_at: u.created_at,
+          member_since,
+          contact_number: u.contact_number ?? null,
+          bundesland: u.state ?? null,
+          students: Array.isArray(p.student) ? p.student : [],  
           subscriptions: p.subscriptions || [],
           raw: p,
         };
       },
     },
 
-    // Prefill row from list view (if present)
     initialEntity: prefill || undefined,
 
-    // NOTE: EntityDetail will automatically prepend an "ID" row.
-    // We also include an explicit "Parent ID" line here if you want it
-    // duplicated in the main info list. Remove this line if you prefer
-    // to show ID only once.
     infoFields: [
-  
+      {
+        label: "Status",
+        name: "status",
+        render: (v) => {
+          let color = "default";
+          if (v === "active") color = "success";
+          if (v === "inactive") color = "warning";
+          if (v === "locked") color = "error";
+          return <Tag color={color}>{v || "unknown"}</Tag>;
+        },
+      },
       { label: "Full Name", name: "name" },
       { label: "Email", name: "email" },
       { label: "Phone Number", name: "contact_number" },
       { label: "Bundesland", name: "bundesland" },
-      { label: "Member Since", name: "member_since" }, // preformatted in parseEntity
+      { label: "Member Since", name: "member_since" },
     ],
 
     tabs: {
@@ -69,63 +74,81 @@ export default function ParentDetail() {
         enabled: true,
         label: "Children",
         idField: "id",
-        listPath: (id) => `/parents/${id}/children`,
-        toolbar: (parent) => (
-          <Button 
-            onClick={() => navigate('/admin/students/new', { 
-              state: { 
-                prefill: { 
-                  parent_id: parent.id, 
-                  parent_name: parent.name 
-                } 
-              }
-            })}
-          >
-            Add Child
-          </Button>
-        ),
+        
+        // Use already-fetched parent entity
+        prefetchRowsFromEntity: (entity) =>
+          Array.isArray(entity?.students)
+            ? entity.students
+            : Array.isArray(entity?.student)
+            ? entity.student
+            : [],
+    
+        // Enable refresh to re-hit /parent/:id and re-extract students
+        refetchPath: (id) => `/parent/${id}`,
+        extractList: (payload) => {
+          const root = payload?.data ?? payload ?? {};
+          return Array.isArray(root.student) ? root.student : [];  
+        },
+    
+        rowKey: (row) => row?.id?.toString(),  // Ensure ID is a string for the key
+    
         columns: [
-          { title: "ID", dataIndex: "id", key: "id" },
+          { title: "ID", dataIndex: "id", key: "id", width: 90 },
           {
             title: "Name",
             key: "name",
-            render: (_, r) => `${r.user?.first_name || ""} ${r.user?.last_name || ""}`.trim() || r.name,
+            render: (_, r) => {
+              const user = r?.user || {};
+              const fn = user.first_name || '';
+              const ln = user.last_name || '';
+              const full = `${fn} ${ln}`.trim();
+              return full || `Student #${r?.id ?? "-"}`;
+            },
+          },
+          {
+            title: "E-mail",
+            key: "email",
+            render: (_, r) => r?.user?.email ?? "N/A",
           },
           {
             title: "Grade",
             dataIndex: "grade",
             key: "grade",
-            render: (v) => v || "N/A",
+            render: (_, r) => r?.class?.name ?? r?.class_name ?? r?.class_id ?? "N/A",
+            width: 120,
           },
           {
             title: "State",
-            dataIndex: "bundesland",
             key: "bundesland",
-            render: (v) => v || "N/A",
+            render: (_, r) => r?.user?.state ?? "N/A",
+            width: 140,
           },
           {
             title: "Status",
-            dataIndex: "status", // Status is directly on the student/child record
+            dataIndex: "status",
             key: "status",
-            render: (status) => {
+            render: (status, record) => {
+              const studentStatus = status || record?.user?.status;
               let color = "default";
-              if (status === "active") color = "success";
-              if (status === "completed") color = "blue";
-              if (status === "locked") color = "error";
-              return <Tag color={color}>{status || "N/A"}</Tag>;
+              if (studentStatus === "active") color = "success";
+              if (studentStatus === "completed") color = "blue";
+              if (studentStatus === "locked") color = "error";
+              return <Tag color={color}>{studentStatus || "N/A"}</Tag>;
             },
+            width: 140,
           },
         ],
       },
-      billing: { 
-        enabled: true, 
+
+      billing: {
+        enabled: true,
         label: "Billing",
-        render: (entity) => <BillingTab entity={entity} />
+        render: (entity) => <BillingTab entity={entity} />,
       },
-      communication: { enabled: true, label: "Comments" },
+      audit: { enabled: true, label: "Audit Log" },
       tasks: { enabled: true, label: "Tasks" },
       documents: { enabled: true, label: "Documents" },
-      audit: { enabled: true, label: "Audit Log" },
+      communication: { enabled: true, label: "Comments" },
     },
   };
 

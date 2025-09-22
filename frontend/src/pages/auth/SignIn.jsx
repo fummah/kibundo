@@ -15,6 +15,39 @@ import { hasSeenIntro, hasDoneTour } from "@/pages/student/onboarding/introFlags
 
 const { Title, Text } = Typography;
 
+/* ----------------------------- helpers ----------------------------- */
+function extractToken(resp) {
+  const d = resp?.data || {};
+  // common JSON token fields
+  let t =
+    d.token ??
+    d.access_token ??
+    d.jwt ??
+    d?.data?.token ??
+    d?.data?.access_token ??
+    null;
+
+  // also support "Authorization: Bearer <token>" header
+  if (!t) {
+    const authHeader =
+      resp?.headers?.authorization ||
+      resp?.headers?.Authorization ||
+      d?.authorization;
+    if (authHeader && typeof authHeader === "string") {
+      const parts = authHeader.split(" ");
+      if (parts.length === 2 && /^Bearer$/i.test(parts[0])) {
+        t = parts[1];
+      }
+    }
+  }
+  return t || null;
+}
+
+function normalizeRoleId(user) {
+  return Number(user?.role_id ?? user?.roleId ?? user?.role?.id ?? NaN);
+}
+
+/* ------------------------------ page ------------------------------- */
 export default function SignIn() {
   const navigate = useNavigate();
   const { login } = useAuthContext();
@@ -24,23 +57,25 @@ export default function SignIn() {
     try {
       setLoading(true);
 
-      const { data } = await api.post("/auth/login", values);
-      const user = data?.user;
-      const token = data?.token;
+      const resp = await api.post("/auth/login", values);
+      const user = resp?.data?.user ?? resp?.data?.data?.user ?? null;
+      const token = extractToken(resp);
 
       if (!user || !token) {
-        toast.error("Unexpected response. Please try again.");
+        toast.error("Unexpected login response (missing user or token).");
         return;
       }
 
-      // Be tolerant of different user role shapes
-      const roleId = Number(
-        user.role_id ??
-        user.roleId ??
-        user?.role?.id
-      );
+      // 🔎 Show token in console AFTER successful login
+      // (Mask in dev if you prefer: token.slice(0, 12) + "…")
+      console.log("🔑 Login successful, received token:", token);
+
+      // Persist & apply token immediately
+      localStorage.setItem("kibundo_token", token);
+      api.defaults.headers.common.Authorization = `Bearer ${token}`;
 
       // Store session in your context
+      const roleId = normalizeRoleId(user);
       login(user, token);
       toast.success("Login successful!");
 
@@ -63,6 +98,7 @@ export default function SignIn() {
       const msg =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
+        err?.message ||
         "Login failed";
       toast.error(msg);
     } finally {
