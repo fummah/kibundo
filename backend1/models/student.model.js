@@ -48,6 +48,11 @@ module.exports = (sequelize, DataTypes) => {
       as: 'parent'
     });
 
+ Student.hasMany(models.student_subjects , {
+      foreignKey: "student_id",
+      as: 'subject'
+    });
+
   };
   
 

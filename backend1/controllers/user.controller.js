@@ -18,10 +18,12 @@ const QuizItem = db.quizItem;
 const Curriculum = db.curriculum;
 const Worksheet = db.worksheet;
 const State = db.states;
+const StudentSubjects = db.student_subjects;
+
 
 exports.adduser = async (req, res) => {
   try {
-    const { first_name, last_name, email, role_id, state } = req.body;
+    const { first_name, last_name, email, role_id, state, class_id,parent_id, subjects } = req.body;
 
 
     // 2. Check if user exists
@@ -41,14 +43,25 @@ exports.adduser = async (req, res) => {
     {
        const newStudent = await Student.create({
       user_id:newUser.id,
+      class_id:class_id,
+      parent_id: parent_id || null,
       created_by,
     });
+
+       if (subjects && Array.isArray(subjects) && subjects.length > 0) {
+        const subjectMappings = subjects.map(subject_id => ({
+          student_id: newStudent.id,
+          subject_id: subject_id,
+          created_by
+        }));
+
+        await StudentSubjects.bulkCreate(subjectMappings, { transaction: t });
+      }
     }
     else if(role_id == 2)
     {
          const newParent = await Parent.create({
-      user_id:newUser.id,
-      class_id:1,
+      user_id:newUser.id,      
       created_by,
     });
     }
@@ -56,7 +69,7 @@ exports.adduser = async (req, res) => {
     {
          const newTeacher = await Teacher.create({
       user_id:newUser.id,
-      class_id:1,
+      class_id:class_id,
       created_by,
     });
     }
@@ -319,10 +332,34 @@ exports.getStudentById = async (req, res) => {
           as: 'user',
           attributes: { exclude: ['password'] }, // adjust fields
         },
+         {
+          model: Parent,
+          as: 'parent',
+          attributes: { exclude: ['password'] }, // adjust fields
+            include: [
+            {
+              model: User,
+              as: 'user',   // ✅ match alias in StudentSubjects.js
+              attributes: { exclude: ['password'] }
+            }
+          ]
+        },
         {
           model: Class,
           as: 'class',
           attributes: ['id', 'class_name'] // adjust based on your class model
+        },
+        {
+          model: StudentSubjects,
+          as: 'subject',
+          attributes: ['id'],
+          include: [
+            {
+              model: Subject,
+              as: 'subject',   // ✅ match alias in StudentSubjects.js
+              attributes: ['id', 'subject_name']
+            }
+          ]
         }
       ]
     });

@@ -61,6 +61,10 @@ db.homeworkScanEvent = require("./homeworkscanevent.model")(sequelize, DataTypes
 db.agentPromptSet = require("./agentpromptset.model")(sequelize, DataTypes);
 db.agentTest = require("./agenttest.model")(sequelize, DataTypes);
 
+//
+db.state = require("./state.model")(sequelize, DataTypes);
+db.student_subjects = require("./student_subjects.model")(sequelize, DataTypes);
+
 // Load associations if present
 Object.keys(db).forEach(modelName => {
   if (db[modelName] && typeof db[modelName].associate === "function") {
