@@ -1,39 +1,24 @@
-// src/pages/admin/AdminDashboard.jsx
-import { useMemo, useEffect, useState, useCallback } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Card,
-  Button,
-  Row,
-  Col,
-  Space,
-  Statistic,
-  Spin,
-  Typography,
-  Result,
-} from "antd";
-import {
-  FileTextOutlined,
-  DatabaseOutlined,
-  PieChartOutlined,
-  TeamOutlined,
-  UserOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
-  ReloadOutlined,
-  BookOutlined,
-  ShoppingCartOutlined,
-  FileDoneOutlined,
-  BarChartOutlined,
-  WarningOutlined,
-} from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
-import { useAuthContext } from "@/context/AuthContext";
+import { Spin, Result, Button, Space, Tag, Typography, Card } from "antd";
+import { 
+  UserOutlined, 
+  TeamOutlined, 
+  SolutionOutlined, 
+  FileDoneOutlined, 
+  ArrowUpOutlined, 
+  ReloadOutlined,
+  PieChartOutlined,
+  DatabaseOutlined,
+  FileTextOutlined,
+  BarChartOutlined
+} from '@ant-design/icons';
 import api from "@/api/axios";
 
-const { Text, Title } = Typography;
+const { Title, Text } = Typography;
 
-// Data fetching utilities
+// Data fetching utilities from the original file
 const getJson = async (path) => {
   try {
     const { data } = await api.get(path);
@@ -47,44 +32,22 @@ const getJson = async (path) => {
 const fetchDashboardBundle = async () => {
   try {
     const [
-      overview,
-      users,
       parents,
       students,
-      teachers,
-      classes,
-      subjects,
-      products,
       subscriptions,
-      blogposts,
     ] = await Promise.all([
-      getJson("/admin/dashboard"),
-      getJson("/users"),
       getJson("/parents"),
       getJson("/allstudents"),
-      getJson("/allteachers"),
-      getJson("/allclasses"),
-      getJson("/allsubjects"),
-      getJson("/products"),
       getJson("/subscriptions"),
-      getJson("/blogposts"),
     ]);
 
-    const len = (x) =>
-      Array.isArray(x) ? x.length : (Array.isArray(x?.data) ? x.data.length : 0);
+    const len = (x) => Array.isArray(x) ? x.length : 0;
 
     return {
-      overview: overview || {},
       counts: {
-        users: len(users),
         parents: len(parents),
         students: len(students),
-        teachers: len(teachers),
-        classes: len(classes),
-        subjects: len(subjects),
-        products: len(products),
-        subscriptions: len(subscriptions),
-        blogposts: len(blogposts),
+        activeContracts: (subscriptions || []).filter(s => s.status === 'active').length,
       },
     };
   } catch (error) {
@@ -93,80 +56,39 @@ const fetchDashboardBundle = async () => {
   }
 };
 
-// Fallback data
-const FALLBACK = {
-  totalUsers: 0,
-  parents: 0,
-  students: 0,
-  teachers: 0,
-  classes: 0,
-  subjects: 0,
-  products: 0,
-  subscriptions: 0,
-  blogposts: 0,
-};
 
-function ErrorFallback({ error, onRetry, isFetching }) {
-  return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <Result
-        status="error"
-        title="Failed to load dashboard"
-        subTitle={error?.message || "An error occurred while loading the dashboard"}
-        extra={[
-          <Button type="primary" key="retry" onClick={onRetry} icon={<ReloadOutlined />}>
-            Try Again
-          </Button>,
-        ]}
-      />
-    </div>
-  );
-}
-
-function LoadingState() {
-  return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <Space direction="vertical" align="center" size="large">
-        <Spin size="large" />
-        <Text type="secondary">Loading dashboard data...</Text>
-      </Space>
-    </div>
-  );
-}
-
-const KPICard = ({ title, value, icon, delta, onClick, className = "" }) => {
-  return (
-    <Card
-      hoverable
-      onClick={onClick}
-      className={`rounded-xl text-white transition-all duration-200 hover:scale-[1.02] ${className}`}
-      styles={{ body: { minHeight: 120, display: "flex", alignItems: "center" } }}
-    >
-      <div className="flex items-center justify-between w-full">
+// Reusable Dashboard Card Component (New UI)
+const DashboardCard = ({ title, value, trend, trendLabel, breakdown, icon, color, onClick }) => (
+  <div 
+    className={`rounded-2xl p-6 text-white ${color} flex flex-col justify-between h-48 ${onClick ? 'cursor-pointer transition-transform hover:scale-105' : ''}`}
+    onClick={onClick}
+  >
+    <div className="flex justify-between items-start">
+      <div className="flex items-center">
+        <div className="text-2xl bg-white/20 p-2 rounded-full mr-4">{icon}</div>
         <div>
-          <div className="text-white/80 text-sm">{title}</div>
-          <div className="text-3xl font-bold leading-none mt-1">
-            {value ?? "-"}
-          </div>
-          {delta !== undefined && (
-            <div
-              className={`text-xs mt-1 flex items-center ${
-                delta >= 0 ? "text-green-200" : "text-red-200"
-              }`}
-            >
-              {delta >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-              <span className="ml-1">{Math.abs(delta)}%</span>
-              <span className="ml-1">{delta >= 0 ? "increase" : "decrease"}</span>
-            </div>
-          )}
-        </div>
-        <div className="text-white/30 text-4xl">
-          {icon}
+          <div className="text-sm font-light opacity-80">{title}</div>
+          <div className="text-4xl font-bold">{value}</div>
         </div>
       </div>
-    </Card>
-  );
-};
+      <div className="text-right">
+        <div className="text-sm font-light opacity-80">{trendLabel}</div>
+        <div className="text-lg font-semibold flex items-center">
+          <ArrowUpOutlined className="mr-1" /> {trend}%
+        </div>
+      </div>
+    </div>
+    {breakdown && (
+      <Space size="small">
+        {breakdown.map(item => (
+          <Tag key={item.label} color="rgba(255, 255, 255, 0.2)" className="!m-0 border-none text-white/90">
+            {item.label}: {item.value}
+          </Tag>
+        ))}
+      </Space>
+    )}
+  </div>
+);
 
 const FeatureCard = ({ title, description, icon, onClick }) => {
   return (
@@ -191,89 +113,11 @@ const FeatureCard = ({ title, description, icon, onClick }) => {
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
-  const { user, isInitialized } = useAuthContext();
-  const [retryCount, setRetryCount] = useState(0);
-  const [hasError, setHasError] = useState(false);
-  const [error, setError] = useState(null);
-
-  const {
-    data,
-    isFetching,
-    isError: isQueryError,
-    error: queryError,
-    refetch,
-    isRefetching,
-  } = useQuery({
-    queryKey: ["admin-dashboard-bundle", retryCount],
-    queryFn: async () => {
-      if (!user?.token && !localStorage.getItem('token')) {
-        throw new Error('Authentication required');
-      }
-      try {
-        const result = await fetchDashboardBundle();
-        setHasError(false);
-        setError(null);
-        return result;
-      } catch (err) {
-        setHasError(true);
-        setError(err);
-        throw err;
-      }
-    },
-    enabled: isInitialized && !!user?.token,
-    retry: 2,
-    retryDelay: 1000,
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ["adminDashboardBundle"],
+    queryFn: fetchDashboardBundle,
     staleTime: 5 * 60 * 1000, // 5 minutes
-    keepPreviousData: true,
-    refetchOnWindowFocus: false,
   });
-
-  const handleRetry = useCallback(() => {
-    setRetryCount(prev => prev + 1);
-    refetch();
-  }, [refetch]);
-
-  const refreshData = useCallback(() => {
-    refetch();
-  }, [refetch]);
-
-  const kpis = useMemo(() => {
-    const counts = data?.counts || FALLBACK;
-    return [
-      {
-        title: "Total Users",
-        value: counts.users,
-        icon: <UserOutlined />,
-        delta: 12,
-        color: "bg-blue-500",
-        onClick: () => navigate("/admin/users"),
-      },
-      {
-        title: "Total Students",
-        value: counts.students,
-        icon: <UserOutlined />,
-        delta: 8,
-        color: "bg-green-500",
-        onClick: () => navigate("/admin/students"),
-      },
-      {
-        title: "Total Teachers",
-        value: counts.teachers,
-        icon: <UserOutlined />,
-        delta: 5,
-        color: "bg-purple-500",
-        onClick: () => navigate("/admin/teachers"),
-      },
-      {
-        title: "Total Classes",
-        value: counts.classes,
-        icon: <TeamOutlined />,
-        delta: 15,
-        color: "bg-amber-500",
-        onClick: () => navigate("/admin/classes"),
-      },
-    ];
-  }, [data, navigate]);
 
   const features = useMemo(
     () => [
@@ -308,36 +152,80 @@ const AdminDashboard = () => {
   const quickActions = useMemo(
     () => [
       {
-        title: "New User",
-        icon: <UserOutlined />,
-        onClick: () => navigate("/admin/users/new"),
-      },
-      {
-        title: "New Post",
-        icon: <FileTextOutlined />,
-        onClick: () => navigate("/admin/content/new"),
-      },
-      {
-        title: "View Reports",
+        title: "Generate Report",
         icon: <BarChartOutlined />,
-        onClick: () => navigate("/admin/reports"),
+        onClick: () => navigate("/admin/reports/generate"),
+        type: "primary",
       },
       {
-        title: "Settings",
-        icon: <DatabaseOutlined />,
-        onClick: () => navigate("/admin/settings"),
+        title: "Manage Contracts",
+        icon: <FileTextOutlined />,
+        onClick: () => navigate("/admin/billing/contract"),
+        type: "default",
       },
     ],
     [navigate]
   );
 
-  if (hasError) {
-    return <ErrorFallback error={error} onRetry={handleRetry} isFetching={isFetching} />;
+  if (isLoading) {
+    return <div className="w-full h-96 flex items-center justify-center"><Spin size="large" /></div>;
   }
 
-  if (isFetching && !data) {
-    return <LoadingState />;
+  if (isError) {
+    return (
+      <Result
+        status="error"
+        title="Failed to Load Dashboard"
+        subTitle={error.message}
+        extra={<Button type="primary" onClick={refetch}>Try Again</Button>}
+      />
+    );
   }
+
+  const counts = data?.counts || {};
+
+  const cards = [
+    {
+      title: "Total Users",
+      value: (counts.parents || 0) + (counts.students || 0),
+      trend: 0.0, // Placeholder
+      trendLabel: "MoM",
+      icon: <UserOutlined />,
+      color: "bg-gradient-to-br from-purple-500 to-indigo-600",
+      breakdown: [
+        { label: "Parents", value: counts.parents },
+        { label: "Students", value: counts.students },
+      ],
+      // This card is a summary, so it's not clickable.
+    },
+    {
+      title: "Parents",
+      value: counts.parents,
+      trend: 0.0, // Placeholder
+      trendLabel: "WoW",
+      icon: <TeamOutlined />,
+      color: "bg-gradient-to-br from-cyan-500 to-blue-600",
+      onClick: () => navigate('/admin/parents'),
+    },
+    {
+      title: "Students",
+      value: counts.students,
+      trend: 0.0, // Placeholder
+      trendLabel: "MoM",
+      icon: <SolutionOutlined />,
+      color: "bg-gradient-to-br from-teal-500 to-green-600",
+      onClick: () => navigate('/admin/students'),
+    },
+    {
+      title: "Active Contracts",
+      value: counts.activeContracts,
+      trend: 0, // Placeholder
+      trendLabel: "Next 30d",
+      icon: <FileDoneOutlined />,
+      color: "bg-gradient-to-br from-rose-500 to-orange-600",
+      onClick: () => navigate('/admin/subscriptions'),
+    },
+  ];
 
   return (
     <div className="p-4 md:p-6">
@@ -345,37 +233,20 @@ const AdminDashboard = () => {
         <Title level={2} className="mb-0">
           Admin Dashboard
         </Title>
-        <Button
-          type="primary"
-          icon={<ReloadOutlined />}
-          loading={isFetching || isRefetching}
-          onClick={refreshData}
-        >
-          Refresh
-        </Button>
       </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {kpis.map((kpi, index) => (
-          <KPICard
-            key={index}
-            title={kpi.title}
-            value={kpi.value}
-            icon={kpi.icon}
-            delta={kpi.delta}
-            onClick={kpi.onClick}
-            className={kpi.color}
-          />
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+        {cards.map((card, index) => (
+          <DashboardCard key={index} {...card} />
         ))}
       </div>
 
       {/* Quick Actions */}
-      <Card title="Quick Actions" className="mb-6">
+      <Card title="Quick Actions" className="my-6 rounded-xl">
         <Space wrap>
           {quickActions.map((action, index) => (
             <Button
               key={index}
+              type={action.type}
               icon={action.icon}
               onClick={action.onClick}
               className="flex items-center gap-2"
@@ -402,9 +273,10 @@ const AdminDashboard = () => {
         ))}
       </div>
 
-      {/* Recent Activity */}
+      {/* Recent Activity 
       <Card
         title="Recent Activity"
+        className="rounded-xl"
         extra={
           <Button type="link" onClick={() => navigate("/admin/activity")}>
             View All
@@ -414,7 +286,7 @@ const AdminDashboard = () => {
         <div className="text-center py-8">
           <Text type="secondary">No recent activity</Text>
         </div>
-      </Card>
+      </Card>*/}
     </div>
   );
 };

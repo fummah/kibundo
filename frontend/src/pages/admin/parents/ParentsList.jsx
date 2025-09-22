@@ -28,16 +28,19 @@ export default function ParentsList() {
                 p.name || "-";
 
               return {
-                // everything we want available on detail prefill:
+                // fields available for row + detail prefill
                 id: p.id,
                 name: fb(name),
-                email: fb(u.email || p.email),
-                status: fb(u.status || p.status),
-                // school: fb(p.school?.name || p.school_name || p.location),
-                bundesland: fb(p.bundesland),
+                email: fb(u.email ?? p.email),
+                status: fb(u.status ?? p.status),
+
+                // 🔹 NEW / FIXED mappings
+                contact_number: fb(u.contact_number ?? p.contact_number),
+                bundesland: fb(u.state ?? p.bundesland),
+
                 created_at: p.created_at || u.created_at || null,
 
-                // keep originals around just in case
+                // keep originals around
                 user_id: p.user_id,
                 raw: p,
               };
@@ -47,11 +50,10 @@ export default function ParentsList() {
         statusFilter: true,
         billingFilter: false,
 
-        // IMPORTANT: override the ID column to navigate with router state
+        // Override the ID column to navigate with router state (prefill)
         columnsMap: (navigate) => ({
           status: F.status("status"),
 
-          // ID column → pass prefill
           id: {
             title: "ID",
             dataIndex: "id",
@@ -70,7 +72,6 @@ export default function ParentsList() {
             ),
           },
 
-          // Name column also clickable (optional)
           name: {
             title: "Full name",
             dataIndex: "name",
@@ -89,13 +90,18 @@ export default function ParentsList() {
           },
 
           email: F.email("email"),
-          // school: F.text("School", "school"),
-          bundesland: F.text("Bundesland", "bundesland"),
-          
+
+          // 🔹 Contact number column
+          contact_number: F.text("Phone number", "contact_number"),
+
+          // 🔹 Show as “State”, value comes from user.state (bundesland)
+          bundesland: F.text("State", "bundesland"),
+
           created_at: F.date("Date added", "created_at"),
         }),
 
-        defaultVisible: ["status", "id", "name", "email", "bundesland", "created_at"],
+        // 🔹 Make contact + state visible by default
+        defaultVisible: ["status", "id", "name", "email", "contact_number", "bundesland", "created_at"],
       }}
     />
   );

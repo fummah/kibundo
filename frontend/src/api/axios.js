@@ -6,16 +6,10 @@ const normalizeBase = (raw) => {
   if (!raw) return "/api";
   let base = String(raw).trim();
 
-  // If it's just "/" or empty, fallback to /api
   if (base === "/" || base === "") return "/api";
-
-  // Remove trailing slash
   base = base.replace(/\/+$/, "");
 
-  // If it's an absolute origin without a path, append /api
-  // e.g. https://api.example.com  -> https://api.example.com/api
   if (/^https?:\/\/[^/]+$/i.test(base)) return `${base}/api`;
-
   return base;
 };
 
@@ -23,16 +17,20 @@ const BASE_URL = normalizeBase(import.meta?.env?.VITE_API_BASE || "/api");
 
 /**
  * Auth mode:
- *  - 'bearer'  -> attach Authorization: Bearer <token> from localStorage('token')
+ *  - 'bearer'  -> attach Authorization: Bearer <token> from localStorage
  *  - 'cookie'  -> use session cookies (e.g., Laravel Sanctum) + CSRF
- *
- * Configure via VITE_AUTH_MODE= bearer | cookie   (default: bearer)
  */
 const AUTH_MODE = (import.meta?.env?.VITE_AUTH_MODE || "bearer").toLowerCase();
 
+/** Debug logging for tokens:
+ *  '' (default)  -> off
+ *  'on'          -> masked logs (first 12 chars)
+ *  'full'        -> full token logs (dev only)
+ */
+const AUTH_DEBUG = String(import.meta?.env?.VITE_AUTH_DEBUG || "").toLowerCase();
+
 /**
  * CSRF endpoints (for cookie mode, e.g., Laravel Sanctum).
- * IMPORTANT: Make sure your Vite proxy forwards `/sanctum/*` to your backend too.
  */
 const CSRF_URL = import.meta?.env?.VITE_CSRF_URL || "/sanctum/csrf-cookie";
 const XSRF_COOKIE_NAME =
@@ -43,8 +41,8 @@ const XSRF_HEADER_NAME =
 /** Create a single Axios instance used across the app */
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 20000, // 20s defensive timeout
-  withCredentials: AUTH_MODE === "cookie", // send cookies automatically in cookie mode
+  timeout: 20000,
+  withCredentials: AUTH_MODE === "cookie",
   headers: {
     Accept: "application/json",
     "Content-Type": "application/json",
@@ -55,6 +53,8 @@ const api = axios.create({
 });
 
 /* ----------------------------- helpers ----------------------------- */
+const TOKEN_KEYS = ["kibundo_token", "token"];
+
 const isGet = (cfg) => (cfg?.method || "get").toLowerCase() === "get";
 const getMeta = (cfg) => cfg?.meta || {};
 const isCanceled = (err) =>
@@ -68,10 +68,35 @@ const getCookie = (name) => {
   return m ? decodeURIComponent(m[2]) : "";
 };
 
-/** Quick detector: is this an HTML response likely from Vite (proxy missing)? */
 const looksLikeHtml = (error) => {
   const ct = error?.response?.headers?.["content-type"] || "";
   return ct.includes("text/html");
+};
+
+const readToken = () => {
+  try {
+    for (const k of TOKEN_KEYS) {
+      const v = localStorage.getItem(k);
+      if (v) return v;
+    }
+  } catch {}
+  return null;
+};
+
+const logToken = (token, where) => {
+  if (!AUTH_DEBUG) return;
+  if (!token) {
+    // still useful to know we tried
+    console.log(`🔑 [${where}] no token found`);
+    return;
+    }
+  if (AUTH_DEBUG === "full") {
+    console.log(`🔑 [${where}] token:`, token);
+  } else {
+    console.log(
+      `🔑 [${where}] token: ${token.slice(0, 12)}… (${token.length} chars)`
+    );
+  }
 };
 
 /**
@@ -81,17 +106,17 @@ const looksLikeHtml = (error) => {
 let csrfBootPromise = null;
 const ensureCsrfCookie = () => {
   if (AUTH_MODE !== "cookie") return Promise.resolve();
-  // if cookie already present, nothing to do
   if (getCookie(XSRF_COOKIE_NAME)) return Promise.resolve();
 
   if (!csrfBootPromise) {
-    // Use a raw axios call to avoid interceptor loops
-    // Sanctum usually lives outside `/api`, so strip a trailing /api for the CSRF origin
     const csrfBase = BASE_URL.replace(/\/api\/?$/, "");
     const raw = axios.create({
       baseURL: csrfBase || "",
       withCredentials: true,
-      headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+      headers: {
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
       xsrfCookieName: XSRF_COOKIE_NAME,
       xsrfHeaderName: XSRF_HEADER_NAME,
       timeout: 15000,
@@ -104,21 +129,29 @@ const ensureCsrfCookie = () => {
   return csrfBootPromise;
 };
 
+/* ------------------------------ boot -------------------------------- */
+// Attach token at startup if present (helps non-intercepted libs, too)
+(() => {
+  const t = readToken();
+  if (t) {
+    api.defaults.headers.common.Authorization = `Bearer ${t}`;
+  }
+  logToken(t, "boot");
+})();
+
 /* ------------------------ request interceptor ----------------------- */
 api.interceptors.request.use(
   async (config) => {
     const meta = getMeta(config);
 
-    // Per-request override of withCredentials if caller passes it
     const useCookies =
       typeof config.withCredentials === "boolean"
         ? config.withCredentials
         : api.defaults.withCredentials;
 
-    // COOKIE mode: make sure CSRF cookie exists (Laravel Sanctum style)
+    // COOKIE mode: ensure CSRF cookie
     if (AUTH_MODE === "cookie" || useCookies) {
       await ensureCsrfCookie();
-      // In cookie mode, avoid adding Authorization header (unless explicitly forced)
       if (!meta.forceAuthHeader) {
         if (config.headers && "Authorization" in config.headers) {
           delete config.headers.Authorization;
@@ -126,16 +159,17 @@ api.interceptors.request.use(
       }
     }
 
-    // BEARER mode (or explicitly forced): attach token unless explicitly disabled
+    // BEARER mode: attach token unless explicitly disabled
     const usingBearer =
       AUTH_MODE === "bearer" || (meta.forceAuthHeader && !meta.noAuthHeader);
 
     if (usingBearer && !meta.noAuthHeader) {
-      const token = localStorage.getItem("token");
+      const token = readToken();
       if (token) {
         config.headers = config.headers || {};
         config.headers.Authorization = `Bearer ${token}`;
       }
+      logToken(token, "request");
     }
 
     return config;
@@ -151,10 +185,8 @@ api.interceptors.response.use(
     const meta = getMeta(cfg);
     const status = error?.response?.status;
 
-    // Silently ignore cancellations (common during unmount/refresh)
     if (isCanceled(error)) return Promise.reject(error);
 
-    // Network / CORS / HTTPS mismatch / server unreachable
     if (!error.response) {
       if (meta.toastNetwork !== false) {
         message.error("Network error. Please check your connection.");
@@ -162,16 +194,13 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Catch the “Vite served HTML” scenario (proxy/base misconfig)
     if (looksLikeHtml(error)) {
       const url = `${cfg?.baseURL || ""}${cfg?.url || ""}`;
       const hint =
-        "HTML response received – likely from the Vite dev server. " +
-        "Check your Vite proxy or VITE_API_BASE so /api/* hits the backend.";
+        "HTML response received – likely from the Vite dev server. Check your Vite proxy or VITE_API_BASE so /api/* hits the backend.";
       if (meta.toastHtml !== false) {
         message.error(`Endpoint returned HTML (probably proxy issue): ${url}`);
       }
-      // Wrap as 404 for consistency if backend wasn’t reached
       return Promise.reject(
         Object.assign(error, {
           __hint: hint,
@@ -184,7 +213,7 @@ api.interceptors.response.use(
         message.error("Session expired. Please log in again.");
       }
       try {
-        localStorage.removeItem("token");
+        TOKEN_KEYS.forEach((k) => localStorage.removeItem(k));
         localStorage.removeItem("user");
       } catch {}
       if (meta.redirectOn401 !== false) {
@@ -199,9 +228,10 @@ api.interceptors.response.use(
 
     if (status === 403) {
       if (meta.toast403 !== false) {
-        message.warning("Forbidden: you don’t have permission to perform this action.");
+        message.warning(
+          "Forbidden: you don’t have permission to perform this action."
+        );
       }
-      // Optional: redirect to an "Unauthorized" page
       if (meta.redirectOn403) {
         setTimeout(() => {
           window.location.href =
@@ -214,7 +244,6 @@ api.interceptors.response.use(
     }
 
     if (status === 404) {
-      // If a GET hits a 404, suppress toast by default; for POST/PUT/DELETE, show it.
       if (!isGet(cfg) || meta.toast404 === true) {
         message.error("Requested resource not found (404).");
       }
@@ -244,20 +273,32 @@ api.interceptors.response.use(
 );
 
 /* ----------------------------- utilities ---------------------------- */
-/** Allow callers to check for cancellation without importing axios directly. */
 api.isCancel = isCanceled;
 
 /** Runtime helpers */
 export const setAuthToken = (token) => {
-  if (token) localStorage.setItem("token", token);
-  else localStorage.removeItem("token");
-};
-export const clearAuth = () => {
-  localStorage.removeItem("token");
-  localStorage.removeItem("user");
+  try {
+    if (token) {
+      // Write to both keys for compatibility
+      TOKEN_KEYS.forEach((k) => localStorage.setItem(k, token));
+      api.defaults.headers.common.Authorization = `Bearer ${token}`;
+      logToken(token, "setAuthToken");
+    } else {
+      TOKEN_KEYS.forEach((k) => localStorage.removeItem(k));
+      delete api.defaults.headers.common.Authorization;
+      logToken(null, "setAuthToken");
+    }
+  } catch {}
 };
 
-/** If you need to change baseURL at runtime (e.g., tenant switch) */
+export const clearAuth = () => {
+  try {
+    TOKEN_KEYS.forEach((k) => localStorage.removeItem(k));
+    localStorage.removeItem("user");
+    delete api.defaults.headers.common.Authorization;
+  } catch {}
+};
+
 export const setBaseURL = (nextBase) => {
   api.defaults.baseURL = normalizeBase(nextBase);
 };

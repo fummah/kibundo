@@ -62,6 +62,7 @@ import {
   Tooltip as RTooltip,
 } from "recharts";
 import api from "@/api/axios";
+import StudentForm from "@/pages/admin/students/StudentForm";
 
 const { Text } = Typography;
 const { Dragger } = Upload;
@@ -274,22 +275,60 @@ export default function EntityDetail({ cfg }) {
   /* -------- related -------- */
   const loadRelated = useCallback(async () => {
     if (!safeCfg?.tabs?.related?.enabled) return;
-    const listFn = safeCfg?.tabs?.related?.listPath || relatedListPath;
-    if (typeof listFn !== "function") {
-      setRelatedRows([]);
-      return;
-    }
+    const rel = safeCfg?.tabs?.related || {};
+    const listFn = rel.listPath || relatedListPath;
+    const refetchFn = rel.refetchPath;
+    const extract = rel.extractList;
+
     setRelatedLoading(true);
     try {
-      const { data } = await api.get(listFn(id), { withCredentials: true });
-      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-      setRelatedRows(list);
+      // 1) Preferred: explicit listPath returning an array
+      if (typeof listFn === "function") {
+        const { data } = await api.get(listFn(id), { withCredentials: true });
+        const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        setRelatedRows(list);
+        return;
+      }
+
+      // 2) Fallback: refetchPath + extractList to derive array from payload
+      if (typeof refetchFn === "function") {
+        const path = refetchFn(id);
+        const { data } = await api.get(path, { withCredentials: true });
+        if (typeof extract === "function") {
+          const list = extract(data);
+          setRelatedRows(Array.isArray(list) ? list : []);
+        } else {
+          const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+          setRelatedRows(list);
+        }
+        return;
+      }
+
+      // 3) Last resort: prefetch from current entity
+      if (typeof rel.prefetchRowsFromEntity === "function" && entity) {
+        const list = rel.prefetchRowsFromEntity(entity);
+        setRelatedRows(Array.isArray(list) ? list : []);
+        return;
+      }
+
+      // If nothing configured, clear
+      setRelatedRows([]);
     } catch {
       setRelatedRows([]);
     } finally {
       setRelatedLoading(false);
     }
-  }, [safeCfg?.tabs?.related, id, relatedListPath]);
+  }, [safeCfg?.tabs?.related, id, relatedListPath, entity]);
+
+  // Prefill related rows from entity when available (useful before first manual refresh)
+  useEffect(() => {
+    const rel = safeCfg?.tabs?.related || {};
+    if (!rel.enabled) return;
+    if (typeof rel.prefetchRowsFromEntity === "function" && entity) {
+      const rows = rel.prefetchRowsFromEntity(entity);
+      if (Array.isArray(rows)) setRelatedRows(rows);
+    }
+  }, [entity, safeCfg?.tabs?.related]);
 
   /* --- Info edit state --- */
   // Inline editing state
@@ -996,16 +1035,16 @@ export default function EntityDetail({ cfg }) {
               <Button 
                 icon={<PlusOutlined />} 
                 onClick={() => setLinkChildModalOpen(true)}
-                disabled={!apiObj.linkStudentByIdPath}
+                disabled={false}
               >
-                Link Child
+                Add Student
               </Button>
               <Button icon={<ReloadOutlined />} onClick={loadRelated} />
             </Space>
           </div>
           <div className="px-3 pb-3">
             <Table
-              rowKey={(r, i) => r.id ?? i}
+              rowKey={(r) => r.id ?? r.name}
               loading={relatedLoading}
               columns={relatedColumns}
               dataSource={relatedRows}
@@ -1379,40 +1418,28 @@ export default function EntityDetail({ cfg }) {
         />
       </Card>
 
-      {/* Modal to Link Child */}
-      <Modal
-        title="Link Existing Child"
+   {/* Modal to Add Child */}
+   <Modal
+      
         open={linkChildModalOpen}
         onCancel={() => setLinkChildModalOpen(false)}
         footer={null}
+        width={800}
         destroyOnClose
       >
-        <Form
-          layout="vertical"
-          onFinish={async (values) => {
+        <StudentForm
+          isModal
+          initialValues={{ parent_id: id }} // Pre-fill parent ID
+          onSuccess={async (response) => {
             try {
-              const childId = values.student_id;
-              if (!childId) return messageApi.error('Student ID is required.');
-              await api.post(apiObj.linkStudentByIdPath(id), { student_id: childId });
-              messageApi.success('Child linked successfully!');
-              setLinkChildModalOpen(false);
-              loadRelated(); // Refresh the list
+              messageApi.success('Student created successfully!');
+               setLinkChildModalOpen(false);
+               loadRelated(); // Refresh the list
             } catch (err) {
-              messageApi.error(err?.response?.data?.message || 'Failed to link child.');
+              messageApi.error(err?.response?.data?.message || 'Failed to create student.');
             }
           }}
-        >
-          <Form.Item
-            name="student_id"
-            label="Student ID"
-            rules={[{ required: true, message: 'Please enter the ID of the student to link.' }]}
-          >
-            <Input placeholder="Enter Student ID" />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit">Link Student</Button>
-          </Form.Item>
-        </Form>
+        />
       </Modal>
 
     </div>
