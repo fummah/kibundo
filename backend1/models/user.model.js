@@ -24,7 +24,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     status: {
       type: DataTypes.STRING,
-      defaultValue: 'Pending'
+      defaultValue: 'Active'
     },
     contact_number: {
       type: DataTypes.STRING,

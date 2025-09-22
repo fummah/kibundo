@@ -17,6 +17,7 @@ const Quiz = db.quiz;
 const QuizItem = db.quizItem;
 const Curriculum = db.curriculum;
 const Worksheet = db.worksheet;
+const State = db.states;
 
 exports.adduser = async (req, res) => {
   try {
@@ -1214,5 +1215,17 @@ exports.deleteWorksheet = async (req, res) => {
     return res.status(500).json({ error: 'Failed to delete worksheet' });
   }
 };
+
+exports.getAllStates = async (req,re) => {
+     try {
+    const states = await State.findAll({
+     order: [['state_name', 'ASC']] 
+    });
+    return res.json(states);
+  } catch (error) {
+    console.error('Error fetching states:', error);
+    return res.status(500).json({ error: 'Failed to fetch states' });
+  }
+}
 
   
