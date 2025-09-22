@@ -18,7 +18,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     }
   }, {
-    tableName: 'state',
+    tableName: 'states',
     timestamps: false   // since we’re manually handling created_at
   });
 

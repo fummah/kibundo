@@ -17,7 +17,7 @@ const Quiz = db.quiz;
 const QuizItem = db.quizItem;
 const Curriculum = db.curriculum;
 const Worksheet = db.worksheet;
-const State = db.states;
+const State = db.state;
 const StudentSubjects = db.student_subjects;
 
 
@@ -447,6 +447,11 @@ exports.getParentById = async (req, res) => {
               model: User,
               as: 'user', // Student → User
               attributes: { exclude: ['password'] }
+            },
+            {
+               model: Class,
+          as: 'class',
+          attributes: ['id', 'class_name']
             }
           ]
         }
@@ -1253,7 +1258,7 @@ exports.deleteWorksheet = async (req, res) => {
   }
 };
 
-exports.getAllStates = async (req,re) => {
+exports.getAllStates = async (req,res) => {
      try {
     const states = await State.findAll({
      order: [['state_name', 'ASC']] 
