@@ -326,6 +326,8 @@ export default function EntityList({ cfg }) {
     columns = [{ title: "—", key: "__placeholder__", render: () => "-" }];
   }
 
+  // Actions column has been removed as per user request.
+  /*
   // Actions column (delete only where allowed by your API)
   const canDelete = Boolean(removePathBuilder);
   columns.push({
@@ -363,7 +365,7 @@ export default function EntityList({ cfg }) {
                   try {
                     await api.delete(removePathBuilder(r[idField]), { withCredentials: true });
                     load();
-                  } catch { /* silent */ }
+                  } catch {  }
                 },
               });
             }
@@ -378,6 +380,7 @@ export default function EntityList({ cfg }) {
       </Dropdown>
     ),
   });
+  */
 
   /* bulk actions (status updates optional; your API doesn't expose them by default) */
   const bulkMenu = {
@@ -585,7 +588,7 @@ export default function EntityList({ cfg }) {
         </div>
       </div>
 
-      <Card bordered={false} className="!rounded-2xl h-[calc(100%-3rem)] flex flex-col !bg-transparent !shadow-none" bodyStyle={{ background: "transparent", border: "none" }} style={{ background: "transparent", border: "none", boxShadow: "none" }}>
+      <Card variant="borderless" className="!rounded-2xl h-[calc(100%-3rem)] flex flex-col !bg-transparent !shadow-none" styles={{ body: { background: "transparent", border: "none" } }} style={{ background: "transparent", border: "none", boxShadow: "none" }}>
         {/* Tabs + right controls */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
           <Tabs
@@ -809,62 +812,3 @@ export default function EntityList({ cfg }) {
     </div>
   );
 }
-
-/* ---------- Common column factories (KEEP EXPORT SHAPE STABLE) ---------- */
-export const columnFactories = {
-  status: (dataIndex = "status") => ({
-    title: "Status",
-    dataIndex,
-    key: "status",
-    width: 120,
-    render: statusChip,
-  }),
-
-  idLink: (title, routeBase, idField = "id", navigateFn) => ({
-    title,
-    dataIndex: idField,
-    key: "id",
-    width: 90,
-    sorter: (a, b) => (a[idField] || 0) - (b[idField] || 0),
-    render: (v, r) => (
-      <Button
-        type="link"
-        className="!px-0"
-        onClick={() =>
-          navigateFn
-            ? navigateFn(`${r[idField]}`)
-            : (window.location.href = `${routeBase}/${r[idField]}`)
-        }
-      >
-        {dash(v)}
-      </Button>
-    ),
-  }),
-
-  text: (title, key, dataIndex = key, sorter = true) => ({
-    title,
-    dataIndex,
-    key,
-    render: (v) => dash(v),
-    ...(sorter
-      ? { sorter: (a, b) => String(getByPath(a, dataIndex) || "").localeCompare(String(getByPath(b, dataIndex) || "")) }
-      : {}),
-  }),
-
-  email: (key = "email") => ({
-    title: "Email",
-    dataIndex: key,
-    key,
-    render: (v) => <span className="truncate block max-w-[260px]">{dash(v)}</span>,
-    sorter: (a, b) => String(getByPath(a, key) || "").localeCompare(String(getByPath(b, key) || "")),
-  }),
-
-  date: (title, key = "createdAt") => ({
-    title,
-    dataIndex: key,
-    key,
-    width: 130,
-    render: (v) => dash(fmtDate(v)),
-    sorter: (a, b) => new Date(getByPath(a, key) || 0) - new Date(getByPath(b, key) || 0),
-  }),
-};

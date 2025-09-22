@@ -47,85 +47,56 @@ export default function StudentDetail() {
       updateStatusPath: (id) => `/student/${id}/status`,
       removePath: (id) => `/student/${id}`,
 
-      // guardians linking
-      linkGuardianByEmailPath: (id) => `/student/${id}/guardians/link-by-email`,
-      linkGuardianPath: (id) => `/student/${id}/guardians`,
-      unlinkGuardianPath: (id, guardianId) => `/student/${id}/guardians/${guardianId}`,
+      // Parent data is now included in the main GET /student/:id response.
 
       // Normalize/flatten for UI
       parseEntity: (payload) => {
         const s = payload?.data ?? payload ?? {};
-        const u = s.user || {};
-        const fb = (v) => (v === undefined || v === null || String(v).trim() === "" ? "-" : v);
+        const fallback = (v) => (v === undefined || v === null || String(v).trim() === "") ? "-" : String(v).trim();
 
-        const name =
-          s.name ||
-          u.name ||
-          [u.first_name, u.last_name].filter(Boolean).join(" ").trim() ||
-          "-";
+        const user = s.user || {};
+        const parent = s.parent || {};
+        const parentUser = parent.user || {};
 
-        const school = s.school?.name || s.school_name || s.school || s.location || "-";
-        const grade = s.grade ?? u.grade;
-        const bundesland = s.bundesland || "-";
-        const status = s.status || u.status || "-";
+        const name = fallback([user.first_name, user.last_name].filter(Boolean).join(' '));
+        const school = fallback(s.school?.name || s.school_name || s.school);
+        const grade = fallback(s.class?.class_name || s.class_name || s.grade || user.grade);
+        const status = fallback(user.status || s.status);
+        const bundesland = fallback(user.userBundesland?.name || user.state || s.bundesland);
+        
+        const parentName = fallback([parentUser.first_name, parentUser.last_name].filter(Boolean).join(' '));
+        const parentEmail = fallback(parentUser.email);
 
-        // Parent linkage (email must be linked to parent)
-        const parent =
-          s.parent ??
-          s.guardian ??
-          (Array.isArray(s.guardians) ? s.guardians[0] : null) ??
-          null;
-
-        const parentEmail =
-          parent?.email || parent?.user?.email || parent?.contact_email || null;
-
-        // subjects text (supports array or progress map)
-        const subjectsFromArray = Array.isArray(s.subjects) ? s.subjects : null;
-        const subjectsFromProgress =
-          s?.progress && s.progress.subjects && typeof s.progress.subjects === "object"
-            ? Object.keys(s.progress.subjects)
-            : null;
-        const subjectsText =
-          (subjectsFromArray && subjectsFromArray.join(", ")) ||
-          (subjectsFromProgress && subjectsFromProgress.join(", ")) ||
-          "-";
+        const subjectsText = Array.isArray(s.subjects) && s.subjects.length > 0
+          ? s.subjects.map(sub => sub.subject_name).join(', ')
+          : "-";
 
         const subscription = s.activePlan || s.subscription || {};
 
         return {
           id: s.id,
-          name: fb(name),
-          // Email shown in profile comes from linked parent (requirement)
-          email: fb(parentEmail || s.email || u.email || "-"),
-          emailSource: parentEmail ? "parent" : (s.email || u.email ? "student" : "none"),
-          grade: fb(grade),
-          school: fb(school),
-          bundesland: fb(bundesland),
-          status: fb(status),
-
+          name,
+          email: fallback(user.email),
+          grade,
+          school,
+          bundesland,
+          status,
           subjectsText,
           interests: Array.isArray(s.interests) ? s.interests : [],
-
           billing_email: s.billing_email,
           billing_type: s.billing_type,
           accountBalanceCents: s.accountBalanceCents,
           subscription,
-
-          createdAt: s.createdAt || s.created_at || u.created_at || null,
-          updatedAt: s.updatedAt || s.updated_at || null,
-
-          parentSummary: parent
+          createdAt: user.created_at || s.created_at || null,
+          updatedAt: s.updated_at || null,
+          parentSummary: parent.id
             ? {
                 id: parent.id,
-                name:
-                  parent.name ||
-                  [parent.first_name, parent.last_name].filter(Boolean).join(" ") ||
-                  [parent?.user?.first_name, parent?.user?.last_name].filter(Boolean).join(" "),
-                email: parentEmail || undefined,
-                is_payer: parent?.is_payer,
+                name: parentName,
+                email: parentEmail,
+                is_payer: parent.is_payer,
               }
             : undefined,
-
           raw: s,
         };
       },
@@ -137,28 +108,16 @@ export default function StudentDetail() {
     // Minimal profile per spec (no phone/street/city/postal/country; location = School only)
     infoFields: [
       { label: "Name", name: "name" },
-      // The Email field reflects the parent-linked email per requirement
-      { label: "Email (Parent-linked)", name: "email" },
+      { label: "Email", name: "email" },
       { label: "Grade", name: "grade" },
       { label: "School", name: "school" },
       { label: "Bundesland", name: "bundesland" },
       { label: "Subjects", name: "subjectsText" },
       { label: "Interests", name: "interests" },
 
-      // Explicit parent linkage shown in profile
-      { label: "Parent ID", name: ["parentSummary", "id"] },
-      { label: "Parent Name", name: ["parentSummary", "name"] },
-      { label: "Parent Email", name: ["parentSummary", "email"] },
-
-      // Billing snapshot (optional if present)
-      { label: "Billing Email", name: "billing_email" },
-      { label: "Billing Type", name: "billing_type" },
-      { label: "Subscription Status", name: ["subscription", "status"] },
-      { label: "Plan Interval", name: ["subscription", "interval"] },
-      { label: "Account Balance", name: "accountBalanceCents" },
+      // Parent info is now shown in the 'Parents / Guardians' tab.
 
       { label: "Created", name: "createdAt" },
-      { label: "Updated", name: "updatedAt" },
     ],
 
     // Chips: include a clear parent-link status indicator
@@ -166,7 +125,7 @@ export default function StudentDetail() {
       if (!e) return [];
       const chips = [];
       if (e.grade && e.grade !== "-") chips.push(<Tag key="grade">Grade: {e.grade}</Tag>);
-      if (e.bundesland && e.bundesland !== "-") chips.push(<Tag key="state">{e.bundesland}</Tag>);
+      if (e.bundesland && e.bundesland !== "-") chips.push(<Tag key="bundesland">{e.bundesland}</Tag>);
       if (Array.isArray(e?.interests) && e.interests.length)
         chips.push(<Tag key="interests">Interests: {e.interests.join(", ")}</Tag>);
       if (e?.parentSummary?.id) {
@@ -188,35 +147,13 @@ export default function StudentDetail() {
     },
 
     tabs: {
-      // Parents/Guardians linkage with “link by email” flow
+      // The 'related' tab now sources its data directly from the entity
       related: {
         enabled: true,
         label: "Parents / Guardians",
         idField: "id",
-        listPath: (id) => `/student/${id}/guardians`,
-        toolbar: (student) => (
-          <Space size="small">
-            <Button
-              size="small"
-              icon={<LinkOutlined />}
-              onClick={async () => {
-                const email = window.prompt("Enter parent/guardian email to link:");
-                if (!email) return;
-                try {
-                  const path =
-                    cfg.api.linkGuardianByEmailPath?.(student?.id) ??
-                    cfg.api.linkGuardianPath(student?.id);
-                  await api.post(path, { email, is_payer: true });
-                  message.success("Parent linked by email");
-                } catch {
-                  message.error("Failed to link by email");
-                }
-              }}
-            >
-              Link Parent by Email
-            </Button>
-          </Space>
-        ),
+        // No listPath needed; data comes from the main entity's 'parentSummary'
+        rows: (entity) => (entity?.parentSummary ? [entity.parentSummary] : []),
         columns: [
           { title: "ID", dataIndex: "id", key: "id", width: 80, render: (v) => v ?? "-" },
           { title: "Name", dataIndex: "name", key: "name", render: (v) => v ?? "-" },
@@ -228,9 +165,8 @@ export default function StudentDetail() {
             width: 100,
             render: (v) => (v ? <Tag color="green">Payer</Tag> : <Tag>—</Tag>),
           },
-          { title: "Status", dataIndex: "status", key: "status", width: 120, render: (v) => v ?? "-" },
         ],
-        empty: "No parents/guardians linked.",
+        empty: "No parent linked to this student.",
       },
 
       // Activity view: timestamp, homework type, scan info
@@ -255,14 +191,14 @@ export default function StudentDetail() {
         empty: "No recent activity.",
       },
 
-      audit: { enabled: true, label: "Audit Log", columns: [] },
+      audit: { enabled: false, label: "Audit Log" },
       tasks: { enabled: true, label: "Tasks" },
       documents: { enabled: true, label: "Documents" },
       communication: { enabled: true, label: "Comments" },
 
       // BILLING snapshot (optional)
       billing: {
-        enabled: true,
+        enabled: false,
         rows: (e) => {
           const sub = e?.subscription || {};
           return [

@@ -12,12 +12,17 @@ export default function ParentForm() {
       titleNew="Add Parent"
       titleEdit="Edit Parent"
       submitLabel="Save"
-      toListRelative=".."
       toDetailRelative={(id) => `${id}`}
       apiCfg={{
-        getPath: (id) => `/parents/${id}`,
-        createPath: "/addparent",
+        getPath: (id) => `/parent/${id}`,
+        createPath: "/parents",
         updatePath: (id) => `/parents/${id}`,
+        afterCreate: (res, form, antd) => {
+          antd.message.success("Parent added successfully");
+          // The generic form expects the new ID at res.id, but our API returns it at res.parent.id
+          // We return the expected structure to let the form handle the redirect.
+          return { id: res?.parent?.id };
+        }
         /**
          * If your EntityForm supports lifecycle hooks, you can fire
          * a password reset mail immediately on creation:
@@ -36,16 +41,9 @@ export default function ParentForm() {
         { name: "email", label: "Email", placeholder: "parent@example.com",
           rules: [{ required: true, message: "Email is required" }, { type: "email", message: "Invalid email" }] },
         { name: "phone", label: "Phone number", placeholder: "+49 160 2345678" },
-        { name: "status", label: "Status", input: "select", options: statusOptions, placeholder: "Select status" },
-
-        // --- Address (kept light) ---
-        { name: "street",  label: "Street Address", placeholder: "e.g., Gartenweg 8" },
-        { name: "city",    label: "City",           placeholder: "e.g., Munich" },
-        { name: "zipCode", label: "ZIP / Postal Code", placeholder: "e.g., 80331" },
-        { name: "country", label: "Country",        placeholder: "e.g., Germany" },
 
         // --- Optional context ---
-        { name: "location", label: "Location (Campus / School)", placeholder: "e.g., East Campus" },
+        
 
         // Bundesland (async select from DB)
         {
@@ -60,15 +58,28 @@ export default function ParentForm() {
           autoloadOptions: false,
         },
 
-        // --- Ops helper: send reset after create/update (optional) ---
+        // Link Students (Optional)
         {
-          name: "__sendReset",
-          label: "Send password reset email",
-          input: "switch",
-          initialValue: true,
-          help: "If enabled, a reset email is sent to this parent after saving.",
+          name: "student_ids",
+          label: "Link Students (Optional)",
+          input: "select",
+          mode: "multiple",
+          placeholder: "Search for students to link...",
+          optionsUrl: "/allstudents",
+          serverSearch: true,
+          searchParam: "q",
+          optionValue: "id",
+          optionLabel: (item) => {
+            const user = item.user || {};
+            const name = [user.first_name, user.last_name].filter(Boolean).join(' ');
+            return name ? `${name} (ID: ${item.id})` : `Student (ID: ${item.id})`;
+          },
         },
       ]}
+      transformSubmit={(vals) => ({
+        ...vals,
+        student_ids: vals.student_ids || [],
+      })}
     />
   );
 }

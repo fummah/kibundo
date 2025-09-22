@@ -1,4 +1,5 @@
-import EntityList, { columnFactories as F } from "@/components/EntityList";
+import EntityList from "@/components/EntityList.jsx";
+import { columnFactories as F } from "@/components/entityList/columnFactories.jsx";
 
 export default function TeachersList() {
   return (
@@ -52,18 +53,12 @@ export default function TeachersList() {
           status: F.status("status"),
           id: F.idLink("ID", "/admin/teachers", "id", navigate),
           name: F.text("Full name", "name"),
-          department: F.text("Department", "department"),
+          department: F.text("Grade", "department"),
           email: F.email("email"),
           phone: F.text("Phone number", "phone"),
 
           // keep address columns for future data
-          location:   F.text("Location", "location"),
-          street:     F.text("Street Address", "street"),
-          city:       F.text("City", "city"),
-          
-          zipCode:    F.text("Zip Code", "zipCode"),
-          country:    F.text("Country", "country"),
-          
+          location:   F.text("Bundesland", "location"),
 
           created_at: F.date("Date added", "created_at"),
         }),

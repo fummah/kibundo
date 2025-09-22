@@ -2,7 +2,8 @@ import React from "react";
 import { Tag } from "antd";
 import { useNavigate } from "react-router-dom";
 
-import EntityList, { columnFactories } from "@/components/EntityList.jsx";
+import EntityList from "@/components/EntityList.jsx";
+import { columnFactories } from "@/components/entityList/columnFactories.jsx";
 
 export default function TasksList() {
   const navigate = useNavigate();

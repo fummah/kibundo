@@ -1,44 +1,57 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import {
-  Card,
-  Typography,
-  Space,
-  Button,
-  Tabs,
-  Table,
-  Tag,
-  message,
-  Modal,
-  Divider,
-  Empty,
-  Select,
-  Form,
-  Input,
-  DatePicker,
-  Upload,
-  List,
-  Tooltip,
-  Popconfirm,
-  Avatar,
-  Dropdown,
-  Grid,
+import { 
+  Card, 
+  Typography, 
+  Space, 
+  Button, 
+  Tabs, 
+  Table, 
+  Tag, 
+  message, 
+  Modal, 
+  Divider, 
+  Empty, 
+  Select, 
+  Form, 
+  Input, 
+  DatePicker, 
+  Upload, 
+  List, 
+  Avatar, 
+  Dropdown, 
+  Grid, 
+  Spin 
 } from "antd";
-import { Comment } from "@ant-design/compatible";
-import {
-  ArrowLeftOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  ReloadOutlined,
-  CheckCircleOutlined,
-  StopOutlined,
-  CloseCircleOutlined,
-  PlusOutlined,
-  UploadOutlined,
-  InboxOutlined,
-  DeleteTwoTone,
-  MoreOutlined,
+import { 
+  ArrowLeftOutlined, 
+  EditOutlined, 
+  DeleteOutlined, 
+  ReloadOutlined, 
+  CheckCircleOutlined, 
+  StopOutlined, 
+  CloseCircleOutlined, 
+  PlusOutlined, 
+  UploadOutlined, 
+  InboxOutlined, 
+  MoreOutlined, 
+  PushpinOutlined, 
+  DownloadOutlined, 
+  SearchOutlined, 
+  FileOutlined, 
+  FilePdfOutlined, 
+  FileWordOutlined, 
+  FileExcelOutlined, 
+  FilePptOutlined, 
+  FileImageOutlined, 
+  FileTextOutlined, 
+  EyeOutlined, 
+  CommentOutlined, 
+  UserOutlined,
+  SaveOutlined,
+  PaperClipOutlined
 } from "@ant-design/icons";
+import dayjs from 'dayjs';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -50,7 +63,7 @@ import {
 } from "recharts";
 import api from "@/api/axios";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { Dragger } = Upload;
 
 /* ---------------- helpers ---------------- */
@@ -77,31 +90,54 @@ const fmtDate = (d) => {
 };
 const getInitials = (e) => {
   if (!e) return "";
-  const first = e?.user?.first_name || e?.first_name || (e?.name ? String(e.name).trim().split(/\s+/)[0] : "") || "";
-  const last  = e?.user?.last_name  || e?.last_name  || (e?.name ? String(e.name).trim().split(/\s+/)[1] : "") || "";
+  const first =
+    e?.user?.first_name ||
+    e?.first_name ||
+    (e?.name ? String(e.name).trim().split(/\s+/)[0] : "") ||
+    "";
+  const last =
+    e?.user?.last_name ||
+    e?.last_name ||
+    (e?.name ? String(e.name).trim().split(/\s+/)[1] : "") ||
+    "";
   return `${first.charAt(0).toUpperCase() || ""}${last.charAt(0).toUpperCase() || ""}`;
 };
+const relativeTime = (input) => {
+  const d = input ? new Date(input) : null;
+  if (!d || isNaN(d)) return "-";
+  const ms = Date.now() - d.getTime();
+  const sec = Math.max(1, Math.floor(ms / 1000));
+  const min = Math.floor(sec / 60);
+  const hr = Math.floor(min / 60);
+  const day = Math.floor(hr / 24);
+  const mon = Math.floor(day / 30);
+  const yr = Math.floor(day / 365);
+  if (yr >= 1) return yr === 1 ? "about a year ago" : `${yr} years ago`;
+  if (mon >= 1) return mon === 1 ? "about a month ago" : `${mon} months ago`;
+  if (day >= 1) return day === 1 ? "yesterday" : `${day} days ago`;
+  if (hr >= 1) return hr === 1 ? "an hour ago" : `${hr} hours ago`;
+  if (min >= 1) return min === 1 ? "a minute ago" : `${min} minutes ago`;
+  return "just now";
+};
 
-/* ---------- REQUIRED BACKEND ROUTES (from your Express router) ---------- */
+/* ---------- REQUIRED BACKEND ROUTES ---------- */
 const REQUIRED_GET_PATH = {
-  students:      (id) => `/student/${id}`,
-  teachers:      (id) => `/teacher/${id}`,
-  parents:       (id) => `/parent/${id}`,
-  subjects:      (id) => `/subject/${id}`,
-  products:      (id) => `/product/${id}`,
+  students: (id) => `/student/${id}`,
+  teachers: (id) => `/teacher/${id}`,
+  parents: (id) => `/parent/${id}`,
+  subjects: (id) => `/subject/${id}`,
+  products: (id) => `/product/${id}`,
   subscriptions: (id) => `/subscription/${id}`,
-  blogposts:     (id) => `/blogpost/${id}`,   // public GET allowed
-  invoices:      (id) => `/invoice/${id}`,
-  // classes: no /class/:id route → leave undefined
+  blogposts: (id) => `/blogpost/${id}`,
+  invoices: (id) => `/invoice/${id}`,
 };
 const REQUIRED_REMOVE_PATH = {
-  parents:       (id) => `/parent/${id}`,
-  subjects:      (id) => `/subject/${id}`,
-  products:      (id) => `/product/${id}`,
+  parents: (id) => `/parent/${id}`,
+  subjects: (id) => `/subject/${id}`,
+  products: (id) => `/product/${id}`,
   subscriptions: (id) => `/subscription/${id}`,
-  blogposts:     (id) => `/blogpost/${id}`,
-  invoices:      (id) => `/invoice/${id}`,
-  // students/teachers/classes: not exposed in router → no delete
+  blogposts: (id) => `/blogpost/${id}`,
+  invoices: (id) => `/invoice/${id}`,
 };
 
 export default function EntityDetail({ cfg }) {
@@ -112,7 +148,7 @@ export default function EntityDetail({ cfg }) {
   const screens = Grid.useBreakpoint();
 
   const safeCfg = cfg || {};
-  const entityKey = safeCfg.entityKey; // "students" | "teachers" | "parents" | ...
+  const entityKey = safeCfg.entityKey;
   const idField = safeCfg.idField || "id";
   const routeBase = safeCfg.routeBase || "";
   const apiObj = safeCfg.api || {};
@@ -124,9 +160,13 @@ export default function EntityDetail({ cfg }) {
     performancePath,
   } = apiObj;
 
-  // defaults to required routes if cfg.api doesn't provide them
-  const getPath    = getPathFromCfg    || (entityKey && REQUIRED_GET_PATH[entityKey]);
+  const getPath = getPathFromCfg || (entityKey && REQUIRED_GET_PATH[entityKey]);
   const removePath = removePathFromCfg || (entityKey && REQUIRED_REMOVE_PATH[entityKey]);
+
+  // Tab configs (hoisted)
+  const commCfg = safeCfg?.tabs?.communication || {};
+  const docsCfg = safeCfg?.tabs?.documents || {};
+  const tasksCfg = safeCfg?.tabs?.tasks || {};
 
   // Prefill support
   const rawPrefill = useMemo(
@@ -147,6 +187,8 @@ export default function EntityDetail({ cfg }) {
   const [saving, setSaving] = useState(false);
   const [entity, setEntity] = useState(parsedPrefill || null);
   const [activeTab, setActiveTab] = useState("information");
+  const [addCommentOpen, setAddCommentOpen] = useState(false);
+  const [linkChildModalOpen, setLinkChildModalOpen] = useState(false);
 
   const [relatedRows, setRelatedRows] = useState([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
@@ -158,30 +200,41 @@ export default function EntityDetail({ cfg }) {
   const [tasks, setTasks] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(false);
 
-  const commCfg = safeCfg?.tabs?.communication || {}; // ✅ declare BEFORE using it anywhere
   const [comments, setComments] = useState([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
 
-  const docsCfg = safeCfg?.tabs?.documents || {};
   const [documents, setDocuments] = useState([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [docCommentMap, setDocCommentMap] = useState({});
-  const [docCommentLoadingId, setDocCommentLoadingId] = useState(null);
+  const docCommentLoadingId = useRef(null);
   const [docCommentModal, setDocCommentModal] = useState({ open: false, doc: null });
-
-  const didInitRef = useRef(false);
+  const prevEntityRef = useRef();
+  const [docSearch, setDocSearch] = useState("");
+  const [docType, setDocType] = useState("All");
+  const [docPageSize, setDocPageSize] = useState(100);
+  const [docUploadOpen, setDocUploadOpen] = useState(false);
+  const [docEditOpen, setDocEditOpen] = useState(false);
+  const [docEditing, setDocEditing] = useState(null);
 
   useEffect(() => {
-    if (parsedPrefill) setEntity(parsedPrefill);
+    if (parsedPrefill && JSON.stringify(parsedPrefill) !== JSON.stringify(prevEntityRef.current)) {
+      setEntity(parsedPrefill);
+      prevEntityRef.current = parsedPrefill;
+    }
   }, [parsedPrefill]);
 
   /* -------- load main entity -------- */
   const load = useCallback(async () => {
     if (!getPath && typeof apiObj.loader !== "function") {
-      if (!entity) setEntity({ [idField]: id, name: "-", status: "active" });
+      if (!entity) {
+        const defaultEntity = { [idField]: id, name: "-", status: "active" };
+        setEntity(defaultEntity);
+        prevEntityRef.current = defaultEntity;
+      }
       setLoading(false);
       return;
     }
+    
     setLoading(true);
     try {
       let obj;
@@ -192,12 +245,27 @@ export default function EntityDetail({ cfg }) {
         const raw = data?.data ?? data ?? {};
         obj = typeof apiObj.parseEntity === "function" ? apiObj.parseEntity(raw) : raw;
       }
-      setEntity((prev) => ({ ...(prev || {}), ...(obj || {}) }));
+      
+      if (JSON.stringify(obj) !== JSON.stringify(entity)) {
+        setEntity(prev => {
+          if (JSON.stringify(prev) !== JSON.stringify(obj)) {
+            return obj || {};
+          }
+          return prev;
+        });
+      }
     } catch (err) {
-      if (!entity) setEntity({ [idField]: id, name: "-", status: "active" });
+      if (!entity) {
+        const defaultEntity = { [idField]: id, name: "-", status: "active" };
+        setEntity(defaultEntity);
+        prevEntityRef.current = defaultEntity;
+      }
       const s = err?.response?.status;
-      if (s === 404) messageApi.error("Record not found (404)");
-      else messageApi.warning("Could not load details. Showing cached row.");
+      if (s === 404) {
+        messageApi.error("Record not found (404)");
+      } else {
+        messageApi.warning("Could not load details. Showing cached row.");
+      }
     } finally {
       setLoading(false);
     }
@@ -223,6 +291,110 @@ export default function EntityDetail({ cfg }) {
     }
   }, [safeCfg?.tabs?.related, id, relatedListPath]);
 
+  /* --- Info edit state --- */
+  // Inline editing state
+  const [editingField, setEditingField] = useState(null);
+  const [fieldValue, setFieldValue] = useState('');
+  const [savingField, setSavingField] = useState(false);
+  const [infoForm] = Form.useForm();
+  
+  // Make all fields editable by default
+  const isEditingInfo = true;
+
+  // Handle field updates
+  const handleFieldUpdate = useCallback(async (field) => {
+    if (!field.editable || savingField) return;
+
+    setSavingField(true);
+    try {
+      const updateData = { [field.name]: fieldValue };
+      const updatePath = safeCfg.api?.updatePath || ((id) => `/${safeCfg.routeBase || 'entities'}/${id}`);
+      
+      await api.patch(updatePath(id), updateData, { withCredentials: true });
+      
+      // Update local state
+      setEntity(prev => ({
+        ...prev,
+        ...updateData
+      }));
+      
+      messageApi.success(`${field.label} updated successfully`);
+      setEditingField(null);
+    } catch (error) {
+      console.error('Error updating field:', error);
+      messageApi.error(`Failed to update ${field.label}`);
+    } finally {
+      setSavingField(false);
+    }
+  }, [fieldValue, id, messageApi, safeCfg.api?.updatePath, safeCfg.routeBase, savingField]);
+
+  // Handle key press for inline editing
+  const handleKeyPress = useCallback((e, field) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleFieldUpdate(field);
+    } else if (e.key === 'Escape') {
+      setEditingField(null);
+    }
+  }, [handleFieldUpdate]);
+
+  // Make all fields editable except IP and filter out parent_id
+  const editableInfoFields = useMemo(() => {
+    return (safeCfg.infoFields || [])
+      .filter(field => {
+        const name = Array.isArray(field.name) ? field.name.join('.') : field.name;
+        // Keep all fields except parent_id and parent.id
+        return name !== 'parent_id' && !name.includes('parent.id');
+      })
+      .map(field => {
+        const name = Array.isArray(field.name) ? field.name.join('.') : field.name;
+        const isIp = ['ip', 'ip_address', 'ipAddress'].some(ip => 
+          name.toLowerCase().includes(ip.toLowerCase())
+        );
+        // Mark date_added and similar fields as not editable
+        const isDateAdded = ['date_added', 'created_at', 'createdAt', 'member_since']
+          .some(dateField => name.toLowerCase().includes(dateField.toLowerCase()));
+          
+        return {
+          ...field,
+          name,
+          editable: !isIp && !isDateAdded && name !== idField,
+          type: field.type || field.input || 'text'
+        };
+      });
+  }, [safeCfg.infoFields, idField]);
+
+  const saveInfo = async () => {
+    try {
+      const values = await infoForm.validateFields();
+
+      delete values[idField];
+
+      for (const k of Object.keys(values)) {
+        const v = values[k];
+        if (v && typeof v === "object" && v.$isDayjsObject) {
+          values[k] = v.toISOString();
+        }
+      }
+
+      if (typeof apiObj.updatePath === "function") {
+        await api.patch(apiObj.updatePath(id), values, { withCredentials: true });
+        messageApi.success("Saved");
+        await load();
+      } else {
+        setEntity((prev) => ({ ...(prev || {}), ...values }));
+        messageApi.success("Updated (local)");
+      }
+      setIsEditingInfo(false);
+    } catch (err) {
+      if (err?.errorFields) {
+        messageApi.error("Please fix the highlighted fields.");
+      } else {
+        messageApi.error("Failed to save");
+      }
+    }
+  };
+
   /* -------- performance -------- */
   const loadPerformance = useCallback(async () => {
     if (!performancePath) return;
@@ -243,8 +415,7 @@ export default function EntityDetail({ cfg }) {
     }
   }, [performancePath, id, perfRange]);
 
-  /* -------- tasks (optional cfg) -------- */
-  const tasksCfg = safeCfg?.tabs?.tasks || {};
+  /* -------- tasks -------- */
   const loadTasks = useCallback(async () => {
     if (!tasksCfg.enabled) return;
     setTasksLoading(true);
@@ -267,7 +438,7 @@ export default function EntityDetail({ cfg }) {
     } finally {
       setTasksLoading(false);
     }
-  }, [tasksCfg.enabled, tasksCfg.listPath, id]);
+  }, [id, tasksCfg.enabled, tasksCfg.listPath]);
 
   const createTask = async (payload) => {
     try {
@@ -306,7 +477,7 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  /* -------- comments (optional cfg) -------- */
+  /* -------- comments -------- */
   const loadComments = useCallback(async () => {
     if (!commCfg?.enabled) return;
     setCommentsLoading(true);
@@ -341,7 +512,7 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  /* -------- documents (optional cfg) -------- */
+  /* -------- documents -------- */
   const loadDocuments = useCallback(async () => {
     if (!docsCfg?.enabled) return;
     setDocsLoading(true);
@@ -367,7 +538,8 @@ export default function EntityDetail({ cfg }) {
         form.append("file", fileObj);
         Object.entries(meta || {}).forEach(([k, v]) => form.append(k, v ?? ""));
         const { data } = await api.post(docsCfg.uploadPath(id), form, {
-          headers: { "Content-Type": "multipart/form-data" }, withCredentials: true
+          headers: { "Content-Type": "multipart/form-data" },
+          withCredentials: true,
         });
         const created = data?.data ?? data ?? { ...meta, title: meta?.title || fileObj?.name, id: `d${id}-${Date.now()}` };
         setDocuments((prev) => [created, ...prev]);
@@ -400,29 +572,63 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  const loadDocComments = async (doc) => {
-    if (!doc) return;
-    setDocCommentLoadingId(doc.id);
+  // NEW: updateDocument used by Edit modal
+  const updateDocument = async (docId, payload) => {
     try {
-      if (typeof docsCfg?.commentListPath === "function") {
-        const { data } = await api.get(docsCfg.commentListPath(id, doc.id), { withCredentials: true });
-        const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-        setDocCommentMap((m) => ({ ...m, [doc.id]: list }));
-      } else {
-        setDocCommentMap((m) => ({
-          ...m,
-          [doc.id]: [{ id: `dc-${doc.id}-1`, author: "Support Bot", text: "Looks good!", created_at: new Date().toISOString() }],
-        }));
+      if (typeof docsCfg?.updatePath === "function") {
+        await api.patch(docsCfg.updatePath(id, docId), payload, { withCredentials: true });
       }
+      setDocuments((prev) =>
+        prev.map((d) => (String(d.id) === String(docId) ? { ...d, ...payload } : d))
+      );
+      messageApi.success("Document updated");
     } catch {
-      setDocCommentMap((m) => ({
-        ...m,
-        [doc.id]: [{ id: `dc-${doc.id}-1`, author: "Support Bot", text: "Looks good!", created_at: new Date().toISOString() }],
-      }));
-    } finally {
-      setDocCommentLoadingId(null);
+      messageApi.error("Failed to update document");
     }
   };
+
+  const loadDocComments = useCallback(async (doc) => {
+    if (!doc) return;
+    const currentDocId = doc.id;
+    docCommentLoadingId.current = currentDocId;
+    try {
+      let commentsList;
+      if (typeof docsCfg?.commentListPath === "function") {
+        const { data } = await api.get(docsCfg.commentListPath(id, currentDocId), { withCredentials: true });
+        commentsList = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      } else {
+        commentsList = [{ 
+          id: `dc-${currentDocId}-1`, 
+          author: "Support Bot", 
+          text: "Looks good!", 
+          created_at: new Date().toISOString() 
+        }];
+      }
+      if (docCommentLoadingId.current === currentDocId) {
+        setDocCommentMap(prev => {
+          if (JSON.stringify(prev[currentDocId]) !== JSON.stringify(commentsList)) {
+            return { ...prev, [currentDocId]: commentsList };
+          }
+          return prev;
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load document comments:", error);
+      const fallbackComments = [{ 
+        id: `dc-${currentDocId}-1`, 
+        author: "Support Bot", 
+        text: "Error loading comments", 
+        created_at: new Date().toISOString() 
+      }];
+      if (docCommentLoadingId.current === currentDocId) {
+        setDocCommentMap(prev => ({ ...prev, [currentDocId]: fallbackComments }));
+      }
+    } finally {
+      if (docCommentLoadingId.current === currentDocId) {
+        docCommentLoadingId.current = null;
+      }
+    }
+  }, [id, docsCfg?.commentListPath]);
 
   const addDocComment = async (doc, payload) => {
     if (!doc) return;
@@ -439,37 +645,20 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  /* -------- effects -------- */
+  // Initial load
   useEffect(() => {
-    if (didInitRef.current) return;
-    didInitRef.current = true;
     load();
-  }, [load]);
-
-  useEffect(() => {
-    if (activeTab === "related" && (safeCfg?.tabs?.related?.enabled || relatedListPath)) loadRelated();
-  }, [activeTab, safeCfg?.tabs?.related?.enabled, loadRelated, relatedListPath]);
-
-  useEffect(() => {
-    if (activeTab === "information" && performancePath) loadPerformance();
-  }, [activeTab, performancePath, loadPerformance, perfRange]);
-
-  useEffect(() => {
-    if (activeTab === "tasks" && tasksCfg.enabled) loadTasks();
-  }, [activeTab, tasksCfg.enabled, loadTasks]);
-
-  useEffect(() => {
-    if (activeTab === "communication" && commCfg?.enabled) loadComments();
-  }, [activeTab, commCfg?.enabled, loadComments]);
-
-  useEffect(() => {
-    if (activeTab === "documents" && docsCfg?.enabled) loadDocuments();
-  }, [activeTab, docsCfg?.enabled, loadDocuments]);
+    if (activeTab === 'information' && performancePath) {
+      loadPerformance();
+    }
+    if ((activeTab === 'communication' || activeTab === 'information') && commCfg?.enabled) {
+      loadComments();
+    }
+  }, [load, activeTab, performancePath, commCfg?.enabled, loadPerformance, loadComments]);
 
   /* -------- actions -------- */
   const goBack = () => navigate(-1);
-  const goEdit = () =>
-    navigate(`${routeBase || location.pathname.replace(/\/[^/]+$/, "")}/${id}/edit`);
+  const goEdit = () => navigate(`${routeBase || location.pathname.replace(/\/[^/]+$/, "")}/${id}/edit`);
   const onDelete = () => {
     if (!removePath) return;
     Modal.confirm({
@@ -524,52 +713,69 @@ export default function EntityDetail({ cfg }) {
     return best && best.trim() ? best : `#${dash(e?.[idField])}`;
   }, [entity, idField]);
 
-  // Top info chips
-  const topInfoEls = useMemo(
-    () => (typeof safeCfg.topInfo === "function" ? safeCfg.topInfo(entity) : []),
-    [safeCfg, entity]
-  );
-
-  // Info rows
-  const infoRows = useMemo(() => {
-    const fields = Array.isArray(safeCfg.infoFields) ? safeCfg.infoFields : [];
-    return fields.map((f) => ({
-      key: Array.isArray(f.name) ? f.name.join(".") : f.name,
-      label: f.label,
-      value: dash(readPath(entity, f.name)),
-    }));
-  }, [safeCfg.infoFields, entity]);
-
-  // Related columns
   const relatedColumns = useMemo(() => {
     const def = safeCfg.tabs?.related?.columns || [];
-    return def.map((c) => ({ ...c }));
-  }, [safeCfg.tabs]);
+    const cols = def.map((c) => ({ ...c }));
 
-  /* -------- responsive actions menu (mobile) -------- */
-  const actionsMenu = {
-    items: [
-      ...(updateStatusPath
-        ? [
-            { key: "activate", label: "Activate" },
-            { key: "suspend", label: "Suspend" },
-            { key: "block", label: "Block", danger: true },
-            { type: "divider" },
-          ]
-        : []),
-      { key: "refresh", label: "Refresh" },
-      { key: "edit", label: "Edit" },
-      ...(removePath ? [{ key: "delete", label: "Delete", danger: true }] : []),
-    ],
-    onClick: async ({ key }) => {
-      if (key === "activate") return setStatus("active");
-      if (key === "suspend") return setStatus("suspended");
-      if (key === "block") return setStatus("disabled");
-      if (key === "refresh") return load();
-      if (key === "edit") return goEdit();
-      if (key === "delete" && removePath) return onDelete();
-    },
-  };
+    // Add actions column if unlink path is provided
+    if (apiObj.unlinkStudentPath) {
+      cols.push({
+        title: 'Actions',
+        key: 'actions',
+        fixed: 'right',
+        width: 100,
+        render: (_, record) => (
+          <Button
+            danger
+            type="link"
+            onClick={(e) => {
+              e.stopPropagation();
+              Modal.confirm({
+                title: 'Unlink Child?',
+                content: `Are you sure you want to unlink this child from the parent?`,
+                okText: 'Unlink',
+                okButtonProps: { danger: true },
+                onOk: async () => {
+                  try {
+                    await api.delete(apiObj.unlinkStudentPath(id, record.id));
+                    messageApi.success('Child unlinked successfully');
+                    loadRelated(); // Refresh the list
+                  } catch (err) {
+                    messageApi.error('Failed to unlink child.');
+                  }
+                },
+              });
+            }}
+          >
+            Unlink
+          </Button>
+        ),
+      });
+    }
+
+    return cols;
+  }, [safeCfg.tabs, apiObj.unlinkStudentPath, id, loadRelated, messageApi]);
+
+  const handleTabChange = useCallback((key) => {
+    setActiveTab(key);
+    switch (key) {
+      case 'related':
+        if (safeCfg?.tabs?.related?.enabled || relatedListPath) loadRelated();
+        break;
+      case 'information':
+        if (performancePath) loadPerformance();
+        if (commCfg?.enabled) loadComments();
+        break;
+      case 'tasks':
+        if (tasksCfg.enabled) loadTasks();
+        break;
+      case 'documents':
+        if (docsCfg?.enabled) loadDocuments();
+        break;
+      default:
+        break;
+    }
+  }, [safeCfg?.tabs?.related?.enabled, relatedListPath, performancePath, commCfg?.enabled, tasksCfg.enabled, docsCfg?.enabled, loadRelated, loadPerformance, loadComments, loadTasks, loadDocuments]);
 
   /* ---------- Cards/Tab Panels ---------- */
   const PerformanceCard = performancePath ? (
@@ -611,252 +817,428 @@ export default function EntityDetail({ cfg }) {
         </ResponsiveContainer>
       </div>
       {(!performance || performance.length === 0) && !perfLoading ? (
-        <div className="text-center text-gray-500">No performance data for this range.</div>
+        <div className="p-3 text-gray-500">No performance data available.</div>
       ) : null}
     </Card>
   ) : null;
 
-  const informationTab = (
-    <div className="space-y-3">
-      <Card className="!rounded-xl" bodyStyle={{ padding: 12 }}>
-        <div className="flex flex-wrap items-center gap-2">
-          <Text strong>{titleName}</Text>
-          <span className="text-gray-500">•</span>
-          <span className="text-gray-500">Status:</span> {statusTag(entity?.status)}
-          {entity?.accountBalance != null ? (
-            <>
-              <span className="text-gray-500">•</span>
-              <span className="text-gray-500">Account balance:</span>{" "}
-              <Text type={Number(entity.accountBalance) < 0 ? "danger" : undefined}>
-                {String(entity.accountBalance)}
-              </Text>
-            </>
-          ) : null}
+  const CommunicationPanel =
+    commCfg?.enabled && (
+      <Card
+        className="!rounded-xl"
+        title="Comments / To-Dos"
+        extra={<Button size="small" shape="circle" icon={<PlusOutlined />} onClick={() => setAddCommentOpen(true)} />}
+        bodyStyle={{ padding: 0 }}
+      >
+        <div style={{ maxHeight: 420, overflowY: "auto" }}>
+          <List
+            dataSource={comments}
+            loading={commentsLoading}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No comments yet." /> }}
+            renderItem={(item, idx) => (
+              <div key={item.id || idx}>
+                <div className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[14px] font-medium">{dash(item.author)}</div>
+                      <div className="text-xs text-gray-500">
+                        {relativeTime(item.created_at)}{" "}
+                        <span className="opacity-70">
+                          ({fmtDate(item.created_at)} {item.created_at ? new Date(item.created_at).toTimeString().slice(0, 8) : ""})
+                        </span>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-gray-400">
+                      <PushpinOutlined />
+                    </div>
+                  </div>
+                  {item.text ? <div className="mt-1 text-[14px]">{typeof item.text === "string" ? item.text : dash(item.text)}</div> : null}
+                </div>
+                <div className="border-t border-gray-200" />
+              </div>
+            )}
+          />
         </div>
+        <Modal title="Add Comment" open={addCommentOpen} onCancel={() => setAddCommentOpen(false)} footer={null} destroyOnClose>
+          <AddCommentForm
+            onSubmit={async (vals) => {
+              await addComment({ author: vals.author || "You", text: vals.text });
+              setAddCommentOpen(false);
+            }}
+          />
+        </Modal>
       </Card>
+    );
 
-      {topInfoEls?.length ? (
-        <Card className="!rounded-xl" bodyStyle={{ padding: 12 }}>
-          <Space wrap size={[8, 8]}>{topInfoEls}</Space>
-        </Card>
-      ) : null}
+  // Information tab (left: info + performance; right: comments + extra)
+  const informationTab = (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-2 space-y-6">
+        {/* Editable Main Information */}
+        <Card
+          title="Main Information">
+          {/* Outer shell already bordered; now each row also has a bordered value box */}
+          <div className="space-y-3 border border-gray-200 rounded-lg p-4 bg-white">
+            {/* ID row, read-only */}
+            <div className="flex items-center gap-3">
+              <span className="w-1/3 font-medium text-gray-500">ID</span>
+              <div className="flex-1">
+                <div className="min-h-[32px] px-3 py-1.5 rounded-md border border-gray-200 bg-white">
+                  {dash(entity?.[idField] ?? id)}
+                </div>
+              </div>
+            </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <Card className="!rounded-xl" title="Main information">
-          <div className="flex flex-col gap-3">
-            {infoRows.map((r) => (
-              <InfoRow key={r.key} label={r.label} value={r.value} />
-            ))}
-            <InfoRow label="Status" value={statusTag(entity?.status)} />
+            {/* Configured fields */}
+            <Form form={infoForm} layout="vertical" className="hidden" /> {/* keeps form instance for Save */}
+            {editableInfoFields.map((field) => {
+              const raw = readPath(entity, field.name);
+              const currentValue = raw ?? '';
+              const isEditing = editingField === field.name;
+              const isIp = !field.editable;
+
+              if (field.name === 'parent_id' || field.name.includes('parent.id')) return null;
+
+              return (
+                <div
+                  key={field.name}
+                  className={`flex items-center gap-3`}
+                  onClick={(e) => {
+                    if (!isEditingInfo) return; // only allow inline edit when Edit is active
+                    e.stopPropagation();
+                    if (field.editable && !isEditing) {
+                      setEditingField(field.name);
+                      setFieldValue(currentValue ?? '');
+                    }
+                  }}
+                >
+                  <span className="w-1/3 font-medium text-gray-500">{field.label}</span>
+                  <div className="flex-1">
+                    {/* Value container keeps a consistent bordered look */}
+                    <div className="min-h-[32px] px-2 py-1.5 rounded-md border border-gray-200 bg-white">
+                      {isEditing ? (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          {field.type === 'select' ? (
+                            <Select
+                              autoFocus
+                              style={{ width: '100%' }}
+                              defaultValue={currentValue}
+                              onChange={(value) => setFieldValue(value)}
+                              onKeyDown={(e) => e.key === 'Escape' && setEditingField(null)}
+                              options={field.options || []}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          ) : field.type === 'date' ? (
+                            <DatePicker
+                              autoFocus
+                              style={{ width: '100%' }}
+                              defaultValue={currentValue && dayjs(currentValue)}
+                              onChange={(date) => setFieldValue(date ? date.format('YYYY-MM-DD') : '')}
+                              format={field.format || 'YYYY-MM-DD'}
+                              onKeyDown={(e) => e.key === 'Escape' && setEditingField(null)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          ) : (
+                            <Input
+                              autoFocus
+                              type={field.type === 'number' ? 'number' : 'text'}
+                              defaultValue={currentValue}
+                              onChange={(e) => setFieldValue(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Escape' && setEditingField(null)}
+                              disabled={savingField}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ width: '100%' }}
+                            />
+                          )}
+                        </div>
+                      ) : (
+                        <div className={`${isIp ? 'text-gray-400' : ''}`}>
+                          {dash(String(currentValue || ''))}
+                        </div>
+                      )}
+                      {savingField && editingField === field.name && (
+                        <Spin size="small" className="ml-2" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Card>
 
-        <div className="flex flex-col gap-3">
-          <Card className="!rounded-xl" title="Comments / To-Dos">
-            <div className="min-h-[200px] text-sm text-gray-500">No comments yet.</div>
-          </Card>
-          <Card className="!rounded-xl" title="Additional information">
-            <Text type="secondary">No additional information.</Text>
-          </Card>
-        </div>
+        {PerformanceCard}
       </div>
 
-      {PerformanceCard}
+      <div className="space-y-6">
+        {commCfg?.enabled ? (
+          CommunicationPanel
+        ) : (
+          <Card title="Comments / To-Dos">
+            <Text type="secondary">Comments functionality is not configured for this entity.</Text>
+          </Card>
+        )}
+        <Card title="Additional Information">
+          <Text type="secondary">No additional information available.</Text>
+        </Card>
+      </div>
     </div>
   );
 
   const relatedTab =
-    safeCfg.tabs?.related?.enabled && (
-      <Card className="!rounded-xl" bodyStyle={{ padding: 0 }}>
-        <div className="p-3 flex items-center justify-between">
-          <Text strong>{safeCfg.tabs.related.label || "Related"}</Text>
-          <Space>
-            {typeof safeCfg.tabs.related.toolbar === "function" ? safeCfg.tabs.related.toolbar(entity) : null}
-            <Button icon={<ReloadOutlined />} onClick={loadRelated} />
-          </Space>
-        </div>
-        <div className="px-3 pb-3">
+    safeCfg?.tabs?.related?.enabled &&
+    (function () {
+      return (
+        <Card className="!rounded-xl" bodyStyle={{ padding: 0 }}>
+          <div className="p-3 flex items-center justify-between">
+            <Text strong>{safeCfg.tabs.related.label || "Related"}</Text>
+            <Space>
+              <Button 
+                icon={<PlusOutlined />} 
+                onClick={() => setLinkChildModalOpen(true)}
+                disabled={!apiObj.linkStudentByIdPath}
+              >
+                Link Child
+              </Button>
+              <Button icon={<ReloadOutlined />} onClick={loadRelated} />
+            </Space>
+          </div>
+          <div className="px-3 pb-3">
+            <Table
+              rowKey={(r, i) => r.id ?? i}
+              loading={relatedLoading}
+              columns={relatedColumns}
+              dataSource={relatedRows}
+              pagination={{ pageSize: 10 }}
+              scroll={{ x: 800 }}
+              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nothing related." /> }}
+            />
+          </div>
+        </Card>
+      );
+    })();
+
+  const TasksTab =
+    tasksCfg.enabled &&
+    (function () {
+      return (
+        <Card className="!rounded-xl" bodyStyle={{ padding: 16 }}>
+          <AddTaskForm onSubmit={createTask} />
+          <Divider />
           <Table
-            columns={safeCfg.tabs.related.columns || []}
-            dataSource={relatedRows}
-            loading={relatedLoading}
-            rowKey={safeCfg.tabs.related.idField || "id"}
-            pagination={{ pageSize: 10 }}
-            scroll={{ x: 800 }}
+            rowKey={(r) => r.id}
+            loading={tasksLoading}
+            dataSource={tasks}
+            pagination={{ pageSize: 8 }}
+            columns={[
+              { title: "ID", dataIndex: "id" },
+              { title: "Title", dataIndex: "title" },
+              { title: "Priority", dataIndex: "priority", render: (p) => <Tag>{p}</Tag> },
+              { title: "Status", dataIndex: "status", render: (s) => <Tag color={s === "open" ? "orange" : s === "in_progress" ? "blue" : "green"}>{s}</Tag> },
+              { title: "Due", dataIndex: "dueDate", render: (d) => fmtDate(d) },
+              {
+                title: "Actions",
+                render: (_, r) => (
+                  <Space>
+                    <Button size="small" onClick={() => updateTask(r.id, { status: "done" })}>Mark done</Button>
+                    <Button size="small" danger onClick={() => deleteTask(r.id)}>Delete</Button>
+                  </Space>
+                ),
+              },
+            ]}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No tasks." /> }}
+          />
+        </Card>
+      );
+    })();
+
+  const DocumentsTab =
+    docsCfg?.enabled &&
+    (function () {
+      const typeOptions = useMemo(() => {
+        const base = ["All"];
+        const provided = docsCfg?.typeOptions || [];
+        if (provided.length) return ["All", ...provided];
+        const set = new Set(documents.map((d) => d?.type || d?.status || "Uploaded"));
+        return ["All", ...Array.from(set)];
+      }, [documents, docsCfg?.typeOptions]);
+  
+      const filteredDocs = useMemo(() => {
+        const q = docSearch.trim().toLowerCase();
+        return (documents || []).filter((d) => {
+          const matchesType = docType === "All" || (d?.type || d?.status || "Uploaded") === docType;
+          if (!q) return matchesType;
+          const hay = [
+            d?.id, d?.title, d?.description, d?.status, d?.type, d?.source,
+            d?.added_by, d?.updated_by, d?.date
+          ].map((x) => (x == null ? "" : String(x).toLowerCase()));
+          return matchesType && hay.some((t) => t.includes(q));
+        });
+      }, [documents, docSearch, docType]);
+  
+      const columns = [
+        { title: "Added (updated) by", dataIndex: "added_by", render: (v, r) => r.updated_by || r.added_by || "Administrator" },
+        { title: "Status", dataIndex: "status", render: (v) => <Tag>{v || "Uploaded"}</Tag>, filters: Array.from(new Set(documents.map(d => d.status || "Uploaded"))).map(v => ({text:v, value:v})), onFilter:(val, rec)=> (rec.status||"Uploaded")===val },
+        { title: "Source", dataIndex: "source", render: (v) => v || "Uploaded" },
+        { title: "Title", dataIndex: "title", ellipsis: true },
+        { title: "Date", dataIndex: "date", sorter: (a, b) => new Date(a.date||0) - new Date(b.date||0),
+          render: (v) => v ? new Date(v).toLocaleString() : "-" },
+        { title: "Description", dataIndex: "description", ellipsis: true },
+        {
+          title: "Actions",
+          fixed: "right",
+          width: 110,
+          render: (_, doc) => (
+            <Space>
+              <Button
+                size="small"
+                type="text"
+                icon={<EditOutlined />}
+                onClick={() => { setDocEditing(doc); setDocEditOpen(true); }}
+                title="Edit"
+              />
+              <Button
+                size="small"
+                type="text"
+                icon={<DownloadOutlined />}
+                onClick={() => window.open(doc.url || "#", "_blank")}
+                title="Download"
+              />
+              <Button
+                size="small"
+                type="text"
+                danger
+                onClick={() => deleteDocument(doc.id)}
+                title="Delete"
+              />
+            </Space>
+          ),
+        },
+      ];
+  
+      return (
+        <Card className="!rounded-xl" bodyStyle={{ padding: 16 }}>
+          {/* Toolbar */}
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <Space size={8} className="mr-2">
+              <span className="text-gray-500">Show</span>
+              <Select
+                value={String(docPageSize)}
+                onChange={(v) => setDocPageSize(Number(v))}
+                options={["10","25","50","100"].map((n) => ({ value: n, label: n }))}
+                style={{ width: 80 }}
+              />
+              <span className="text-gray-500">entries</span>
+            </Space>
+  
+            <div className="ml-auto flex items-center gap-2">
+              <Select
+                value={docType}
+                onChange={setDocType}
+                options={typeOptions.map((t) => ({ value: t, label: t }))}
+                style={{ width: 160 }}
+                placeholder="Type"
+              />
+              <Button onClick={() => setDocUploadOpen(true)}>Upload</Button>
+              <Button icon={<ReloadOutlined />} onClick={loadDocuments} />
+              <Input
+                allowClear
+                placeholder="Table search"
+                prefix={<SearchOutlined />}
+                value={docSearch}
+                onChange={(e) => setDocSearch(e.target.value)}
+                style={{ width: 220 }}
+              />
+            </div>
+          </div>
+  
+          {/* Table */}
+          <Table
+            rowKey={(r) => r.id}
+            loading={docsLoading}
+            columns={columns}
+            dataSource={filteredDocs}
+            pagination={{
+              pageSize: docPageSize,
+              showSizeChanger: false,
+              showTotal: (total, [start, end]) =>
+                `Showing ${start} to ${end} of ${total} entries`,
+            }}
+            scroll={{ x: 960 }}
             locale={{
-              emptyText: (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={safeCfg.tabs.related.empty || "No related records."} />
-              ),
+              emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents." />,
             }}
           />
-        </div>
-      </Card>
-    );
+  
+          {/* Upload Modal */}
+          <Modal
+            title="Upload Document"
+            open={docUploadOpen}
+            onCancel={() => setDocUploadOpen(false)}
+            footer={null}
+            destroyOnClose
+          >
+            <UploadDocumentForm
+              onUpload={async (file, meta) => {
+                await uploadDocument(file, meta);
+                setDocUploadOpen(false);
+              }}
+            />
+          </Modal>
+  
+          {/* Edit Modal */}
+          <Modal
+            title={docEditing ? `Edit — ${docEditing.title || docEditing.id}` : "Edit Document"}
+            open={docEditOpen}
+            onCancel={() => { setDocEditOpen(false); setDocEditing(null); }}
+            footer={null}
+            destroyOnClose
+          >
+            <EditDocumentForm
+              doc={docEditing}
+              onSubmit={async (vals) => {
+                await updateDocument(docEditing.id, vals);
+                setDocEditOpen(false);
+                setDocEditing(null);
+              }}
+            />
+          </Modal>
+        </Card>
+      );
+    })();
 
   const billingTab =
-    safeCfg.tabs?.billing?.enabled && (
+    safeCfg.tabs?.billing?.enabled &&
+    (typeof safeCfg.tabs.billing.render === "function" ? (
+      safeCfg.tabs.billing.render({ entity })
+    ) : (
       <Card className="!rounded-xl">
-        {(() => {
-          const rows = safeCfg.tabs?.billing?.rows && entity ? safeCfg.tabs.billing.rows(entity) : [];
-          return rows.length ? (
-            <div className="flex flex-col gap-3">
-              {rows.map((r, i) => (
-                <InfoRow key={i} label={r.label} value={dash(r.value)} />
-              ))}
-            </div>
-          ) : (
-            <Text type="secondary">No billing data.</Text>
-          );
-        })()}
+        <Text type="secondary">Billing tab is enabled but no renderer was provided.</Text>
       </Card>
-    );
+    ));
 
-  const auditCfg = safeCfg.tabs?.audit;
-  const auditTab = auditCfg?.enabled && (
-    <Card className="!rounded-xl" bodyStyle={{ padding: 0 }}>
-      <div className="p-3 flex items-center justify-between">
-        <Text strong>{auditCfg.label || "Audit Log"}</Text>
-      </div>
-      <div className="px-3 pb-3">
-        <Table
-          columns={auditCfg.columns || []}
-          dataSource={auditCfg.data || []}
-          pagination={{ pageSize: 10 }}
-          scroll={{ x: 800 }}
-          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={"No audit entries."} /> }}
-        />
-      </div>
-    </Card>
-  );
-
-  const TasksTab = tasksCfg.enabled && (
-    <Card className="!rounded-xl">
-      <AddTaskForm onSubmit={createTask} />
-      <Divider />
-      <Table
-        rowKey="id"
-        loading={tasksLoading}
-        dataSource={tasks}
-        pagination={{ pageSize: 8 }}
-        scroll={{ x: 800 }}
-        columns={[
-          { title: "ID", dataIndex: "id", key: "id", width: 120, render: (v) => v ?? "-" },
-          { title: "Title", dataIndex: "title", key: "title", render: (v) => v ?? "-" },
-          { title: "Priority", dataIndex: "priority", key: "priority", width: 120, render: (v) => v ?? "-" },
-          { title: "Status", dataIndex: "status", key: "status", width: 130, render: (v) => v ?? "-" },
-          { title: "Due", dataIndex: "dueDate", key: "dueDate", width: 140, render: (v) => (v ? fmtDate(v) : "-") },
-          {
-            title: "",
-            key: "actions",
-            width: 160,
-            render: (_, r) => (
-              <Space>
-                <Button size="small" onClick={() => updateTask(r.id, { status: r.status === "done" ? "open" : "done" })}>
-                  {r.status === "done" ? "Reopen" : "Mark Done"}
-                </Button>
-                <Popconfirm title="Delete task?" onConfirm={() => deleteTask(r.id)}>
-                  <Button size="small" danger>Delete</Button>
-                </Popconfirm>
-              </Space>
-            ),
-          },
-        ]}
-        locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No tasks yet." /> }}
-      />
-    </Card>
-  );
-
-  const CommunicationTab = commCfg?.enabled && (
-    <Card className="!rounded-xl">
-      <AddCommentForm onSubmit={(vals) => addComment({ author: vals.author || "You", text: vals.text })} />
-      <Divider />
-      <List
-        loading={commentsLoading}
-        dataSource={comments}
-        locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No comments yet." /> }}
-        renderItem={(item) => (
-          <li key={item.id}>
-            <Comment
-              author={<span>{dash(item.author)}</span>}
-              content={<p className="whitespace-pre-wrap">{dash(item.text)}</p>}
-              datetime={<Tooltip title={item.created_at}>{fmtDate(item.created_at)}</Tooltip>}
+  const auditTab =
+    safeCfg.tabs?.audit?.enabled &&
+    (function () {
+      return (
+        <Card className="!rounded-xl" bodyStyle={{ padding: 0 }}>
+          <div className="p-3 flex items-center justify-between">
+            <Text strong>{safeCfg.tabs.audit.label || "Audit Log"}</Text>
+            <Button icon={<ReloadOutlined />} />
+          </div>
+          <div className="px-3 pb-3">
+            <Table
+              columns={safeCfg.tabs.audit.columns || []}
+              dataSource={safeCfg.tabs.audit.data || []}
+              pagination={{ pageSize: 10 }}
+              scroll={{ x: 800 }}
+              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No audit events." /> }}
             />
-          </li>
-        )}
-      />
-    </Card>
-  );
+          </div>
+        </Card>
+      );
+    })();
 
-  const DocumentsTab = docsCfg?.enabled && (
-    <Card className="!rounded-xl">
-      <UploadDocumentForm onUpload={uploadDocument} />
-      <Divider />
-      <Table
-        rowKey="id"
-        loading={docsLoading}
-        dataSource={documents}
-        pagination={{ pageSize: 8 }}
-        scroll={{ x: 800 }}
-        columns={[
-          { title: "ID", dataIndex: "id", key: "id", width: 120, render: (v) => v ?? "-" },
-          { title: "Title", dataIndex: "title", key: "title", render: (v) => v ?? "-" },
-          { title: "Description", dataIndex: "description", key: "description", render: (v) => v ?? "-" },
-          { title: "Status", dataIndex: "status", key: "status", width: 120, render: (v) => v ?? "-" },
-          { title: "Date", dataIndex: "date", key: "date", width: 130, render: (v) => (v ? fmtDate(v) : "-") },
-          { title: "File", dataIndex: "url", key: "url", width: 110, render: (v) => (v ? <a href={v} target="_blank" rel="noreferrer">Open</a> : "-") },
-          {
-            title: "",
-            key: "actions",
-            width: 200,
-            render: (_, r) => (
-              <Space>
-                <Button size="small" onClick={() => { setDocCommentModal({ open: true, doc: r }); loadDocComments(r); }}>
-                  Comments
-                </Button>
-                <Popconfirm title="Delete document?" onConfirm={() => deleteDocument(r.id)}>
-                  <Button size="small" danger icon={<DeleteTwoTone twoToneColor="#ff4d4f" />}>Delete</Button>
-                </Popconfirm>
-              </Space>
-            ),
-          },
-        ]}
-        locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents uploaded." /> }}
-      />
-
-      <Modal
-        title={docCommentModal.doc ? `Comments — ${docCommentModal.doc.title || "-"}` : "Comments"}
-        open={docCommentModal.open}
-        onCancel={() => setDocCommentModal({ open: false, doc: null })}
-        footer={null}
-        width={720}
-      >
-        <div className="mb-3">
-          <AddCommentForm
-            onSubmit={(vals) =>
-              docCommentModal.doc &&
-              addDocComment(docCommentModal.doc, { author: vals.author || "You", text: vals.text })
-            }
-          />
-        </div>
-        <List
-          loading={docCommentLoadingId === (docCommentModal.doc && docCommentModal.doc.id)}
-          dataSource={(docCommentModal.doc && docCommentMap[docCommentModal.doc.id]) || []}
-          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No comments yet." /> }}
-          renderItem={(item) => (
-            <li key={item.id}>
-              <Comment
-                author={<span>{dash(item.author)}</span>}
-                content={<p className="whitespace-pre-wrap">{dash(item.text)}</p>}
-                datetime={<Tooltip title={item.created_at}>{fmtDate(item.created_at)}</Tooltip>}
-              />
-            </li>
-          )}
-        />
-      </Modal>
-    </Card>
-  );
-
-  // Tabs assemble
   const tabItems = useMemo(() => {
     const items = [{ key: "information", label: "Information", children: informationTab }];
     if (relatedTab) items.push({ key: "related", label: safeCfg.tabs.related.label || "Related", children: relatedTab });
@@ -864,7 +1246,7 @@ export default function EntityDetail({ cfg }) {
     if (safeCfg.tabs?.audit?.enabled) items.push({ key: "audit", label: safeCfg.tabs.audit.label || "Audit Log", children: auditTab });
     if (tasksCfg.enabled) items.push({ key: "tasks", label: tasksCfg.label || "Tasks", children: TasksTab });
     if (docsCfg?.enabled) items.push({ key: "documents", label: docsCfg.label || "Documents", children: DocumentsTab });
-    if (commCfg?.enabled) items.push({ key: "communication", label: commCfg.label || "Comments", children: CommunicationTab });
+    if (commCfg?.enabled) items.push({ key: "communication", label: commCfg.label || "Comments", children: CommunicationPanel });
     if (safeCfg.tabs?.activity?.enabled) {
       items.push({
         key: "activity",
@@ -875,13 +1257,13 @@ export default function EntityDetail({ cfg }) {
               <Text strong>{safeCfg.tabs.activity.label || "Activity"}</Text>
               <Space>
                 {typeof safeCfg.tabs.activity.toolbar === "function" ? safeCfg.tabs.activity.toolbar(entity) : null}
-                <Button icon={<ReloadOutlined />} onClick={() => { /* external refresh via toolbar */ }} />
+                <Button icon={<ReloadOutlined />} onClick={() => {}} />
               </Space>
             </div>
             <div className="px-3 pb-3">
               <Table
                 columns={safeCfg.tabs.activity.columns || []}
-                dataSource={[]} // provide via cfg if needed
+                dataSource={safeCfg.tabs.activity.data || []}
                 pagination={{ pageSize: 10 }}
                 scroll={{ x: 800 }}
                 locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={safeCfg.tabs.activity.empty || "No activity."} /> }}
@@ -894,7 +1276,39 @@ export default function EntityDetail({ cfg }) {
     return items;
   }, [informationTab, relatedTab, billingTab, auditTab, tasksCfg.enabled, docsCfg?.enabled, commCfg?.enabled, safeCfg.tabs, entity]);
 
-  /* -------- render -------- */
+  /* ---------- Render ---------- */
+  const actionsMenu = {
+    items: [
+      ...(updateStatusPath
+        ? [
+            { key: "activate", label: "Activate" },
+            { key: "suspend", label: "Suspend" },
+            { key: "block", label: "Block", danger: true },
+            { type: "divider" },
+          ]
+        : []),
+      { key: "refresh", label: "Refresh" },
+      { key: "edit", label: "Edit" },
+      ...(removePath ? [{ key: "delete", label: "Delete", danger: true }] : []),
+    ],
+    onClick: async ({ key }) => {
+      if (key === "activate") return setStatus("active");
+      if (key === "suspend") return setStatus("suspended");
+      if (key === "block") return setStatus("disabled");
+      if (key === "refresh") return load();
+      if (key === "edit") return goEdit();
+      if (key === "delete" && removePath) return onDelete();
+    },
+  };
+
+  if (loading && !entity) {
+    return (
+      <div className="w-full h-96 flex items-center justify-center">
+        <Spin size="large" />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-[1400px] mx-auto px-3 md:px-4">
       {ctx}
@@ -902,9 +1316,7 @@ export default function EntityDetail({ cfg }) {
       {/* Responsive header */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <Space wrap className="min-w-0">
-          <Button size={screens.md ? "middle" : "small"} icon={<ArrowLeftOutlined />} onClick={goBack}>
-            <span className="hidden sm:inline">Back</span>
-          </Button>
+         
 
           {safeCfg?.ui?.showAvatar !== false ? (
             <Avatar size={screens.md ? "large" : "default"} style={{ backgroundColor: "#1677ff", fontWeight: 600 }}>
@@ -912,7 +1324,7 @@ export default function EntityDetail({ cfg }) {
             </Avatar>
           ) : null}
 
-          {/* smaller, friendlier title on mobile */}
+          {/* Title */}
           <div className="min-w-0">
             <div className="truncate font-semibold text-xl leading-6 md:text-2xl md:leading-7">
               {safeCfg.titleSingular || "Detail"} — <span className="font-normal">{titleName}</span>
@@ -938,12 +1350,10 @@ export default function EntityDetail({ cfg }) {
                 <Divider type="vertical" />
               </>
             ) : null}
-            <Button icon={<ReloadOutlined />} onClick={load}>
-              Refresh
+            <Button type="primary" icon={<SaveOutlined />} onClick={saveInfo} disabled={!isEditingInfo}>
+              Save
             </Button>
-            <Button type="primary" icon={<EditOutlined />} onClick={goEdit}>
-              Edit
-            </Button>
+           
             {removePath ? (
               <Button danger icon={<DeleteOutlined />} onClick={onDelete}>
                 Delete
@@ -951,14 +1361,9 @@ export default function EntityDetail({ cfg }) {
             ) : null}
           </Space>
         ) : (
-          // Mobile: vertical dotted (⋮) menu with all actions
+          // Mobile actions menu
           <Dropdown menu={actionsMenu} trigger={["click"]} placement="bottomRight">
-            <Button
-              shape="circle"
-              aria-label="More actions"
-              className="!flex !items-center !justify-center"
-              icon={<MoreOutlined className="transform rotate-90" />}
-            />
+            <Button shape="circle" aria-label="More actions" className="!flex !items-center !justify-center" icon={<MoreOutlined className="transform rotate-90" />} />
           </Dropdown>
         )}
       </div>
@@ -968,11 +1373,48 @@ export default function EntityDetail({ cfg }) {
           size={screens.md ? "large" : "small"}
           tabBarGutter={screens.md ? 24 : 8}
           activeKey={activeTab}
-          onChange={setActiveTab}
+          onChange={handleTabChange}
           items={tabItems}
           className="[&_.ant-tabs-tab-btn]:text-[13px] md:[&_.ant-tabs-tab-btn]:text-[14px]"
         />
       </Card>
+
+      {/* Modal to Link Child */}
+      <Modal
+        title="Link Existing Child"
+        open={linkChildModalOpen}
+        onCancel={() => setLinkChildModalOpen(false)}
+        footer={null}
+        destroyOnClose
+      >
+        <Form
+          layout="vertical"
+          onFinish={async (values) => {
+            try {
+              const childId = values.student_id;
+              if (!childId) return messageApi.error('Student ID is required.');
+              await api.post(apiObj.linkStudentByIdPath(id), { student_id: childId });
+              messageApi.success('Child linked successfully!');
+              setLinkChildModalOpen(false);
+              loadRelated(); // Refresh the list
+            } catch (err) {
+              messageApi.error(err?.response?.data?.message || 'Failed to link child.');
+            }
+          }}
+        >
+          <Form.Item
+            name="student_id"
+            label="Student ID"
+            rules={[{ required: true, message: 'Please enter the ID of the student to link.' }]}
+          >
+            <Input placeholder="Enter Student ID" />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" htmlType="submit">Link Student</Button>
+          </Form.Item>
+        </Form>
+      </Modal>
+
     </div>
   );
 }
@@ -1002,12 +1444,7 @@ function AddTaskForm({ onSubmit }) {
           const jsDate = d?.toDate ? d.toDate() : new Date(d);
           return isNaN(jsDate) ? null : jsDate.toISOString();
         };
-        const payload = {
-          title: vals.title?.trim() || "-",
-          priority: vals.priority || "medium",
-          status: "open",
-          dueDate: toIso(vals.dueDate),
-        };
+        const payload = { title: vals.title?.trim() || "-", priority: vals.priority || "medium", status: "open", dueDate: toIso(vals.dueDate) };
         onSubmit(payload);
         form.resetFields();
       }}
@@ -1016,14 +1453,7 @@ function AddTaskForm({ onSubmit }) {
         <Input placeholder="Task title" />
       </Form.Item>
       <Form.Item name="priority" initialValue="medium">
-        <Select
-          style={{ width: 120 }}
-          options={[
-            { value: "low", label: "Low" },
-            { value: "medium", label: "Medium" },
-            { value: "high", label: "High" },
-          ]}
-        />
+        <Select style={{ width: 120 }} options={[{ value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }]} />
       </Form.Item>
       <Form.Item name="dueDate">
         <DatePicker placeholder="Due date" />
@@ -1128,6 +1558,57 @@ function UploadDocumentForm({ onUpload }) {
           Upload
         </Button>
       </Form.Item>
+    </Form>
+  );
+}
+
+function EditDocumentForm({ doc, onSubmit }) {
+  const [form] = Form.useForm();
+  useEffect(() => {
+    if (doc) {
+      form.setFieldsValue({
+        title: doc.title,
+        description: doc.description,
+        status: doc.status || "Uploaded",
+        source: doc.source || "Uploaded",
+        date: doc.date ? dayjs(doc.date) : null,
+      });
+    }
+  }, [doc]);
+
+  return (
+    <Form
+      form={form}
+      layout="vertical"
+      onFinish={(vals) => {
+        const payload = {
+          title: vals.title,
+          description: vals.description,
+          status: vals.status,
+          source: vals.source,
+          date: vals.date ? vals.date.toISOString() : doc?.date,
+        };
+        onSubmit(payload);
+      }}
+    >
+      <Form.Item label="Title" name="title" rules={[{ required: true, message: "Title is required" }]}>
+        <Input />
+      </Form.Item>
+      <Form.Item label="Status" name="status">
+        <Select options={[{value:"Uploaded",label:"Uploaded"},{value:"Approved",label:"Approved"},{value:"Rejected",label:"Rejected"}]} />
+      </Form.Item>
+      <Form.Item label="Source" name="source">
+        <Input />
+      </Form.Item>
+      <Form.Item label="Date" name="date">
+        <DatePicker className="w-full" showTime />
+      </Form.Item>
+      <Form.Item label="Description" name="description">
+        <Input.TextArea autoSize={{ minRows: 2, maxRows: 6 }} />
+      </Form.Item>
+      <Space>
+        <Button htmlType="submit" type="primary">Save</Button>
+      </Space>
     </Form>
   );
 }

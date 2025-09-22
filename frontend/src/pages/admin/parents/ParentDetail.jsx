@@ -1,186 +1,131 @@
-// src/pages/parents/ParentDetail.jsx
+// src/pages/admin/parents/ParentDetail.jsx
 import React from "react";
-import { useLocation } from "react-router-dom";
-import { Button, Space, Tag, message } from "antd";
-import { LinkOutlined, DisconnectOutlined } from "@ant-design/icons";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Tag, Button } from "antd";
 import EntityDetail from "@/components/EntityDetail.jsx";
-import api from "@/api/axios";
+import BillingTab from './BillingTab';
 
 export default function ParentDetail() {
   const location = useLocation();
+  const navigate = useNavigate();
   const prefill = location.state?.prefill || null; // ← comes from list
 
   const cfg = {
     titleSingular: "Parent",
     idField: "id",
-    routeBase: "/admin/parents", // plural route base for pages list consistency
-
-    ui: {
-      // Avatar rendered globally by EntityDetail; keep default (show)
-      // showAvatar: false,
-    },
+    routeBase: "/admin/parents",
 
     api: {
       getPath: (id) => `/parent/${id}`,
-      updateStatusPath: (id) => `/parent/${id}/status`,
-      removePath: (id) => `/parent/${id}`,
+      updateStatusPath: (id, entity) => `/users/${entity?.raw?.user_id}/status`,
+      removePath: (id) => `/parents/${id}`,
+      linkStudentByIdPath: (id) => `/parents/${id}/children`,
+      linkStudentByEmailPath: (id) => `/parents/${id}/children/link-by-email`,
+      unlinkStudentPath: (id, studentId) => `/parents/${id}/children/${studentId}`,
 
-      // Children linking from the parent account (selection)
-      linkStudentByIdPath: (id) => `/parent/${id}/children`, // POST { student_id }
-      linkStudentByEmailPath: (id) => `/parent/${id}/children/link-by-email`, // POST { email }
-      unlinkStudentPath: (id, studentId) => `/parent/${id}/children/${studentId}`,
-
-      // Accept either raw or { data: raw }
       parseEntity: (payload) => {
         const p = payload?.data ?? payload ?? {};
         const u = p.user || {};
-        const fb = (v) =>
-          v === undefined || v === null || String(v).trim() === "" ? "-" : v;
-
-        const name =
-          p.name ||
-          u.name ||
-          [u.first_name, u.last_name].filter(Boolean).join(" ").trim() ||
-          "-";
-
-        const email = p.email || u.email || p.contact_email || "-";
-        const status = p.status || u.status || "-";
-        const school = p.school?.name || p.school_name || p.location || "-";
+        const name = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
+        const member_since = u.created_at
+          ? new Date(u.created_at).toLocaleDateString()
+          : "-";
 
         return {
           id: p.id,
-          name: fb(name),
-          email: fb(email),
-          status: fb(status),
-          school: fb(school),          // Location = School only
-          bundesland: fb(p.bundesland),
-          created_at: p.created_at || u.created_at || null,
-          user_id: p.user_id,
+          user_id: u.id,
+          name,
+          email: u.email,
+          status: u.status,
+          created_at: u.created_at, // raw (kept)
+          member_since,             // formatted (used in info panel)
+          contact_number: u.contact_number,
+          bundesland: u.state,
+          students: p.students || [],
+          subscriptions: p.subscriptions || [],
           raw: p,
         };
       },
     },
 
-    // Use prefill immediately while fetch runs
+    // Prefill row from list view (if present)
     initialEntity: prefill || undefined,
 
-    // Minimal set: no phone/street/city/postal/country
+    // NOTE: EntityDetail will automatically prepend an "ID" row.
+    // We also include an explicit "Parent ID" line here if you want it
+    // duplicated in the main info list. Remove this line if you prefer
+    // to show ID only once.
     infoFields: [
-      { label: "Name", name: "name" },
+  
+      { label: "Full Name", name: "name" },
       { label: "Email", name: "email" },
-      { label: "School", name: "school" },       // Location = School only
+      { label: "Phone Number", name: "contact_number" },
       { label: "Bundesland", name: "bundesland" },
-      { label: "Status", name: "status" },
-      { label: "Date added", name: "created_at" },
+      { label: "Member Since", name: "member_since" }, // preformatted in parseEntity
     ],
-
-    topInfo: (e) => {
-      if (!e) return [];
-      const chips = [];
-      if (e.status && e.status !== "-") {
-        const s = String(e.status).toLowerCase();
-        chips.push(
-          <Tag
-            key="status"
-            color={s === "active" ? "green" : s === "suspended" ? "gold" : "default"}
-          >
-            {e.status}
-          </Tag>
-        );
-      }
-      if (e.school && e.school !== "-") chips.push(<Tag key="school">{e.school}</Tag>);
-      if (e.bundesland && e.bundesland !== "-")
-        chips.push(<Tag key="state">{e.bundesland}</Tag>);
-      // helper chip to highlight that students can be linked from here
-      chips.push(<Tag key="linking" color="blue">Can link students</Tag>);
-      return chips;
-    },
 
     tabs: {
       related: {
         enabled: true,
         label: "Children",
         idField: "id",
-        listPath: (id) => `/parent/${id}/children`, // singular route
-
-        // Toolbar to link/unlink students from the parent account
+        listPath: (id) => `/parents/${id}/children`,
         toolbar: (parent) => (
-          <Space size="small">
-            <Button
-              size="small"
-              icon={<LinkOutlined />}
-              onClick={async () => {
-                const studentId = window.prompt("Enter Student ID to link to this parent:");
-                if (!studentId) return;
-                try {
-                  await api.post(cfg.api.linkStudentByIdPath(parent?.id), { student_id: String(studentId) });
-                  message.success("Student linked by ID");
-                } catch {
-                  message.error("Failed to link student by ID");
-                }
-              }}
-            >
-              Link Student by ID
-            </Button>
-
-            <Button
-              size="small"
-              icon={<LinkOutlined />}
-              onClick={async () => {
-                const email = window.prompt("Enter Student Email to link to this parent:");
-                if (!email) return;
-                try {
-                  await api.post(cfg.api.linkStudentByEmailPath(parent?.id), { email });
-                  message.success("Student linked by email");
-                } catch {
-                  message.error("Failed to link student by email");
-                }
-              }}
-            >
-              Link Student by Email
-            </Button>
-          </Space>
+          <Button 
+            onClick={() => navigate('/admin/students/new', { 
+              state: { 
+                prefill: { 
+                  parent_id: parent.id, 
+                  parent_name: parent.name 
+                } 
+              }
+            })}
+          >
+            Add Child
+          </Button>
         ),
-
         columns: [
-          { title: "Child ID", dataIndex: "id", key: "id", width: 110, render: (v) => v ?? "-" },
-          { title: "Name", dataIndex: "name", key: "name", render: (v) => v ?? "-" },
-          { title: "Grade", dataIndex: "grade", key: "grade", width: 90, render: (v) => v ?? "-" },
-          { title: "Bundesland", dataIndex: "bundesland", key: "bundesland", width: 140, render: (v) => v ?? "-" },
-          { title: "Status", dataIndex: "status", key: "status", width: 120, render: (v) => v ?? "-" },
-          // If you later add an unlink endpoint, you can add an action button like below:
-          // {
-          //   title: "",
-          //   key: "actions",
-          //   width: 140,
-          //   render: (_, r) => (
-          //     <Button
-          //       size="small"
-          //       danger
-          //       icon={<DisconnectOutlined />}
-          //       onClick={async () => {
-          //         try {
-          //           await api.delete(cfg.api.unlinkStudentPath(parent?.id, r.id));
-          //           message.success("Unlinked");
-          //         } catch {
-          //           message.error("Failed to unlink");
-          //         }
-          //       }}
-          //     >
-          //       Unlink
-          //     </Button>
-          //   ),
-          // },
+          { title: "ID", dataIndex: "id", key: "id" },
+          {
+            title: "Name",
+            key: "name",
+            render: (_, r) => `${r.user?.first_name || ""} ${r.user?.last_name || ""}`.trim() || r.name,
+          },
+          {
+            title: "Grade",
+            dataIndex: "grade",
+            key: "grade",
+            render: (v) => v || "N/A",
+          },
+          {
+            title: "State",
+            dataIndex: "bundesland",
+            key: "bundesland",
+            render: (v) => v || "N/A",
+          },
+          {
+            title: "Status",
+            dataIndex: "status", // Status is directly on the student/child record
+            key: "status",
+            render: (status) => {
+              let color = "default";
+              if (status === "active") color = "success";
+              if (status === "completed") color = "blue";
+              if (status === "locked") color = "error";
+              return <Tag color={color}>{status || "N/A"}</Tag>;
+            },
+          },
         ],
-
-        empty: "No children linked to this parent.",
       },
-
-      billing: { enabled: true, rows: () => [] },
-      audit: { enabled: true, label: "Audit Log", columns: [] },
-      documents: { enabled: true, label: "Documents" },
+      billing: { 
+        enabled: true, 
+        label: "Billing",
+        render: (entity) => <BillingTab entity={entity} />
+      },
       communication: { enabled: true, label: "Comments" },
       tasks: { enabled: true, label: "Tasks" },
+      documents: { enabled: true, label: "Documents" },
+      audit: { enabled: true, label: "Audit Log" },
     },
   };
 
