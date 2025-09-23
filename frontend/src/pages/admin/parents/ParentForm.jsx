@@ -42,8 +42,7 @@ export default function ParentForm() {
         { name: "first_name", label: "First name", rules: [{ required: true }] },
         { name: "last_name",  label: "Last name",  rules: [{ required: true }] },
         { name: "email",      label: "Email", rules: [{ required: true }, { type: "email" }] },
-        // In detail payload, contact_number is nested under user.contact_number
-        { name: ["user", "contact_number"], label: "Phone number", placeholder: "+27 82 123 4567" },
+        { name: "contact_number", label: "Phone number", placeholder: "+27 82 123 4567" },
 
         // State is a VARCHAR on users.state → send the name string
         {
@@ -86,8 +85,7 @@ export default function ParentForm() {
           first_name: vals.first_name?.trim(),
           last_name: vals.last_name?.trim(),
           email: vals.email?.trim(),
-          // Read from nested user.contact_number in case of edit mode values
-          contact_number: vals?.user?.contact_number ?? vals.contact_number ?? null,
+          contact_number: vals.contact_number || null,
           state: vals.state || null, // string name
           student_ids: Array.isArray(vals.student_ids) ? vals.student_ids : [],
         };
