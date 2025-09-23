@@ -11,22 +11,30 @@ export default function ParentForm() {
         // detail exists:
         getPath: (id) => `/parent/${id}`,
 
-        // ✅ create must hit /addparent (your router file)
+        // Use existing backend route: create a User with role_id=2; backend will create Parent
         create: async (api, payload) => {
-          console.log(payload);
-          const res = await api.post("/addparent", payload); // verifyToken required → make sure axios sends the token
-          // normalize the id for EntityForm redirect
-          const raw = res?.data?.data ?? res?.data ?? {};
-          const id =
-            raw?.id ??
-            raw?.parent?.id ??
-            raw?.data?.id;
-          return { data: { id } };
+          const body = { ...payload, role_id: 2 };
+          const res = await api.post("/adduser", body);
+          const createdUser = res?.data?.user || res?.data?.data || res?.data || {};
+
+          // Try to resolve the Parent.id associated with this user by email
+          try {
+            const parentsRes = await api.get("/parents");
+            const parents = Array.isArray(parentsRes?.data) ? parentsRes.data : [];
+            const match = parents.find((p) => (p?.user?.email && payload?.email) && p.user.email === payload.email);
+            if (match?.id) {
+              return { data: { id: match.id } };
+            }
+          } catch (e) {
+            // ignore and fall back
+          }
+
+          // If we can't resolve Parent.id, surface a clear message
+          throw new Error("Parent created, but could not resolve Parent ID for redirect. Refresh Parents list.");
         },
 
         // There’s no PUT/PATCH route for parents in your routes.
-        // Leave updatePath out or add one on the server before enabling edit.
-        // updatePath: (id) => `/parent/${id}`, // only if you implement it server-side
+        // updatePath: (id) => `/parent/${id}`,
         requiredKeys: ["first_name", "last_name", "email"],
       }}
 
@@ -34,7 +42,8 @@ export default function ParentForm() {
         { name: "first_name", label: "First name", rules: [{ required: true }] },
         { name: "last_name",  label: "Last name",  rules: [{ required: true }] },
         { name: "email",      label: "Email", rules: [{ required: true }, { type: "email" }] },
-        { name: "contact_number", label: "Phone number", placeholder: "+27 82 123 4567" },
+        // In detail payload, contact_number is nested under user.contact_number
+        { name: ["user", "contact_number"], label: "Phone number", placeholder: "+27 82 123 4567" },
 
         // State is a VARCHAR on users.state → send the name string
         {
@@ -52,7 +61,7 @@ export default function ParentForm() {
           }),
         },
 
-        // Optional: link students by IDs
+        // Optional: link students by IDs (not used by /adduser)
         {
           name: "student_ids",
           label: "Link Students (Optional)",
@@ -68,7 +77,7 @@ export default function ParentForm() {
             const nm = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
             return { value: it?.id ?? it, label: nm ? `${nm} (ID: ${it?.id})` : `Student #${it?.id ?? ""}` };
           },
-          coerce: "number", // EntityForm will coerce to numbers before submit
+          coerce: "number",
         },
       ]}
 
@@ -77,7 +86,8 @@ export default function ParentForm() {
           first_name: vals.first_name?.trim(),
           last_name: vals.last_name?.trim(),
           email: vals.email?.trim(),
-          contact_number: vals.contact_number || null,
+          // Read from nested user.contact_number in case of edit mode values
+          contact_number: vals?.user?.contact_number ?? vals.contact_number ?? null,
           state: vals.state || null, // string name
           student_ids: Array.isArray(vals.student_ids) ? vals.student_ids : [],
         };
