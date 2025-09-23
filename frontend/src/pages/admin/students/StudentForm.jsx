@@ -1,11 +1,6 @@
-import React from 'react';
+// StudentForm.jsx
+import React from "react";
 import EntityForm from "@/components/form/EntityForm";
-
-const statusOptions = [
-  { value: "active", label: "Active" },
-  { value: "suspended", label: "Suspended" },
-  { value: "disabled", label: "Blocked" },
-];
 
 const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {} }) => {
   return (
@@ -23,111 +18,132 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
             onSuccess(res);
             return { preventRedirect: true };
           }
-        }
+        },
+        // Create user (role_id=1) then student is created server-side in /adduser
+        create: async (api, payload) => {
+          console.log(payload);
+          // Robust temp password generator
+          const genTempPassword = (len = 12) => {
+            try {
+              const bytes = new Uint32Array(len);
+              if (window?.crypto?.getRandomValues) {
+                window.crypto.getRandomValues(bytes);
+                return Array.from(bytes).map((x) => (x % 36).toString(36)).join("");
+              }
+            } catch {}
+            // Fallback
+            const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+            let out = "";
+            for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+            return out;
+          };
+
+          const userBody = {
+            role_id: 1,
+            first_name: payload.first_name,
+            last_name: payload.last_name,
+            email: payload.email,
+            state: payload.state,
+            class_id: payload.class_id, // required for student creation
+            parent_id: payload.parent_id ?? null,
+            subjects: Array.isArray(payload.subjects) ? payload.subjects : [],
+            password: genTempPassword(14),
+          };
+
+          // POST /adduser; backend will create associated Student when role_id===1
+          return await api.post("/adduser", userBody);
+        },
       }}
       fields={[
-        // Basic Information
-        { 
-          name: "first_name", 
-          label: "First name", 
-          placeholder: "e.g., John", 
-          rules: [{ required: true, message: "First name is required" }] 
-        },
-        { 
-          name: "last_name",  
-          label: "Last name",  
-          placeholder: "e.g., Smith", 
-          rules: [{ required: true, message: "Last name is required" }] 
-        },
-        { 
-          name: "email",  
-          label: "Email", 
-          placeholder: "student@example.com", 
-          rules: [
-            { required: true, message: 'Email is required' },
-            { type: 'email', message: 'Please enter a valid email' }
-          ] 
+        // Basic
+        { name: "first_name", label: "First name", rules: [{ required: true }] },
+        { name: "last_name",  label: "Last name",  rules: [{ required: true }] },
+        {
+          name: "email",
+          label: "Email",
+          rules: [{ required: true }, { type: "email" }],
         },
 
-        // Academic Information
+        // Class (IMPORTANT: backend wants class_id)
         {
-          name: "grade",
-          label: "Grade",
+          name: "class_id",
+          label: "Class",
           input: "select",
-          placeholder: "Search for a grade/class...",
+          placeholder: "Search class…",
           optionsUrl: "/allclasses",
           serverSearch: true,
+          autoloadOptions: false,
           searchParam: "q",
-          optionValue: "id",
-          optionLabel: "class_name",
-          rules: [{ required: true, message: "Grade is required" }],
+          allowClear: true,
+          transform: (it) => ({ value: it?.id ?? it, label: it?.class_name ?? String(it) }),
+          rules: [{ required: true, message: "Class is required" }],
         },
+
+        // Subjects (IDs array)
         {
           name: "subjects",
           label: "Subjects",
           input: "select",
           mode: "multiple",
-          placeholder: "Search for subjects...",
           optionsUrl: "/allsubjects",
           serverSearch: true,
+          autoloadOptions: false,
           searchParam: "q",
-          optionValue: "id",
-          optionLabel: "subject_name",
+          allowClear: true,
+          transform: (it) => ({ value: it?.id ?? it, label: it?.subject_name ?? String(it) }),
         },
 
-        // Parent Information (Optional)
+        // Parent (optional)
         {
           name: "parent_id",
           label: "Parent",
           input: "select",
-          placeholder: "Search for a parent...",
           optionsUrl: "/parents",
           serverSearch: true,
+          autoloadOptions: false,
           searchParam: "q",
-          optionValue: "id",
-          optionLabel: (item) => `${item.user?.first_name || ''} ${item.user?.last_name || ''}`.trim(),
+          allowClear: true,
+          transform: (it) => {
+            const fn = it?.user?.first_name || "";
+            const ln = it?.user?.last_name || "";
+            const nm = it?.user?.name || [fn, ln].filter(Boolean).join(" ");
+            return { value: it?.id ?? it, label: (nm || `Parent #${it?.id ?? ""}`).trim() };
+          },
           disabled: !!initialValues.parent_id,
-          initialOptions: initialValues.parent_id 
-            ? [{ value: initialValues.parent_id, label: initialValues.parent_name }] 
-            : [],
+          initialOptions:
+            initialValues.parent_id && initialValues.parent_name
+              ? [{ value: initialValues.parent_id, label: initialValues.parent_name }]
+              : undefined,
         },
 
-        // Additional Information
-        { 
-          name: "school", 
-          label: "School (Optional)", 
-          placeholder: "e.g., South Campus" 
-        },
-        // Status field removed — backend defaults status to 'active'
+        // Optional extras
+        { name: "school", label: "School (Optional)" },
         {
-          name: "bundesland",
-          label: "Bundesland",
+          name: "state", // <-- your users table shows "state"
+          label: "State",
           input: "select",
-          placeholder: "Search Bundesland…",
+          placeholder: "Search state…",
           optionsUrl: "/states",
           serverSearch: true,
-          searchParam: "q",
-          transform: (it) => ({
-            value: it.code ?? it.id ?? it,
-            label: it.name ?? it.label ?? String(it)
-          }),
           autoloadOptions: false,
+          searchParam: "q",
+          allowClear: true,
+          transform: (it) => ({ value: it?.id ?? it, label: it?.state_name ?? String(it) }),
         },
       ]}
       transformSubmit={(values) => {
-        // Transform the form values to match your API expectations
+        // Map to what /adduser expects; student is created server-side
         const payload = {
-          first_name: values.first_name,
-          last_name: values.last_name,
-          email: values.email,
-          grade_id: values.grade,
-          school: values.school,
-          // status omitted — backend sets default
-          bundesland: values.bundesland,
-          subjects: values.subjects || [],
-          parent_id: initialValues.parent_id || null,
+          first_name: values.first_name?.trim(),
+          last_name: values.last_name?.trim(),
+          email: values.email?.trim(),
+          state: values.state || null,
+          class_id: values.class_id, // map grade -> class_id
+          subjects: Array.isArray(values.subjects) ? values.subjects : [],
+          parent_id: values.parent_id ?? initialValues.parent_id ?? null,
+          school: values.school || null,
         };
-        
+        Object.keys(payload).forEach((k) => payload[k] == null && delete payload[k]);
         return payload;
       }}
       toListRelative={isModal ? undefined : ".."}
