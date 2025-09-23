@@ -24,7 +24,7 @@ const StudentSubjects = db.student_subjects;
 
 exports.adduser = async (req, res) => {
   try {
-    const { first_name, last_name, email, role_id, state, class_id,parent_id, subjects } = req.body;
+    const { first_name, last_name, email,contact_number, role_id, state, class_id,parent_id, subjects } = req.body;
 
 
     // 2. Check if user exists
@@ -39,6 +39,7 @@ exports.adduser = async (req, res) => {
       first_name,
       last_name,
       email,
+      contact_number,
       state,
       password
     });
