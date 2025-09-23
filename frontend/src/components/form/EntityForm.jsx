@@ -31,10 +31,20 @@ const httpsUrlRule = () => ({
 
 /**
  * EntityForm
- * Props are the same as before; async select options supported via:
- *  - optionsUrl / optionsParams / optionValue / optionLabel / transform
- *  - optionsLoader
- *  - serverSearch / searchParam / autoloadOptions
+ * Props:
+ *  - id, titleNew, titleEdit
+ *  - apiCfg: {
+ *      getPath, createPath, updatePath,
+ *      create: async (api, payload) => res,     // optional override for custom create
+ *      afterCreate: (res) => ({ preventRedirect?: true }) | void,
+ *      afterUpdate: (res) => ({ preventRedirect?: true }) | void,
+ *      onSubmitError: (err) => void
+ *    }
+ *  - fields: [{ name, label, input, ... async select config ... }]
+ *  - initialValues
+ *  - transformSubmit: (values) => payload      // <— now supported!
+ *  - toListRelative, toDetailRelative, basePath, baseRoute
+ *  - layoutMode, submitLabel
  */
 export default function EntityForm({
   id: idProp,
@@ -49,6 +59,7 @@ export default function EntityForm({
   toDetailRelative = (rid) => `${rid}`,
   layoutMode = "lead",
   submitLabel,
+  transformSubmit, // <-- NEW: apply custom submit payload mapping
 }) {
   const params = useParams();
   const id = idProp ?? params.id;
@@ -197,26 +208,57 @@ export default function EntityForm({
   const onFinish = useCallback(async (values) => {
     if (saving) return;
     setSaving(true);
+    // Apply custom transform from caller if provided
+    const payload = typeof transformSubmit === "function" ? transformSubmit(values) : values;
+
     try {
       if (isEdit) {
         const url = computeUpdatePath(id);
-        const res = await api.patch(url, values).catch(() => api.put(url, values));
-        const updated = res?.data?.data ?? res?.data ?? { id, ...values };
+        console.debug("[EntityForm] update =>", url, payload);
+        const res = await api.patch(url, payload).catch(() => api.put(url, payload));
+        const updated = res?.data?.data ?? res?.data ?? { id, ...payload };
+
+        // afterUpdate hook
+        let hook = apiCfg.afterUpdate?.(res);
         messageApi.success("Saved");
+        if (hook?.preventRedirect) return;
+
         return goToDetail(updated.id ?? id);
       }
+
+      // CREATE
       const url = computeCreatePath();
-      const res = await api.post(url, values);
+      console.debug("[EntityForm] create =>", url, payload);
+      const res = typeof apiCfg.create === "function"
+        ? await apiCfg.create(api, payload)
+        : await api.post(url, payload);
+
       const created = res?.data?.data ?? res?.data ?? {};
+
+      // afterCreate hook
+      let hook = apiCfg.afterCreate?.(res);
       messageApi.success("Created");
+      if (hook?.preventRedirect) return;
+
       if (created?.id) return goToDetail(created.id);
       return goToList();
-    } catch {
-      messageApi.error("Save failed");
+    } catch (err) {
+      // bubble error nicely
+      const status = err?.response?.status;
+      const data = err?.response?.data;
+      console.error("[EntityForm] submit error", status, data, err);
+
+      // Prefer backend message when available
+      const backendMsg = data?.message || data?.error || data?.errors?.[0]?.message;
+      messageApi.error(backendMsg ? String(backendMsg) : `Save failed${status ? ` (${status})` : ""}`);
+
+      // notify caller if they want to handle
+      try { apiCfg.onSubmitError?.(err); } catch {}
+
     } finally {
       setSaving(false);
     }
-  }, [saving, isEdit, id]);
+  }, [saving, isEdit, id, transformSubmit, apiCfg, messageApi, goToDetail, goToList]);
 
   const onFinishFailed = ({ errorFields }) => {
     if (errorFields?.length) {
@@ -226,8 +268,10 @@ export default function EntityForm({
   };
 
   // field renderer
+  const fieldKeyFn = (f) => (Array.isArray(f.name) ? f.name.join(".") : String(f.name));
+
   const renderField = (f) => {
-    const key = fieldKey(f);
+    const key = fieldKeyFn(f);
     const inputType = f.input || "input";
     const labelNode = (
       <Space size={6}>
@@ -349,7 +393,7 @@ export default function EntityForm({
   const primary = useMemo(() => (fields || []).filter((f) => !f.advanced), [fields]);
   const advanced = useMemo(() => (fields || []).filter((f) => f.advanced), [fields]);
 
-  // 🔸 single CTA label: always "Add"
+  // 🔸 single CTA label: default "Add"
   const ctaLabel = submitLabel || "Add";
 
   return (
@@ -359,7 +403,7 @@ export default function EntityForm({
       {/* Header */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <Space wrap>
-          {/*  <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>Back</Button>*/}
+          {/* <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>Back</Button> */}
           <div>
             <Title level={3} className="!mb-0">{isEdit ? titleEdit : titleNew}</Title>
           </div>

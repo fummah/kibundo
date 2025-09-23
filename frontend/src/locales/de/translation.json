@@ -85,7 +85,12 @@
     "entries": "Einträge",
     "record": "Eintrag",
     "actions": {
-      "label": "Aktionen"
+      "label": "Aktionen",
+      "exportCsv": "CSV exportieren",
+      "reset": "Zurücksetzen",
+      "view": "Ansehen",
+      "edit": "Bearbeiten",
+      "delete": "Löschen"
     },
     "addTooltip": "{{singular}} hinzufügen",
     "confirm": {
@@ -110,5 +115,12 @@
       "selectAll": "Alle auswählen",
       "reset": "Zurücksetzen"
     }
+  },
+  "actions": {
+    "reset": "Zurücksetzen",
+    "exportCsv": "CSV exportieren",
+    "view": "Ansehen",
+    "edit": "Bearbeiten",
+    "delete": "Löschen"
   }
 }

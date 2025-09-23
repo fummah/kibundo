@@ -1,53 +1,82 @@
 import EntityForm from "@/components/form/EntityForm";
 
-const statusOptions = [
-  { value: "active", label: "Active" },
-  { value: "suspended", label: "Suspended" },
-  { value: "disabled", label: "Blocked" },
-];
-
 export default function TeacherForm() {
   return (
     <EntityForm
       titleNew="Add Teacher"
       titleEdit="Edit Teacher"
+      submitLabel="Save"
+      toListRelative=".."
+      toDetailRelative={(id) => `${id}`}
       apiCfg={{
-        getPath: (id) => `/teachers/${id}`,
+        // ✅ use singular route
+        getPath: (id) => `/teacher/${id}`,
+        // ✅ create route from your backend
         createPath: "/addteacher",
-        updatePath: (id) => `/teachers/${id}`,
+        // ❌ no update route defined in backend yet
+        // updatePath: (id) => `/teacher/${id}`,
       }}
       fields={[
-        { name: "name",       label: "Full name",  placeholder: "e.g., Jane Doe", rules: [{ required: true, message: "Name is required" }] },
-        { name: "department", label: "Department", placeholder: "e.g., Mathematics" },
+        {
+          name: "first_name",
+          label: "First name",
+          placeholder: "e.g., Jane",
+          rules: [{ required: true, message: "First name is required" }],
+        },
+        {
+          name: "last_name",
+          label: "Last name",
+          placeholder: "e.g., Doe",
+          rules: [{ required: true, message: "Last name is required" }],
+        },
+        {
+          name: "email",
+          label: "Email",
+          placeholder: "name@example.com",
+          rules: [{ required: true, message: "Email is required" }, { type: "email", message: "Invalid email" }],
+        },
+        { name: "phone", label: "Phone number", placeholder: "+27 82 123 4567" },
 
-        { name: "email", label: "Email", placeholder: "name@example.com", rules: [{ type: "email", message: "Invalid email" }] },
-        { name: "phone", label: "Phone number", placeholder: "+49 171 1234567" },
-        { name: "status", label: "Status", input: "select", options: statusOptions, placeholder: "Select status" },
+        // Class assignment
+        {
+          name: "class_id",
+          label: "Class",
+          input: "select",
+          placeholder: "Select class…",
+          optionsUrl: "/allclasses",
+          serverSearch: true,
+          searchParam: "q",
+          optionValue: "id",
+          optionLabel: "class_name",
+          rules: [{ required: true, message: "Class is required" }],
+        },
 
-        // Address
-        { name: "location", label: "Location (area/campus)", placeholder: "e.g., North Campus" },
-        { name: "street",   label: "Street Address",         placeholder: "e.g., Hauptstraße 12" },
-        { name: "city",     label: "City",                   placeholder: "e.g., Berlin" },
-        { name: "county",   label: "County",                 placeholder: "e.g., Charlottenburg-Wilmersdorf" },
-        { name: "zipCode",  label: "Zip / Postal Code",      placeholder: "e.g., 10115" },
-        { name: "country",  label: "Country",                placeholder: "e.g., Germany" },
-
-        // Bundesland from DB
+        // Bundesland (from DB)
         {
           name: "bundesland",
           label: "Bundesland",
           input: "select",
           placeholder: "Search Bundesland…",
-          optionsUrl: "/bundeslaender",
+          optionsUrl: "/states",
           serverSearch: true,
           searchParam: "q",
-          transform: (it) => ({ value: it.code ?? it.id ?? it, label: it.name ?? it.label ?? String(it) }),
+          transform: (it) => ({
+            value: it.code ?? it.id ?? it,
+            label: it.state_name ?? it.name ?? String(it),
+          }),
           autoloadOptions: false,
         },
       ]}
-      toListRelative=".."
-      toDetailRelative={(id) => `${id}`}
-      submitLabel="Add"
+      transformSubmit={(vals) => {
+        return {
+          first_name: vals.first_name?.trim(),
+          last_name: vals.last_name?.trim(),
+          email: vals.email?.trim(),
+          phone: vals.phone,
+          class_id: vals.class_id,
+          bundesland: vals.bundesland,
+        };
+      }}
     />
   );
 }

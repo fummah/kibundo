@@ -1,11 +1,5 @@
 import EntityForm from "@/components/form/EntityForm";
 
-const statusOptions = [
-  { value: "active", label: "Active" },
-  { value: "suspended", label: "Suspended" },
-  { value: "disabled", label: "Blocked" },
-];
-
 export default function ParentForm() {
   return (
     <EntityForm
@@ -14,72 +8,82 @@ export default function ParentForm() {
       submitLabel="Save"
       toDetailRelative={(id) => `${id}`}
       apiCfg={{
+        // detail exists:
         getPath: (id) => `/parent/${id}`,
-        createPath: "/parents",
-        updatePath: (id) => `/parents/${id}`,
-        afterCreate: (res, form, antd) => {
-          antd.message.success("Parent added successfully");
-          // The generic form expects the new ID at res.id, but our API returns it at res.parent.id
-          // We return the expected structure to let the form handle the redirect.
-          return { id: res?.parent?.id };
-        }
-        /**
-         * If your EntityForm supports lifecycle hooks, you can fire
-         * a password reset mail immediately on creation:
-         *
-         * afterCreate: async (created, values, api) => {
-         *   if (values.__sendReset !== false && created?.id) {
-         *     try { await api.post(`/parents/${created.id}/send-password-reset`); } catch {}
-         *   }
-         * }
-         */
-      }}
-      fields={[
-        // --- Identity ---
-        { name: "name",  label: "Full name", placeholder: "e.g., Anna Müller",
-          rules: [{ required: true, message: "Name is required" }] },
-        { name: "email", label: "Email", placeholder: "parent@example.com",
-          rules: [{ required: true, message: "Email is required" }, { type: "email", message: "Invalid email" }] },
-        { name: "phone", label: "Phone number", placeholder: "+49 160 2345678" },
 
-        // --- Optional context ---
-        
-
-        // Bundesland (async select from DB)
-        {
-          name: "bundesland",
-          label: "Bundesland",
-          input: "select",
-          placeholder: "Search Bundesland…",
-          optionsUrl: "/bundeslaender",
-          serverSearch: true,
-          searchParam: "q",
-          transform: (it) => ({ value: it.code ?? it.id ?? it, label: it.name ?? it.label ?? String(it) }),
-          autoloadOptions: false,
+        // ✅ create must hit /addparent (your router file)
+        create: async (api, payload) => {
+          console.log(payload);
+          const res = await api.post("/addparent", payload); // verifyToken required → make sure axios sends the token
+          // normalize the id for EntityForm redirect
+          const raw = res?.data?.data ?? res?.data ?? {};
+          const id =
+            raw?.id ??
+            raw?.parent?.id ??
+            raw?.data?.id;
+          return { data: { id } };
         },
 
-        // Link Students (Optional)
+        // There’s no PUT/PATCH route for parents in your routes.
+        // Leave updatePath out or add one on the server before enabling edit.
+        // updatePath: (id) => `/parent/${id}`, // only if you implement it server-side
+        requiredKeys: ["first_name", "last_name", "email"],
+      }}
+
+      fields={[
+        { name: "first_name", label: "First name", rules: [{ required: true }] },
+        { name: "last_name",  label: "Last name",  rules: [{ required: true }] },
+        { name: "email",      label: "Email", rules: [{ required: true }, { type: "email" }] },
+        { name: "contact_number", label: "Phone number", placeholder: "+27 82 123 4567" },
+
+        // State is a VARCHAR on users.state → send the name string
+        {
+          name: "state",
+          label: "State",
+          input: "select",
+          placeholder: "Search state…",
+          optionsUrl: "/states",
+          serverSearch: true,
+          autoloadOptions: false,
+          searchParam: "q",
+          transform: (it) => ({
+            value: it?.state_name ?? it?.name ?? String(it),
+            label: it?.state_name ?? it?.name ?? String(it),
+          }),
+        },
+
+        // Optional: link students by IDs
         {
           name: "student_ids",
           label: "Link Students (Optional)",
           input: "select",
           mode: "multiple",
-          placeholder: "Search for students to link...",
+          placeholder: "Search for students…",
           optionsUrl: "/allstudents",
           serverSearch: true,
+          autoloadOptions: false,
           searchParam: "q",
-          optionValue: "id",
-          optionLabel: (item) => {
-            const user = item.user || {};
-            const name = [user.first_name, user.last_name].filter(Boolean).join(' ');
-            return name ? `${name} (ID: ${item.id})` : `Student (ID: ${item.id})`;
+          transform: (it) => {
+            const u = it?.user ?? {};
+            const nm = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
+            return { value: it?.id ?? it, label: nm ? `${nm} (ID: ${it?.id})` : `Student #${it?.id ?? ""}` };
           },
+          coerce: "number", // EntityForm will coerce to numbers before submit
         },
       ]}
-      transformSubmit={(vals) => ({
-        ...vals,
-        student_ids: vals.student_ids || [],
-      })}
+
+      transformSubmit={(vals) => {
+        const out = {
+          first_name: vals.first_name?.trim(),
+          last_name: vals.last_name?.trim(),
+          email: vals.email?.trim(),
+          contact_number: vals.contact_number || null,
+          state: vals.state || null, // string name
+          student_ids: Array.isArray(vals.student_ids) ? vals.student_ids : [],
+        };
+        Object.keys(out).forEach((k) => out[k] == null && delete out[k]);
+        return out;
+      }}
     />
   );
 }
