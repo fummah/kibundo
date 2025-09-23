@@ -1,18 +1,17 @@
-const { buildContext } = require('../services/contextBuilder');
+const { buildContext } = require('../services/parentContextBuilder');
+const { childBuildContext } = require('../services/childContextBuilder');
 const OpenAI = require('openai');
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEYFake });
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 exports.chatWithAgent = async (req, res) => {
   try {
-    const { question } = req.body;
+    const { question,ai_agent } = req.body;
 
     // Build structured context
-    const contextObj = await buildContext(req);
-
-    // Optionally summarize/trim the context before sending (see tips below)
+    const contextObj = ai_agent=="ParentAgent"?await buildContext(req):await childBuildContext(req);  
+    //console.log(contextObj);
+    //return;
     const trimmedContext = summarizeContext(contextObj);
-
-    // Send to OpenAI as part of the system prompt
     const systemContent = `You are an AI assistant for Kibundo Education System.
 Context: ${JSON.stringify(trimmedContext)}`;
 
@@ -25,7 +24,7 @@ Context: ${JSON.stringify(trimmedContext)}`;
     });
 
     const answer = resp.choices?.[0]?.message?.content || '';
-    res.json({ answer, context: trimmedContext });
+    res.json({ answer });
 
   } catch (err) {
     console.error(err);
