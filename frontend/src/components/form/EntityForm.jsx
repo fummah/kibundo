@@ -481,7 +481,7 @@ export default function EntityForm({
       </Card>
 
       {/* Sticky bar when dirty */}
-      {isDirty && !saving && (
+      {isEdit && isDirty && !saving && (
         <Affix offsetBottom={12}>
           <Card className="!rounded-xl shadow-lg mt-3">
             <div className="flex items-center justify-between gap-3">

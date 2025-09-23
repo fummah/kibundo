@@ -47,56 +47,47 @@ export default function StudentDetail() {
       updateStatusPath: (id) => `/student/${id}/status`,
       removePath: (id) => `/student/${id}`,
 
-      // Parent data is now included in the main GET /student/:id response.
-
-      // Normalize/flatten for UI
       parseEntity: (payload) => {
         const s = payload?.data ?? payload ?? {};
-        const fallback = (v) => (v === undefined || v === null || String(v).trim() === "") ? "-" : String(v).trim();
-
         const user = s.user || {};
         const parent = s.parent || {};
         const parentUser = parent.user || {};
+        const fb = (v) => (v === undefined || v === null || String(v).trim() === "" ? "-" : String(v).trim());
 
-        const name = fallback([user.first_name, user.last_name].filter(Boolean).join(' '));
-        const school = fallback(s.school?.name || s.school_name || s.school);
-        const grade = fallback(s.class?.class_name || s.class_name || s.grade || user.grade);
-        const status = fallback(user.status || s.status);
-        const bundesland = fallback(user.userBundesland?.name || user.state || s.bundesland);
-        
-        const parentName = fallback([parentUser.first_name, parentUser.last_name].filter(Boolean).join(' '));
-        const parentEmail = fallback(parentUser.email);
+        const name = fb([user.first_name, user.last_name].filter(Boolean).join(" "));
+        const email = fb(user.email);
+        const grade = fb(s.class?.class_name || s.class_name || s.grade || user.grade);
+        const school = fb(s.school?.name || s.school_name || s.school);
+        const state = fb(user.state || s.state);
 
-        const subjectsText = Array.isArray(s.subjects) && s.subjects.length > 0
-          ? s.subjects.map(sub => sub.subject_name).join(', ')
+        const subjectsArray = Array.isArray(s.subjects)
+          ? s.subjects
+          : (Array.isArray(s.subject)
+              ? s.subject.map((it) => it?.subject?.subject_name || it?.subject_name).filter(Boolean)
+              : []);
+        const subjectsText = subjectsArray.length > 0
+          ? subjectsArray.map((it) => (typeof it === 'string' ? it : (it?.subject_name || it))).filter(Boolean).join(', ')
           : "-";
 
-        const subscription = s.activePlan || s.subscription || {};
+        const parentNameRaw = [parentUser.first_name, parentUser.last_name].filter(Boolean).join(" ");
+        const parentName = parentNameRaw && parentNameRaw.trim().length > 0
+          ? parentNameRaw.trim()
+          : (s.parent_id ? `#${s.parent_id}` : "-");
+
+        const status = fb(user.status || s.status);
+        const createdAt = user.created_at || s.created_at || null;
 
         return {
           id: s.id,
           name,
-          email: fallback(user.email),
+          email,
           grade,
-          school,
-          bundesland,
-          status,
           subjectsText,
-          interests: Array.isArray(s.interests) ? s.interests : [],
-          billing_email: s.billing_email,
-          billing_type: s.billing_type,
-          accountBalanceCents: s.accountBalanceCents,
-          subscription,
-          createdAt: user.created_at || s.created_at || null,
-          updatedAt: s.updated_at || null,
-          parentSummary: parent.id
-            ? {
-                id: parent.id,
-                name: parentName,
-                email: parentEmail,
-                is_payer: parent.is_payer,
-              }
-            : undefined,
+          parent_name: parentName,
+          school,
+          state,
+          status,
+          createdAt,
           raw: s,
         };
       },
@@ -110,39 +101,21 @@ export default function StudentDetail() {
       { label: "Name", name: "name" },
       { label: "Email", name: "email" },
       { label: "Grade", name: "grade" },
-      { label: "School", name: "school" },
-      { label: "Bundesland", name: "bundesland" },
       { label: "Subjects", name: "subjectsText" },
-      { label: "Interests", name: "interests" },
-
-      // Parent info is now shown in the 'Parents / Guardians' tab.
-
-      { label: "Created", name: "createdAt" },
+      { label: "Parent", name: "parent_name" },
+      { label: "School", name: "school" },
+      { label: "State", name: "state" },
+      { label: "Status", name: "status" },
+      { label: "Date added", name: "createdAt" },
     ],
 
     // Chips: include a clear parent-link status indicator
     topInfo: (e) => {
-      if (!e) return [];
       const chips = [];
-      if (e.grade && e.grade !== "-") chips.push(<Tag key="grade">Grade: {e.grade}</Tag>);
-      if (e.bundesland && e.bundesland !== "-") chips.push(<Tag key="bundesland">{e.bundesland}</Tag>);
-      if (Array.isArray(e?.interests) && e.interests.length)
-        chips.push(<Tag key="interests">Interests: {e.interests.join(", ")}</Tag>);
-      if (e?.parentSummary?.id) {
-        chips.push(<Tag key="plink" color="green">Parent linked</Tag>);
-      } else {
-        chips.push(<Tag key="plink-missing" color="red">Parent not linked</Tag>);
-      }
-      // Optional: show if email is coming from parent
-      if (e.emailSource === "parent") chips.push(<Tag key="email-src" color="blue">Email from parent</Tag>);
-      if (e?.subscription?.status) {
-        const s = String(e.subscription.status).toLowerCase();
-        chips.push(
-          <Tag key="sub" color={s === "active" ? "green" : s === "past_due" ? "gold" : "red"}>
-            {e.subscription.status}
-          </Tag>
-        );
-      }
+      if (!e) return chips;
+      if (e.grade && e.grade !== "-") chips.push(<Tag key="grade">{e.grade}</Tag>);
+      if (e.state && e.state !== "-") chips.push(<Tag key="state">{e.state}</Tag>);
+      if (e.parent_name && e.parent_name !== "-") chips.push(<Tag key="parent">Parent: {e.parent_name}</Tag>);
       return chips;
     },
 

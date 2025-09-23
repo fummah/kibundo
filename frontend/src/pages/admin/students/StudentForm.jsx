@@ -1,14 +1,44 @@
-// StudentForm.jsx
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import EntityForm from "@/components/form/EntityForm";
+import api from "@/api/axios";
 
 const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {} }) => {
+  const location = useLocation();
+  const prefill = location.state?.prefill || {};
+  const mergedInitials = { ...initialValues, ...prefill };
+  const [parentInitialOption, setParentInitialOption] = useState(() => {
+    if (mergedInitials.parent_id && mergedInitials.parent_name) {
+      return { value: mergedInitials.parent_id, label: mergedInitials.parent_name };
+    }
+    return null;
+  });
+
+  // If we have only parent_id, fetch the parent to display a human-friendly label in the disabled select
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      if (!mergedInitials.parent_id || mergedInitials.parent_name) return;
+      try {
+        const { data } = await api.get(`/parent/${mergedInitials.parent_id}`);
+        const p = data?.data ?? data ?? {};
+        const u = p?.user || {};
+        const label = [u.first_name, u.last_name].filter(Boolean).join(" ").trim() || u.name || u.email || `Parent #${mergedInitials.parent_id}`;
+        if (mounted) setParentInitialOption({ value: mergedInitials.parent_id, label });
+      } catch {
+        if (mounted) setParentInitialOption({ value: mergedInitials.parent_id, label: `Parent #${mergedInitials.parent_id}` });
+      }
+    };
+    load();
+    return () => { mounted = false; };
+  }, [mergedInitials.parent_id, mergedInitials.parent_name]);
+
   return (
     <EntityForm
       id={isModal ? "new" : undefined}
       titleNew="Add Student"
       titleEdit="Edit Student"
-      initialValues={initialValues}
+      initialValues={mergedInitials}
       apiCfg={{
         getPath: (id) => `/student/${id}`,
         createPath: "/addstudent",
@@ -72,11 +102,15 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
           placeholder: "Search class…",
           optionsUrl: "/allclasses",
           serverSearch: true,
-          autoloadOptions: false,
+          autoloadOptions: true,
           searchParam: "q",
           allowClear: true,
           transform: (it) => ({ value: it?.id ?? it, label: it?.class_name ?? String(it) }),
           rules: [{ required: true, message: "Class is required" }],
+          initialOptions:
+            mergedInitials?.class?.id && mergedInitials?.class?.class_name
+              ? [{ value: mergedInitials.class.id, label: mergedInitials.class.class_name }]
+              : undefined,
         },
 
         // Subjects (IDs array)
@@ -91,9 +125,10 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
           searchParam: "q",
           allowClear: true,
           transform: (it) => ({ value: it?.id ?? it, label: it?.subject_name ?? String(it) }),
+          rules: [{ required: true }],
         },
 
-        // Parent (optional)
+        // Parent (prefilled & disabled when coming from Parent detail)
         {
           name: "parent_id",
           label: "Parent",
@@ -109,11 +144,14 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
             const nm = it?.user?.name || [fn, ln].filter(Boolean).join(" ");
             return { value: it?.id ?? it, label: (nm || `Parent #${it?.id ?? ""}`).trim() };
           },
-          disabled: !!initialValues.parent_id,
+          rules: [{ required: true }],
+          disabled: !!mergedInitials.parent_id,
           initialOptions:
-            initialValues.parent_id && initialValues.parent_name
-              ? [{ value: initialValues.parent_id, label: initialValues.parent_name }]
-              : undefined,
+            parentInitialOption
+              ? [parentInitialOption]
+              : (mergedInitials.parent_id && mergedInitials.parent_name
+                  ? [{ value: mergedInitials.parent_id, label: mergedInitials.parent_name }]
+                  : undefined),
         },
 
         // Optional extras
@@ -128,7 +166,9 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
           autoloadOptions: false,
           searchParam: "q",
           allowClear: true,
-          transform: (it) => ({ value: it?.id ?? it, label: it?.state_name ?? String(it) }),
+          // Store the state NAME so backend saves readable string
+          transform: (it) => ({ value: it?.state_name ?? String(it), label: it?.state_name ?? String(it) }),
+          rules: [{ required: true }],
         },
       ]}
       transformSubmit={(values) => {
@@ -140,7 +180,7 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
           state: values.state || null,
           class_id: values.class_id, // map grade -> class_id
           subjects: Array.isArray(values.subjects) ? values.subjects : [],
-          parent_id: values.parent_id ?? initialValues.parent_id ?? null,
+          parent_id: values.parent_id ?? mergedInitials.parent_id ?? null,
           school: values.school || null,
         };
         Object.keys(payload).forEach((k) => payload[k] == null && delete payload[k]);

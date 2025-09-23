@@ -20,7 +20,7 @@ export default function TeacherDetail() {
     routeBase: "/admin/teacher", // your UI route base
 
     api: {
-      // ✅ match Express (singular)
+      // match Express (singular)
       getPath: (id) => `/teacher/${id}`,
       updateStatusPath: (id) => `/teacher/${id}/status`,
       removePath: (id) => `/teacher/${id}`,
@@ -38,43 +38,21 @@ export default function TeacherDetail() {
           [u.first_name, u.last_name].filter(Boolean).join(" ").trim() ||
           "-";
 
-        // Location = School
-        const school =
-          t.school?.name || t.school_name || t.school || t.location || "-";
-
         const email = t.email || u.email || "-";
-        const bundesland = t.bundesland || "-";
+        const phone = u.contact_number || u.phone || t.phone || "-";
+        const className = t.class?.class_name || t.department || "-";
+        const state = u.state || t.state || t.bundesland || "-";
         const status = t.status || u.status || "-";
-
-        const subjectsText = Array.isArray(t.subjects)
-          ? t.subjects.join(", ")
-          : t.subjects || "-";
-
-        const classes = Array.isArray(t.classes) ? t.classes : [];
-        const classesCount = classes.length;
-        const totalStudents = classes.reduce(
-          (acc, c) => acc + Number(c?.studentsCount || 0),
-          0
-        );
-
-        const subscription = t.activePlan || t.subscription || {};
 
         return {
           id: t.id,
           name: fb(name),
           email: fb(email),
-          school: fb(school),
-          bundesland: fb(bundesland),
+          phone: fb(phone),
+          className: fb(className),
+          state: fb(state),
           status: fb(status),
-          subjectsText,
-          classesCount,
-          totalStudents,
-          billing_email: t.billing_email,
-          billing_type: t.billing_type,
-          accountBalanceCents: t.accountBalanceCents,
-          subscription,
           createdAt: t.createdAt || t.created_at || u.created_at || null,
-          updatedAt: t.updatedAt || t.updated_at || null,
           raw: t,
         };
       },
@@ -85,35 +63,18 @@ export default function TeacherDetail() {
     infoFields: [
       { label: "Name", name: "name" },
       { label: "Email", name: "email" },
-      { label: "School", name: "school" },
-      { label: "Bundesland", name: "bundesland" },
-      { label: "Subjects", name: "subjectsText" },
-      { label: "Classes (Count)", name: "classesCount" },
-      { label: "Students (Total)", name: "totalStudents" },
-      { label: "Billing Email", name: "billing_email" },
-      { label: "Billing Type", name: "billing_type" },
-      { label: "Subscription Status", name: ["subscription", "status"] },
-      { label: "Plan Interval", name: ["subscription", "interval"] },
-      { label: "Account Balance", name: "accountBalanceCents" },
-      { label: "Created", name: "createdAt" },
-      { label: "Updated", name: "updatedAt" },
+      { label: "Phone", name: "phone" },
+      { label: "Class", name: "className" },
+      { label: "State", name: "state" },
+      { label: "Status", name: "status" },
+      { label: "Date added", name: "createdAt" },
     ],
 
     topInfo: (e) => {
       if (!e) return [];
       const chips = [];
-      if (e.school && e.school !== "-") chips.push(<Tag key="school">{e.school}</Tag>);
-      if (e.bundesland && e.bundesland !== "-") chips.push(<Tag key="state">{e.bundesland}</Tag>);
-      if (e?.subjectsText && e.subjectsText !== "-")
-        chips.push(<Tag key="subjects">{e.subjectsText}</Tag>);
-      if (e?.subscription?.status) {
-        const s = String(e.subscription.status).toLowerCase();
-        chips.push(
-          <Tag key="sub" color={s === "active" ? "green" : s === "past_due" ? "gold" : "red"}>
-            {e.subscription.status}
-          </Tag>
-        );
-      }
+      if (e.state && e.state !== "-") chips.push(<Tag key="state">{e.state}</Tag>);
+      if (e.className && e.className !== "-") chips.push(<Tag key="class">{e.className}</Tag>);
       return chips;
     },
 
