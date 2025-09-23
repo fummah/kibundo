@@ -46,6 +46,8 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: 'plan_id',
       as: 'product'
     });
+
+    
   };
 
   return Product;

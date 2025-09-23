@@ -72,6 +72,7 @@ module.exports = (sequelize, DataTypes) => {
     foreignKey: 'user_id',
     as: 'parent'
   });
+
   };
 
 

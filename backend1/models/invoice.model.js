@@ -24,6 +24,7 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: 'parent_id',
       as: 'invoiceuser'
     });
+    
   };
 
   return Invoice;

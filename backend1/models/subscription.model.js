@@ -47,6 +47,8 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: 'plan_id',
       as: 'product'
     });
+
+    
   };
 
       Subscription.associate = (models) => {
@@ -57,7 +59,7 @@ module.exports = (sequelize, DataTypes) => {
     });
        Subscription.belongsTo(models.parent, {
       foreignKey: 'parent_id',
-      as: 'parent'
+      as: 'subscription'
     });
 
   };
