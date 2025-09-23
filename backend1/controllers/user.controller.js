@@ -1,5 +1,6 @@
 const db = require("../models");
 const Stripe = require("stripe");
+const bcrypt = require("bcryptjs");
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY); 
 const User = db.user;
 const Teacher = db.teacher;
@@ -32,14 +33,16 @@ exports.adduser = async (req, res) => {
       return res.status(400).json({ message: "User already exists" });
     }
     const created_by = req.user.id;
+     const password = await bcrypt.hash("testpass1234", 10);
     const newUser = await User.create({
       role_id,
       first_name,
       last_name,
       email,
-      state
+      state,
+      password
     });
-    if(role_id = 1)
+    if(role_id == 1)
     {
        const newStudent = await Student.create({
       user_id:newUser.id,
@@ -74,10 +77,12 @@ exports.adduser = async (req, res) => {
     });
     }
        
+  const userData = { ...newUser.toJSON() };
+    delete userData.password;
 
-    res.status(201).json({ message: "User registered", user: newUser });
+    res.status(201).json({ message: "User registered", user: userData });
   } catch (err) {
-    console.error("Signup error:", err);
+    console.error("Adding user error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
