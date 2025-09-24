@@ -9,12 +9,35 @@ export default function TeacherForm() {
       toListRelative=".."
       toDetailRelative={(id) => `${id}`}
       apiCfg={{
-        // ✅ use singular route
+        // detail route
         getPath: (id) => `/teacher/${id}`,
-        // ✅ create route from your backend
-        createPath: "/addteacher",
-        // ❌ no update route defined in backend yet
-        // updatePath: (id) => `/teacher/${id}`,
+        // we will create via /adduser so the backend also creates a Teacher (role_id=3)
+        create: async (api, payload) => {
+          const body = {
+            role_id: 3,
+            first_name: payload.first_name,
+            last_name: payload.last_name,
+            email: payload.email,
+            // store readable state name
+            state: payload.state,
+            // teacher specific
+            class_id: payload.class_id,
+            // map phone from form to user's contact_number
+            contact_number: payload.contact_number ?? payload.phone ?? null,
+          };
+
+          const res = await api.post("/adduser", body);
+
+          // Resolve Teacher.id for redirect (backend returns user, not teacher)
+          try {
+            const list = await api.get("/allteachers");
+            const rows = Array.isArray(list?.data) ? list.data : (Array.isArray(list?.data?.data) ? list.data.data : []);
+            const match = rows.find((t) => (t?.user?.email && payload?.email) && t.user.email === payload.email);
+            if (match?.id) return { data: { id: match.id } };
+          } catch {}
+
+          throw new Error("Teacher created, but could not resolve Teacher ID for redirect. Refresh Teachers list.");
+        },
       }}
       fields={[
         {
@@ -35,7 +58,8 @@ export default function TeacherForm() {
           placeholder: "name@example.com",
           rules: [{ required: true, message: "Email is required" }, { type: "email", message: "Invalid email" }],
         },
-        { name: "phone", label: "Phone number", placeholder: "+27 82 123 4567" },
+        // In detail payload phone lives at user.contact_number
+        { name: ["user", "contact_number"], label: "Phone number", placeholder: "+27 82 123 4567" },
 
         // Class assignment
         {
@@ -45,25 +69,23 @@ export default function TeacherForm() {
           placeholder: "Select class…",
           optionsUrl: "/allclasses",
           serverSearch: true,
+          autoloadOptions: true,
           searchParam: "q",
-          optionValue: "id",
-          optionLabel: "class_name",
+          transform: (it) => ({ value: it?.id ?? it, label: it?.class_name ?? String(it) }),
           rules: [{ required: true, message: "Class is required" }],
+          initialOptions: undefined,
         },
 
-        // Bundesland (from DB)
+        // State (use state name as the value)
         {
-          name: "bundesland",
-          label: "Bundesland",
+          name: ["user", "state"],
+          label: "State",
           input: "select",
           placeholder: "Search Bundesland…",
           optionsUrl: "/states",
           serverSearch: true,
           searchParam: "q",
-          transform: (it) => ({
-            value: it.code ?? it.id ?? it,
-            label: it.state_name ?? it.name ?? String(it),
-          }),
+          transform: (it) => ({ value: it?.state_name ?? String(it), label: it?.state_name ?? String(it) }),
           autoloadOptions: false,
         },
       ]}
@@ -72,9 +94,11 @@ export default function TeacherForm() {
           first_name: vals.first_name?.trim(),
           last_name: vals.last_name?.trim(),
           email: vals.email?.trim(),
-          phone: vals.phone,
+          // read phone from nested user.contact_number or flat
+          contact_number: vals?.user?.contact_number ?? vals.contact_number ?? vals.phone ?? null,
           class_id: vals.class_id,
-          bundesland: vals.bundesland,
+          // read state from nested user.state or flat
+          state: vals?.user?.state ?? vals.state ?? null,
         };
       }}
     />
