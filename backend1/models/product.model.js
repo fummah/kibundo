@@ -23,10 +23,15 @@ module.exports = (sequelize, DataTypes) => {
     metadata: { 
       type: DataTypes.JSONB, 
       defaultValue: {} 
-    },
+    }, 
     created_at: { 
       type: DataTypes.DATE, 
       defaultValue: DataTypes.NOW 
+    },
+    trial_period_days: { 
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0
     },
     updated_at: { 
       type: DataTypes.DATE, 

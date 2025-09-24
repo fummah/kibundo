@@ -20,6 +20,7 @@ const Curriculum = db.curriculum;
 const Worksheet = db.worksheet;
 const State = db.state;
 const StudentSubjects = db.student_subjects;
+const AgentPromptSet = db.agentPromptSet;
 
 
 exports.adduser = async (req, res) => {
@@ -1275,5 +1276,16 @@ exports.getAllStates = async (req,res) => {
     return res.status(500).json({ error: 'Failed to fetch states' });
   }
 }
+
+exports.getAllAgents = async (req, res) => {
+  try {
+    const agents = await AgentPromptSet.findAll(); // No need for empty exclude
+    res.json(agents);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
 
   

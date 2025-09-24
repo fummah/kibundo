@@ -27,7 +27,29 @@ async function childBuildContext(req) {
           attributes: { exclude: [] },
           required: true
         },
+              
+          {
+              model: Student,
+              as: 'student',
+              include:[        
         {
+          model: Class,
+          as: 'class',
+          attributes: ['id', 'class_name'] // adjust based on your class model
+        },
+        {
+          model: StudentSubjects,
+          as: 'subject',
+          attributes: ['id'],
+          include: [
+            {
+              model: Subject,
+              as: 'subject',   // ✅ match alias in StudentSubjects.js
+              attributes: ['id', 'subject_name']
+            }
+          ]
+        },
+          {
           model: Parent,
           as: 'parent',
           attributes: { exclude: ['password'] }, // adjust fields
@@ -52,27 +74,6 @@ async function childBuildContext(req) {
           as: 'invoiceuser'
         }
           ]
-        },        
-          {
-              model: Student,
-              as: 'student',
-              include:[        
-        {
-          model: Class,
-          as: 'class',
-          attributes: ['id', 'class_name'] // adjust based on your class model
-        },
-        {
-          model: StudentSubjects,
-          as: 'subject',
-          attributes: ['id'],
-          include: [
-            {
-              model: Subject,
-              as: 'subject',   // ✅ match alias in StudentSubjects.js
-              attributes: ['id', 'subject_name']
-            }
-          ]
         }  
       ]
     }    
@@ -85,11 +86,9 @@ async function childBuildContext(req) {
 
 const context = {
   user: plainUser,
-  parent: plainUser.parent || [],
+  parent: (plainUser.student || []).map(s => s.parent).filter(Boolean) || [],
   class_or_grade: (plainUser.student || []).map(s => s.class) || [],
-  subjects: (plainUser.student || []).flatMap(s => 
-    (s.subject || []).map(sub => sub.subject)
-  ) || [],
+  subjects: (plainUser.student || []).flatMap(s => (s.subject || []).map(sub => sub.subject)) || [],
   last_active: new Date().toISOString(),
   preferences: { language: 'en', timezone: 'Africa/Johannesburg' }
 };
