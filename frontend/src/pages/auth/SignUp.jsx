@@ -23,8 +23,9 @@ export default function SignUp() {
   const handleFinish = async (values) => {
     const { first_name, last_name, email, phone, password, confirm_password, role } = values;
 
-    // Map UI role -> backend numeric role_id
-    const roleMap = { teacher: 2, student: 3, parent: 4 };
+    // Map UI role -> backend numeric role_id (temporarily only Student/Parent/Teacher)
+    // If/when enabling School(4), Partner(5), or Admin(10), extend this map and the select options below.
+    const roleMap = { student: 1, parent: 2, teacher: 3 };
     const role_id = roleMap[String(role)];
 
     if (!role_id) {
@@ -163,9 +164,14 @@ export default function SignUp() {
             rules={[{ required: true, message: "Please select a role" }]}
           >
             <Select placeholder="Select Role" disabled={loading}>
-              <Option value="teacher">Teacher</Option>
               <Option value="student">Student</Option>
               <Option value="parent">Parent</Option>
+              <Option value="teacher">Teacher</Option>
+              {/** Temporarily hidden:
+               * <Option value="school">School</Option>
+               * <Option value="partner">Partner</Option>
+               * Admin is not self-signup and uses role_id 10
+               */}
             </Select>
           </Form.Item>
 

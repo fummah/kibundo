@@ -8,6 +8,8 @@ export default function StudentsList() {
   const [stateMap, setStateMap] = useState({}); // { id:number|string -> name }
   const [parentsMap, setParentsMap] = useState({}); // { parent_id -> "First Last" }
   const fetchingParents = useRef(new Set());
+  // Keep a stable per-student cache of resolved parent display names to prevent flicker
+  const parentNameByStudentRef = useRef({}); // { student_id: string }
 
   useEffect(() => {
     let mounted = true;
@@ -113,20 +115,20 @@ export default function StudentsList() {
               const rawState = user.state || student.state;
               const state = mapStateVal(rawState);
 
-              // Parent display precedence: joined name -> parentsMap[parent_id] -> lazy fetch then placeholder
               const joinedParentName = [parentUser.first_name, parentUser.last_name].filter(Boolean).join(" ").trim();
-              let parentDisplay = joinedParentName;
-              if (!parentDisplay) {
-                const pidKey = String(student.parent_id || "");
-                const cached = pidKey ? parentsMap[pidKey] : "";
-                if (cached) parentDisplay = cached;
-                else if (pidKey) {
-                  // Trigger async fetch; placeholder remains until map updates
-                  requestParentName(pidKey);
-                  parentDisplay = "-"; // temporary until fetched
-                } else {
-                  parentDisplay = "-";
-                }
+              const pid = student.parent_id ?? parent?.id ?? null;
+              const pidKey = pid != null ? String(pid) : "";
+              const cached = pidKey ? parentsMap[pidKey] : "";
+
+              // Priority: previously resolved name (per student) > cached map > joined name > fetch placeholder
+              let parentDisplay = parentNameByStudentRef.current[student.id] || cached || joinedParentName || "-";
+              if (!cached && pidKey) {
+                // Kick off async fetch; do not regress display if we already have a name
+                requestParentName(pidKey);
+              }
+              // Store stable name if we have something meaningful
+              if (parentDisplay && parentDisplay !== "-") {
+                parentNameByStudentRef.current[student.id] = parentDisplay;
               }
 
               return {

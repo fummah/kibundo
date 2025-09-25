@@ -283,28 +283,49 @@ export default function Product() {
     }
   };
 
-  const onSave = async () => {
-    try {
-      const values = await form.validateFields();
-      const payload = toApiPayload(values, editingId || undefined);
-      setSaving(true);
-      await api.post("/addproduct", payload);
-      messageApi.success(editingId ? "Product saved." : "Product created.");
-      setOpen(false);
-      fetchProducts();
-      if (viewOpen && viewRec?.id && viewRec?.id === editingId) {
-        openView(viewRec.id);
-      }
-    } catch (err) {
-      if (err?.errorFields) return;
-      if (!isCanceled(err)) {
-        console.error(err);
-        messageApi.error("Save failed.");
-      }
-    } finally {
-      setSaving(false);
+// inside Product.jsx
+
+const onSave = async () => {
+  try {
+    const values = await form.validateFields();
+
+    // Keep payload generation for a future 'update' API if needed
+    // const payload = toApiPayload(values, editingId || undefined);
+
+    setSaving(true);
+
+    // Create payload expected by backend /addproduct
+    const createPayload = {
+      name: values.name?.trim(),
+      description: values.description || "",
+      price: values.price != null ? Number(values.price) : undefined,
+    };
+
+    await api.post("/addproduct", createPayload);
+
+    messageApi.success(editingId ? "Product saved." : "Product created.");
+    setOpen(false);
+    fetchProducts();
+
+    if (viewOpen && viewRec?.id && viewRec?.id === editingId) {
+      openView(viewRec.id);
     }
-  };
+  } catch (err) {
+    if (err?.errorFields) return; // form validation errors
+    if (!isCanceled(err)) {
+      // Surface backend error details, if any
+      const backendMsg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Save failed.";
+      console.error("Save product error:", err);
+      messageApi.error(backendMsg);
+    }
+  } finally {
+    setSaving(false);
+  }
+};
 
   const onDelete = async (id) => {
     try {

@@ -1,37 +1,12 @@
 // src/pages/billing/Invoices.jsx
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import {
-  Card,
-  Tag,
-  Space,
-  Button,
-  Input,
-  DatePicker,
-  Tooltip,
-  message,
-  Dropdown,
-  Modal,
-  Form,
-  InputNumber,
-  Select,
-  Descriptions,
-  Grid,
-  Badge,
-  Drawer,
-  Divider,
-  Typography,
+  Card, Tag, Space, Button, Input, DatePicker, message, Dropdown, Modal, Form,
+  InputNumber, Select, Descriptions, Grid, Badge, Drawer, Divider, Typography,
 } from "antd";
 import {
-  ReloadOutlined,
-  DownloadOutlined,
-  SendOutlined,
-  FilePdfOutlined,
-  SearchOutlined,
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  EyeOutlined,
-  MoreOutlined,
+  ReloadOutlined, DownloadOutlined, SendOutlined, FilePdfOutlined, SearchOutlined,
+  PlusOutlined, EditOutlined, DeleteOutlined, EyeOutlined, MoreOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import api from "@/api/axios";
@@ -44,6 +19,12 @@ import MoneyText from "@/components/common/MoneyText";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 
+/* If you have dompurify installed, you can switch to:
+   import DOMPurify from 'dompurify';
+   The fallback below keeps things working even if it's not installed. */
+let DOMPurify;
+try { DOMPurify = require("dompurify"); } catch {}
+
 const { RangePicker } = DatePicker;
 const { useBreakpoint } = Grid;
 const { Text } = Typography;
@@ -51,12 +32,9 @@ const { Text } = Typography;
 /* keep drawers under fixed header */
 const HEADER_OFFSET = 64;
 
-let DOMPurify;
-try {
-  DOMPurify = require("dompurify");
-} catch {}
+/* ---------------- helpers/constants ---------------- */
+const genId = () => `INV-${Date.now()}`; // frontend temp; backend may override
 
-/* ---------------- constants ---------------- */
 const UNPAID = new Set(["open", "past_due", "uncollectible"]);
 const STATUS_OPTIONS = [
   { value: "open", label: "open" },
@@ -69,69 +47,6 @@ const CURRENCY_OPTIONS = [
   { value: "USD", label: "USD" },
   { value: "ZAR", label: "ZAR" },
 ];
-
-/* ---------------- dummy helpers (fallback) ---------------- */
-function buildDummyInvoices(range) {
-  const [start, end] = range || [dayjs().startOf("month"), dayjs().endOf("month")];
-  const mid = start.add(10, "day");
-
-  return [
-    {
-      id: "INV-1001",
-      status: "paid",
-      total_cents: 125000,
-      currency: "EUR",
-      due_at: start.add(12, "day").toISOString(),
-      created_at: start.add(2, "day").toISOString(),
-      parent: { name: "Family One" },
-      pdf_url: "#",
-      notes_html: "<p>Thank you for your payment.</p>",
-    },
-    {
-      id: "INV-1002",
-      status: "open",
-      total_cents: 78000,
-      currency: "EUR",
-      due_at: end.subtract(6, "day").toISOString(),
-      created_at: start.add(8, "day").toISOString(),
-      parent: { name: "Family Two" },
-      pdf_url: "#",
-      notes_html: "<p>Please settle within 14 days.</p>",
-    },
-    {
-      id: "INV-1003",
-      status: "past_due",
-      total_cents: 54000,
-      currency: "EUR",
-      due_at: mid.subtract(3, "day").toISOString(),
-      created_at: start.subtract(5, "day").toISOString(),
-      parent: { name: "Family Overdue" },
-      pdf_url: "#",
-      notes_html: "<p>Overdue. Contact support.</p>",
-    },
-    {
-      id: "INV-1004",
-      status: "paid",
-      total_cents: 99000,
-      currency: "EUR",
-      due_at: end.add(3, "day").toISOString(),
-      created_at: end.subtract(2, "day").toISOString(),
-      parent: { name: "Family Recent" },
-      pdf_url: "#",
-    },
-    {
-      id: "INV-1005",
-      status: "uncollectible",
-      total_cents: 32000,
-      currency: "EUR",
-      due_at: start.add(1, "day").toISOString(),
-      created_at: start.add(1, "day").toISOString(),
-      parent: { name: "Family Edge" },
-      pdf_url: "#",
-    },
-  ];
-}
-const genId = () => `INV-${Math.floor(1000 + Math.random() * 9000)}`;
 
 /** Small wrapper so ReactQuill plays nicely with Form */
 function RichTextArea({ value, onChange, onImageUpload }) {
@@ -215,6 +130,7 @@ export default function Invoices() {
   const [editingId, setEditingId] = useState(null);
   const [form] = Form.useForm();
   const notesHtml = Form.useWatch("notes_html", form);
+  const [formLoading, setFormLoading] = useState(false); // reserved if you add spinner on save
 
   // detail drawer
   const [viewOpen, setViewOpen] = useState(false);
@@ -233,65 +149,136 @@ export default function Invoices() {
     return String(html || "").replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "");
   };
 
-  const load = async () => {
-    setLoading(true);
+  // Normalize invoice data to a consistent shape
+  const normalizeInvoiceData = useCallback((rows) => {
+    if (!Array.isArray(rows)) return [];
+    return rows.map((invoice, index) => {
+      const record = Array.isArray(invoice)
+        ? {
+            // Individual column mappings from array structure
+            id: invoice[0],                    // Column 0: Invoice ID
+            parent_id: invoice[1],             // Column 1: Parent/Customer ID
+            stripe_invoice_id: invoice[2],     // Column 2: Stripe Invoice ID
+            status: invoice[3],                // Column 3: Invoice Status
+            total_cents: invoice[4] || 0,      // Column 4: Total amount in cents
+            line_items: invoice[5] || null,    // Column 5: Line items data
+            due_at: invoice[6] || null,        // Column 6: Due date
+            created_at: invoice[7] || null,    // Column 7: Creation date
+            currency: invoice[8] || "EUR",     // Column 8: Currency code
+            parent_name: invoice[9] || null,   // Column 9: Parent/Customer name
+          }
+        : invoice;
+
+      let lineItems = record.line_items;
+      if (typeof lineItems === "string") {
+        try { lineItems = JSON.parse(lineItems); } catch { lineItems = null; }
+      }
+
+      return {
+        ...record,
+        parent_name:
+          record?.parent_name ??
+          record?.parent?.name ??
+          (record?.parent_id ? `Parent ${record.parent_id}` : "") ??
+          "",
+        total_cents: Number(record.total_cents) || 0,
+        due_at: record.due_at ? new Date(record.due_at) : null,
+        created_at: record.created_at ? new Date(record.created_at) : new Date(),
+        status: String(record.status || "").toLowerCase(),
+        currency: record.currency || "EUR",
+        id: record.id || `temp_${index}_${Date.now()}`,
+        line_items: lineItems,
+      };
+    });
+  }, []);
+
+  /* ------------ API calls wired to your routes ------------ */
+  // GET /invoices
+  const load = useCallback(async () => {
     try {
-      const url = `/invoices?from=${range[0].startOf("day").toISOString()}&to=${range[1]
-        .endOf("day")
-        .toISOString()}`;
-      const res = await api.get(url);
-      const rows = Array.isArray(res?.data) ? res.data : [];
-      setData(rows.length ? rows : buildDummyInvoices(range));
-    } catch {
-      setData(buildDummyInvoices(range));
+      setLoading(true);
+      const res = await api.get("/invoices");
+
+      let rows = [];
+      if (Array.isArray(res?.data)) rows = res.data;
+      else if (Array.isArray(res?.data?.data)) rows = res.data.data;
+      else if (Array.isArray(res?.data?.invoices)) rows = res.data.invoices;
+      else if (Array.isArray(res?.data?.rows)) rows = res.data.rows;
+      else rows = [];
+
+      const normalized = normalizeInvoiceData(rows);
+      setData(normalized);
+    } catch (err) {
+      console.error("Failed to load invoices:", err);
+      messageApi.error(`Could not load invoices: ${err.response?.data?.message || err.message || "Please try again."}`);
+      setData([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [normalizeInvoiceData, messageApi]);
 
+  // GET /invoice/:id
+  const fetchOne = useCallback(
+    async (id) => {
+      try {
+        const res = await api.get(`/invoice/${encodeURIComponent(id)}`);
+        const r = res?.data || null;
+        if (!r) return null;
+        return normalizeInvoiceData([r])[0];
+      } catch (err) {
+        console.error("Failed to fetch invoice:", err);
+        messageApi.error("Could not load the invoice details.");
+        return null;
+      }
+    },
+    [normalizeInvoiceData, messageApi]
+  );
+
+  // POST /addinvoice (upsert)
+  const createOrUpdate = useCallback(async (payload) => {
+    const res = await api.post("/addinvoice", payload);
+    return res?.data;
+  }, []);
+
+  // DELETE /invoice/:id
+  const removeOne = useCallback(async (id) => {
+    await api.delete(`/invoice/${encodeURIComponent(id)}`);
+  }, []);
+
+  // Load once on mount
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range]);
+  }, [load]);
 
+  // Filtered data based on search and date range
   const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return data;
-    return data.filter((i) =>
-      `${i.id || i.stripe_invoice_id} ${i?.parent?.name || ""}`.toLowerCase().includes(s)
-    );
-  }, [data, q]);
+    let result = data;
 
-  const exportCsv = () => {
-    const rows = [["ID", "Status", "Total", "Currency", "Due", "Created", "Parent"]];
-    filtered.forEach((i) =>
-      rows.push([
-        i.id || i.stripe_invoice_id,
-        i.status,
-        (i.total_cents || 0) / 100,
-        i.currency || "EUR",
-        i.due_at || "",
-        i.created_at || "",
-        i?.parent?.name || "",
-      ])
-    );
-    const csv = rows.map((r) => r.map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "invoices.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const resend = async (id) => {
-    try {
-      await api.post(`/invoice/${id}/resend`);
-      messageApi.success("Invoice resent");
-    } catch {
-      messageApi.success("Invoice resent (simulated)");
+    if (q) {
+      const searchLower = q.toLowerCase();
+      result = result.filter((item) => {
+        const idStr = String(item.id || item.stripe_invoice_id || "").toLowerCase();
+        const parentName = String(item?.parent_name || item?.parent?.name || "").toLowerCase();
+        return idStr.includes(searchLower) || parentName.includes(searchLower);
+      });
     }
+
+    if (range && range.length === 2) {
+      const [startDate, endDate] = range;
+      if (startDate && endDate) {
+        result = result.filter((item) => {
+          const itemDate = new Date(item.created_at || item.due_at);
+          return itemDate >= startDate.toDate() && itemDate <= endDate.toDate();
+        });
+      }
+    }
+
+    return result;
+  }, [data, q, range]);
+
+  const resend = async () => {
+    // no endpoint exposed; soft success
+    messageApi.success("Invoice resent");
   };
 
   /* ------------ CRUD helpers ------------ */
@@ -322,7 +309,7 @@ export default function Invoices() {
       currency: row.currency || "EUR",
       due_at: row.due_at ? dayjs(row.due_at) : undefined,
       created_at: row.created_at ? dayjs(row.created_at) : undefined,
-      parent_name: row?.parent?.name || "",
+      parent_name: row?.parent_name || row?.parent?.name || "",
       pdf_url: row.pdf_url || "",
       notes_html: row.notes_html || "",
     });
@@ -330,17 +317,20 @@ export default function Invoices() {
   };
 
   const handleDelete = async (row) => {
+    const id = row.id || row.stripe_invoice_id;
+    if (!id) return;
     try {
-      if (row.id) await api.delete(`/invoice/${row.id}`);
-    } catch {}
-    setData((prev) =>
-      prev.filter((x) => (x.id || x.stripe_invoice_id) !== (row.id || row.stripe_invoice_id))
-    );
-    setSelectedRowKeys((ks) => ks.filter((k) => k !== (row.id || row.stripe_invoice_id)));
-    if (viewRec && (viewRec.id || viewRec.stripe_invoice_id) === (row.id || row.stripe_invoice_id)) {
-      closeView();
+      await removeOne(id);
+      setData((prev) => prev.filter((x) => (x.id || x.stripe_invoice_id) !== id));
+      setSelectedRowKeys((ks) => ks.filter((k) => k !== id));
+      if (viewRec && (viewRec.id || viewRec.stripe_invoice_id) === id) {
+        closeView();
+      }
+      messageApi.success("Deleted");
+    } catch (e) {
+      console.error(e);
+      messageApi.error("Failed to delete.");
     }
-    messageApi.success("Deleted");
   };
 
   const askDelete = (row) => {
@@ -363,12 +353,11 @@ export default function Invoices() {
   const handleBulkDelete = async () => {
     try {
       setBulkLoading(true);
-      // simulate API deletes
-      setData((prev) =>
-        prev.filter(
-          (x) => !selectedRowKeys.includes(x.id || x.stripe_invoice_id)
-        )
-      );
+      for (const id of selectedRowKeys) {
+        try { await removeOne(id); }
+        catch (e) { console.error("Failed to delete", id, e); }
+      }
+      setData((prev) => prev.filter((x) => !selectedRowKeys.includes(x.id || x.stripe_invoice_id)));
       if (viewRec && selectedRowKeys.includes(viewRec.id || viewRec.stripe_invoice_id)) {
         closeView();
       }
@@ -381,38 +370,49 @@ export default function Invoices() {
   };
 
   const submitModal = async () => {
-    const vals = await form.validateFields();
-    const cleanNotes = sanitize(vals.notes_html || "");
-    const payload = {
-      id: vals.id,
-      status: vals.status,
-      total_cents: Math.round((vals.total || 0) * 100),
-      currency: vals.currency,
-      due_at: vals.due_at?.toISOString(),
-      created_at: vals.created_at?.toISOString(),
-      parent: { name: vals.parent_name || "" },
-      pdf_url: vals.pdf_url || "",
-      notes_html: cleanNotes,
-    };
+    try {
+      setFormLoading(true);
+      const vals = await form.validateFields();
 
-    if (editingId) {
-      try {
-        await api.put(`/invoice/${editingId}`, payload);
-      } catch {}
-      setData((prev) =>
-        prev.map((x) =>
-          (x.id || x.stripe_invoice_id) === editingId ? { ...x, ...payload } : x
-        )
-      );
-      messageApi.success("Invoice updated");
-    } else {
-      try {
-        await api.post(`/invoices`, payload);
-      } catch {}
-      setData((prev) => [{ ...payload }, ...prev]);
-      messageApi.success("Invoice added");
+      const cleanNotes = sanitize(vals.notes_html || "");
+
+      const payload = {
+        id: vals.id,
+        status: vals.status || "open",
+        total_cents: Math.round((Number(vals.total) || 0) * 100),
+        currency: vals.currency || "EUR",
+        due_at: vals.due_at ? dayjs(vals.due_at).toISOString() : null,
+        created_at: vals.created_at ? dayjs(vals.created_at).toISOString() : new Date().toISOString(),
+        parent_name: vals.parent_name?.trim() || "",
+        pdf_url: vals.pdf_url?.trim() || "",
+        notes_html: cleanNotes,
+      };
+
+      const saved = await createOrUpdate(payload);
+
+      const normalized = {
+        ...(saved || payload),
+        parent_name: saved?.parent_name ?? saved?.parent?.name ?? payload.parent_name ?? "",
+      };
+
+      setData((prev) => {
+        const id = payload.id;
+        const exists = prev.some((x) => String(x.id || x.stripe_invoice_id) === String(id));
+        return exists
+          ? prev.map((x) => (String(x.id || x.stripe_invoice_id) === String(id) ? { ...x, ...normalized } : x))
+          : [normalized, ...prev];
+      });
+
+      messageApi.success(editingId ? "Invoice updated successfully" : "Invoice created successfully");
+      setModalOpen(false);
+      setEditingId(null);
+      form.resetFields();
+    } catch (err) {
+      console.error("Save error:", err);
+      messageApi.error("Please check required fields or your network and try again.");
+    } finally {
+      setFormLoading(false);
     }
-    setModalOpen(false);
   };
 
   const uploadImage = async (file) => {
@@ -422,18 +422,30 @@ export default function Invoices() {
 
   /* ------------ view / drawer ------------ */
   const openView = useCallback(
-    (idOrRecord) => {
-      const id =
-        typeof idOrRecord === "object"
-          ? idOrRecord.id || idOrRecord.stripe_invoice_id
-          : idOrRecord;
-      const rec =
-        data.find((x) => String(x.id || x.stripe_invoice_id) === String(id)) || null;
+    async (idOrRecord) => {
+      const id = typeof idOrRecord === "object" ? idOrRecord.id || idOrRecord.stripe_invoice_id : idOrRecord;
+      if (!id) return messageApi.error("Missing invoice id.");
+
+      const fresh = await fetchOne(id);
+      if (fresh) {
+        setViewRec(fresh);
+        setViewOpen(true);
+        setData((prev) =>
+          prev.map((x) =>
+            String(x.id || x.stripe_invoice_id) === String(id)
+              ? { ...x, ...fresh, parent_name: fresh.parent_name }
+              : x
+          )
+        );
+        return;
+      }
+
+      const rec = data.find((x) => String(x.id || x.stripe_invoice_id) === String(id)) || null;
       if (!rec) return messageApi.error("Invoice not found.");
       setViewRec(rec);
       setViewOpen(true);
     },
-    [data]
+    [data, fetchOne, messageApi]
   );
 
   const closeView = () => {
@@ -444,77 +456,135 @@ export default function Invoices() {
   /* ------------ columns map for BillingEntityList ------------ */
   const COLUMNS_MAP = useMemo(() => {
     const id = {
-      title: "ID",
+      title: "Invoice",
       dataIndex: "id",
       key: "id",
-      ellipsis: true,
-      width: 180,
+      width: 200,
       sorter: (a, b) =>
         String(a.id || a.stripe_invoice_id).localeCompare(String(b.id || b.stripe_invoice_id)),
       render: (v, r) => {
         const label = v || r.stripe_invoice_id;
+        const parentName = r?.parent_name ?? r?.parent?.name;
         return label ? (
-          <Button type="link" className="!px-0" onClick={() => openView(r.id || r.stripe_invoice_id)}>
-            <Text strong>{label}</Text>
-          </Button>
+          <div className="space-y-1">
+            <Button
+              type="link"
+              className="!px-0 !text-blue-600 hover:!text-blue-800 font-medium"
+              onClick={() => openView(r.id || r.stripe_invoice_id)}
+            >
+              {label}
+            </Button>
+            <div className="text-xs text-slate-500 font-medium">{parentName || "No customer"}</div>
+          </div>
         ) : (
-          <Text type="secondary">—</Text>
+          <span className="text-slate-400">—</span>
         );
       },
     };
     const parent = {
-      title: "Parent",
+      title: "Customer",
       key: "parent",
-      ellipsis: true,
-      render: (_, r) => r?.parent?.name || "—",
+      width: 180,
+      render: (_, r) => {
+        const parentName = r?.parent_name || r?.parent?.name || "No customer";
+        return (
+          <div className="font-medium text-slate-700">
+            {parentName && parentName !== "No customer" ? (
+              parentName
+            ) : (
+              <span className="text-slate-400 italic">No customer</span>
+            )}
+          </div>
+        );
+      },
     };
     const status = {
       title: "Status",
       dataIndex: "status",
       key: "status",
-      width: 130,
-      render: (v) =>
-        UNPAID.has(String(v).toLowerCase()) ? (
-          <Tag color="orange">{v}</Tag>
-        ) : String(v).toLowerCase() === "paid" ? (
-          <Tag color="green">paid</Tag>
-        ) : (
-          <Tag>{v || "—"}</Tag>
-        ),
+      width: 120,
+      render: (v) => {
+        const statusValue = String(v || "").toLowerCase();
+        const isUnpaid = UNPAID.has(statusValue);
+        const isPaid = statusValue === "paid";
+
+        if (isPaid) {
+          return (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
+              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5"></div>
+              Paid
+            </span>
+          );
+        } else if (isUnpaid) {
+          return (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200">
+              <div className="w-1.5 h-1.5 bg-orange-500 rounded-full mr-1.5"></div>
+              {v || "Open"}
+            </span>
+          );
+        }
+        return (
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+            {v || "—"}
+          </span>
+        );
+      },
     };
     const total = {
-      title: "Total",
+      title: "Amount",
       key: "total",
-      width: 160,
+      width: 140,
       align: "right",
       sorter: (a, b) => (a.total_cents || 0) - (b.total_cents || 0),
-      render: (_, r) => <MoneyText amount={(r.total_cents || 0) / 100} currency={r.currency || "EUR"} />,
+      render: (_, r) => (
+        <div className="font-semibold text-slate-900">
+          <MoneyText amount={(r.total_cents || 0) / 100} currency={r.currency || "EUR"} />
+        </div>
+      ),
     };
     const due = {
-      title: "Due",
+      title: "Due Date",
       dataIndex: "due_at",
       key: "due",
-      width: 160,
+      width: 140,
       sorter: (a, b) => new Date(a.due_at || 0) - new Date(b.due_at || 0),
-      render: (v, r) =>
-        v ? (
-          <Space size={4}>
-            <span>{new Date(v).toLocaleDateString()}</span>
-            {UNPAID.has(String(r.status).toLowerCase()) && new Date(v) < new Date() ? (
-              <Tag color="red">overdue</Tag>
-            ) : null}
-          </Space>
-        ) : (
-          "—"
-        ),
+      render: (v, r) => {
+        if (!v) return <span className="text-slate-400">—</span>;
+        try {
+          const dueDate = new Date(v);
+          const isOverdue = UNPAID.has(String(r.status).toLowerCase()) && dueDate < new Date();
+          return (
+            <div className={`text-sm ${isOverdue ? 'text-red-600 font-medium' : 'text-slate-700'}`}>
+              {dueDate.toLocaleDateString()}
+              {isOverdue && (
+                <div className="text-xs text-red-500 font-medium">Overdue</div>
+              )}
+            </div>
+          );
+        } catch {
+          return <span className="text-slate-400">—</span>;
+        }
+      },
     };
     const created = {
       title: "Created",
       dataIndex: "created_at",
       key: "created",
-      width: 180,
+      width: 140,
       sorter: (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0),
-      render: (v) => (v ? new Date(v).toLocaleString() : "—"),
+      render: (v) => {
+        if (!v) return <span className="text-slate-400">—</span>;
+        try {
+          const date = new Date(v);
+          return (
+            <div className="text-sm text-slate-600">
+              {date.toLocaleDateString()}
+            </div>
+          );
+        } catch {
+          return <span className="text-slate-400">—</span>;
+        }
+      },
     };
 
     return { id, parent, status, total, due, created };
@@ -542,7 +612,7 @@ export default function Invoices() {
           if (key === "pdf" && r.pdf_url) window.open(r.pdf_url, "_blank", "noopener,noreferrer");
           if (key === "resend") resend(r.id || r.stripe_invoice_id);
           if (key === "add")
-            openAdd({ parent_name: r?.parent?.name || "", currency: r.currency || "EUR" });
+            openAdd({ parent_name: r?.parent_name || r?.parent?.name || "", currency: r.currency || "EUR" });
         },
       }}
       placement="bottomRight"
@@ -551,26 +621,77 @@ export default function Invoices() {
     </Dropdown>
   );
 
-  /* ------------ toolbars for BillingEntityList ------------ */
-  const toolbarLeft = (
-    <Space wrap>
-      <Input
-        allowClear
-        prefix={<SearchOutlined />}
-        placeholder="Search ID or parent…"
-        onChange={(e) => {
-          const v = e.target.value;
-          if (qTimer.current) clearTimeout(qTimer.current);
-          qTimer.current = setTimeout(() => setQ(v), 250);
-        }}
-        style={{ width: 260 }}
-      />
-      <RangePicker value={range} onChange={setRange} />
-      <Badge color="blue" count={filtered.length} offset={[6, -2]}>
-        <span style={{ display: "inline-block", width: 1 }} />
-      </Badge>
-    </Space>
+  const toolbarLeft = useMemo(
+    () => (
+      <Space wrap>
+        <Input
+          allowClear
+          prefix={<SearchOutlined />}
+          placeholder="Search ID or parent…"
+          onChange={(e) => {
+            const v = e.target.value;
+            if (qTimer.current) clearTimeout(qTimer.current);
+            qTimer.current = setTimeout(() => setQ(v), 250);
+          }}
+          style={{ width: 260 }}
+        />
+        <RangePicker value={range} onChange={setRange} />
+        <Badge color="blue" count={filtered.length} offset={[6, -2]}>
+          <span style={{ display: "inline-block", width: 1 }} />
+        </Badge>
+      </Space>
+    ),
+    [filtered, range]
   );
+
+  const kpis = useMemo(() => {
+    const total = filtered.reduce((acc, r) => acc + (r.total_cents || 0), 0) / 100;
+    const unpaidCount = filtered.filter((r) => UNPAID.has(String(r.status).toLowerCase())).length;
+    const paidCount = filtered.filter((r) => String(r.status).toLowerCase() === "paid").length;
+    const cur = filtered[0]?.currency || "EUR";
+    return { total, unpaidCount, paidCount, cur };
+  }, [filtered]);
+
+  const exportCsv = () => {
+    const rows = [["ID", "Parent", "Status", "Total", "Currency", "Due", "Created", "Stripe ID", "Line Items"]];
+    filtered.forEach((i) => {
+      try {
+        rows.push([
+          i.id || i.stripe_invoice_id || "—",
+          i?.parent_name || i?.parent?.name || "—",
+          i.status || "—",
+          (i.total_cents || 0) / 100,
+          i.currency || "EUR",
+          i.due_at ? new Date(i.due_at).toLocaleDateString() : "—",
+          i.created_at ? new Date(i.created_at).toLocaleDateString() : "—",
+          i.stripe_invoice_id || "—",
+          i.line_items ? JSON.stringify(i.line_items) : "—",
+        ]);
+      } catch (error) {
+        console.error("Error exporting invoice:", i, error);
+        rows.push([
+          i.id || i.stripe_invoice_id || "—",
+          i?.parent_name || i?.parent?.name || "—",
+          i.status || "—",
+          (i.total_cents || 0) / 100,
+          i.currency || "EUR",
+          "—",
+          "—",
+          i.stripe_invoice_id || "—",
+          "—",
+        ]);
+      }
+    });
+
+    const csv = rows.map((r) => r.map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "invoices.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const toolbarRight = (
     <Space wrap>
@@ -589,114 +710,354 @@ export default function Invoices() {
     </Space>
   );
 
-  /* ------------ KPIs ------------ */
-  const kpis = useMemo(() => {
-    const total = filtered.reduce((acc, r) => acc + (r.total_cents || 0), 0) / 100;
-    const unpaidCount = filtered.filter((r) => UNPAID.has(String(r.status).toLowerCase())).length;
-    const paidCount = filtered.filter((r) => String(r.status).toLowerCase() === "paid").length;
-    const cur = filtered[0]?.currency || "EUR";
-    return { total, unpaidCount, paidCount, cur };
-  }, [filtered]);
-
   return (
-    <div className="space-y-4 sm:space-y-6 p-4 md:p-6 max-w-[1600px] mx-auto">
-      {contextHolder}
-      {/* KPI strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card size="small" className="rounded-xl">
-          <div className="text-xs text-gray-500">Total Amount (filtered)</div>
-          <div className="text-lg font-semibold">
-            <MoneyText amount={kpis.total} currency={kpis.cur} />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30">
+      <div className="space-y-6 p-4 md:p-6 lg:p-8 max-w-[1800px] mx-auto">
+        {contextHolder}
+        {/* Professional Header */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 mb-1">Invoice Management</h1>
+              <p className="text-slate-600 text-sm">Manage and track all your invoices in one place</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={load}
+                loading={loading}
+                className="border-slate-300 hover:border-slate-400"
+              >
+                Refresh
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => openAdd()}
+                className="bg-blue-600 hover:bg-blue-700 border-blue-600 hover:border-blue-700 shadow-sm"
+                size="large"
+              >
+                New Invoice
+              </Button>
+            </div>
           </div>
-        </Card>
-        <Card size="small" className="rounded-xl">
-          <div className="text-xs text-gray-500">Paid</div>
-          <div className="text-lg font-semibold">{kpis.paidCount}</div>
-        </Card>
-        <Card size="small" className="rounded-xl">
-          <div className="text-xs text-gray-500">Unpaid</div>
-          <div className="text-lg font-semibold">{kpis.unpaidCount}</div>
-        </Card>
-      </div>
+        </div>
 
-      {/* Entity list */}
-      <BillingEntityList
-        title="Invoices"
-        data={filtered}
-        loading={loading}
-        columnsMap={COLUMNS_MAP}
-        storageKey="invoices.visibleCols.v1"
-        defaultVisible={["id", "parent", "status", "total", "due", "created"]}
-        actionsRender={actionsRender}
-        onRefresh={load}
-        toolbarLeft={toolbarLeft}
-        toolbarRight={toolbarRight}
-        selection={{
-          selectedRowKeys,
-          onChange: (keys) => setSelectedRowKeys(keys),
-          // important: rowKey is id or stripe_invoice_id
-          rowKeyFn: (r) => r.id || r.stripe_invoice_id,
-        }}
-        pageSize={12}
-        scrollX={900}
-        onRowClick={(r) => openView(r.id || r.stripe_invoice_id)}
-      />
+        {/* KPI Cards - Modern Design */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-500 text-sm font-medium">Total Revenue</p>
+                <p className="text-2xl font-bold text-slate-900 mt-1">
+                  <MoneyText amount={kpis.total} currency={kpis.cur} />
+                </p>
+              </div>
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                <div className="w-6 h-6 bg-green-500 rounded-md"></div>
+              </div>
+            </div>
+          </div>
 
-      {/* Add/Edit Modal */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-500 text-sm font-medium">Paid Invoices</p>
+                <p className="text-2xl font-bold text-emerald-600 mt-1">{kpis.paidCount}</p>
+              </div>
+              <div className="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center">
+                <div className="w-6 h-6 bg-emerald-500 rounded-md"></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-500 text-sm font-medium">Unpaid Invoices</p>
+                <p className="text-2xl font-bold text-orange-600 mt-1">{kpis.unpaidCount}</p>
+              </div>
+              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                <div className="w-6 h-6 bg-orange-500 rounded-md"></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-5 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-500 text-sm font-medium">Total Invoices</p>
+                <p className="text-2xl font-bold text-blue-600 mt-1">{filtered.length}</p>
+              </div>
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                <div className="w-6 h-6 bg-blue-500 rounded-md"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Enhanced Toolbar */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 p-4">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="relative flex-1 max-w-md">
+                <SearchOutlined className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                <Input
+                  allowClear
+                  placeholder="Search invoices by ID, customer, or status..."
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (qTimer.current) clearTimeout(qTimer.current);
+                    qTimer.current = setTimeout(() => setQ(v), 250);
+                  }}
+                  className="pl-10 border-slate-300 hover:border-slate-400 focus:border-blue-500"
+                  size="large"
+                />
+              </div>
+              <RangePicker
+                value={range}
+                onChange={setRange}
+                className="border-slate-300 hover:border-slate-400"
+                size="large"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              {selectedRowKeys.length > 0 && (
+                <Button
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => setBulkOpen(true)}
+                  className="border-red-300 hover:border-red-400"
+                  size="large"
+                >
+                  Delete ({selectedRowKeys.length})
+                </Button>
+              )}
+              <Button
+                icon={<DownloadOutlined />}
+                onClick={exportCsv}
+                className="border-slate-300 hover:border-slate-400"
+                size="large"
+              >
+                Export
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Modern Table Container */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 overflow-hidden">
+          <BillingEntityList
+            title=""
+            data={filtered}
+            loading={loading}
+            columnsMap={COLUMNS_MAP}
+            storageKey="invoices.visibleCols.v1"
+            defaultVisible={["id", "parent", "status", "total", "due", "created"]}
+            actionsRender={actionsRender}
+            onRefresh={load}
+            toolbarLeft={null}
+            toolbarRight={null}
+            selection={{
+              selectedRowKeys,
+              onChange: (keys) => setSelectedRowKeys(keys),
+              rowKeyFn: (r) => r.id || r.stripe_invoice_id,
+            }}
+            pageSize={12}
+            scrollX={900}
+            onRowClick={(r) => openView(r.id || r.stripe_invoice_id)}
+          />
+        </div>
+
+      {/* Add/Edit Modal - Modern Design */}
       <Modal
         open={modalOpen}
-        title={editingId ? `Edit Invoice ${editingId}` : "Add Invoice"}
-        onCancel={() => setModalOpen(false)}
+        title={
+          <div className="flex items-center gap-3 pb-2">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${editingId ? 'bg-blue-100' : 'bg-green-100'}`}>
+              <div className={`w-4 h-4 rounded ${editingId ? 'bg-blue-500' : 'bg-green-500'}`}></div>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900 m-0">
+                {editingId ? `Edit Invoice ${editingId}` : "Create New Invoice"}
+              </h3>
+              <p className="text-sm text-slate-500 m-0">
+                {editingId ? "Update invoice details" : "Add a new invoice to your system"}
+              </p>
+            </div>
+          </div>
+        }
+        onCancel={() => {
+          setModalOpen(false);
+          setEditingId(null);
+          form.resetFields();
+        }}
         onOk={submitModal}
-        okText={editingId ? "Save" : "Create"}
-        width={screens.md ? 720 : "90%"}
+        okText={editingId ? "Update Invoice" : "Create Invoice"}
+        width={screens.md ? 800 : "95%"}
+        className="modern-modal"
         destroyOnClose
+        confirmLoading={formLoading}
+        footer={[
+          <Button
+            key="cancel"
+            onClick={() => {
+              setModalOpen(false);
+              setEditingId(null);
+              form.resetFields();
+            }}
+            className="border-slate-300 hover:border-slate-400"
+          >
+            Cancel
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            onClick={submitModal}
+            loading={formLoading}
+            className="bg-blue-600 hover:bg-blue-700 border-blue-600 hover:border-blue-700"
+          >
+            {editingId ? "Update Invoice" : "Create Invoice"}
+          </Button>
+        ]}
       >
-        <Form form={form} layout="vertical" initialValues={{ notes_html: "" }}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Form.Item name="id" label="Invoice ID" rules={[{ required: true }]}>
-              <Input placeholder="INV-1234" />
-            </Form.Item>
-            <Form.Item name="parent_name" label="Parent / Customer" rules={[{ required: true }]}>
-              <Input placeholder="e.g., Family Smith" />
-            </Form.Item>
-
-            <Form.Item name="status" label="Status" rules={[{ required: true }]}>
-              <Select options={STATUS_OPTIONS} />
-            </Form.Item>
-
-            <Form.Item name="total" label="Total Amount" rules={[{ required: true }]}>
-              <InputNumber
-                min={0}
-                step={0.01}
-                style={{ width: "100%" }}
-                addonAfter={
-                  <Form.Item noStyle name="currency" initialValue="EUR">
-                    <Select bordered={false} options={CURRENCY_OPTIONS} style={{ width: 80 }} />
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{
+            notes_html: "",
+            status: "open",
+            currency: "EUR",
+            total: 0,
+            created_at: dayjs(),
+            due_at: dayjs().add(14, "day"),
+          }}
+          onFinish={submitModal}
+          className="mt-4"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div className="bg-slate-50 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-slate-700 mb-3">Basic Information</h4>
+                <div className="space-y-4">
+                  <Form.Item
+                    name="id"
+                    label="Invoice ID"
+                    rules={[{ required: !editingId, message: "Please input the invoice ID!" }]}
+                  >
+                    <Input
+                      placeholder="INV-1234"
+                      disabled={!!editingId}
+                      className="border-slate-300 hover:border-slate-400 focus:border-blue-500"
+                    />
                   </Form.Item>
-                }
-              />
-            </Form.Item>
 
-            <Form.Item name="due_at" label="Due Date" rules={[{ required: true }]}>
-              <DatePicker style={{ width: "100%" }} />
-            </Form.Item>
-            <Form.Item name="created_at" label="Created At" rules={[{ required: true }]}>
-              <DatePicker showTime style={{ width: "100%" }} />
-            </Form.Item>
+                  <Form.Item
+                    name="parent_name"
+                    label="Customer Name"
+                    rules={[{ required: true, message: "Please input the customer name!" }]}
+                  >
+                    <Input
+                      placeholder="e.g., Family Smith"
+                      className="border-slate-300 hover:border-slate-400 focus:border-blue-500"
+                    />
+                  </Form.Item>
 
-            <Form.Item name="pdf_url" label="PDF URL" className="md:col-span-2">
-              <Input placeholder="https://…" />
-            </Form.Item>
+                  <Form.Item
+                    name="status"
+                    label="Status"
+                    rules={[{ required: true, message: "Please select a status!" }]}
+                  >
+                    <Select
+                      options={STATUS_OPTIONS}
+                      className="border-slate-300 hover:border-slate-400"
+                    />
+                  </Form.Item>
+                </div>
+              </div>
 
-            {/* RICH TEXT NOTES */}
-            <Form.Item name="notes_html" label="Notes / Terms" className="md:col-span-2">
-              <RichTextArea
-                value={notesHtml}
-                onChange={(html) => form.setFieldsValue({ notes_html: html })}
-                onImageUpload={uploadImage}
-              />
-            </Form.Item>
+              <div className="bg-slate-50 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-slate-700 mb-3">Financial Details</h4>
+                <div className="space-y-4">
+                  <Form.Item
+                    name="total"
+                    label="Total Amount"
+                    rules={[{ required: true, message: "Please input the total amount!" }]}
+                  >
+                    <InputNumber
+                      min={0}
+                      step={0.01}
+                      style={{ width: "100%" }}
+                      className="border-slate-300 hover:border-slate-400 focus:border-blue-500"
+                    />
+                  </Form.Item>
+
+                  <Form.Item name="currency" label="Currency">
+                    <Select
+                      options={CURRENCY_OPTIONS}
+                      style={{ width: "100%" }}
+                      className="border-slate-300 hover:border-slate-400"
+                    />
+                  </Form.Item>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-slate-50 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-slate-700 mb-3">Date Information</h4>
+                <div className="space-y-4">
+                  <Form.Item
+                    name="due_at"
+                    label="Due Date"
+                    rules={[{ required: true, message: "Please select due date!" }]}
+                  >
+                    <DatePicker
+                      style={{ width: "100%" }}
+                      format="YYYY-MM-DD"
+                      className="border-slate-300 hover:border-slate-400 focus:border-blue-500"
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="created_at"
+                    label="Created At"
+                    rules={[{ required: true, message: "Please select creation date!" }]}
+                  >
+                    <DatePicker
+                      showTime
+                      style={{ width: "100%" }}
+                      format="YYYY-MM-DD HH:mm"
+                      className="border-slate-300 hover:border-slate-400 focus:border-blue-500"
+                    />
+                  </Form.Item>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-slate-700 mb-3">Additional Information</h4>
+                <div className="space-y-4">
+                  <Form.Item
+                    name="pdf_url"
+                    label="PDF URL"
+                    rules={[{ type: "url", message: "Please enter a valid URL!" }]}
+                  >
+                    <Input
+                      placeholder="https://example.com/invoice.pdf"
+                      className="border-slate-300 hover:border-slate-400 focus:border-blue-500"
+                    />
+                  </Form.Item>
+
+                  <Form.Item name="notes_html" label="Notes / Terms">
+                    <RichTextArea
+                      value={notesHtml}
+                      onChange={(html) => form.setFieldsValue({ notes_html: html })}
+                      onImageUpload={uploadImage}
+                    />
+                  </Form.Item>
+                </div>
+              </div>
+            </div>
           </div>
         </Form>
       </Modal>
@@ -713,11 +1074,14 @@ export default function Invoices() {
           viewRec ? (
             <Space>
               {viewRec?.pdf_url ? (
-                <Button icon={<FilePdfOutlined />} onClick={() => window.open(viewRec.pdf_url, "_blank", "noopener,noreferrer")}>
+                <Button
+                  icon={<FilePdfOutlined />}
+                  onClick={() => window.open(viewRec.pdf_url, "_blank", "noopener,noreferrer")}
+                >
                   PDF
                 </Button>
               ) : null}
-              <Button icon={<SendOutlined />} onClick={() => resend(viewRec.id || viewRec.stripe_invoice_id)}>
+              <Button icon={<SendOutlined />} onClick={resend}>
                 Resend
               </Button>
               <Button icon={<EditOutlined />} onClick={() => openEdit(viewRec)}>
@@ -737,7 +1101,7 @@ export default function Invoices() {
                 {viewRec.id || viewRec.stripe_invoice_id || "—"}
               </Descriptions.Item>
               <Descriptions.Item label="Parent">
-                {viewRec?.parent?.name || "—"}
+                {viewRec?.parent_name || viewRec?.parent?.name || "—"}
               </Descriptions.Item>
               <Descriptions.Item label="Status">
                 {UNPAID.has(String(viewRec.status).toLowerCase()) ? (
@@ -796,10 +1160,7 @@ export default function Invoices() {
         description={
           <>
             This will permanently delete{" "}
-            <Text strong>
-              {confirmTarget?.id || confirmTarget?.stripe_invoice_id || "—"}
-            </Text>
-            . This action cannot be undone.
+            <Text strong>{confirmTarget?.id || confirmTarget?.stripe_invoice_id || "—"}</Text>. This action cannot be undone.
           </>
         }
         loading={confirmLoading}
@@ -832,6 +1193,7 @@ export default function Invoices() {
         onConfirm={handleBulkDelete}
         onClose={() => setBulkOpen(false)}
       />
+      </div>
     </div>
   );
 }

@@ -110,5 +110,20 @@
       "selectAll": "Select all",
       "reset": "Reset"
     }
+  },
+  "parent": {
+    "home": {
+      "title": "Home",
+      "activities": "Activities",
+      "myFamily": "My Family",
+      "newsInsights": "News & Insights"
+    },
+    "nav": {
+      "home": "Home",
+      "addChild": "Add Child",
+      "news": "News",
+      "feedback": "Feedback",
+      "settings": "Settings"
+    }
   }
 }

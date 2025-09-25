@@ -1,7 +1,8 @@
 // src/pages/parent/ParentHome.jsx
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import api from "@/api/axios";
 
 import ParentShell from "@/components/parent/ParentShell";
 // ✅ explicit extension + alias to avoid any shadowing
@@ -14,6 +15,8 @@ import childTwo from "@/assets/parent/childtwo.png";
 import blogNews from "@/assets/parent/blognews.png";
 import platNews from "@/assets/parent/platnews.png";
 import unkCat from "@/assets/parent/unkcat.png";
+import agentIcon from "@/assets/mobile/icons/agent-icon.png";
+import studentIcon from "@/assets/mobile/icons/stud-icon.png";
 
 /* ---------------- Dummy content ---------------- */
 const CHILDREN = [
@@ -68,6 +71,117 @@ function ChildBubble({ to, avatar, name, meta }) {
 /* ---------------- Page ---------------- */
 export default function ParentHome() {
   const { t } = useTranslation();
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [messages, setMessages] = useState([]); // {role:'user'|'assistant', content:string}
+  const [cooldownSec, setCooldownSec] = useState(0);
+  const [panelPos, setPanelPos] = useState({ x: null, y: null });
+  const draggingRef = useRef(false);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const panelRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // Prevent background scroll when chat is open
+  React.useEffect(() => {
+    if (chatOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      // focus input shortly after open
+      setTimeout(() => { try { inputRef.current?.focus(); } catch {} }, 50);
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [chatOpen]);
+
+  // Open chat when footer Feedback is tapped
+  useEffect(() => {
+    const onOpen = () => setChatOpen(true);
+    window.addEventListener('parent-chat:open', onOpen);
+    return () => window.removeEventListener('parent-chat:open', onOpen);
+  }, []);
+
+  // Initialize panel position (centered) when opened
+  useEffect(() => {
+    if (chatOpen) {
+      // center panel roughly (will be adjusted by actual size after first paint)
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      setPanelPos({ x: Math.max(12, (vw - 400) / 2), y: Math.max(12, (vh - 520) / 2) });
+    }
+  }, [chatOpen]);
+
+  // Cooldown ticker for rate limiting
+  useEffect(() => {
+    if (cooldownSec <= 0) return;
+    const t = setInterval(() => setCooldownSec((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [cooldownSec]);
+
+  // Drag handlers
+  useEffect(() => {
+    const onMove = (e) => {
+      if (!draggingRef.current) return;
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const nx = clientX - dragOffsetRef.current.x;
+      const ny = clientY - dragOffsetRef.current.y;
+      // Clamp within viewport with 8px margin
+      const margin = 8;
+      const el = panelRef.current;
+      const w = el ? el.offsetWidth : 380;
+      const h = el ? el.offsetHeight : 480;
+      const maxX = window.innerWidth - w - margin;
+      const maxY = window.innerHeight - h - margin;
+      setPanelPos({ x: Math.min(Math.max(nx, margin), Math.max(maxX, margin)), y: Math.min(Math.max(ny, margin), Math.max(maxY, margin)) });
+    };
+    const onUp = () => { draggingRef.current = false; };
+    window.addEventListener('mousemove', onMove, { passive: true });
+    window.addEventListener('mouseup', onUp, { passive: true });
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onUp, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+  }, []);
+
+  const sendChat = async () => {
+    const q = chatInput.trim();
+    if (!q || sending || cooldownSec > 0) return;
+    setSending(true);
+    setMessages((prev) => [...prev, { role: "user", content: q }]);
+    setChatInput("");
+    try {
+      const payload = { question: q, context: "User", ai_agent: "ParentAgent" };
+      const res = await api.post("/ai/chat", payload);
+      const answer = res?.data?.answer || res?.data?.data?.answer || res?.data?.message || "";
+      setMessages((prev) => [...prev, { role: "assistant", content: String(answer || "No response") }]);
+    } catch (err) {
+      const backendMsg = err?.response?.data?.error;
+      // If backend signals rate limit, impose a short cooldown
+      if (err?.response?.status === 429) {
+        setCooldownSec(20);
+      }
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: backendMsg || "Sorry, I couldn't process that right now." },
+      ]);
+      // Optionally log: console.error(err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const startDrag = (e) => {
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const rectX = (panelPos.x ?? 0);
+    const rectY = (panelPos.y ?? 0);
+    dragOffsetRef.current = { x: clientX - rectX, y: clientY - rectY };
+    draggingRef.current = true;
+  };
 
   return (
     <ParentShell title={t("parent.home.title", "Home")} showBack={false} bgImage={globalBg}>
@@ -127,6 +241,70 @@ export default function ParentHome() {
           </section>
         </section>
       </div>
+
+      {/* Floating chat button removed; chat opens via Feedback tab */}
+      {chatOpen && (
+        <div className="fixed inset-0 z-[9999] pointer-events-auto">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/30 pointer-events-auto" />
+          {/* Fullscreen chat panel */}
+          <div
+            ref={panelRef}
+            className="fixed inset-0 bg-white flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div className="font-semibold text-neutral-800">Ask Parent Assistant</div>
+              <button className="text-neutral-500 hover:text-neutral-700" onClick={() => setChatOpen(false)} aria-label="Close chat">
+                ✕
+              </button>
+            </div>
+            <div className="p-4 space-y-3 overflow-auto flex-1">
+              {messages.length === 0 ? (
+                <div className="text-neutral-500 text-sm">Start a conversation. Your assistant is here to help.</div>
+              ) : (
+                messages.map((m, idx) => {
+                  const isUser = m.role === "user";
+                  const avatar = isUser ? studentIcon : agentIcon;
+                  return (
+                    <div key={idx} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                      <div className={`flex items-end gap-2 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+                        <img
+                          src={avatar}
+                          alt={isUser ? "You" : "Assistant"}
+                          className="w-8 h-8 rounded-full shadow border border-white/60"
+                        />
+                        <div className={`px-3 py-2 rounded-2xl text-sm max-w-[70vw] sm:max-w-[520px] whitespace-pre-wrap ${isUser ? "bg-emerald-600 text-white rounded-br-sm" : "bg-neutral-100 text-neutral-800 rounded-bl-sm"}`}>
+                          {m.content}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="p-3 border-t flex items-center gap-2">
+              <input
+                type="text"
+                ref={inputRef}
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") sendChat(); }}
+                placeholder="Type your question..."
+                className="flex-1 rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={sendChat}
+                disabled={sending || !chatInput.trim() || cooldownSec > 0}
+                className="rounded-xl bg-emerald-600 text-white px-4 py-2 disabled:opacity-60"
+              >
+                {sending ? "Sending..." : (cooldownSec > 0 ? `Wait ${cooldownSec}s` : "Send")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </ParentShell>
   );
 }

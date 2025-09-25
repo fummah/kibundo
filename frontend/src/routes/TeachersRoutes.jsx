@@ -2,7 +2,7 @@
 import { Route } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import GlobalLayout from "@/components/layouts/GlobalLayout.jsx";
-import { ROLES } from "@/utils/roleMapper"; // make sure TEACHER: 2
+import { ROLES } from "@/utils/roleMapper";
 
 // Lightweight placeholders — replace with real pages
 const TeacherDashboard = () => (
@@ -37,10 +37,13 @@ const TeacherSettings = () => (
 );
 
 export default function TeacherRoutes() {
+  // Allow legacy teacher role id 2 during transition
+  const TEACHER_ROLES = [ROLES.TEACHER, 2];
+
   return (
     <>
       {/* Guard wraps the whole teacher tree */}
-      <Route element={<ProtectedRoute allowedRoles={[ROLES.TEACHER]} />}>
+      <Route element={<ProtectedRoute allowedRoles={TEACHER_ROLES} />}>
         <Route path="/teacher" element={<GlobalLayout />}>
           <Route index element={<TeacherDashboard />} />
           <Route path="dashboard" element={<TeacherDashboard />} />

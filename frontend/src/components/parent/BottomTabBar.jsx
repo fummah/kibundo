@@ -10,7 +10,7 @@ import {
 } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
-// ✅ Use the imported spacer (and re-export for convenience)
+// Use the imported spacer (and re-export for convenience)
 import ParentSpaceBar from "@/components/parent/ParentSpaceBar.jsx";
 export { ParentSpaceBar };
 export { ParentSpaceBar as ParentTabSpacer }; // legacy alias
@@ -48,9 +48,17 @@ export default function BottomTabBar({
     { key: "home", to: "/parent/home", icon: <HomeOutlined className="text-xl" />, label: t("parent.nav.home") },
     { key: "addChild", to: "/parent/myfamily/family?add-student=1", icon: <PlusCircleOutlined className="text-xl" />, label: t("parent.nav.addChild") },
     { key: "news", to: "/parent/communications/news", icon: <ReadOutlined className="text-xl" />, label: t("parent.nav.news") },
-    { key: "feedback", to: "/parent/feedback/tickets", icon: <MessageOutlined className="text-xl" />, label: t("parent.nav.feedback") },
+    // Feedback will be intercepted to open chat
+    { key: "feedback", to: "/parent/feedback/tickets", icon: <MessageOutlined className="text-xl" />, label: t("parent.nav.feedback"), openChat: true },
     { key: "settings", to: "/parent/settings", icon: <SettingOutlined className="text-xl" />, label: t("parent.nav.settings") },
   ];
+
+  const handleFeedbackClick = (e) => {
+    e.preventDefault();
+    try {
+      window.dispatchEvent(new CustomEvent("parent-chat:open"));
+    } catch {}
+  };
 
   const renderTabs = () => (
     <div
@@ -61,13 +69,21 @@ export default function BottomTabBar({
     >
       {TABS.map((tab) => {
         const selected = pathname === tab.to || pathname.startsWith(tab.to);
+        const commonProps = {
+          className: [base, item, selected ? active : ""].join(" "),
+          "aria-current": selected ? "page" : undefined,
+        };
+        // For feedback, open the chat instead of navigating
+        if (tab.openChat) {
+          return (
+            <a key={tab.key} href={tab.to} onClick={handleFeedbackClick} {...commonProps} role="button">
+              {tab.icon}
+              <span>{tab.label}</span>
+            </a>
+          );
+        }
         return (
-          <Link
-            key={tab.key}
-            to={tab.to}
-            className={[base, item, selected ? active : ""].join(" ")}
-            aria-current={selected ? "page" : undefined}
-          >
+          <Link key={tab.key} to={tab.to} {...commonProps}>
             {tab.icon}
             <span>{tab.label}</span>
           </Link>

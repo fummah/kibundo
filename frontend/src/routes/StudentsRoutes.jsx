@@ -28,7 +28,7 @@ const ReadAloudFlow     = lazy(() => import("@/pages/student/reading/ReadAloudFl
 const AiReadingTextFlow = lazy(() => import("@/pages/student/reading/AiReadingTextFlow.jsx"));
 const ReadingQuizFlow   = lazy(() => import("@/pages/student/reading/ReadingQuizFlow.jsx"));
 
-// ✅ Homework (new structure)
+// Homework (new structure)
 import HomeworkLayout from "@/pages/student/homework/HomeworkLayout.jsx";
 const HomeworkList       = lazy(() => import("@/pages/student/homework/HomeworkList.jsx"));       // step 0
 const HomeworkDoing      = lazy(() => import("@/pages/student/homework/HomeworkDoing.jsx"));      // step 1
@@ -60,9 +60,12 @@ function HomeGate() {
 }
 
 export default function StudentRoutes() {
+  // Allow legacy student role id 3 during transition
+  const STUDENT_ROLES = [ROLES.STUDENT, 3];
+
   return (
     <>
-      <Route element={<ProtectedRoute allowedRoles={[ROLES.STUDENT]} />} >
+      <Route element={<ProtectedRoute allowedRoles={STUDENT_ROLES} />} >
         <Route
           path="/student"
           element={

@@ -27,8 +27,11 @@ import Settings from "@/pages/parent/Settings.jsx";
 import AccountSelect from "@/components/parent/account/AccountSelect.jsx";
 
 export default function ParentRoutes() {
+  // Allow legacy parent role id 4 during transition, remove after migration
+  const PARENT_ROLES = [ROLES.PARENT, 4];
+
   return (
-    <Route element={<ProtectedRoute allowedRoles={[ROLES.PARENT]} />}>
+    <Route element={<ProtectedRoute allowedRoles={PARENT_ROLES} />}>
       <Route
         path="/parent"
         element={
