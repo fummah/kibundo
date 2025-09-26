@@ -359,7 +359,7 @@ export default function EntityForm({
                 loadFieldOptions(f);
               }
             }}
-            dropdownMatchSelectWidth={false}
+            popupMatchSelectWidth={false}
             {...sharedProps}
           />
         </Form.Item>

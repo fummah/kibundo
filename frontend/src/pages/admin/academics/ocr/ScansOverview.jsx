@@ -103,6 +103,20 @@ export default function ScansOverview() {
   /* actions */
   const onView = (rec) => setViewerItem(rec);
   const onEdit = (rec) => { setEditItem(rec); form.setFieldsValue(rec); setEditOpen(true); };
+
+  const handleEditSubmit = async () => {
+    try {
+      const values = await form.validateFields();
+      setData((prev) =>
+        prev.map((r) => (r.id === editItem.id ? { ...r, ...values } : r))
+      );
+      message.success("Scan updated.");
+      setEditOpen(false);
+      setEditItem(null);
+    } catch (error) {
+      console.error("Validation Failed:", error);
+    }
+  };
   const onDelete = (rec) => {
     Modal.confirm({
       title: `Delete scan #${rec.id}?`,

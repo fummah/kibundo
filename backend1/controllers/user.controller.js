@@ -538,7 +538,7 @@ exports.deleteParent = async (req, res) => {
 };
 exports.addproduct = async (req, res) => {
   try {
-    const { name, description, price } = req.body;
+    const { name, description, price, trial_period_days } = req.body;
     const created_by = req.user.id;
 
     // 1️⃣ Create product in Stripe

@@ -84,7 +84,7 @@ export default function SubjectDetail() {
                 key={ex.id}
                 hoverable
                 className="rounded-2xl overflow-hidden border-0 shadow-sm"
-                bodyStyle={{ padding: 0 }}
+                styles={{ body: {{ padding: 0 }}
                 onClick={() => navigate(`/student/learning/exercise/${ex.id}?subject=${subject}`)}
               >
                 <img src={ex.thumbnail} alt={ex.title} className="w-full h-32 object-cover" />

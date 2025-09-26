@@ -322,7 +322,7 @@ export default function QuizPage() {
       </div>
 
       <div className="p-3 md:p-4">
-        <Card bodyStyle={{ padding: 0 }}>
+        <Card styles={{ body: { padding: 0 } }}>
           <FluidTable
             rowKey="id"
             loading={list.isFetching}

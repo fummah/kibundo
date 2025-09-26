@@ -36,31 +36,109 @@ const dash = (v) =>
 
 const LS_KEY = "kibundo.aiagent.v1";
 
+// Agent configurations
+const AGENT_CONFIGS = {
+  ParentAgent: {
+    name: "Parent Assistant",
+    systemPrompt: "You are a helpful AI assistant for parents using the Kibundo education platform. You help parents with questions about their children's progress, school activities, billing, and general platform usage.",
+    instructions: `### Role
+- You are a Parent Assistant for the Kibundo education platform
+- Help parents with questions about their children's academic progress, schedules, and activities
+- Assist with billing inquiries, subscription management, and account settings
+- Provide guidance on using platform features and resolving common issues
+
+### Knowledge Areas
+- Student progress tracking and reports
+- Parent-teacher communication
+- Billing and subscription management
+- Platform navigation and features
+- School policies and procedures
+
+### Constraints
+- Always be polite and professional
+- Never reveal sensitive student information
+- Direct complex issues to appropriate school staff
+- Maintain parent privacy and data security`,
+    initialMessages: ["Hello! I'm your Kibundo Parent Assistant. How can I help you with your child's education today?"],
+    suggestedMessages: ["Check my child's progress", "Billing questions", "Schedule information", "Contact teachers"],
+    displayName: "Parent Assistant",
+    userMessageColor: "#1677ff",
+  },
+  ChildAgent: {
+    name: "Student Helper",
+    systemPrompt: "You are a friendly AI assistant designed to help students with their learning and schoolwork on the Kibundo platform.",
+    instructions: `### Role
+- You are a Student Helper for the Kibundo education platform
+- Assist students with homework, study tips, and learning resources
+- Help with understanding subjects and completing assignments
+- Encourage positive learning habits and academic growth
+
+### Knowledge Areas
+- Homework assistance and explanations
+- Study techniques and time management
+- Subject-specific help and resources
+- Test preparation and study guides
+- Learning motivation and goal setting
+
+### Constraints
+- Provide guidance and explanations, not direct answers
+- Encourage critical thinking and problem-solving
+- Never do homework for students
+- Promote academic integrity and honest work`,
+    initialMessages: ["Hi there! I'm your Kibundo Student Helper. Ready to learn something new today?"],
+    suggestedMessages: ["Help with homework", "Study tips", "Explain this topic", "Test preparation"],
+    displayName: "Student Helper",
+    userMessageColor: "#52c41a",
+  },
+  TeacherAgent: {
+    name: "Teacher Support",
+    systemPrompt: "You are an AI assistant designed to support teachers using the Kibundo education platform with administrative tasks, lesson planning, and student management.",
+    instructions: `### Role
+- You are a Teacher Support Assistant for the Kibundo education platform
+- Help teachers with administrative tasks and classroom management
+- Assist with lesson planning and resource organization
+- Provide guidance on platform features and tools
+
+### Knowledge Areas
+- Lesson planning and curriculum management
+- Student assessment and progress tracking
+- Classroom management and communication
+- Resource sharing and collaboration
+- Administrative tasks and reporting
+
+### Constraints
+- Focus on educational support and efficiency
+- Respect teacher autonomy and decision-making
+- Maintain professional boundaries
+- Protect student privacy and data security`,
+    initialMessages: ["Hello! I'm your Kibundo Teacher Support Assistant. How can I help you manage your classroom today?"],
+    suggestedMessages: ["Lesson planning", "Student progress", "Resource management", "Administrative tasks"],
+    displayName: "Teacher Support",
+    userMessageColor: "#fa8c16",
+  },
+};
+
 const defaultState = {
   playground: {
     status: "trained",
     model: "gpt-4o",
     temperature: 0.3, // 0..1
-    systemPrompt: "You are an AI Chatbot that helps users politely and clearly.",
-    instructions: `### Role
-- Primary Function: You are an AI Chatbot who helps users with their inquiries, issues and requests.
-- Be concise and friendly.
-
-### Constraints
-- Never reveal training data.\n`,
+    systemPrompt: AGENT_CONFIGS.ParentAgent.systemPrompt,
+    instructions: AGENT_CONFIGS.ParentAgent.instructions,
+    selectedAgent: "ParentAgent", // Default selected agent
   },
   settings: {
-    initialMessages: ["Hey Joseph! How can I help?"],
-    suggestedMessages: ["Ideas", "Inspiration", "Business Advice"],
+    initialMessages: AGENT_CONFIGS.ParentAgent.initialMessages,
+    suggestedMessages: AGENT_CONFIGS.ParentAgent.suggestedMessages,
     placeholder: "Message...",
     footer: "",
     collectFeedback: true,
     regenerateMessages: true,
     theme: "light",
-    displayName: "Joseph's Assistant",
+    displayName: AGENT_CONFIGS.ParentAgent.displayName,
     profilePicture: null, // base64 for demo
     chatIcon: null, // base64 for demo
-    userMessageColor: "#1677ff",
+    userMessageColor: AGENT_CONFIGS.ParentAgent.userMessageColor,
   },
   sources: {
     files: [], // [{name,size,chars}]
@@ -106,9 +184,15 @@ const readChars = (file) =>
 /* --------------------------- Component --------------------------- */
 export default function AIAgent() {
   const [state, setState] = useState(defaultState);
+  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState("sources"); // jump users to Sources by default
-  const [saving, setSaving] = useState(false);
   const [previewKey, setPreviewKey] = useState(0); // force chat preview refresh
+  const [users, setUsers] = useState({});
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [agentsLoading, setAgentsLoading] = useState(false);
+  const [agentsError, setAgentsError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // Load persisted config
   useEffect(() => {
@@ -132,22 +216,184 @@ export default function AIAgent() {
     }
   }, [state]);
 
+  // Fetch agents on component mount
+  useEffect(() => {
+    fetchAgents();
+  }, []);
+
+  // Fetch users for name mapping on component mount
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
   /* --------------------------- Actions --------------------------- */
-  const saveToChatbot = () => {
+  const saveToChatbot = async () => {
     setSaving(true);
-    setTimeout(() => {
+    try {
+      const currentAgent = state.playground.selectedAgent;
+      const agentConfig = AGENT_CONFIGS[currentAgent];
+
+      const chatbotConfig = {
+        agentType: currentAgent,
+        systemPrompt: state.playground.systemPrompt,
+        instructions: state.playground.instructions,
+        displayName: state.settings.displayName,
+        initialMessages: state.settings.initialMessages,
+        suggestedMessages: state.settings.suggestedMessages,
+        placeholder: state.settings.placeholder,
+        userMessageColor: state.settings.userMessageColor,
+        model: state.playground.model,
+        temperature: state.playground.temperature,
+        theme: state.settings.theme,
+        collectFeedback: state.settings.collectFeedback,
+        regenerateMessages: state.settings.regenerateMessages,
+        footer: state.settings.footer,
+      };
+
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/ai/save-config', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(chatbotConfig)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to save chatbot configuration: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      message.success(`Chatbot configuration saved successfully for ${agentConfig.name}!`);
+
+      // Refresh the preview to show the saved configuration
+      refreshPreview();
+
+    } catch (error) {
+      console.error('Error saving chatbot configuration:', error);
+      message.error('Failed to save chatbot configuration. Please try again.');
+    } finally {
       setSaving(false);
-      message.success("Saved to chatbot (demo).");
-    }, 600);
+    }
   };
 
-  const resetInitialMsgs = () =>
+  const resetInitialMsgs = () => {
+    const currentAgent = state.playground.selectedAgent;
+    const agentConfig = AGENT_CONFIGS[currentAgent];
     setState((s) => ({
       ...s,
-      settings: { ...s.settings, initialMessages: defaultState.settings.initialMessages },
+      settings: { ...s.settings, initialMessages: agentConfig.initialMessages },
     }));
+  };
 
   const refreshPreview = () => setPreviewKey((k) => k + 1);
+
+  // API functions
+  const fetchAgents = async () => {
+    setAgentsLoading(true);
+    setAgentsError(null);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/agents', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch agents: ${response.statusText}`);
+      }
+
+      const agents = await response.json();
+      setState((s) => ({
+        ...s,
+        sources: { ...s.sources, agents }
+      }));
+    } catch (error) {
+      console.error('Error fetching agents:', error);
+      setAgentsError(error.message);
+      message.error('Failed to fetch agents');
+    } finally {
+      setAgentsLoading(false);
+    }
+  };
+
+  // Fetch users for name mapping
+  const fetchUsers = async () => {
+    setUsersLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/users', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch users: ${response.statusText}`);
+      }
+
+      const usersData = await response.json();
+      // Create a mapping of user ID to name
+      const usersMap = {};
+      usersData.forEach(user => {
+        usersMap[user.id] = `${user.first_name} ${user.last_name}`;
+      });
+      setUsers(usersMap);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      // Don't show error message for users, just use IDs as fallback
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const createAgent = async (agentData) => {
+    setLoading(true);
+    try {
+      // Create agent locally for now (no backend POST endpoint)
+      const newAgent = {
+        id: (typeof crypto !== "undefined" && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : String(Date.now()),
+        name: agentData.name,
+        description: agentData.description,
+        prompts: agentData.prompts,
+        version: agentData.version,
+        stage: agentData.stage,
+        created_by: 'current_user', // This should come from auth context
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      setState((s) => ({
+        ...s,
+        sources: {
+          ...s.sources,
+          agents: [newAgent, ...(s.sources.agents || [])],
+          // clear temp inputs
+          _tmpAgentName: "",
+          _tmpEntities: [],
+          _tmpApi: "",
+          _tmpUrl: "",
+          files: [],
+          totalChars: 0
+        }
+      }));
+
+      message.success('Agent created successfully');
+      return true;
+    } catch (error) {
+      console.error('Error creating agent:', error);
+      message.error('Failed to create agent');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
 
   /* --------------------------- Derived --------------------------- */
   const initialMsgs = useMemo(
@@ -182,6 +428,40 @@ export default function AIAgent() {
           className="rounded-xl"
         >
           <div className="grid grid-cols-1 gap-4">
+            {/* Agent Selection */}
+            <div>
+              <Text type="secondary">Select Agent</Text>
+              <Select
+                className="w-full mt-1"
+                value={state.playground.selectedAgent}
+                onChange={(value) => {
+                  const agentConfig = AGENT_CONFIGS[value];
+                  setState((s) => ({
+                    ...s,
+                    playground: {
+                      ...s.playground,
+                      selectedAgent: value,
+                      systemPrompt: agentConfig.systemPrompt,
+                      instructions: agentConfig.instructions,
+                    },
+                    settings: {
+                      ...s.settings,
+                      displayName: agentConfig.displayName,
+                      initialMessages: agentConfig.initialMessages,
+                      suggestedMessages: agentConfig.suggestedMessages,
+                      userMessageColor: agentConfig.userMessageColor,
+                    }
+                  }));
+                  refreshPreview();
+                }}
+                options={[
+                  { value: "ParentAgent", label: "Parent Assistant" },
+                  { value: "ChildAgent", label: "Student Helper" },
+                  { value: "TeacherAgent", label: "Teacher Support" },
+                ]}
+              />
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Text type="secondary">Model</Text>
@@ -264,7 +544,7 @@ export default function AIAgent() {
           }
         >
           <ChatPreview
-            key={previewKey}
+            key={`playground-${previewKey}-${state.playground.selectedAgent}`}
             displayName={state.settings.displayName}
             theme={state.settings.theme}
             initialMessages={initialMsgs}
@@ -475,9 +755,33 @@ export default function AIAgent() {
         <Card
           className="rounded-xl"
           title="Agents"
-          extra={<Tag color="blue">{(state.sources.agents?.length || 0)} total</Tag>}
+          extra={
+            <Space>
+              <Tag color="blue">{(state.sources.agents?.length || 0)} total</Tag>
+              <Button
+                size="small"
+                icon={<ReloadOutlined />}
+                onClick={fetchAgents}
+                loading={agentsLoading}
+              >
+                Refresh
+              </Button>
+            </Space>
+          }
         >
-          {(state.sources.agents?.length || 0) === 0 ? (
+          {agentsLoading ? (
+            <div className="text-center py-4">
+              <Text type="secondary">Loading agents...</Text>
+            </div>
+          ) : agentsError ? (
+            <div className="text-center py-4">
+              <Text type="danger">Error: {agentsError}</Text>
+              <br />
+              <Button onClick={fetchAgents} className="mt-2">
+                Retry
+              </Button>
+            </div>
+          ) : (state.sources.agents?.length || 0) === 0 ? (
             <Text type="secondary">No agents yet. Create one on the right.</Text>
           ) : (
             <List
@@ -489,29 +793,31 @@ export default function AIAgent() {
                     <Space className="w-full justify-between">
                       <Text strong>{a.name}</Text>
                       <Text type="secondary" className="text-xs">
-                        {new Date(a.createdAt).toLocaleString()}
+                        {new Date(a.created_at).toLocaleString()}
                       </Text>
                     </Space>
+                    {a.description && (
+                      <Text type="secondary" className="text-sm">
+                        {a.description}
+                      </Text>
+                    )}
                     <Space wrap>
-                      {(a.entities || []).map((en) => (
-                        <Tag key={en} color="geekblue">
-                          {en}
+                      <Tag color="blue">v{a.version}</Tag>
+                      <Tag color={a.stage === 'prod' ? 'green' : 'orange'}>
+                        {a.stage}
+                      </Tag>
+                      {a.prompts?.entities?.map((entity) => (
+                        <Tag key={entity} color="geekblue">
+                          {entity}
                         </Tag>
                       ))}
                     </Space>
                     <Text type="secondary" className="text-xs">
-                      Added by <Text strong>{a.createdBy}</Text>
+                      Created by <Text strong>{users[a.created_by] || a.created_by || 'Unknown'}</Text>
                     </Text>
-                    {a.url ? (
-                      <Text type="secondary" className="text-xs">URL: {a.url}</Text>
-                    ) : null}
-                    {/* Not rendering a.api for safety */}
-                    {a.sources?.files?.length ? (
-                      <Text type="secondary" className="text-xs">
-                        {a.sources.files.length} file(s) •{" "}
-                        {a.sources.totalChars?.toLocaleString?.() ?? 0} chars
-                      </Text>
-                    ) : null}
+                    {a.prompts?.url && (
+                      <Text type="secondary" className="text-xs">URL: {a.prompts.url}</Text>
+                    )}
                   </Space>
                 </List.Item>
               )}
@@ -550,8 +856,12 @@ export default function AIAgent() {
               }
               className="w-full"
               style={{ width: "100%" }}
-              dropdownMatchSelectWidth={false}
-              dropdownStyle={{ minWidth: 360 }}
+              popupMatchSelectWidth={false}
+              styles={{
+                popup: {
+                  root: { minWidth: 360 }
+                }
+              }}
               options={[
                 { value: "School", label: "School" },
                 { value: "Grade", label: "Grade" },
@@ -658,7 +968,8 @@ export default function AIAgent() {
                 size="large"
                 type="primary"
                 icon={<PlusOutlined />}
-                onClick={() => {
+                loading={loading}
+                onClick={async () => {
                   const name = (state.sources._tmpAgentName || "").trim();
                   const entities = state.sources._tmpEntities || [];
                   if (!name) {
@@ -670,42 +981,21 @@ export default function AIAgent() {
                     return;
                   }
 
-                  const createdBy =
-                    state.settings?.displayName || "Unknown";
-
-                  const newAgent = {
-                    id: (typeof crypto !== "undefined" && crypto.randomUUID)
-                      ? crypto.randomUUID()
-                      : String(Date.now()),
+                  const agentData = {
                     name,
-                    entities,
-                    api: state.sources._tmpApi || "", // Add API
-                    url: state.sources._tmpUrl || "", // Add URL
-                    createdBy,
-                    createdAt: new Date().toISOString(),
-                    sources: {
-                      files: state.sources.files || [],
-                      totalChars: state.sources.totalChars || 0,
+                    description: `Agent for ${entities.join(', ')}`,
+                    prompts: {
+                      system: state.playground.systemPrompt,
+                      instructions: state.playground.instructions,
+                      entities: entities,
+                      api: state.sources._tmpApi || "",
+                      url: state.sources._tmpUrl || ""
                     },
+                    version: "v1",
+                    stage: "staging"
                   };
 
-                  setState((s) => ({
-                    ...s,
-                    sources: {
-                      // keep files/char count
-                      files: s.sources.files || [],
-                      totalChars: s.sources.totalChars || 0,
-                      // clear temp inputs
-                      _tmpAgentName: "",
-                      _tmpEntities: [],
-                      _tmpApi: "",
-                      _tmpUrl: "",
-                      // append agent
-                      agents: [newAgent, ...(s.sources.agents || [])],
-                    },
-                  }));
-
-                  message.success("Agent created.");
+                  await createAgent(agentData);
                 }}
               >
                 Create Agent

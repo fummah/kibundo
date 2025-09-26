@@ -85,7 +85,7 @@ export default function AddStudentDrawer({ open, onClose, postUrl }) {
       width={window.innerWidth < 768 ? "100%" : 480}
       onClose={onClose}
       open={open}
-      bodyStyle={{ paddingBottom: 80 }}
+      styles={{ body: {{ paddingBottom: 80 }}
     >
       {fetchingOptions ? (
         <div className="flex justify-center py-8">

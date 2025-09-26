@@ -1,9 +1,10 @@
 // src/pages/billing/BillingHome.jsx
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Card, Row, Col, Typography, Statistic, Space, Button, List, Tag, Tooltip,
   message, Skeleton, Empty, DatePicker, Select, Input, Segmented, Badge,
-  Descriptions, Drawer
+  Descriptions, Drawer, Result
 } from "antd";
 import {
   TeamOutlined, UsergroupAddOutlined, FileAddOutlined, SendOutlined,
@@ -115,80 +116,42 @@ export default function BillingHome() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all"); // all | paid | unpaid
 
-  // data
-  const [loading, setLoading] = useState(false);
-  const [students, setStudents] = useState([]);
-  const [parents, setParents] = useState([]);
-  const [invoices, setInvoices] = useState([]);
-  const [hasInvoices, setHasInvoices] = useState(false);
-
   // drawer (recent invoices -> view)
   const [viewOpen, setViewOpen] = useState(false);
   const [viewRec, setViewRec] = useState(null);
 
-  const load = async (signal) => {
-    setLoading(true);
-    /* ---- students/parents ---- */
-    try {
-      const [stRes, pRes] = await Promise.allSettled([
-        api.get("/allstudents", { signal }),
-        api.get("/parents", { signal }),
+  const { 
+    data: pageData,
+    isLoading: loading,
+    isError,
+    error,
+    refetch 
+  } = useQuery({
+    queryKey: ['billingOverviewData', dateRange],
+    queryFn: async () => {
+      const [stRes, pRes, invRes] = await Promise.all([
+        api.get("/allstudents"),
+        api.get("/parents"),
+        api.get(dateRange?.length === 2 
+          ? `/invoices?from=${dateRange[0].startOf("day").toISOString()}&to=${dateRange[1].endOf("day").toISOString()}` 
+          : "/invoices?range=180d"
+        ),
       ]);
 
-      const stData = stRes.status === "fulfilled" ? (stRes.value?.data || []) : [];
-      const pData = pRes.status === "fulfilled" ? (pRes.value?.data || []) : [];
+      const students = stRes?.data?.length ? stRes.data : DUMMY_STUDENTS;
+      const parents = pRes?.data?.length ? pRes.data : DUMMY_PARENTS;
+      const invoices = invRes?.data?.length ? invRes.data : DUMMY_INVOICES;
+      const hasInvoices = !!invRes?.data?.length;
 
-      setStudents(stData.length ? stData : DUMMY_STUDENTS);
-      setParents(pData.length ? pData : DUMMY_PARENTS);
-    } catch {
-      setStudents(DUMMY_STUDENTS);
-      setParents(DUMMY_PARENTS);
-    }
+      return { students, parents, invoices, hasInvoices };
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
 
-    /* ---- invoices ---- */
-    try {
-      const q =
-        dateRange?.length === 2
-          ? `/invoices?from=${dateRange[0].startOf("day").toISOString()}&to=${dateRange[1]
-              .endOf("day")
-              .toISOString()}`
-          : "/invoices?range=180d";
-
-      const inv = await api.get(q, { signal });
-      const data = inv?.data || [];
-      if (Array.isArray(data) && data.length) {
-        setInvoices(data);
-        setHasInvoices(true);
-      } else {
-        setInvoices(DUMMY_INVOICES);
-        setHasInvoices(false);
-      }
-    } catch {
-      try {
-        const inv2 = await api.get("/invoices", { signal });
-        const data2 = inv2?.data || [];
-        if (Array.isArray(data2) && data2.length) {
-          setInvoices(data2);
-          setHasInvoices(true);
-        } else {
-          setInvoices(DUMMY_INVOICES);
-          setHasInvoices(false);
-        }
-      } catch {
-        setInvoices(DUMMY_INVOICES);
-        setHasInvoices(false);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const ctrl = new AbortController();
-    load(ctrl.signal);
-    return () => ctrl.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange]);
+  const students = pageData?.students || [];
+  const parents = pageData?.parents || [];
+  const invoices = pageData?.invoices || [];
+  const hasInvoices = pageData?.hasInvoices || false;
 
   /* ---------- normalize invoices ---------- */
   const normInvoices = useMemo(
@@ -233,7 +196,7 @@ export default function BillingHome() {
     .reduce((a, b) => a + (b.total_cents || 0), 0);
 
   const totalUnpaidCents = filteredInvoices
-    .filter((i) => UNPAID.has(i.status) && !i.is_credit_note)
+    .filter((i) => UNPAID.has(i.status))
     .reduce((a, b) => a + (b.total_cents || 0), 0);
 
   const totalCreditsCents = filteredInvoices
@@ -277,16 +240,16 @@ export default function BillingHome() {
     { label: "Add Student", icon: <TeamOutlined />,         onClick: () => navigate("/admin/students/new"), color: "green" },
     { label: "Add Teacher", icon: <TeamOutlined />,         onClick: () => navigate("/admin/teachers/new"), color: "purple" },
 
-    { label: "Create Invoices", icon: <FileAddOutlined />, onClick: () => navigate("/admin/billing/invoices/new"), color: "geekblue" },
-    { label: "Batch Entry",     icon: <FileSyncOutlined />, onClick: () => navigate("/billing/transactions/batch"), color: "purple" },
-    { label: "Enter Payments",  icon: <DollarCircleOutlined />, onClick: () => navigate("/billing/payments/new"), color: "green" },
-    { label: "Enter Credits",   icon: <CreditCardOutlined />,   onClick: () => navigate("/billing/credits/new"), color: "gold" },
-    { label: "Send Statements", icon: <SendOutlined />,    onClick: () => navigate("/billing/statements"), color: "cyan" },
-    { label: "Family Balances", icon: <UsergroupAddOutlined />, onClick: () => navigate("/billing/families/balances"), color: "volcano" },
-    { label: "Billing Services", icon: <SettingOutlined />, onClick: () => navigate("/billing/services"), color: "blue" },
+    { label: "Create Invoices", icon: <FileAddOutlined />, onClick: () => navigate("/admin/billing/invoices?action=new"), color: "geekblue" },
+    { label: "Batch Entry",     icon: <FileSyncOutlined />, onClick: () => navigate("#"), color: "purple" },
+    { label: "Enter Payments",  icon: <DollarCircleOutlined />, onClick: () => navigate("#"), color: "green" },
+    { label: "Enter Credits",   icon: <CreditCardOutlined />,   onClick: () => navigate("#"), color: "gold" },
+    { label: "Send Statements", icon: <SendOutlined />,    onClick: () => navigate("#"), color: "cyan" },
+    { label: "Family Balances", icon: <UsergroupAddOutlined />, onClick: () => navigate("#"), color: "volcano" },
+    { label: "Billing Services", icon: <SettingOutlined />, onClick: () => navigate("#"), color: "blue" },
   ];
 
-  const refresh = () => load();
+  const refresh = () => refetch();
 
   const exportCSV = () => {
     const rows = [
@@ -406,6 +369,17 @@ export default function BillingHome() {
   }, [openView, cur]);
 
   /* ---------- UI ---------- */
+  if (isError) {
+    return (
+      <Result
+        status="error"
+        title="Failed to Load Billing Overview"
+        subTitle={error.message}
+        extra={<Button type="primary" onClick={refresh}>Try Again</Button>}
+      />
+    );
+  }
+
   return (
     <div className="p-4 md:p-6 max-w-[1600px] mx-auto">
       <Card

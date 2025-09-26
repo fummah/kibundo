@@ -122,7 +122,7 @@ export default function AiReadingTextFlow() {
       </div>
 
       {/* Difficulty + regenerate */}
-      <Card className="rounded-2xl mb-3" bodyStyle={{ padding: 14 }}>
+      <Card className="rounded-2xl mb-3" styles={{ body: {{ padding: 14 }}>
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-3">
             <Text type="secondary">Difficulty</Text>

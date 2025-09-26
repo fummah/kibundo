@@ -1,6 +1,6 @@
 // src/pages/billing/Product.jsx
 import { useEffect, useMemo, useState, useCallback } from "react";
-import {
+import { 
   Modal,
   Form,
   Input,
@@ -20,6 +20,7 @@ import {
   Drawer,
   Descriptions,
   Segmented,
+ 
 } from "antd";
 import {
   PlusOutlined,
@@ -97,7 +98,7 @@ function toFormValues(apiProduct) {
         : String(apiProduct.status || "").toLowerCase() === "active",
     currency: apiProduct.currency || "EUR",
     price,
-    freeTrialDays: apiProduct.freeTrialDays ?? 0,
+    trial_period_days: apiProduct.trial_period_days ?? 0,
     trialOncePerUser:
       apiProduct.trialOncePerUser != null
         ? !!apiProduct.trialOncePerUser
@@ -115,8 +116,8 @@ function toApiPayload(form, id) {
     currency: form.currency || "EUR",
     priceCents:
       form.price != null ? Math.round(Number(form.price) * 100) : undefined,
-    freeTrialDays:
-      form.freeTrialDays != null ? Number(form.freeTrialDays) : 0,
+    trial_period_days:
+      form.trial_period_days != null ? Number(form.trial_period_days) : 0,
     trialOncePerUser:
       form.trialOncePerUser != null ? !!form.trialOncePerUser : true,
   };
@@ -259,7 +260,7 @@ export default function Product() {
       active: true,
       currency: "EUR",
       price: undefined,
-      freeTrialDays: 0,
+      trial_period_days: 0,
       trialOncePerUser: true,
     });
   };
@@ -299,6 +300,7 @@ const onSave = async () => {
       name: values.name?.trim(),
       description: values.description || "",
       price: values.price != null ? Number(values.price) : undefined,
+      trial_period_days: values.trial_period_days != null ? Number(values.trial_period_days) : 0,
     };
 
     await api.post("/addproduct", createPayload);
@@ -441,12 +443,12 @@ const onSave = async () => {
       },
     };
     const trialCol = {
-      title: "Free Trial",
+      title: "Trial Period",
       key: "trial",
       width: 160,
       render: (_, record) => {
         const f = toFormValues(record);
-        const days = Number(f.freeTrialDays || 0);
+        const days = Number(f.trial_period_days || 0);
         return days > 0 ? (
           <Space size="small">
             <span className="inline-flex items-center">
@@ -533,7 +535,7 @@ const onSave = async () => {
           icon={<DownloadOutlined />}
           onClick={() => {
             const rows = [
-              ["ID", "Name", "Description", "Active", "Currency", "Price", "Free Trial Days", "Trial Once/Usr"],
+              ["ID", "Name", "Description", "Active", "Currency", "Price", "Trial Period Days", "Trial Once/Usr"],
               ...filteredProducts.map((p) => {
                 const f = toFormValues(p);
                 return [
@@ -543,7 +545,7 @@ const onSave = async () => {
                   String(!!f.active),
                   f.currency || "EUR",
                   f.price != null ? f.price : "",
-                  f.freeTrialDays ?? 0,
+                  f.trial_period_days ?? 0,
                   String(!!f.trialOncePerUser),
                 ];
               }),
@@ -602,7 +604,7 @@ const onSave = async () => {
         destroyOnClose
         width={isMdUp ? 720 : "100%"}
         style={isMdUp ? {} : { top: 8, padding: 0 }}
-        bodyStyle={isMdUp ? {} : { paddingInline: 12 }}
+        styles={{ body: { paddingInline: 12 } }}
       >
         {loadingForm ? (
           <Skeleton active paragraph={{ rows: 6 }} />
@@ -614,7 +616,7 @@ const onSave = async () => {
               active: true,
               currency: "EUR",
               price: undefined,
-              freeTrialDays: 0,
+              trial_period_days: 0,
               trialOncePerUser: true,
             }}
           >
@@ -655,7 +657,7 @@ const onSave = async () => {
               </Col>
 
               <Col xs={24} md={12}>
-                <Form.Item label="Free Trial (days)" name="freeTrialDays" tooltip="Length of the free trial period">
+                <Form.Item label="Trial Period Days" name="trial_period_days" tooltip="Length of the trial period in days">
                   <InputNumber min={0} max={60} style={{ width: "100%" }} placeholder="e.g., 14" />
                 </Form.Item>
               </Col>
@@ -713,11 +715,11 @@ const onSave = async () => {
                 <Descriptions.Item label="Price">
                   {f.price != null ? <MoneyText amount={f.price} currency={f.currency} /> : "—"}
                 </Descriptions.Item>
-                <Descriptions.Item label="Free Trial">
-                  {Number(f.freeTrialDays || 0) > 0 ? (
+                <Descriptions.Item label="Trial Period">
+                  {Number(f.trial_period_days || 0) > 0 ? (
                     <Space>
-                      <Text strong>{f.freeTrialDays}</Text>
-                      <Text type="secondary">day{f.freeTrialDays !== 1 ? "s" : ""}</Text>
+                      <Text strong>{f.trial_period_days}</Text>
+                      <Text type="secondary">day{f.trial_period_days !== 1 ? "s" : ""}</Text>
                       {f.trialOncePerUser ? <Text type="secondary">(1x per user)</Text> : null}
                     </Space>
                   ) : "—"}

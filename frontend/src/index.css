@@ -78,3 +78,8 @@ body {
 /* Clean hero look for the intro step */
 .add-student-intro .ant-modal-header { display: none; }
 .add-student-intro .ant-modal-body   { padding: 0; } /* edge-to-edge GradientShell */
+
+/* Ensure AntD messages appear above all other UI */
+.ant-message {
+  z-index: 9999 !important;
+}

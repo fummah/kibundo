@@ -1,4 +1,8 @@
 {
+  "actions": {
+    "exportCsv": "CSV exportieren",
+    "reset": "Zurücksetzen"
+  },
   "rolesList": {
     "accessControl": {
       "title": "Zugriffskontrolle",
@@ -29,7 +33,11 @@
         "maxLength": "Unter 50 Zeichen halten"
       },
       "edit": "Rolle bearbeiten",
-      "create": "Rolle erstellen"
+      "create": "Rolle erstellen",
+      "permissions": {
+        "required": "Wählen Sie mindestens eine Berechtigung aus",
+        "adminOnly": "Nur Administratoren können 'agent:*' (Kibundo) Berechtigungen bearbeiten"
+      }
     },
     "user": {
       "edit": "Benutzer bearbeiten",
@@ -116,11 +124,55 @@
       "reset": "Zurücksetzen"
     }
   },
-  "actions": {
-    "reset": "Zurücksetzen",
-    "exportCsv": "CSV exportieren",
-    "view": "Ansehen",
-    "edit": "Bearbeiten",
-    "delete": "Löschen"
+  "parent": {
+    "home": {
+      "title": "Startseite",
+      "activities": "Aktivitäten",
+      "myFamily": "Meine Familie",
+      "newsInsights": "Neuigkeiten & Einblicke"
+    },
+    "nav": {
+      "home": "Startseite",
+      "addChild": "Kind hinzufügen",
+      "news": "Neuigkeiten",
+      "chat": "Chat",
+      "feedback": "Feedback",
+      "settings": "Einstellungen"
+    },
+    "addChild": {
+      "intro": {
+        "kicker": "Los geht's",
+        "headline": "Lege jetzt einen Account für Dein Kind an",
+        "copy": "Damit dein Kind die App selbstständig und sicher nutzen kann, legst du jetzt den Kinderaccount an.",
+        "cta": "Kind hinzufügen",
+        "gdpr": "DSGV Konform. Die Daten liegen sicher verschlüsselt auf einem Server in Deutschland und werden niemals ohne ihre ausdrückliche Zustimmung an Dritte weitergegeben."
+      }
+    },
+    "student": {
+      "title": "Schülerdetails",
+      "recentScans": "Kürzliche Scans",
+      "focusTopics": "Fokus-Themen",
+      "focusTopicsChooseTwo": "Wählen Sie zwei Fokus-Bereiche:",
+      "defaultName": "Schüler",
+      "defaultAge": "Alter nicht angegeben",
+      "plan": {
+        "active": "Aktiv",
+        "premiumMonthly": "Premium Monatlich",
+        "current": "Aktueller Plan",
+        "changeToYearly": "Zu jährlich wechseln"
+      },
+      "status": {
+        "active": "Aktiv"
+      },
+      "activity": {
+        "title": "Aktivitätsübersicht",
+        "lessonsCompleted": "Abgeschlossene Lektionen",
+        "timeSpent": "Verbrachte Zeit"
+      },
+      "activities": "Aktivitäten",
+      "progress": {
+        "title": "Fortschrittsübersicht"
+      }
+    }
   }
 }

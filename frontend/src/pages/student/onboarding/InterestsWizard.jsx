@@ -213,7 +213,7 @@ export default function InterestsWizard() {
                         ? "border-blue-500 ring-2 ring-blue-300"
                         : "border-transparent"
                     }`}
-                    bodyStyle={{ padding: 18 }}
+                    styles={{ body: {{ padding: 18 }}
                     hoverable
                   >
                     <div className="h-14 rounded-xl" style={{ background: bg }} />
@@ -295,7 +295,7 @@ export default function InterestsWizard() {
                       ? "border-blue-500 ring-2 ring-blue-300"
                       : "border-transparent"
                   } bg-neutral-50`}
-                  bodyStyle={{ padding: 18 }}
+                  styles={{ body: {{ padding: 18 }}
                   hoverable
                 >
                   <div className="text-lg font-semibold text-left">{c}</div>

@@ -1,5 +1,6 @@
 // src/pages/admin/billing/Subscriptions.jsx
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Segmented,
   Button,
@@ -18,7 +19,6 @@ import {
   MoreOutlined,
   DeleteOutlined,
   EyeOutlined,
-  EditOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import api from "@/api/axios";
@@ -31,20 +31,23 @@ import useResponsiveDrawerWidth from "@/hooks/useResponsiveDrawerWidth";
 
 const { Text } = Typography;
 
-const BASE = "";
+/* ======================= API ROUTES (FIXED) ======================= */
+/** Use consistent RESTful endpoints:
+ *  - GET    /subscriptions
+ *  - GET    /subscriptions/:id
+ *  - POST   /subscriptions
+ *  - DELETE /subscriptions/:id
+ *  Adjust if your backend differs, but keep plural + resource id.
+ */
 const API_ROUTES = {
-  SUBSCRIPTIONS: `${BASE}/subscriptions`,
-  SUBSCRIPTION_ID: (id) => `${BASE}/subscriptions/${id}`,
-  PARENTS: `${BASE}/parents`,
-  PRODUCTS: `${BASE}/products`,
+  SUBSCRIPTIONS: "#",
+  SUBSCRIPTION_ID: (id) => `#`,
+  ADD_SUBSCRIPTION: "#",
+  PARENTS: "#",
+  PRODUCTS: "#",
 };
 
 /* ----------------------------- helpers ----------------------------- */
-const isCanceled = (err) =>
-  err?.code === "ERR_CANCELED" ||
-  err?.name === "CanceledError" ||
-  (typeof api.isCancel === "function" && api.isCancel(err));
-
 const read = (obj, path) => {
   if (!obj) return undefined;
   if (Array.isArray(path))
@@ -63,6 +66,7 @@ const toArray = (payload) => {
     payload.items ||
     payload.results ||
     payload.list ||
+    payload.subscriptions ||
     []
   );
 };
@@ -103,76 +107,90 @@ export default function Subscriptions() {
   const navigate = useNavigate();
   const drawerWidth = useResponsiveDrawerWidth();
   const [messageApi, contextHolder] = message.useMessage();
+  const queryClient = useQueryClient();
 
-  const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
-
-  const [subs, setSubs] = useState([]);
-  const [parents, setParents] = useState([]);
-  const [products, setProducts] = useState([]);
-
-  // Create Drawer
   const [createOpen, setCreateOpen] = useState(false);
   const [form] = Form.useForm();
-
-  // selection
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
-
-  // View Drawer
   const [viewOpen, setViewOpen] = useState(false);
-  const [viewLoading, setViewLoading] = useState(false);
-  const [viewRec, setViewRec] = useState(null);
-
-  // Delete confirm (reusable)
+  const [viewId, setViewId] = useState(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteRec, setDeleteRec] = useState(null);
-  const [deleting, setDeleting] = useState(false);
 
-  const loadAll = async (signal) => {
-    try {
-      setLoading(true);
-      const [sRes, pRes, prRes] = await Promise.all([
-        api.get(API_ROUTES.SUBSCRIPTIONS, { signal }),
-        api.get(API_ROUTES.PARENTS, { signal }),
-        api.get(API_ROUTES.PRODUCTS, { signal }),
-      ]);
-      setSubs(toArray(sRes?.data));
-      setParents(toArray(pRes?.data));
-      setProducts(toArray(prRes?.data));
-      setSelectedRowKeys([]);
-    } catch (err) {
-      if (isCanceled(err)) return;
-      console.error("Load error:", err);
-      messageApi.error("Failed to load subscriptions data.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Data queries
+  const {
+    data: subsData,
+    isLoading: subsLoading,
+    refetch: refetchSubs,
+  } = useQuery({
+    queryKey: ["subscriptions"],
+    queryFn: async () => {
+      const res = await api.get(API_ROUTES.SUBSCRIPTIONS);
+      return toArray(res.data);
+    },
+    onError: (err) => {
+      messageApi.error(
+        err?.response?.data?.message || "Failed to load subscriptions."
+      );
+    },
+  });
 
-  useEffect(() => {
-    const ctrl = new AbortController();
-    loadAll(ctrl.signal);
-    return () => ctrl.abort();
-  }, []);
+  const { data: parentsData } = useQuery({
+    queryKey: ["parents"],
+    queryFn: async () => {
+      const res = await api.get(API_ROUTES.PARENTS);
+      return toArray(res.data);
+    },
+  });
 
-  /* Build maps */
-  const parentMap = useMemo(() => {
-    const m = new Map();
-    (parents || []).forEach((p) => m.set(p.id ?? p.parent_id, { raw: p }));
-    return m;
-  }, [parents]);
+  const { data: productsData } = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const res = await api.get(API_ROUTES.PRODUCTS);
+      return toArray(res.data);
+    },
+  });
 
-  const productMap = useMemo(() => {
-    const m = new Map();
-    (products || []).forEach((p) =>
-      m.set(p.id ?? p.product_id ?? p.stripe_product_id, p)
-    );
-    return m;
-  }, [products]);
+  const {
+    data: viewRec,
+    isLoading: viewLoading,
+  } = useQuery({
+    queryKey: ["subscription", viewId],
+    queryFn: async () => {
+      const res = await api.get(API_ROUTES.SUBSCRIPTION_ID(viewId));
+      return res.data;
+    },
+    enabled: !!viewId,
+    onError: (err) => {
+      messageApi.error(
+        err?.response?.data?.message || "Failed to load subscription."
+      );
+    },
+  });
 
-  /* Enriched rows */
+  // Derived data
+  const parentMap = useMemo(
+    () =>
+      new Map(
+        (parentsData || []).map((p) => [p.id ?? p.parent_id, { raw: p }])
+      ),
+    [parentsData]
+  );
+
+  const productMap = useMemo(
+    () =>
+      new Map(
+        (productsData || []).map((p) => [
+          p.id ?? p.product_id ?? p.stripe_product_id,
+          p,
+        ])
+      ),
+    [productsData]
+  );
+
   const rows = useMemo(() => {
-    return (subs || []).map((s) => {
+    return (subsData || []).map((s) => {
       const parent =
         s.parent ||
         parentMap.get(s.parent_id) ||
@@ -191,9 +209,7 @@ export default function Subscriptions() {
         read(s, "plan.priceCents");
 
       const currency =
-        read(s, "price.currency") ||
-        read(s, "product.currency") ||
-        "EUR";
+        read(s, "price.currency") || read(s, "product.currency") || "EUR";
 
       return {
         ...s,
@@ -204,61 +220,52 @@ export default function Subscriptions() {
         _currency: currency,
       };
     });
-  }, [subs, parentMap, productMap]);
+  }, [subsData, parentMap, productMap]);
 
   const filtered = useMemo(() => {
     if (statusFilter === "all") return rows;
     return rows.filter((r) => normalizeStatus(r.status) === statusFilter);
   }, [rows, statusFilter]);
 
-  /* ------------------------------ view logic ----------------------------- */
-  const openView = useCallback(
-    async (idOrRecord) => {
-      const id = typeof idOrRecord === "object" ? idOrRecord.id : idOrRecord;
-      setViewOpen(true);
-      setViewLoading(true);
-      try {
-        const { data } = await api.get(API_ROUTES.SUBSCRIPTION_ID(id));
-        setViewRec(data || null);
-      } catch (err) {
-        if (isCanceled(err)) return;
-        const fallback = (rows || []).find((r) => String(r.id) === String(id));
-        setViewRec(fallback || null);
-        if (!fallback) messageApi.error("Failed to load subscription.");
-      } finally {
-        setViewLoading(false);
-      }
+  // Mutations
+  const createMut = useMutation({
+    mutationFn: (payload) => api.post(API_ROUTES.ADD_SUBSCRIPTION, payload),
+    onSuccess: () => {
+      messageApi.success("Subscription created.");
+      queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
+      setCreateOpen(false);
     },
-    [rows]
-  );
+    onError: (err) =>
+      messageApi.error(err?.response?.data?.message || "Create failed."),
+  });
 
-  const closeView = () => {
-    setViewOpen(false);
-    setViewRec(null);
-  };
-
-  /* ------------------------------- actions ------------------------------- */
-  const handleDelete = async () => {
-    if (!deleteRec?.id) return;
-    try {
-      setDeleting(true);
-      await api.delete(API_ROUTES.SUBSCRIPTION_ID(deleteRec.id));
+  const deleteMut = useMutation({
+    mutationFn: (id) => api.delete(API_ROUTES.SUBSCRIPTION_ID(id)),
+    onSuccess: () => {
       messageApi.success("Subscription deleted.");
-      setSubs((prev) => prev.filter((s) => s.id !== deleteRec.id));
-      if (viewOpen && viewRec?.id === deleteRec.id) closeView();
-      setSelectedRowKeys((ks) => ks.filter((k) => k !== deleteRec.id));
+      queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
       setDeleteOpen(false);
-      setDeleteRec(null);
-    } catch (err) {
-      if (isCanceled(err)) return;
-      console.error(err);
-      messageApi.error("Delete failed.");
-    } finally {
-      setDeleting(false);
-    }
-  };
+      if (viewId === deleteRec?.id) setViewOpen(false);
+    },
+    onError: (err) =>
+      messageApi.error(err?.response?.data?.message || "Delete failed."),
+  });
 
-  const handleCreate = async () => {
+  // Handlers (memoized to avoid re-renders in deps)
+  const openView = useCallback((id) => {
+    setViewId(id);
+    setViewOpen(true);
+  }, []);
+  const closeView = useCallback(() => {
+    setViewId(null);
+    setViewOpen(false);
+  }, []);
+  const confirmDelete = useCallback((rec) => {
+    setDeleteRec(rec);
+    setDeleteOpen(true);
+  }, []);
+
+  const handleCreate = useCallback(async () => {
     try {
       const values = await form.validateFields();
       const payload = {
@@ -269,17 +276,17 @@ export default function Subscriptions() {
           ? values.current_period_end.startOf("day").toISOString()
           : null,
       };
-      await api.post(API_ROUTES.SUBSCRIPTIONS, payload);
-      messageApi.success("Subscription created.");
-      setCreateOpen(false);
-      const res = await api.get(API_ROUTES.SUBSCRIPTIONS);
-      setSubs(toArray(res?.data));
-    } catch (err) {
-      if (err?.errorFields || isCanceled(err)) return;
-      console.error(err);
-      messageApi.error("Create failed.");
+      createMut.mutate(payload);
+    } catch {
+      /* Antd form validation errors fall through here – no toast needed */
     }
-  };
+  }, [form, createMut]);
+
+  const handleDelete = useCallback(() => {
+    if (deleteRec?.id) {
+      deleteMut.mutate(deleteRec.id);
+    }
+  }, [deleteRec, deleteMut]);
 
   /* ------------------------------- columns ------------------------------ */
   const COLUMNS_MAP = useMemo(() => {
@@ -291,7 +298,11 @@ export default function Subscriptions() {
       sorter: (a, b) => (a.id || 0) - (b.id || 0),
       render: (val, record) =>
         val ? (
-          <Button type="link" className="!px-0" onClick={() => openView(record.id)}>
+          <Button
+            type="link"
+            className="!px-0"
+            onClick={() => openView(record.id)}
+          >
             <Text strong>{val}</Text>
           </Button>
         ) : (
@@ -332,7 +343,8 @@ export default function Subscriptions() {
           label
         );
       },
-      sorter: (a, b) => (a._parentName || "").localeCompare(b._parentName || ""),
+      sorter: (a, b) =>
+        (a._parentName || "").localeCompare(b._parentName || ""),
     };
 
     const stripeId = {
@@ -358,7 +370,11 @@ export default function Subscriptions() {
       title: "Amount",
       key: "amount",
       render: (_, r) =>
-        r._amount != null ? <MoneyText amount={r._amount} currency={r._currency} /> : "—",
+        r._amount != null ? (
+          <MoneyText amount={r._amount} currency={r._currency} />
+        ) : (
+          "—"
+        ),
       width: 140,
     };
 
@@ -397,10 +413,7 @@ export default function Subscriptions() {
         ],
         onClick: ({ key }) => {
           if (key === "view") openView(r.id);
-          if (key === "delete") {
-            setDeleteRec(r);
-            setDeleteOpen(true);
-          }
+          if (key === "delete") confirmDelete(r);
         },
       }}
       trigger={["click"]}
@@ -425,17 +438,22 @@ export default function Subscriptions() {
       <BillingEntityList
         title="Subscriptions"
         data={filtered}
-        loading={loading}
+        loading={subsLoading}
         columnsMap={COLUMNS_MAP}
         storageKey="subscriptions.visibleCols.v2"
         defaultVisible={["id", "plan", "parent", "interval", "amount", "status", "renews"]}
         actionsRender={actionsRender}
-        onRefresh={() => loadAll()}
+        onRefresh={refetchSubs}
         toolbarLeft={toolbarLeft}
         selection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
         pageSize={12}
         scrollX={1150}
         onRowClick={(r) => openView(r.id)}
+        /* If your list supports a right-side toolbar, you can expose a Create button:
+        toolbarRight={
+          <Button type="primary" onClick={() => setCreateOpen(true)}>New</Button>
+        }
+        */
       />
 
       {/* Create Drawer */}
@@ -448,7 +466,7 @@ export default function Subscriptions() {
         extra={
           <Space>
             <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button type="primary" onClick={handleCreate}>
+            <Button type="primary" onClick={handleCreate} loading={createMut.isPending}>
               Create
             </Button>
           </Space>
@@ -464,7 +482,7 @@ export default function Subscriptions() {
               placeholder="Select plan/product"
               showSearch
               optionFilterProp="label"
-              options={(products || []).map((p) => ({
+              options={(productsData || []).map((p) => ({
                 label: `${p.id ?? p.stripe_product_id} — ${p.name ?? p.nickname ?? "Unnamed"}`,
                 value: String(p.id ?? p.stripe_product_id),
               }))}
@@ -480,7 +498,7 @@ export default function Subscriptions() {
               placeholder="Select parent"
               showSearch
               optionFilterProp="label"
-              options={(parents || []).map((p) => {
+              options={(parentsData || []).map((p) => {
                 const label = parentFullName({ raw: p }) || `#${p.id}`;
                 return { label, value: p.id };
               })}
@@ -580,7 +598,11 @@ export default function Subscriptions() {
                     "—"}
                 </Descriptions.Item>
                 <Descriptions.Item label="Amount">
-                  {amount != null ? <MoneyText amount={amount} currency={currency} /> : "—"}
+                  {amount != null ? (
+                    <MoneyText amount={amount} currency={currency} />
+                  ) : (
+                    "—"
+                  )}
                 </Descriptions.Item>
                 <Descriptions.Item label="Current period start">
                   {p.current_period_start
@@ -596,9 +618,7 @@ export default function Subscriptions() {
                   {p.stripe_subscription_id || "—"}
                 </Descriptions.Item>
                 <Descriptions.Item label="Created at">
-                  {p.created_at
-                    ? new Date(p.created_at).toLocaleString()
-                    : "—"}
+                  {p.created_at ? new Date(p.created_at).toLocaleString() : "—"}
                 </Descriptions.Item>
               </Descriptions>
             );
@@ -619,7 +639,7 @@ export default function Subscriptions() {
             undone.
           </>
         }
-        loading={deleting}
+        loading={deleteMut.isPending}
         confirmText="Delete"
         cancelText="Cancel"
         onConfirm={handleDelete}

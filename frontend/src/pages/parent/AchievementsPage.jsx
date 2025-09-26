@@ -114,7 +114,7 @@ export default function AchievementsPage() {
                         <Card
                           hoverable
                           className="rounded-2xl shadow-sm transition hover:shadow-lg hover:-translate-y-0.5"
-                          bodyStyle={{ padding: 16 }}
+                          styles={{ body: { padding: 16 } }}
                           cover={
                             <div className="h-28 grid place-items-center">
                               <AntBadge.Ribbon text={t("parent.achievements.badge")} color="volcano">

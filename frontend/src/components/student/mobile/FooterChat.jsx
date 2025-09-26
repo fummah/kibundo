@@ -95,12 +95,12 @@ export default function FooterChat({
         placement="bottom"
         height="75%"
         closable={false}
-        bodyStyle={{
+        styles={{ body: {
           borderTopLeftRadius: "1rem",
           borderTopRightRadius: "1rem",
           overflow: "hidden",
           padding: 0,
-        }}
+        } }}
       >
         <ChatLayer onClose={() => setOpen(false)} />
       </Drawer>

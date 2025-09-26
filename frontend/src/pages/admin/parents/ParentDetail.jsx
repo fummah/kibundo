@@ -148,7 +148,12 @@ export default function ParentDetail() {
       audit: { enabled: true, label: "Audit Log" },
       tasks: { enabled: true, label: "Tasks" },
       documents: { enabled: true, label: "Documents" },
-      communication: { enabled: true, label: "Comments" },
+      communication: {
+        enabled: true,
+        label: "Comments",
+        listPath: (id) => `/parent/${id}/comments`,
+        createPath: (id) => `/parent/${id}/comments`,
+      },
     },
   };
 

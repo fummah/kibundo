@@ -192,6 +192,13 @@ export default function Contracts() {
 
   /* ---------------- columns map for BillingEntityList ---------------- */
   const COLUMNS_MAP = useMemo(() => {
+    const id = {
+      title: "ID",
+      dataIndex: "id",
+      key: "id",
+      width: 80,
+      sorter: (a, b) => a.id - b.id,
+    };
     const name = {
       title: "Contract Name",
       dataIndex: "contractName",
@@ -249,7 +256,7 @@ export default function Contracts() {
       width: 140,
     };
 
-    return { name, party, category, status, start, end, received };
+    return { id, name, party, category, status, start, end, received };
   }, [openView]);
 
   /* ---------------- dotted actions ---------------- */
@@ -336,7 +343,7 @@ export default function Contracts() {
         loading={false}
         columnsMap={COLUMNS_MAP}
         storageKey="contracts.visibleCols.v1"
-        defaultVisible={["name", "party", "category", "status", "start", "end", "received"]}
+        defaultVisible={["id", "name", "party", "category", "status", "start", "end", "received"]}
         actionsRender={actionsRender}
         onRefresh={onRefresh}
         toolbarLeft={toolbarLeft}

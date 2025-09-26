@@ -8,7 +8,7 @@ export default function CardTile({ img, title, onClick, className = "" }) {
       <Card
         hoverable
         className="rounded-2xl border-0 !p-0 overflow-hidden shadow-sm"
-        bodyStyle={{ padding: 0 }}
+        styles={{ body: {{ padding: 0 }}
       >
         <img
           src={img}

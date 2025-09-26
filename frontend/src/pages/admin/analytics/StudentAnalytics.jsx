@@ -468,7 +468,7 @@ export default function StudentAnalytics() {
       </div>
 
       {/* Sparkline */}
-      <Card className="rounded-2xl border-0 shadow-sm mb-3" bodyStyle={{ padding: 14 }}>
+      <Card className="rounded-2xl border-0 shadow-sm mb-3" styles={{ body: {{ padding: 14 }}>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <Text type="secondary">Daily total (consistency)</Text>
           <Text className="text-xs text-neutral-500">{daily.length} days</Text>

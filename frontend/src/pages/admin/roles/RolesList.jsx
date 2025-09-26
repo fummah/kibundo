@@ -1,5 +1,5 @@
 // src/pages/admin/RolesLocal.jsx
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Card,
@@ -41,7 +41,7 @@ import api from "@/api/axios";
 const { Title, Text } = Typography;
 
 /* ======================= CONFIG ======================= */
-// Toggle user creation via API (keep true for DB mode)
+// Toggle user creation via API (keep true for DB mode) — reserved flag
 const USE_API_CREATE_USER = true;
 
 /* ----------------------------- constants ----------------------------- */
@@ -80,30 +80,27 @@ const isAdminUser = () => {
   return u?.role_id === 1 || name === "admin";
 };
 
-/* ----------------------------- role-aware endpoints for user create -------- */
-const ROLE_CREATE_ENDPOINTS = {
-  Admin: "/users",
-  Support: "/users",
-  Teacher: "/addteacher",
-  Student: "/addstudent",
-  Parent: "/addparent",
-};
-
+/* -------------------------------- utils ------------------------------- */
 const getRoleNameById = (roles, role_id) =>
   roles.find((r) => String(r.id) === String(role_id))?.name || "";
 
-/** Build payload per endpoint (extend with domain fields as your controllers require) */
-const buildCreatePayload = (endpoint, base) => {
-  return {
-    role_id: base.role_id,
-    first_name: base.first_name,
-    last_name: base.last_name,
-    email: base.email,
-    status: base.status,
-    contact_number: base.contact_number,
-    password: base.password,
-    isActive: base.isActive,
-  };
+// Normalize permissions: accept array, JSON string, or comma string
+const toPermArray = (raw) => {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (!s) return [];
+    if (s.startsWith("[") && s.endsWith("]")) {
+      try {
+        const arr = JSON.parse(s);
+        return Array.isArray(arr) ? arr : [];
+      } catch {
+        return [];
+      }
+    }
+    return s.split(",").map((p) => p.trim()).filter(Boolean);
+  }
+  return [];
 };
 
 /* -------------------------------- component ------------------------------- */
@@ -111,9 +108,13 @@ export default function RolesLocal() {
   const { t, i18n } = useTranslation();
   const [messageApi, contextHolder] = message.useMessage();
 
-  console.log('Translation hook initialized:', { t, i18n });
-  console.log('Current language:', i18n.language);
-  console.log('Translation test:', t('rolesList.accessControl.title', 'Fallback Title'));
+  // Log once per language change (avoid spam from re-renders)
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log("Translation hook ready:", { lang: i18n.language });
+    // eslint-disable-next-line no-console
+    console.log("i18n test:", t("rolesList.accessControl.title", "Access Control"));
+  }, [i18n.language, t]);
 
   /* ------------------------------- state ------------------------------ */
   const [roles, setRoles] = useState([]);
@@ -144,11 +145,14 @@ export default function RolesLocal() {
     [roles]
   );
 
-  const getRoleById = (id) => roles.find((r) => String(r.id) === String(id));
-  const getRolePermsById = (id) => {
-    const perms = getRoleById(id)?.permissions;
-    return Array.isArray(perms) ? perms : [];
-  };
+  const getRoleById = useCallback((id) => roles.find((r) => String(r.id) === String(id)), [roles]);
+  const getRolePermsById = useCallback(
+    (id) => {
+      const perms = getRoleById(id)?.permissions;
+      return Array.isArray(perms) ? perms : [];
+    },
+    [getRoleById]
+  );
 
   const permOptions = useMemo(
     () =>
@@ -178,13 +182,14 @@ export default function RolesLocal() {
       const normalized = (Array.isArray(data) ? data : []).map((r) => ({
         id: r.id,
         name: r.name || r.role_name || r.title || String(r.id),
-        permissions: r.permissions,
+        permissions: toPermArray(r.permissions),
       }));
       normalized.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
       setRoles(normalized);
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error("fetchRoles error:", err);
-      messageApi.error("Failed to load roles from the database.");
+      messageApi.error(t("rolesList.toasts.rolesFetchFail", "Failed to load roles from the database."));
     } finally {
       setRolesLoading(false);
     }
@@ -211,8 +216,9 @@ export default function RolesLocal() {
       normalized.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
       setUsers(normalized);
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error("fetchUsers error:", err);
-      messageApi.error("Failed to load users from the database.");
+      messageApi.error(t("rolesList.toasts.usersFetchFail", "Failed to load users from the database."));
     } finally {
       setUsersLoading(false);
     }
@@ -220,7 +226,6 @@ export default function RolesLocal() {
 
   const refreshAll = async () => {
     await Promise.all([fetchRoles(), fetchUsers()]);
-    messageApi.success("Reloaded from database.");
   };
 
   /* --------------------------------- init --------------------------------- */
@@ -234,7 +239,6 @@ export default function RolesLocal() {
     setEditingRole(null);
     roleForm.resetFields();
     roleForm.setFieldsValue({ name: "", permissions: ["users:read"] });
-  
     setOpenRole(true);
   };
 
@@ -264,55 +268,62 @@ export default function RolesLocal() {
 
   const submitRole = async () => {
     const vals = await roleForm.validateFields();
-    console.log(vals);
-    const payload = {
-      role_name: String(vals.name || "").trim(),
-      permissions: String(vals.permissions || "").trim(),
-    };
-    if (!payload.role_name) return messageApi.error("Role name is required.");
-    if (!isAdmin && payload.permissions.some((p) => p.startsWith("agent:"))) {
-      return messageApi.warning("Only Admin can edit Kibundo Agent permissions.");
+    const name = String(vals.name || "").trim();
+    const permissions = Array.isArray(vals.permissions) ? vals.permissions : [];
+
+    if (!name) return messageApi.error(t("rolesList.role.name.required", "Role name is required"));
+    if (!isAdmin && permissions.some((p) => p.startsWith("agent:"))) {
+      return messageApi.warning(t("rolesList.role.permissions.adminOnlyWarn", "Only Admin can edit Kibundo Agent permissions."));
     }
+
+    // Support both new and legacy backends (some expect name, some role_name; some expect array, some CSV)
+    const payload = {
+      name,
+      role_name: name,
+      permissions, // preferred: array/JSON
+      permissions_csv: permissions.join(","), // fallback for CSV-based APIs
+    };
 
     try {
       if (editingRole) {
-        await trySeveral(
-          ROLE_API.update(editingRole.id).map((url) => () => api.put(url, payload))
-        );
-        messageApi.success("Role updated.");
+        await trySeveral(ROLE_API.update(editingRole.id).map((url) => () => api.put(url, payload)));
+        messageApi.success(t("rolesList.toasts.roleUpdated", "Role updated."));
       } else {
         await trySeveral(ROLE_API.create.map((url) => () => api.post(url, payload)));
-        messageApi.success("Role created.");
+        messageApi.success(t("rolesList.toasts.roleCreated", "Role created."));
       }
       setOpenRole(false);
       setEditingRole(null);
       fetchRoles();
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error("role submit error:", err);
       if (err?.response?.status === 404) {
-        messageApi.error("Your API does not expose create/update role endpoints yet. Only listing is available.");
+        messageApi.error(t("rolesList.toasts.roleEndpointMissing", "Your API does not expose create/update role endpoints yet. Only listing is available."));
       } else {
-        messageApi.error("Failed to save role.");
+        messageApi.error(t("rolesList.toasts.roleSaveFailed", "Failed to save role."));
       }
     }
   };
 
   const deleteRole = (row) => {
     Modal.confirm({
-      title: `Delete role “${row.name}”?`,
-      okText: "Delete",
+      title: t("rolesList.role.deleteConfirm", "Delete role \"{{name}}\"?", { name: row.name }),
+      okText: t("common.delete", "Delete"),
       okType: "danger",
+      cancelText: t("common.cancel", "Cancel"),
       onOk: async () => {
         try {
           await trySeveral(ROLE_API.delete(row.id).map((url) => () => api.delete(url)));
-          messageApi.success("Role deleted.");
+          messageApi.success(t("rolesList.toasts.roleDeleted", "Role deleted."));
           fetchRoles();
         } catch (err) {
+          // eslint-disable-next-line no-console
           console.error("delete role error:", err);
           if (err?.response?.status === 404) {
-            messageApi.error("Your API does not expose delete role endpoint.");
+            messageApi.error(t("rolesList.toasts.roleDeleteMissing", "Your API does not expose delete role endpoint."));
           } else {
-            messageApi.error("Failed to delete role.");
+            messageApi.error(t("rolesList.toasts.roleDeleteFailed", "Failed to delete role."));
           }
         }
       },
@@ -342,50 +353,58 @@ export default function RolesLocal() {
     setOpenUser(true);
   };
 
-  const openEditUser = (row) => {
-    setEditingUser(row);
-    userForm.resetFields();
-    userForm.setFieldsValue({
-      first_name: row.first_name || "",
-      last_name: row.last_name || "",
-      email: row.email,
-      contact_number: row.contact_number || "",
-      role_id: row.role_id,
-      status: row.status || "Pending",
-      isActive: row.isActive ?? true,
-      inheritPerms: !!row.inheritPerms,
-      permissions: Array.isArray(row.permissions) ? row.permissions : getRolePermsById(row.role_id),
-      password: "",
-      confirm_password: "",
-      state: "",
-    });
-    setOpenUser(true);
-  };
+  const openEditUser = useCallback(
+    (row) => {
+      setEditingUser(row);
+      userForm.resetFields();
+      userForm.setFieldsValue({
+        first_name: row.first_name || "",
+        last_name: row.last_name || "",
+        email: row.email,
+        contact_number: row.contact_number || "",
+        role_id: row.role_id,
+        status: row.status || "Pending",
+        isActive: row.isActive ?? true,
+        inheritPerms: !!row.inheritPerms,
+        permissions: Array.isArray(row.permissions) ? row.permissions : getRolePermsById(row.role_id),
+        password: "",
+        confirm_password: "",
+        state: "",
+      });
+      setOpenUser(true);
+    },
+    [userForm, getRolePermsById]
+  );
 
-  const sendResetMail = (email, first = false) => {
-    const label = first ? "Initial password setup email sent" : "Password reset email sent";
-    messageApi.success(`${label} to ${email}`);
-  };
+  const sendResetMail = useCallback(
+    (email, first = false) => {
+      const label = first
+        ? t("rolesList.toasts.initialResetSent", "Initial password setup email sent")
+        : t("rolesList.toasts.resetSent", "Password reset email sent");
+      messageApi.success(`${label} ${t("rolesList.toasts.toAddress", "to")} ${email}`);
+    },
+    [messageApi, t]
+  );
 
   const submitUser = async () => {
     const vals = await userForm.validateFields();
     const email = String(vals.email || "").trim().toLowerCase();
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return messageApi.error("Enter a valid email.");
+      return messageApi.error(t("rolesList.user.email.invalid", "Enter a valid email."));
     }
 
     const inheritPerms = !!vals.inheritPerms;
     const chosenPerms = inheritPerms ? getRolePermsById(vals.role_id) : vals.permissions || [];
 
     if (!isAdmin && chosenPerms.some((p) => p.startsWith("agent:"))) {
-      return messageApi.warning("Only Admin can assign Kibundo Agent permissions.");
+      return messageApi.warning(t("rolesList.user.agentPermsAdminOnly", "Only Admin can assign Kibundo Agent permissions."));
     }
 
     const base = {
       role_id: vals.role_id,
-      first_name: vals.first_name.trim(),
-      last_name: vals.last_name.trim(),
+      first_name: (vals.first_name || "").trim(),
+      last_name: (vals.last_name || "").trim(),
       email,
       state: vals.state || null,
       status: vals.status || "Pending",
@@ -396,8 +415,11 @@ export default function RolesLocal() {
       inheritPerms,
       created_at: new Date().toISOString(),
     };
+
     try {
-      // Use unified backend endpoint for creating users
+      if (!USE_API_CREATE_USER) throw new Error("CREATE_USER_DISABLED");
+
+      // Unified backend endpoint for creating users
       const body = {
         first_name: base.first_name,
         last_name: base.last_name,
@@ -407,46 +429,57 @@ export default function RolesLocal() {
       };
       await api.post("/adduser", body);
 
-      messageApi.success("User created.");
+      messageApi.success(t("rolesList.toasts.userCreated", "User created."));
       sendResetMail(base.email, true);
       setOpenUser(false);
       setEditingUser(null);
       fetchUsers();
     } catch (err) {
-      console.error(err);
       const status = err?.response?.status;
       const text =
         status === 401
-          ? "Unauthorized. Check your token (verifyToken)."
+          ? t("rolesList.toasts.unauthorized", "Unauthorized. Check your token (verifyToken).")
           : status === 404
-          ? "Endpoint not found. Confirm /adduser is mounted under /api."
-          : "API error creating user.";
+          ? t("rolesList.toasts.endpointMissing", "Endpoint not found. Confirm /adduser is mounted under /api.")
+          : t("rolesList.toasts.userCreateError", "API error creating user.");
       messageApi.error(text);
     }
   };
 
-  const toggleUserActive = async (row) => {
-    messageApi.info("Implement an API endpoint to toggle user active state.");
-  };
+  const toggleUserActive = useCallback(
+    async (row) => {
+      messageApi.info(t("rolesList.toasts.toggleImplement", "Implement an API endpoint to toggle user active state."));
+    },
+    [messageApi, t]
+  );
 
-  const resetPassword = (row) => {
-    Modal.confirm({
-      title: `Send password reset to ${row.email}?`,
-      icon: <KeyOutlined />,
-      onOk: () => sendResetMail(row.email, false),
-    });
-  };
+  const resetPassword = useCallback(
+    (row) => {
+      Modal.confirm({
+        title: t("rolesList.user.resetConfirm", "Send password reset to {{email}}?", { email: row.email }),
+        icon: <KeyOutlined />,
+        okText: t("rolesList.actions.send", "Send"),
+        cancelText: t("common.cancel", "Cancel"),
+        onOk: () => sendResetMail(row.email, false),
+      });
+    },
+    [sendResetMail, t]
+  );
 
-  const deleteUser = (row) => {
-    Modal.confirm({
-      title: `Delete user “${row.email}”?`,
-      okType: "danger",
-      okText: "Delete",
-      onOk: async () => {
-        messageApi.info("Implement DELETE /users/:id and call it here.");
-      },
-    });
-  };
+  const deleteUser = useCallback(
+    (row) => {
+      Modal.confirm({
+        title: t("rolesList.user.deleteConfirm", "Delete user \"{{email}}\"?", { email: row.email }),
+        okType: "danger",
+        okText: t("common.delete", "Delete"),
+        cancelText: t("common.cancel", "Cancel"),
+        onOk: async () => {
+          messageApi.info(t("rolesList.toasts.userDeleteImplement", "Implement DELETE /users/:id and call it here."));
+        },
+      });
+    },
+    [messageApi, t]
+  );
 
   /* -------------------------------- helpers -------------------------------- */
   const renderPerms = (perms) => {
@@ -471,8 +504,14 @@ export default function RolesLocal() {
   /* ------------------------------ Roles table columns ------------------------------ */
   const roleColumns = [
     { title: "ID", dataIndex: "id", key: "id", width: 90 },
-    { title: "Role", dataIndex: "name", key: "name", ellipsis: true },
-    { title: "Permissions", dataIndex: "permissions",key: "permissions", ellipsis: true},
+    { title: t("rolesList.columns.role", "Role"), dataIndex: "name", key: "name", ellipsis: true },
+    {
+      title: t("rolesList.columns.permissions", "Permissions"),
+      dataIndex: "permissions",
+      key: "permissions",
+      ellipsis: true,
+      render: (perms) => renderPerms(perms),
+    },
     {
       title: "",
       key: "actions",
@@ -485,9 +524,9 @@ export default function RolesLocal() {
           placement="bottomRight"
           menu={{
             items: [
-              { key: "edit", icon: <EditOutlined />, label: "Edit" },
+              { key: "edit", icon: <EditOutlined />, label: t("common.edit", "Edit") },
               { type: "divider" },
-              { key: "delete", icon: <DeleteOutlined />, label: "Delete", danger: true },
+              { key: "delete", icon: <DeleteOutlined />, label: t("common.delete", "Delete"), danger: true },
             ],
             onClick: ({ key, domEvent }) => {
               domEvent.stopPropagation();
@@ -496,220 +535,110 @@ export default function RolesLocal() {
             },
           }}
         >
-          <Button
-            shape="circle"
-            icon={<MoreOutlined />}
-            data-no-rowclick
-            aria-label="More actions"
-            size="small"
-          />
+          <Button shape="circle" icon={<MoreOutlined />} data-no-rowclick aria-label={t("common.moreActions", "More actions")} size="small" />
         </Dropdown>
       ),
     },
   ];
 
-  /* ------------------------------ Users columns map (for BillingEntityList) ------------------------------ */
-  const usersColumnsMap = useMemo(() => {
-    return {
-      first_name: {
-        title: "First",
+  /* ------------------------------ Users columns ------------------------------ */
+  const userColumns = useMemo(
+    () => [
+      { title: "ID", dataIndex: "id", key: "id", width: 90 },
+      {
+        title: t("rolesList.columns.first", "First"),
         dataIndex: "first_name",
         key: "first_name",
+        width: 160,
+        ellipsis: true,
         render: (v, r) => v || <span style={{ opacity: 0.6 }}>{r.email}</span>,
-        width: 160,
-        ellipsis: true,
       },
-      last_name: {
-        title: "Last",
-        dataIndex: "last_name",
-        key: "last_name",
-        width: 160,
-        ellipsis: true,
-      },
-      email: {
-        title: "Email",
-        dataIndex: "email",
-        key: "email",
-        width: 260,
-        ellipsis: true,
-      },
-      role: {
-        title: "Role",
+      { title: t("rolesList.columns.last", "Last"), dataIndex: "last_name", key: "last_name", width: 160, ellipsis: true },
+      { title: "Email", dataIndex: "email", key: "email", width: 260, ellipsis: true },
+      {
+        title: t("rolesList.columns.role", "Role"),
         key: "role",
         width: 160,
         render: (_, r) => getRoleById(r.role_id)?.name || r.role_id,
       },
-      contact_number: {
-        title: "Phone",
+      {
+        title: t("rolesList.columns.phone", "Phone"),
         dataIndex: "contact_number",
         key: "contact_number",
         width: 160,
         render: (v) => v || "—",
       },
-      status: {
-        title: "Status",
+      {
+        title: t("rolesList.columns.status", "Status"),
         dataIndex: "status",
         key: "status",
         width: 130,
         render: (v) => {
           const tag = (v || "Pending").toLowerCase();
-          if (tag === "active") return <Tag color="green">Active</Tag>;
-          if (tag === "inactive") return <Tag>Inactive</Tag>;
-          return <Tag color="gold">Pending</Tag>;
+          if (tag === "active") return <Tag color="green">{t("common.active", "Active")}</Tag>;
+          if (tag === "inactive") return <Tag>{t("common.inactive", "Inactive")}</Tag>;
+          return <Tag color="gold">{t("common.pending", "Pending")}</Tag>;
         },
       },
-      isActive: {
-        title: "Active?",
-        dataIndex: "isActive",
-        key: "isActive",
-        width: 120,
-        render: (v) => (v ? <Tag color="green">Yes</Tag> : <Tag>No</Tag>),
-      },
-      created_at: {
-        title: "Created",
+      {
+        title: t("rolesList.columns.created", "Created"),
         dataIndex: "created_at",
         key: "created_at",
         width: 190,
         render: (v) => (v ? new Date(v).toLocaleString() : "—"),
       },
-      permissions: {
-        title: "Permissions",
+      {
+        title: t("rolesList.columns.permissions", "Permissions"),
+        dataIndex: "permissions",
         key: "permissions",
-        render: (_, r) => renderPerms(r.permissions),
         width: 380,
+        ellipsis: true,
+        render: (_, r) => renderPerms(r.permissions),
       },
-    };
-  }, [roles]);
-
-  const defaultVisibleUserCols = [
-    "first_name",
-    "last_name",
-    "email",
-    "role",
-    "status",
-    "isActive",
-    "created_at",
-  ];
-
-  // Users table columns (same layout style as Roles)
-  const userColumns = useMemo(() => [
-    {
-      title: "ID",
-      dataIndex: "id",
-      key: "id",
-      width: 90,
-    },
-    {
-      title: "First",
-      dataIndex: "first_name",
-      key: "first_name",
-      width: 160,
-      ellipsis: true,
-      render: (v, r) => v || <span style={{ opacity: 0.6 }}>{r.email}</span>,
-    },
-    {
-      title: "Last",
-      dataIndex: "last_name",
-      key: "last_name",
-      width: 160,
-      ellipsis: true,
-    },
-    {
-      title: "Email",
-      dataIndex: "email",
-      key: "email",
-      width: 260,
-      ellipsis: true,
-    },
-    {
-      title: "Role",
-      key: "role",
-      width: 160,
-      render: (_, r) => getRoleById(r.role_id)?.name || r.role_id,
-    },
-    {
-      title: "Phone",
-      dataIndex: "contact_number",
-      key: "contact_number",
-      width: 160,
-      render: (v) => v || "—",
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      key: "status",
-      width: 130,
-      render: (v) => {
-        const tag = (v || "Pending").toLowerCase();
-        if (tag === "active") return <Tag color="green">Active</Tag>;
-        if (tag === "inactive") return <Tag>Inactive</Tag>;
-        return <Tag color="gold">Pending</Tag>;
+      {
+        title: "",
+        key: "actions",
+        width: 72,
+        fixed: "right",
+        className: "billing-actions-cell",
+        render: (_, u) => {
+          const toggleLabel = u.isActive ? t("rolesList.actions.deactivate", "Deactivate") : t("rolesList.actions.activate", "Activate");
+          const toggleIcon = u.isActive ? <StopOutlined /> : <PoweroffOutlined />;
+          return (
+            <Dropdown
+              trigger={["click"]}
+              placement="bottomRight"
+              menu={{
+                items: [
+                  { key: "reset", icon: <MailOutlined />, label: t("rolesList.actions.resetPassword", "Reset password") },
+                  { key: "toggle", icon: toggleIcon, label: toggleLabel },
+                  { key: "edit", icon: <EditOutlined />, label: t("common.edit", "Edit") },
+                  { type: "divider" },
+                  { key: "delete", icon: <DeleteOutlined />, label: t("common.delete", "Delete"), danger: true },
+                ],
+                onClick: ({ key, domEvent }) => {
+                  domEvent.stopPropagation();
+                  if (key === "reset") return resetPassword(u);
+                  if (key === "toggle") return toggleUserActive(u);
+                  if (key === "edit") return openEditUser(u);
+                  if (key === "delete") return deleteUser(u);
+                },
+              }}
+            >
+              <Button
+                shape="circle"
+                icon={<MoreOutlined />}
+                data-no-rowclick
+                aria-label={t("common.moreActions", "More actions")}
+                size="small"
+              />
+            </Dropdown>
+          );
+        },
       },
-    },
-    {
-      title: "Active?",
-      dataIndex: "isActive",
-      key: "isActive",
-      width: 120,
-      render: (v) => (v ? <Tag color="green">Yes</Tag> : <Tag>No</Tag>),
-    },
-    {
-      title: "Created",
-      dataIndex: "created_at",
-      key: "created_at",
-      width: 190,
-      render: (v) => (v ? new Date(v).toLocaleString() : "—"),
-    },
-    {
-      title: "Permissions",
-      dataIndex: "permissions",
-      key: "permissions",
-      width: 380,
-      ellipsis: true,
-      render: (_, r) => renderPerms(r.permissions),
-    },
-    {
-      title: "",
-      key: "actions",
-      width: 72,
-      fixed: "right",
-      className: "billing-actions-cell",
-      render: (_, u) => {
-        const toggleLabel = u.isActive ? "rolesList.actions.deactivate" : "rolesList.actions.activate";
-        const toggleIcon = u.isActive ? <StopOutlined /> : <PoweroffOutlined />;
-        return (
-          <Dropdown
-            trigger={["click"]}
-            placement="bottomRight"
-            menu={{
-              items: [
-                { key: "reset", icon: <MailOutlined />, label: "rolesList.actions.resetPassword" },
-                { key: "toggle", icon: toggleIcon, label: toggleLabel },
-                { key: "edit", icon: <EditOutlined />, label: "Edit" },
-                { type: "divider" },
-                { key: "delete", icon: <DeleteOutlined />, label: "Delete", danger: true },
-              ],
-              onClick: ({ key, domEvent }) => {
-                domEvent.stopPropagation();
-                if (key === "reset") return resetPassword(u);
-                if (key === "toggle") return toggleUserActive(u);
-                if (key === "edit") return openEditUser(u);
-                if (key === "delete") return deleteUser(u);
-              },
-            }}
-          >
-            <Button
-              shape="circle"
-              icon={<MoreOutlined />}
-              data-no-rowclick
-              aria-label="More actions"
-              size="small"
-            />
-          </Dropdown>
-        );
-      },
-    },
-  ], [roles]);
+    ],
+    [getRoleById, resetPassword, toggleUserActive, openEditUser, deleteUser, t]
+  );
 
   /* ------------------------------ derived: users list (filters + search) ------------------------------ */
   const filteredUsers = useMemo(() => {
@@ -720,11 +649,10 @@ export default function RolesLocal() {
       if (typeof activeFilter === "boolean" && !!u.isActive !== activeFilter) return false;
       if (!text) return true;
       const roleName = getRoleById(u.role_id)?.name || "";
-      return [u.first_name, u.last_name, u.email, u.contact_number, roleName, u.status].some((v) =>
-        String(v || "").toLowerCase().includes(text)
-      );
+      return [u.first_name, u.last_name, u.email, u.contact_number, roleName, u.status]
+        .some((v) => String(v || "").toLowerCase().includes(text));
     });
-  }, [users, q, roleFilter, statusFilter, activeFilter, roles]);
+  }, [users, q, roleFilter, statusFilter, activeFilter, roles, getRoleById]);
 
   /* --------------------------------- render -------------------------------- */
   const drawerWidth = Math.min(
@@ -736,12 +664,14 @@ export default function RolesLocal() {
     <Space direction="vertical" size="large" className="w-full">
       {contextHolder}
       {/* PAGE HEADER */}
-      <Card bordered={false} style={{ paddingBottom: 0 }}>
+      <Card variant="borderless" styles={{ body: { padding: 0 } }} style={{ paddingBottom: 0 }}>
         <Space direction="vertical" size={4} style={{ width: "100%" }}>
           <Title level={3} style={{ margin: 0 }}>
-            {t("rolesList.accessControl.title") || "Access Control"}
+            {t("rolesList.accessControl.title", "Access Control")}
           </Title>
-          <Text type="secondary">{t("rolesList.accessControl.subtitle") || "Manage roles, permissions, and users in one place."}</Text>
+          <Text type="secondary">
+            {t("rolesList.accessControl.subtitle", "Manage roles, permissions, and users in one place.")}
+          </Text>
           <Divider style={{ margin: "12px 0 0" }} />
         </Space>
       </Card>
@@ -751,24 +681,26 @@ export default function RolesLocal() {
         items={[
           {
             key: "roles",
-            label: t("rolesList.tabs.roles") || "Roles",
+            label: t("rolesList.tabs.roles", "Roles"),
             children: (
               <Card
                 title={
                   <Space>
                     <SafetyCertificateOutlined />
-                    <span>{t("rolesList.roles.title") || "Roles & Permissions"}</span>
-                    <Text type="secondary">{t("rolesList.roles.count", "({{count}})").replace('{{count}}', roles.length)}</Text>
+                    <span>{t("rolesList.roles.title", "Roles & Permissions")}</span>
+                    <Text type="secondary">
+                      {t("rolesList.roles.count", "({{count}})", { count: roles.length })}
+                    </Text>
                   </Space>
                 }
                 extra={
                   <Space wrap>
                     <Button type="primary" icon={<PlusOutlined />} onClick={openCreateRole}>
-                      {t("rolesList.roles.new") || "New Role"}
+                      {t("rolesList.roles.new", "New Role")}
                     </Button>
                   </Space>
                 }
-                bodyStyle={{ paddingTop: 12 }}
+                styles={{ body: { paddingTop: 12 } }}
               >
                 <Table
                   loading={rolesLoading}
@@ -779,45 +711,49 @@ export default function RolesLocal() {
                   bordered
                   sticky
                   pagination={{ pageSize: 10 }}
-                  locale={{ emptyText: <Empty description={t("rolesList.empty.roles") || "No roles found"} /> }}
+                  locale={{
+                    emptyText: <Empty description={t("rolesList.empty.roles", "No roles found")} />,
+                  }}
                 />
               </Card>
             ),
           },
           {
             key: "users",
-            label: t("rolesList.tabs.users") || "Users",
+            label: t("rolesList.tabs.users", "Users"),
             children: (
               <Card
                 title={
                   <Space>
                     <TeamOutlined />
-                    <span>{t("rolesList.users.title") || "Users"}</span>
-                    <Text type="secondary">{t("rolesList.users.count", "({{count}})").replace('{{count}}', filteredUsers.length)}</Text>
+                    <span>{t("rolesList.users.title", "Users")}</span>
+                    <Text type="secondary">
+                      {t("rolesList.users.count", "({{count}})", { count: filteredUsers.length })}
+                    </Text>
                   </Space>
                 }
                 extra={
                   <Space>
                     <Button type="primary" icon={<UserAddOutlined />} onClick={openCreateUser}>
-                      {t("rolesList.users.new") || "New User"}
+                      {t("rolesList.users.new", "New User")}
                     </Button>
                   </Space>
                 }
-                bodyStyle={{ paddingTop: 12 }}
+                styles={{ body: { paddingTop: 12 } }}
               >
-                {/* Filters toolbar (kept, but layout matches Roles: toolbar inside Card body) */}
+                {/* Filters toolbar */}
                 <div style={{ marginBottom: 12 }}>
                   <Space wrap>
                     <Input.Search
                       allowClear
-                      placeholder="Search name, email, phone, role…"
+                      placeholder={t("rolesList.filters.search", "Search name, email, phone, role…")}
                       value={q}
                       onChange={(e) => setQ(e.target.value)}
                       style={{ width: 320 }}
                     />
                     <Select
                       allowClear
-                      placeholder="Filter by role"
+                      placeholder={t("rolesList.filters.role", "Filter by role")}
                       options={roleSelectOptions}
                       value={roleFilter}
                       onChange={setRoleFilter}
@@ -825,11 +761,11 @@ export default function RolesLocal() {
                     />
                     <Select
                       allowClear
-                      placeholder="Status"
+                      placeholder={t("rolesList.filters.status", "Status")}
                       options={[
-                        { value: "Pending", label: "Pending" },
-                        { value: "Active", label: "Active" },
-                        { value: "Inactive", label: "Inactive" },
+                        { value: "Pending", label: t("common.pending", "Pending") },
+                        { value: "Active", label: t("common.active", "Active") },
+                        { value: "Inactive", label: t("common.inactive", "Inactive") },
                       ]}
                       value={statusFilter}
                       onChange={setStatusFilter}
@@ -837,9 +773,9 @@ export default function RolesLocal() {
                     />
                     <Segmented
                       options={[
-                        { label: "All", value: "all" },
-                        { label: "Active", value: "true" },
-                        { label: "Inactive", value: "false" },
+                        { label: t("common.all", "All"), value: "all" },
+                        { label: t("common.active", "Active"), value: "true" },
+                        { label: t("common.inactive", "Inactive"), value: "false" },
                       ]}
                       value={typeof activeFilter === "boolean" ? (activeFilter ? "true" : "false") : "all"}
                       onChange={(val) => setActiveFilter(val === "all" ? undefined : val === "true")}
@@ -856,7 +792,7 @@ export default function RolesLocal() {
                   bordered
                   sticky
                   pagination={{ pageSize: 10 }}
-                  locale={{ emptyText: <Empty description={t("rolesList.empty.users") || "No users found"} /> }}
+                  locale={{ emptyText: <Empty description={t("rolesList.empty.users", "No users found")} /> }}
                 />
               </Card>
             ),
@@ -869,7 +805,7 @@ export default function RolesLocal() {
         title={
           <Space>
             <SafetyCertificateOutlined />
-            <span>{editingRole ? (t("rolesList.role.edit") || "Edit Role") : (t("rolesList.role.create") || "Create Role")}</span>
+            <span>{editingRole ? t("rolesList.role.edit", "Edit Role") : t("rolesList.role.create", "Create Role")}</span>
           </Space>
         }
         open={openRole}
@@ -882,10 +818,10 @@ export default function RolesLocal() {
         footer={
           <Space style={{ float: "right" }}>
             <Button onClick={() => { setOpenRole(false); setEditingRole(null); }}>
-              Cancel
+              {t("common.cancel", "Cancel")}
             </Button>
             <Button type="primary" icon={<SaveOutlined />} onClick={submitRole}>
-              {editingRole ? "Save Changes" : "Save"}
+              {editingRole ? t("common.saveChanges", "Save Changes") : t("common.save", "Save")}
             </Button>
           </Space>
         }
@@ -898,22 +834,22 @@ export default function RolesLocal() {
         >
           <Form.Item
             name="name"
-            label={t("rolesList.role.name.label") || "Role Name"}
+            label={t("rolesList.role.name.label", "Role Name")}
             rules={[
-              { required: true, message: t("rolesList.role.name.required") || "Role name is required" },
-              { max: 50, message: t("rolesList.role.name.maxLength") || "Keep it under 50 characters" },
+              { required: true, message: t("rolesList.role.name.required", "Role name is required") },
+              { max: 50, message: t("rolesList.role.name.maxLength", "Keep it under 50 characters") },
             ]}
           >
-            <Input placeholder="e.g. Content Manager" />
+            <Input placeholder={t("rolesList.role.name.placeholder", "e.g. Content Manager")} />
           </Form.Item>
 
           <Form.Item
             name="permissions"
-            label="Permissions"
-            rules={[{ required: true, message: t("rolesList.role.permissions.required") || "Select at least one permission" }]}
-            tooltip={t("rolesList.role.permissions.adminOnly") || "Only Admin can edit 'agent:*' (Kibundo) permissions"}
+            label={t("rolesList.columns.permissions", "Permissions")}
+            rules={[{ required: true, message: t("rolesList.role.permissions.required", "Select at least one permission") }]}
+            tooltip={t("rolesList.role.permissions.adminOnly", "Only Admin can edit 'agent:*' (Kibundo) permissions")}
           >
-            <Select mode="multiple" placeholder="Select permissions" options={permOptions} />
+            <Select mode="multiple" placeholder={t("rolesList.role.permissions.placeholder", "Select permissions")} options={permOptions} />
           </Form.Item>
         </Form>
       </Drawer>
@@ -923,7 +859,7 @@ export default function RolesLocal() {
         title={
           <Space>
             <TeamOutlined />
-            <span>{editingUser ? (t("rolesList.user.edit") || "Edit User") : (t("rolesList.user.create") || "Create User")}</span>
+            <span>{editingUser ? t("rolesList.user.edit", "Edit User") : t("rolesList.user.create", "Create User")}</span>
           </Space>
         }
         open={openUser}
@@ -936,10 +872,10 @@ export default function RolesLocal() {
         footer={
           <Space style={{ float: "right" }}>
             <Button onClick={() => { setOpenUser(false); setEditingUser(null); }}>
-              Cancel
+              {t("common.cancel", "Cancel")}
             </Button>
             <Button type="primary" icon={<SaveOutlined />} onClick={submitUser}>
-              {editingUser ? "Save Changes" : "rolesList.actions.createAndSendReset"}
+              {editingUser ? t("common.saveChanges", "Save Changes") : t("rolesList.actions.createAndSendReset", "Create & send reset")}
             </Button>
           </Space>
         }
@@ -964,51 +900,51 @@ export default function RolesLocal() {
         >
           <div className="grid md:grid-cols-2 gap-4">
             {/* Name */}
-            <Form.Item name="first_name" label={t("rolesList.user.firstName") || "First Name"} rules={[{ required: true }]}>
+            <Form.Item name="first_name" label={t("rolesList.user.firstName", "First Name")} rules={[{ required: true }]}>
               <Input />
             </Form.Item>
-            <Form.Item name="last_name" label={t("rolesList.user.lastName") || "Last Name"} rules={[{ required: true }]}>
+            <Form.Item name="last_name" label={t("rolesList.user.lastName", "Last Name")} rules={[{ required: true }]}>
               <Input />
             </Form.Item>
 
             {/* Contact + Email */}
-            <Form.Item name="contact_number" label={t("rolesList.user.contactNumber") || "Contact Number"}>
+            <Form.Item name="contact_number" label={t("rolesList.user.contactNumber", "Contact Number")}>
               <Input placeholder="+1 555 000 0000" />
             </Form.Item>
             <Form.Item
               name="email"
               label="Email"
               rules={[
-                { required: true, message: t("rolesList.user.email.required") || "Email is required" },
-                { type: "email", message: t("rolesList.user.email.invalid") || "Enter a valid email" },
+                { required: true, message: t("rolesList.user.email.required", "Email is required") },
+                { type: "email", message: t("rolesList.user.email.invalid", "Enter a valid email") },
               ]}
             >
               <Input placeholder="user@example.com" />
             </Form.Item>
 
             {/* Role & status & active */}
-            <Form.Item name="role_id" label="Role" rules={[{ required: true }]}>
+            <Form.Item name="role_id" label={t("rolesList.columns.role", "Role")} rules={[{ required: true }]}>
               <Select
-                placeholder={t("rolesList.user.role.placeholder") || "Select a role"}
+                placeholder={t("rolesList.user.role.placeholder", "Select a role")}
                 options={roleSelectOptions}
                 showSearch
                 optionFilterProp="label"
               />
             </Form.Item>
-            <Form.Item name="state" label={t("rolesList.user.state") || "State (Bundesland)"}>
-              <Input placeholder="e.g. Bayern" />
+            <Form.Item name="state" label={t("rolesList.user.state", "State (Bundesland)")}>
+              <Input placeholder={t("rolesList.user.state.placeholder", "e.g. Bayern")} />
             </Form.Item>
-            <Form.Item name="status" label="Status" tooltip={t("rolesList.user.status.tooltip") || "Back-end string; default is 'Pending'"}>
+            <Form.Item name="status" label={t("rolesList.columns.status", "Status")} tooltip={t("rolesList.user.status.tooltip", "Back-end string; default is 'Pending'")}>
               <Select
                 options={[
-                  { value: "Pending", label: "Pending" },
-                  { value: "Active", label: "Active" },
-                  { value: "Inactive", label: "Inactive" },
+                  { value: "Pending", label: t("common.pending", "Pending") },
+                  { value: "Active", label: t("common.active", "Active") },
+                  { value: "Inactive", label: t("common.inactive", "Inactive") },
                 ]}
               />
             </Form.Item>
 
-            <Form.Item name="isActive" label={t("rolesList.user.active") || "Active?"}>
+            <Form.Item name="isActive" label={t("rolesList.user.active", "Active?")}>
               <Switch />
             </Form.Item>
           </div>
@@ -1019,17 +955,17 @@ export default function RolesLocal() {
           <div className="grid md:grid-cols-2 gap-4">
             <Form.Item
               name="password"
-              label="Password"
+              label={t("rolesList.user.password.label", "Password")}
               rules={[
-                { required: !editingUser, message: t("rolesList.user.password.required") || "Password is required for new users" },
-                { min: 6, message: t("rolesList.user.password.minLength") || "Use at least 6 characters" },
+                { required: !editingUser, message: t("rolesList.user.password.required", "Password is required for new users") },
+                { min: 6, message: t("rolesList.user.password.minLength", "Use at least 6 characters") },
               ]}
             >
-              <Input.Password placeholder={editingUser ? (t("rolesList.user.password.keepCurrent") || "(leave blank to keep current)") : (t("rolesList.user.password.placeholder") || "Set a password")} />
+              <Input.Password placeholder={editingUser ? t("rolesList.user.password.keepCurrent", "(leave blank to keep current)") : t("rolesList.user.password.placeholder", "Set a password")} />
             </Form.Item>
             <Form.Item
               name="confirm_password"
-              label={t("rolesList.user.confirmPassword") || "Confirm Password"}
+              label={t("rolesList.user.confirmPassword", "Confirm Password")}
               dependencies={["password"]}
               rules={[
                 ({ getFieldValue }) => ({
@@ -1037,7 +973,7 @@ export default function RolesLocal() {
                     const pass = getFieldValue("password");
                     if (!pass && editingUser) return Promise.resolve();
                     if (value && value === pass) return Promise.resolve();
-                    return Promise.reject(new Error(t("rolesList.user.passwordsMismatch") || "Passwords do not match"));
+                    return Promise.reject(new Error(t("rolesList.user.passwordsMismatch", "Passwords do not match")));
                   },
                 }),
               ]}
@@ -1050,21 +986,19 @@ export default function RolesLocal() {
 
           {/* Permissions control */}
           <Form.Item
-            label="Permissions"
-            tooltip={t("rolesList.user.permissions.tooltip") || "Inherit from selected role or override with a custom set."}
+            label={t("rolesList.columns.permissions", "Permissions")}
+            tooltip={t("rolesList.user.permissions.tooltip", "Inherit from selected role or override with a custom set.")}
             style={{ marginBottom: 8 }}
           >
             <Space align="center" wrap>
               <Form.Item name="inheritPerms" noStyle valuePropName="checked">
                 <Switch />
               </Form.Item>
-              <span>{t("rolesList.user.inheritFromRole") || "Inherit from role"}</span>
+              <span>{t("rolesList.user.inheritFromRole", "Inherit from role")}</span>
             </Space>
           </Form.Item>
 
-          <Form.Item
-            shouldUpdate={(prev, cur) => prev.inheritPerms !== cur.inheritPerms || prev.role_id !== cur.role_id}
-          >
+          <Form.Item shouldUpdate={(prev, cur) => prev.inheritPerms !== cur.inheritPerms || prev.role_id !== cur.role_id}>
             {({ getFieldValue }) => {
               const inherit = !!getFieldValue("inheritPerms");
               return (
@@ -1076,7 +1010,7 @@ export default function RolesLocal() {
                         if (inherit) return Promise.resolve();
                         if (!value || !value.length) {
                           return Promise.reject(
-                            new Error(t("rolesList.user.permissions.validator") || "Select at least one permission or enable 'Inherit from role'")
+                            new Error(t("rolesList.user.permissions.validator", "Select at least one permission or enable 'Inherit from role'"))
                           );
                         }
                         return Promise.resolve();
@@ -1086,7 +1020,11 @@ export default function RolesLocal() {
                 >
                   <Select
                     mode="multiple"
-                    placeholder={inherit ? (t("rolesList.user.inheritingFromRole") || "Inheriting from role…") : (t("rolesList.user.permissions.placeholder") || "Select permissions")}
+                    placeholder={
+                      inherit
+                        ? t("rolesList.user.inheritingFromRole", "Inheriting from role…")
+                        : t("rolesList.user.permissions.placeholder", "Select permissions")
+                    }
                     options={permOptions}
                     disabled={inherit}
                   />

@@ -81,7 +81,7 @@ export default function ViewStudentDrawer({ open, onClose, student }) {
       onClose={onClose}
       open={open}
       width={window.innerWidth < 768 ? "100%" : 480}
-      bodyStyle={{ paddingBottom: 24 }}
+      styles={{ body: {{ paddingBottom: 24 }}
     >
       {/* Avatar Section */}
       <div className="flex items-center mb-4">

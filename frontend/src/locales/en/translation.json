@@ -122,8 +122,44 @@
       "home": "Home",
       "addChild": "Add Child",
       "news": "News",
+      "chat": "Chat",
       "feedback": "Feedback",
       "settings": "Settings"
+    },
+    "addChild": {
+      "intro": {
+        "kicker": "Let's get started",
+        "headline": "Create an account for your child now",
+        "copy": "To enable your child to use the app independently and safely, create a child account now.",
+        "cta": "Add Child",
+        "gdpr": "GDPR compliant. The data is securely encrypted on a server in Germany and will never be shared with third parties without your explicit consent."
+      }
+    },
+    "student": {
+      "title": "Student Details",
+      "recentScans": "Recent Scans",
+      "focusTopics": "Focus Topics",
+      "focusTopicsChooseTwo": "Choose two focus areas:",
+      "defaultName": "Student",
+      "defaultAge": "Age not specified",
+      "plan": {
+        "active": "Active",
+        "premiumMonthly": "Premium Monthly",
+        "current": "Current Plan",
+        "changeToYearly": "Change to Yearly"
+      },
+      "status": {
+        "active": "Active"
+      },
+      "activity": {
+        "title": "Activity Overview",
+        "lessonsCompleted": "Lessons Completed",
+        "timeSpent": "Time Spent"
+      },
+      "activities": "Activities",
+      "progress": {
+        "title": "Progress Overview"
+      }
     }
   }
 }

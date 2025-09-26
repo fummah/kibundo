@@ -10,6 +10,7 @@ import {
   Upload,
   message as antdMessage,
   Typography,
+  App,
 } from "antd";
 import {
   ArrowLeftOutlined,
@@ -26,6 +27,7 @@ export default function Tickets() {
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  const { message } = App.useApp();
 
   // spec: required free text, with minimum length
   const MIN_LEN = 20;
@@ -64,13 +66,13 @@ export default function Tickets() {
       // Simulate API call
       await new Promise((res) => setTimeout(res, 700));
 
-      antdMessage.success("Ticket submitted");
+      message.success("Ticket submitted");
       form.resetFields();
       form.setFieldsValue({ category: "general" });
     } catch (e) {
       const errText =
         e?.message || "Could not submit your ticket. Please try again.";
-      antdMessage.error(errText);
+      message.error(errText);
     } finally {
       setSubmitting(false);
     }
@@ -102,7 +104,7 @@ export default function Tickets() {
           <Card className="rounded-2xl shadow-sm">
             <Form form={form} layout="vertical" requiredMark={false} onFinish={onFinish}>
               <Form.Item name="category" label="Category">
-                <Select options={categories} className="rounded-xl" dropdownMatchSelectWidth={false} />
+                <Select options={categories} className="rounded-xl" popupMatchSelectWidth={false} />
               </Form.Item>
 
               <Form.Item

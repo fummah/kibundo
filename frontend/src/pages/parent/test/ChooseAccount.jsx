@@ -18,7 +18,7 @@ function Row({ name, sub, avatar, onClick }) {
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onClick?.()}
-      bodyStyle={{ padding: 16 }}
+      styles={{ body: {{ padding: 16 }}
     >
       <div className="flex items-center gap-4">
         <Avatar size={56} src={avatar} className="bg-indigo-50 text-indigo-700">

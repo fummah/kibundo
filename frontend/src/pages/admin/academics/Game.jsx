@@ -372,7 +372,7 @@ export default function Game() {
       </ResponsiveFilters>
 
       <div className="p-3 md:p-4">
-        <Card bodyStyle={{ padding: 0 }} className="overflow-hidden">
+        <Card styles={{ body: { padding: 0 } }} className="overflow-hidden">
           <FluidTable
             rowKey="id"
             loading={isFetching}

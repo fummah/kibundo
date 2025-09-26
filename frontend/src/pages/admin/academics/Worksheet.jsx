@@ -259,7 +259,7 @@ export default function Worksheet() {
       </div>
 
       <div className="p-3 md:p-4">
-        <Card bodyStyle={{ padding: 0 }} className="overflow-hidden">
+        <Card styles={{ body: { padding: 0 } }} className="overflow-hidden">
           {isError ? (
             <Result status="error" title="Failed to load worksheets" subTitle={error?.message || "–"} />
           ) : (

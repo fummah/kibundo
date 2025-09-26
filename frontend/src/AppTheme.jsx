@@ -24,6 +24,7 @@ export default function AppTheme({ children }) {
           Modal:  { borderRadiusLG: 16 },
           Radio:  { borderRadiusSM: 12 },
           Input:  { borderRadiusLG: 12 },
+          Message: { top: 80, zIndex: 9999 },
         },
       }}
     >

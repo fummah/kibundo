@@ -20,7 +20,6 @@ import {
   listQuizzes,   // ({ page, pageSize, ...filters }) -> { items, total }
   createQuiz,    // payload; if payload.id exists, backend updates
   deleteQuiz,    // (id)
-  // getQuiz        // if you need it elsewhere
 } from "@/api/academics/quizzes.js";
 
 /* Rich text */
@@ -100,7 +99,7 @@ const toApiItem = (q = {}, idx = 0) => {
   return { ...base, type: "short-answer", options: [], answer_key: q.answerText ? [String(q.answerText)] : [""] };
 };
 
-/* Stable Quill wrapper so typing doesn’t “eat” characters */
+/* ----------- Stable, controlled Quill (no debounce, no internal mirror) ----------- */
 const RichText = React.memo(function RichText({ value, onChange, placeholder }) {
   const modules = useMemo(
     () => ({
@@ -112,23 +111,18 @@ const RichText = React.memo(function RichText({ value, onChange, placeholder }) 
         ["link", "blockquote", "code-block"],
         ["clean"],
       ],
+      history: { delay: 500, maxStack: 200, userOnly: true },
     }),
     []
   );
+
   const formats = useMemo(
     () => [
       "header",
-      "bold",
-      "italic",
-      "underline",
-      "strike",
-      "color",
-      "background",
-      "list",
-      "bullet",
-      "link",
-      "blockquote",
-      "code-block",
+      "bold", "italic", "underline", "strike",
+      "color", "background",
+      "list", "bullet",
+      "link", "blockquote", "code-block",
     ],
     []
   );
@@ -138,16 +132,25 @@ const RichText = React.memo(function RichText({ value, onChange, placeholder }) 
       <ReactQuill
         theme="snow"
         value={value || ""}
-        onChange={(html) => onChange?.(html)}
+        onChange={(html, _delta, source) => {
+          if (source === "user") onChange?.(html);
+        }}
         modules={modules}
         formats={formats}
         placeholder={placeholder}
         bounds=".richtext"
-        preserveWhitespace
       />
       <style>{`
-        .richtext .ql-container { min-height: 140px; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
-        .richtext .ql-toolbar { border-top-left-radius: 8px; border-top-right-radius: 8px; }
+        .richtext .ql-container {
+          min-height: 140px;
+          border-bottom-left-radius: 8px;
+          border-bottom-right-radius: 8px;
+        }
+        .richtext .ql-toolbar {
+          border-top-left-radius: 8px;
+          border-top-right-radius: 8px;
+        }
+        .richtext .ql-editor { word-break: break-word; overflow-wrap: anywhere; }
       `}</style>
     </div>
   );
@@ -217,7 +220,6 @@ export default function Quiz() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["quizzes"] }),
   });
   const publishMut = useMutation({
-    // Use createQuiz to update only the status field
     mutationFn: ({ id, publish }) => createQuiz({ id, status: publish ? "live" : "draft" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["quizzes"] }),
   });
@@ -537,7 +539,7 @@ export default function Quiz() {
                   >
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-12">
                       <div className="sm:col-span-3">
-                        {/* Rich text prompt (stable) */}
+                        {/* Rich text prompt (stable controlled) */}
                         <Form.Item
                           {...rest}
                           name={[name, "prompt"]}
@@ -545,6 +547,7 @@ export default function Quiz() {
                           rules={[{ required: true, message: "Enter a question prompt" }]}
                           valuePropName="value"
                           getValueFromEvent={(v) => v}
+                          trigger="onChange"
                         >
                           <RichText placeholder="Type the question… (supports headings, lists, code, etc.)" />
                         </Form.Item>
@@ -594,7 +597,7 @@ export default function Quiz() {
                         )}
 
                         {t === "true_false" && (
-                          <Form.Item name={[name, "answerBool"]} label="Correct Answer" initialValue>
+                          <Form.Item name={[name, "answerBool"]} label="Correct Answer">
                             <Select options={[{ value: true, label: "True" }, { value: false, label: "False" }]} />
                           </Form.Item>
                         )}
@@ -661,7 +664,7 @@ export default function Quiz() {
       </ResponsiveFilters>
 
       <div className="p-3 md:p-4">
-        <Card bodyStyle={{ padding: 0 }}>
+        <Card styles={{ body: { padding: 0 } }}>
           <FluidTable
             rowKey="id"
             loading={isFetching}
@@ -721,6 +724,7 @@ export default function Quiz() {
                     label="Description"
                     valuePropName="value"
                     getValueFromEvent={(v) => v}
+                    trigger="onChange"
                   >
                     <RichText placeholder="Describe the quiz (instructions, context, etc.)" />
                   </Form.Item>

@@ -81,6 +81,20 @@ export default function ParentHome() {
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const panelRef = useRef(null);
   const inputRef = useRef(null);
+  const greetingAddedRef = useRef(false);
+
+  // Get current user information
+  const getCurrentUser = () => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      return user;
+    } catch {
+      return {};
+    }
+  };
+
+  const currentUser = getCurrentUser();
+  const parentName = currentUser.first_name || currentUser.name || 'there';
 
   // Prevent background scroll when chat is open
   React.useEffect(() => {
@@ -107,8 +121,22 @@ export default function ParentHome() {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       setPanelPos({ x: Math.max(12, (vw - 400) / 2), y: Math.max(12, (vh - 520) / 2) });
+
+      // Add initial greeting message only once
+      if (!greetingAddedRef.current) {
+        greetingAddedRef.current = true;
+        setMessages([
+          {
+            role: "assistant",
+            content: `Hello ${parentName}! I'm your Assistant. How can I help you today?`
+          }
+        ]);
+      }
+    } else {
+      // Reset greeting flag when chat is closed
+      greetingAddedRef.current = false;
     }
-  }, [chatOpen]);
+  }, [chatOpen, parentName]);
 
   // Cooldown ticker for rate limiting
   useEffect(() => {
@@ -246,11 +274,21 @@ export default function ParentHome() {
       {chatOpen && (
         <div className="fixed inset-0 z-[9999] pointer-events-auto">
           {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/30 pointer-events-auto" />
+          <div
+            className="absolute inset-0 bg-black/30 pointer-events-auto"
+            onClick={() => setChatOpen(false)}
+          />
           {/* Fullscreen chat panel */}
           <div
             ref={panelRef}
             className="fixed inset-0 bg-white flex flex-col"
+            style={{
+              left: panelPos.x ?? 0,
+              top: panelPos.y ?? 0,
+              width: '400px',
+              height: '520px',
+              transform: 'none'
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b">
@@ -261,7 +299,7 @@ export default function ParentHome() {
             </div>
             <div className="p-4 space-y-3 overflow-auto flex-1">
               {messages.length === 0 ? (
-                <div className="text-neutral-500 text-sm">Start a conversation. Your assistant is here to help.</div>
+                <div className="text-neutral-500 text-sm">Loading conversation...</div>
               ) : (
                 messages.map((m, idx) => {
                   const isUser = m.role === "user";

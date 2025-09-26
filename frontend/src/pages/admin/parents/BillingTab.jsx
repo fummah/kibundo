@@ -52,14 +52,7 @@ const BillingTab = ({ entity }) => {
 
   return (
     <div>
-      <Button
-        type="primary"
-        icon={<PlusOutlined />}
-        onClick={() => setIsModalVisible(true)}
-        style={{ marginBottom: 16 }}
-      >
-        New Subscription
-      </Button>
+     
       <Table dataSource={entity.subscriptions} columns={columns} rowKey="id" />
 
       <Modal

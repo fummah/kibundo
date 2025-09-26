@@ -579,7 +579,7 @@ export default function Coupons() {
         destroyOnClose
         width={isMdUp ? 720 : "100%"}
         style={isMdUp ? {} : { top: 8, padding: 0 }}
-        bodyStyle={isMdUp ? {} : { paddingInline: 12 }}
+        styles={{ body: { paddingInline: 12 } }}
       >
         {loadingForm ? (
           <Skeleton active paragraph={{ rows: 8 }} />

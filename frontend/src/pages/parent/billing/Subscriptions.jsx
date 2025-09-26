@@ -193,7 +193,7 @@ function PlanCard({ plan, selected, onSelect }) {
       hoverable
       onClick={() => onSelect(plan)}
       className={`rounded-3xl transition ${selected ? "ring-2 ring-[#C7D425]" : ""}`}
-      bodyStyle={{ padding: 16 }}
+      styles={{ body: { padding: 16 } }}
     >
       {plan.is_best_value ? (
         <Badge.Ribbon text="Best Value" color="#F6C89E">

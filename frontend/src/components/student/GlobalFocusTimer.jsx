@@ -234,7 +234,7 @@ export default function GlobalFocusTimer() {
           style={{ position: "fixed", zIndex: 2500, ...posStyle }}
           className="w-[280px]"
         >
-          <Card className="rounded-2xl shadow-xl border-0" bodyStyle={{ padding: 14 }}>
+          <Card className="rounded-2xl shadow-xl border-0" styles={{ body: { padding: 14 } }}>
             {/* Drag handle / header */}
             <div
               className="flex items-start justify-between cursor-grab active:cursor-grabbing"

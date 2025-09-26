@@ -74,6 +74,13 @@ export default function StudentDetail() {
           ? parentNameRaw.trim()
           : (s.parent_id ? `#${s.parent_id}` : "-");
 
+        const parentSummary = s.parent ? {
+          id: s.parent.id,
+          name: parentName,
+          email: parentUser.email || '-',
+          is_payer: s.parent.is_payer || false, 
+        } : null;
+
         const status = fb(user.status || s.status);
         const createdAt = user.created_at || s.created_at || null;
 
@@ -84,6 +91,7 @@ export default function StudentDetail() {
           grade,
           subjectsText,
           parent_name: parentName,
+          parentSummary,
           school,
           state,
           status,
@@ -125,18 +133,31 @@ export default function StudentDetail() {
         enabled: true,
         label: "Parents / Guardians",
         idField: "id",
-        // No listPath needed; data comes from the main entity's 'parentSummary'
-        rows: (entity) => (entity?.parentSummary ? [entity.parentSummary] : []),
+        // Fetch parent data directly since the main student endpoint doesn't include it.
+        refetchPath: (studentId) => `/student/${studentId}`,
+        extractList: (student) => {
+          if (!student?.parent) return [];
+          const parentUser = student.parent.user || {};
+          return [{
+            id: student.parent.id,
+            name: [parentUser.first_name, parentUser.last_name].filter(Boolean).join(' ') || `Parent #${student.parent.id}`,
+            email: parentUser.email || '-',
+            is_payer: student.parent.is_payer || false,
+          }];
+        },
         columns: [
           { title: "ID", dataIndex: "id", key: "id", width: 80, render: (v) => v ?? "-" },
           { title: "Name", dataIndex: "name", key: "name", render: (v) => v ?? "-" },
           { title: "Email", dataIndex: "email", key: "email", render: (v) => v ?? "-" },
           {
-            title: "Payer",
-            dataIndex: "is_payer",
-            key: "is_payer",
+            title: "Actions",
+            key: "actions",
             width: 100,
-            render: (v) => (v ? <Tag color="green">Payer</Tag> : <Tag>—</Tag>),
+            render: (_, record) => (
+              <Button type="link" href={`/admin/parents/${record.id}`}>
+                View
+              </Button>
+            ),
           },
         ],
         empty: "No parent linked to this student.",
@@ -167,7 +188,12 @@ export default function StudentDetail() {
       audit: { enabled: false, label: "Audit Log" },
       tasks: { enabled: true, label: "Tasks" },
       documents: { enabled: true, label: "Documents" },
-      communication: { enabled: true, label: "Comments" },
+      communication: {
+        enabled: true,
+        label: "Comments",
+        listPath: (id) => `/student/${id}/comments`,
+        createPath: (id) => `/student/${id}/comments`,
+      },
 
       // BILLING snapshot (optional)
       billing: {

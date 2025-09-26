@@ -96,7 +96,12 @@ export default function TeacherDetail() {
       audit: { enabled: true, label: "Audit Log", columns: [] },
       tasks: { enabled: true, label: "Tasks" },
       documents: { enabled: true, label: "Documents" },
-      communication: { enabled: true, label: "Comments" },
+      communication: {
+        enabled: true,
+        label: "Comments",
+        listPath: (id) => `/teacher/${id}/comments`,
+        createPath: (id) => `/teacher/${id}/comments`,
+      },
       billing: {
         enabled: true,
         rows: (e) => {

@@ -3,10 +3,10 @@ import axios from "axios";
 import { message } from "antd";
 
 const normalizeBase = (raw) => {
-  if (!raw) return "/api";
+  if (!raw) return "http://localhost:8080/api";
   let base = String(raw).trim();
 
-  if (base === "/" || base === "") return "/api";
+  if (base === "/" || base === "") return "http://localhost:8080/api";
   base = base.replace(/\/+$/, "");
 
   if (/^https?:\/\/[^/]+$/i.test(base)) return `${base}/api`;
@@ -195,17 +195,10 @@ api.interceptors.response.use(
     }
 
     if (looksLikeHtml(error)) {
-      const url = `${cfg?.baseURL || ""}${cfg?.url || ""}`;
-      const hint =
-        "HTML response received – likely from the Vite dev server. Check your Vite proxy or VITE_API_BASE so /api/* hits the backend.";
-      if (meta.toastHtml !== false) {
-        message.error(`Endpoint returned HTML (probably proxy issue): ${url}`);
-      }
-      return Promise.reject(
-        Object.assign(error, {
-          __hint: hint,
-        })
-      );
+      // This is often a 404 from a missing API route that falls back to the index.html.
+      // We don't want to show a big error for this, especially for non-critical fetches
+      // like comments on a detail page. We'll just reject silently.
+      return Promise.reject(error);
     }
 
     if (status === 401) {

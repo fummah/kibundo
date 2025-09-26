@@ -238,7 +238,7 @@ function BlogPreviewCard({ values }) {
       {/* Hero */}
       {hasHero && (
         <Card
-          bodyStyle={{ padding: 0 }}
+          styles={{ body: { padding: 0 } }}
           bordered={false}
           className="overflow-hidden rounded-2xl shadow-sm mb-6"
           cover={<img src={thumbnail_url} alt={title} className="w-full object-cover max-h-[420px]" />}

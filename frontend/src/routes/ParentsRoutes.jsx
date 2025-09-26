@@ -22,6 +22,7 @@ import NewsArticle from "@/pages/parent/communications/NewsArticle.jsx";
 import Newsletter from "@/pages/parent/communications/Newsletter.jsx";
 import Notifications from "@/pages/parent/communications/Notifications.jsx";
 import AchievementsPage from "@/pages/parent/AchievementsPage";
+import ParentChat from "@/pages/parent/chat/ParentChat.jsx";
 import Tickets from "@/pages/parent/helpdesk/Tickets.jsx";
 import Settings from "@/pages/parent/Settings.jsx";
 import AccountSelect from "@/components/parent/account/AccountSelect.jsx";
@@ -75,6 +76,9 @@ export default function ParentRoutes() {
         </Route>
         <Route path="communications/newsletter" element={<Newsletter />} />
         <Route path="communications/notifications" element={<Notifications />} />
+
+        {/* Chat */}
+        <Route path="chat" element={<ParentChat />} />
 
         {/* Feedback */}
         <Route path="feedback" element={<Navigate to="/parent/feedback/tickets" replace />} />

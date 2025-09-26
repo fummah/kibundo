@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   Button, Card, Form, Input, Select, Space, Tag,
   Drawer, Divider, Descriptions, List, Empty,
-  Modal, Grid, Skeleton, Dropdown
+  Modal, Grid, Skeleton, Dropdown,
 } from "antd";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { message } from "antd";
@@ -511,7 +511,7 @@ export default function Curricula() {
       </Form>
 
       <div className="p-3 md:p-4">
-        <Card bodyStyle={{ padding: 0 }} className="overflow-hidden">
+        <Card styles={{ body: { padding: 0 } }} className="overflow-hidden">
           <FluidTable
             rowKey={(r) => r?.id ?? r?._id}
             loading={isFetching}
