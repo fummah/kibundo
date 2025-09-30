@@ -712,7 +712,7 @@ exports.getSubscriptionById = async (req, res) => {
         },
         {
           model: Parent,
-          as: 'parent', // Parent → Student
+          as: 'subscription', // Parent → Student
           include: [
             {
               model: User,
