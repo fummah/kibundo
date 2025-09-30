@@ -461,6 +461,20 @@ exports.getParentById = async (req, res) => {
           attributes: ['id', 'class_name']
             }
           ]
+        },
+         {
+          model: Subscription,
+          as: 'subscription',
+          include: [
+            {
+              model: Product,
+              as: 'product'
+            }
+          ]
+        },
+           {
+          model: Invoice,
+          as: 'invoiceuser'
         }
       ]
     });
@@ -665,11 +679,11 @@ exports.getAllSubscriptions = async (req, res) => {
         },
           {
           model: Parent,
-          as: 'parent', // Parent → Student
+          as: 'subscription', 
           include: [
             {
               model: User,
-              as: 'user', // Student → User
+              as: 'user', 
               attributes: { exclude: ['password'] }
             }
           ]
