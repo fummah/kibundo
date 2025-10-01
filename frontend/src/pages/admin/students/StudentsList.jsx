@@ -32,13 +32,14 @@ export default function StudentsList() {
               return {
                 id: student.id,
                 name: fullName,
-                email: fallback(user.email),
                 grade,
                 parent_name: parentDisplay,
+                parent_email: parentUser.email || student.parent?.email || '-',
                 school: schoolName,
                 state: user.state || student.state || '-',
                 status: fallback(user.status || student.status),
                 created_at: user.created_at || student.created_at,
+                raw: student, // Keep raw data in case we need it
               };
             });
           },
@@ -52,9 +53,9 @@ export default function StudentsList() {
           name: F.text("Full name", "name"),
           grade: F.text("Grade", "grade"),
           parent_name: F.text("Parent", "parent_name"),
+          parent_email: F.text("Parent Email", "parent_email"),
           school: F.text("School", "school"),
           state: F.text("State", "state"),
-          email: F.text("Email", "email"),
           created_at: F.date("Date added", "created_at"),
         }),
 
@@ -64,9 +65,9 @@ export default function StudentsList() {
           "name",
           "grade",
           "parent_name",
+          "parent_email",
           "school",
           "state",
-          "email",
           "created_at",
         ],
 

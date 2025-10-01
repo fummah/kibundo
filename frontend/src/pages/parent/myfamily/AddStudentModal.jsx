@@ -23,20 +23,21 @@ const { Text } = Typography;
 /** Persist linked student ids for the mock flow */
 const LS_KEY = "kib_parent_family_student_ids";
 
-/** 🔒 Spec gate: Parent v1 must NOT use ID/email search (B2B later) */
-const ALLOW_B2B_ID_SEARCH = false;
-
 /** Dummy pool (some already linked elsewhere and should be hidden) */
 export const DUMMY_STUDENTS = [
-  { student_id: 1001, first_name: "Alex",   last_name: "Johnson",  email: "alex.j@example.com",   status: "Active",   isLinked: false },
-  { student_id: 1002, first_name: "Priya",  last_name: "Singh",    email: "priya.s@example.com",  status: "Active",   isLinked: true  },
-  { student_id: 1003, first_name: "Marco",  last_name: "Rossi",    email: "marco.r@example.com",  status: "Pending",  isLinked: false },
-  { student_id: 1004, first_name: "Lerato", last_name: "Mokoena",  email: "lerato.m@example.com", status: "Active",   isLinked: false },
-  { student_id: 1005, first_name: "Aya",    last_name: "Tanaka",   email: "aya.t@example.com",    status: "Inactive", isLinked: true  },
-  { student_id: 1006, first_name: "Noah",   last_name: "Meyer",    email: "noah.m@example.com",   status: "Active",   isLinked: false },
-  { student_id: 1007, first_name: "Sara",   last_name: "Cohen",    email: "sara.c@example.com",   status: "Active",   isLinked: false },
-  { student_id: 1008, first_name: "Diego",  last_name: "Martínez", email: "diego.m@example.com",  status: "Pending",  isLinked: false },
-];
+  { student_id: 1001, first_name: "Alex",   last_name: "Johnson",  status: "Active" },
+  { student_id: 1002, first_name: "Priya",  last_name: "Singh",    status: "Active" },
+  { student_id: 1003, first_name: "Marco",  last_name: "Rossi",    status: "Pending" },
+  { student_id: 1004, first_name: "Lerato", last_name: "Mokoena",  status: "Active" },
+  { student_id: 1005, first_name: "Aya",    last_name: "Tanaka",   status: "Inactive" },
+  { student_id: 1006, first_name: "Noah",   last_name: "Meyer",    status: "Active" },
+  { student_id: 1007, first_name: "Sara",   last_name: "Cohen",    status: "Active" },
+  { student_id: 1008, first_name: "Diego",  last_name: "Martínez", status: "Pending" },
+].map(s => ({
+  ...s,
+  // Mark some as linked for demo purposes
+  isLinked: [1002, 1005].includes(s.student_id)
+}));
 
 function getLinkedSet() {
   try {
@@ -160,7 +161,7 @@ export default function AddStudentModal({ open, onClose, onSuccess }) {
 
   const IntroPanel = () => (
     <div className="rounded-2xl bg-gradient-to-b from-[#FAD6C7] via-[#F2E6D7] to-[#D3ECDC] p-4 text-center">
-      <div className="text-lg font-extrabold text-neutral-800">Let’s get started</div>
+      <div className="text-lg font-extrabold text-neutral-800">Let's get started</div>
       <img src={dino} alt="Mascot" className="w-40 h-40 object-contain mx-auto my-3 drop-shadow" />
       <div className="text-xl font-extrabold text-lime-700">Add another student</div>
       <p className="text-sm text-neutral-700 mt-1">
@@ -185,38 +186,33 @@ export default function AddStudentModal({ open, onClose, onSuccess }) {
 
   const DisabledSearchPanel = () => (
     <div className="p-3 rounded-xl bg-neutral-50 border">
-      <Text strong>Adding students in this version</Text>
-      <p className="m-0 text-sm text-neutral-700">
-        Direct Student ID / Email search is disabled for Parent accounts in this release.
-        Please ask your student’s teacher/school to send you an invite link, or contact support.
+      <Text strong>Adding students</Text>
+      <p className="m0 text-sm text-neutral-700">
+        Please ask your student's teacher/school to send you an invite link.
       </p>
       <div className="mt-3 flex flex-col md:flex-row gap-6 text-sm">
         <div>
           <div className="font-semibold">Invite from school</div>
           <div>Use the invite link you receive to link your student.</div>
         </div>
-        <div>
-          <div className="font-semibold">Need help?</div>
-          <Button size="small" onClick={onClose}>Open Support</Button>
-        </div>
       </div>
     </div>
   );
 
-  const EnabledSearchPanel = () => (
-    <div className="space-y-3">
-      <Input
-        placeholder="Search by Student ID or Email"
-        value={q}
-        onChange={(e) => {
-          setQ(e.target.value);
-          if (!hasTyped) setHasTyped(true);
-        }}
-        allowClear
-      />
-      {!hasTyped ? (
-        <Text type="secondary">Start typing to see suggestions…</Text>
-      ) : results.length ? (
+  const EnabledSearchPanel = () => {
+    return (
+      <div className="space-y-3">
+        <Input
+          placeholder="Search by Student ID"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            if (!hasTyped) setHasTyped(true);
+          }}
+        />
+        {!q.trim() ? (
+          <Empty description="Enter a Student ID to search" />
+        ) : results.length ? (
         <List
           itemLayout="horizontal"
           dataSource={results}
@@ -250,7 +246,6 @@ export default function AddStudentModal({ open, onClose, onSuccess }) {
                   }
                   description={
                     <div className="flex flex-wrap items-center gap-3 text-sm">
-                      <span><MailOutlined /> {s.email || "—"}</span>
                       <span><NumberOutlined /> ID #{s.student_id}</span>
                     </div>
                   }
@@ -259,11 +254,12 @@ export default function AddStudentModal({ open, onClose, onSuccess }) {
             );
           }}
         />
-      ) : (
-        <Empty description={alreadyLinkedMsg || "No students found. Try another ID or email."} />
-      )}
-    </div>
-  );
+        ) : (
+          <Empty description={alreadyLinkedMsg || "No students found. Try another ID."} />
+        )}
+      </div>
+    );
+  };
 
   const SearchPanel = () =>
     ALLOW_B2B_ID_SEARCH ? <EnabledSearchPanel /> : <DisabledSearchPanel />;

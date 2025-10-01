@@ -101,7 +101,7 @@ function PracticeCard({ item, color = "indigo", onStart }) {
     <Card
       hoverable
       className={`rounded-2xl border-0 shadow-sm hover:shadow-md transition ring-1 ${toneRing[color] || toneRing.indigo}`}
-      styles={{ body: {{ padding: 16 }}
+      styles={{ body: { padding: 16 } }}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -130,7 +130,7 @@ function SubjectTile({ code, active, onClick }) {
       hoverable
       onClick={onClick}
       className={`rounded-2xl border ${active ? "border-indigo-300 ring-2 ring-indigo-200" : "border-neutral-200"} transition`}
-      styles={{ body: {{ padding: 14 }}
+      styles={{ body: { padding: 14 } }}
     >
       <div className="flex items-center justify-between">
         <div>

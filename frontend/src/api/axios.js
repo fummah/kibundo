@@ -256,7 +256,7 @@ api.interceptors.response.use(
 
     if (status >= 500) {
       if (meta.toast5xx !== false) {
-        message.error("Server error. Please try again later.");
+       // message.error("Server error. Please try again later.");
       }
       return Promise.reject(error);
     }

@@ -47,6 +47,11 @@ import SubjectsList from "@/pages/admin/academics/subjects/SubjectsList.jsx";
 import SubjectForm from "@/pages/admin/academics/subjects/SubjectForm.jsx";
 import SubjectDetail from "@/pages/admin/academics/subjects/SubjectDetail.jsx";
 
+/* Academics → Grades */
+import GradesList from "@/pages/admin/academics/grades/GradesList.jsx";
+import GradeForm from "@/pages/admin/academics/grades/GradeForm.jsx";
+import GradeDetail from "@/pages/admin/academics/grades/GradeDetail.jsx";
+
 /* Academics → Quizzes (new structure) */
 import QuizPage from "@/pages/admin/academics/quizzes/quiz.jsx";
 
@@ -174,6 +179,14 @@ export default function AdminRoutes() {
               <Route path="new" element={<SubjectForm />} />
               <Route path=":id" element={<SubjectDetail />} />
               <Route path=":id/edit" element={<SubjectForm />} />
+            </Route>
+
+            {/* Grades */}
+            <Route path="grades">
+              <Route index element={<GradesList />} />
+              <Route path="new" element={<GradeForm />} />
+              <Route path=":id" element={<GradeDetail />} />
+              <Route path=":id/edit" element={<GradeForm />} />
             </Route>
           </Route>
 

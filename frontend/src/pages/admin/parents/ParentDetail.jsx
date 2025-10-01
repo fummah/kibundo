@@ -106,11 +106,6 @@ export default function ParentDetail() {
             },
           },
           {
-            title: "E-mail",
-            key: "email",
-            render: (_, r) => r?.user?.email ?? "N/A",
-          },
-          {
             title: "Grade",
             dataIndex: "grade",
             key: "grade",

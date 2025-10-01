@@ -1,3 +1,4 @@
+
 // src/components/student/common/CardTile.jsx
 import React from "react";
 import { Card } from "antd";
@@ -8,7 +9,7 @@ export default function CardTile({ img, title, onClick, className = "" }) {
       <Card
         hoverable
         className="rounded-2xl border-0 !p-0 overflow-hidden shadow-sm"
-        styles={{ body: {{ padding: 0 }}
+        styles={{ body: { padding: 0 } }}
       >
         <img
           src={img}

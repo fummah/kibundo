@@ -1,9 +1,9 @@
 // src/pages/students/StudentDetail.jsx
-import React from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import EntityDetail from "@/components/EntityDetail.jsx";
-import { Button, Space, Tag, message } from "antd";
-import { LinkOutlined, UnorderedListOutlined } from "@ant-design/icons";
+import { Button, Tag, message, Modal, Select } from "antd";
+import { PlusOutlined, UnorderedListOutlined } from "@ant-design/icons";
 import api from "@/api/axios";
 
 const euro = (cents) => {
@@ -12,47 +12,95 @@ const euro = (cents) => {
   return `${(n / 100).toFixed(2)} €`;
 };
 
-// Reuse the same “pick parent/guardian” logic as the list
-const pickParent = (student) => {
-  const maybeArray =
-    student.parents ??
-    student.guardians ??
-    student.parent ??
-    student.guardian ??
-    student.linked_parent;
-  if (Array.isArray(maybeArray)) {
-    const payer = maybeArray.find((g) => g?.is_payer);
-    return payer || maybeArray[0];
-  }
-  return maybeArray || null;
-};
-
 export default function StudentDetail() {
   const location = useLocation();
   const prefill = location.state?.prefill || null;
+
+  const [availableSubjects, setAvailableSubjects] = useState([]);
+  const [assignSubjectModalVisible, setAssignSubjectModalVisible] = useState(false);
+  const [selectedSubjectId, setSelectedSubjectId] = useState(null);
+  const [assigning, setAssigning] = useState(false);
+
+  // Fetch available subjects once
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get("/allsubjects");
+        setAvailableSubjects(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Error fetching subjects:", err);
+        message.error("Failed to load available subjects");
+      }
+    })();
+  }, []);
+
+  // Helpers for endpoints used by the Subjects tab
+  const apiPaths = useMemo(
+    () => ({
+      getStudent: (id) => `/student/${id}`,
+      assignSubject: (studentId, subjectId) => `/student/${studentId}/subject/${subjectId}`,
+      unlinkSubject: (studentId, subjectId) => `/student/${studentId}/subject/${subjectId}`,
+    }),
+    []
+  );
+
+  // Assign a subject to a student
+  const handleAssignSubject = useCallback(
+    async (studentId) => {
+      if (!selectedSubjectId) return;
+      setAssigning(true);
+      try {
+        await api.post(apiPaths.assignSubject(studentId, selectedSubjectId));
+        message.success("Subject assigned successfully");
+        setAssignSubjectModalVisible(false);
+        setSelectedSubjectId(null);
+        // Let EntityDetail re-fetch by using its built-in Reload button; or you can signal via events if supported.
+      } catch (err) {
+        console.error("Error assigning subject:", err);
+        message.error(err?.response?.data?.message || "Failed to assign subject");
+      } finally {
+        setAssigning(false);
+      }
+    },
+    [selectedSubjectId, apiPaths]
+  );
+
+  // Remove (unlink) subject from student
+  const handleRemoveSubject = useCallback(
+    async (studentId, subjectId) => {
+      try {
+        await api.delete(apiPaths.unlinkSubject(studentId, subjectId));
+        message.success("Subject removed successfully");
+        // Again, rely on the tab's reload action if available.
+      } catch (err) {
+        console.error("Error removing subject:", err);
+        message.error(err?.response?.data?.message || "Failed to remove subject");
+      }
+    },
+    [apiPaths]
+  );
 
   const cfg = {
     titleSingular: "Student",
     idField: "id",
     routeBase: "/admin/students",
-
-    // We keep the shared avatar ON (configured in EntityDetail). Hide via ui.showAvatar=false if needed.
-    ui: {
-      // showAvatar: false,
-    },
-
     api: {
-      // singular routes to match your Express router
       getPath: (id) => `/student/${id}`,
       updateStatusPath: (id) => `/student/${id}/status`,
       removePath: (id) => `/student/${id}`,
+      updatePath: (id) => `/student/${id}`,
+      getSubjectsPath: "/allsubjects",
+      getSubjectPath: (id) => `/subject/${id}`,
+      assignSubjectPath: (studentId, subjectId) => `/student/${studentId}/subject/${subjectId}`,
+      removeSubjectPath: (studentId, subjectId) => `/student/${studentId}/subject/${subjectId}`,
 
       parseEntity: (payload) => {
         const s = payload?.data ?? payload ?? {};
         const user = s.user || {};
         const parent = s.parent || {};
-        const parentUser = parent.user || {};
-        const fb = (v) => (v === undefined || v === null || String(v).trim() === "" ? "-" : String(v).trim());
+        const parentUser = parent?.user || {};
+        const fb = (v) =>
+          v === undefined || v === null || String(v).trim() === "" ? "-" : String(v).trim();
 
         const name = fb([user.first_name, user.last_name].filter(Boolean).join(" "));
         const email = fb(user.email);
@@ -60,26 +108,56 @@ export default function StudentDetail() {
         const school = fb(s.school?.name || s.school_name || s.school);
         const state = fb(user.state || s.state);
 
-        const subjectsArray = Array.isArray(s.subjects)
+        // Subjects: accept either array of subjects or array of links containing subject
+        const rawSubjects = Array.isArray(s.subjects)
           ? s.subjects
-          : (Array.isArray(s.subject)
-              ? s.subject.map((it) => it?.subject?.subject_name || it?.subject_name).filter(Boolean)
-              : []);
-        const subjectsText = subjectsArray.length > 0
-          ? subjectsArray.map((it) => (typeof it === 'string' ? it : (it?.subject_name || it))).filter(Boolean).join(', ')
-          : "-";
+          : Array.isArray(s.subject)
+          ? s.subject
+          : [];
+        const subjectsArray = rawSubjects.map((it) => {
+          if (it?.subject) return it.subject; // link { subject: {...} }
+          return it; // already subject
+        });
 
-        const parentNameRaw = [parentUser.first_name, parentUser.last_name].filter(Boolean).join(" ");
-        const parentName = parentNameRaw && parentNameRaw.trim().length > 0
-          ? parentNameRaw.trim()
-          : (s.parent_id ? `#${s.parent_id}` : "-");
+        const subjectsText =
+          subjectsArray.length > 0
+            ? subjectsArray
+                .map((it) => it?.subject_name || it?.name)
+                .filter(Boolean)
+                .join(", ")
+            : "-";
 
-        const parentSummary = s.parent ? {
-          id: s.parent.id,
-          name: parentName,
-          email: parentUser.email || '-',
-          is_payer: s.parent.is_payer || false, 
-        } : null;
+        // Parent summary
+        let parentName = "-";
+        let parentEmail = "-";
+        let parentId = null;
+        let isPayer = false;
+
+        if (parent) {
+          const possibleNames = [
+            [parentUser.first_name, parentUser.last_name].filter(Boolean).join(" ").trim(),
+            parent.name,
+            parentUser.name,
+            parentUser.username,
+            parent.username,
+          ].filter(Boolean);
+          parentName = possibleNames[0] || (parent.id ? `Parent #${parent.id}` : "-");
+          parentEmail = parentUser.email || parent.email || parentUser.username || parent.username || "-";
+          parentId = parent.id || null;
+          isPayer = parent.is_payer || false;
+        } else if (s.parent_id) {
+          parentName = `Parent #${s.parent_id}`;
+          parentId = s.parent_id;
+        }
+
+        const parentSummary = parentId
+          ? {
+              id: parentId,
+              name: parentName,
+              email: parentEmail,
+              is_payer: isPayer,
+            }
+          : null;
 
         const status = fb(user.status || s.status);
         const createdAt = user.created_at || s.created_at || null;
@@ -91,64 +169,212 @@ export default function StudentDetail() {
           grade,
           subjectsText,
           parent_name: parentName,
+          parent_email: parentEmail,
+          parent_id: parentId,
           parentSummary,
           school,
           state,
           status,
           createdAt,
-          raw: s,
+          raw: {
+            ...s,
+            subjects: subjectsArray, // normalized for tabs
+            user,
+            parent: parentSummary
+              ? {
+                  ...parent,
+                  user: parentUser,
+                }
+              : null,
+          },
         };
       },
     },
 
-    // Show row data instantly while GET /student/:id runs
+    // Pre-populate while GET /student/:id runs
     initialEntity: prefill || undefined,
 
-    // Minimal profile per spec (no phone/street/city/postal/country; location = School only)
     infoFields: [
       { label: "Name", name: "name" },
-      { label: "Email", name: "email" },
       { label: "Grade", name: "grade" },
-      { label: "Subjects", name: "subjectsText" },
-      { label: "Parent", name: "parent_name" },
       { label: "School", name: "school" },
       { label: "State", name: "state" },
       { label: "Status", name: "status" },
       { label: "Date added", name: "createdAt" },
     ],
 
-    // Chips: include a clear parent-link status indicator
     topInfo: (e) => {
       const chips = [];
       if (!e) return chips;
       if (e.grade && e.grade !== "-") chips.push(<Tag key="grade">{e.grade}</Tag>);
       if (e.state && e.state !== "-") chips.push(<Tag key="state">{e.state}</Tag>);
-      if (e.parent_name && e.parent_name !== "-") chips.push(<Tag key="parent">Parent: {e.parent_name}</Tag>);
       return chips;
     },
 
     tabs: {
-      // The 'related' tab now sources its data directly from the entity
+      // Subjects tab
+      subjects: {
+        enabled: true,
+        label: "Subjects",
+        render: (student) => {
+          const studentId = student?.id;
+          const subjects = Array.isArray(student?.raw?.subjects) ? student.raw.subjects : [];
+          const assignedIds = new Set(
+            subjects
+              .map((s) => s?.id ?? s?.subject_id)
+              .filter((v) => v !== undefined && v !== null)
+          );
+
+          const selectableOptions = availableSubjects
+            .filter((subj) => {
+              const id = subj?.id ?? subj?.subject_id;
+              return id !== undefined && !assignedIds.has(id);
+            })
+            .map((subj) => ({
+              label: subj?.name || subj?.subject_name || `Subject #${subj?.id ?? subj?.subject_id}`,
+              value: subj?.id ?? subj?.subject_id,
+            }));
+
+          const onConfirmRemove = (subject) => {
+            const subjectId = subject?.id ?? subject?.subject_id;
+            Modal.confirm({
+              title: "Remove Subject",
+              content: `Are you sure you want to remove ${
+                subject?.subject_name || subject?.name || `Subject #${subjectId}`
+              } from this student?`,
+              okButtonProps: { danger: true },
+              onOk: () => handleRemoveSubject(studentId, subjectId),
+            });
+          };
+
+          return (
+            <>
+              <div className="p-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium">Enrolled Subjects</h3>
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={() => setAssignSubjectModalVisible(true)}
+                  >
+                    Assign Subject
+                  </Button>
+                </div>
+
+                {subjects.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {subjects.map((subject, idx) => {
+                      const subjectId = subject?.id ?? subject?.subject_id ?? idx;
+                      const subjectName =
+                        subject?.subject_name || subject?.name || `Subject ${idx + 1}`;
+                      return (
+                        <Tag
+                          key={subjectId}
+                          color="blue"
+                          className="text-sm py-1 px-3 flex items-center gap-2"
+                          closable
+                          onClose={(e) => {
+                            e.preventDefault();
+                            onConfirmRemove(subject);
+                          }}
+                        >
+                          {subjectName}
+                        </Tag>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-gray-500">No subjects assigned to this student</div>
+                )}
+              </div>
+
+              {/* Assign Subject Modal */}
+              <Modal
+                title="Assign Subject"
+                open={assignSubjectModalVisible}
+                onCancel={() => {
+                  setAssignSubjectModalVisible(false);
+                  setSelectedSubjectId(null);
+                }}
+                onOk={() => handleAssignSubject(studentId)}
+                confirmLoading={assigning}
+                okText="Assign"
+                okButtonProps={{ disabled: !selectedSubjectId }}
+                destroyOnClose
+                maskClosable={false}
+              >
+                <Select
+                  style={{ width: "100%" }}
+                  placeholder="Select a subject to assign"
+                  value={selectedSubjectId}
+                  onChange={setSelectedSubjectId}
+                  options={selectableOptions}
+                  showSearch
+                  optionFilterProp="label"
+                />
+              </Modal>
+            </>
+          );
+        },
+      },
+
+      // Parents/Guardians tab
       related: {
         enabled: true,
         label: "Parents / Guardians",
         idField: "id",
-        // Fetch parent data directly since the main student endpoint doesn't include it.
-        refetchPath: (studentId) => `/student/${studentId}`,
+        refetchPath: (studentId) => `/student/${studentId}?include=parent`,
         extractList: (student) => {
           if (!student?.parent) return [];
           const parentUser = student.parent.user || {};
-          return [{
-            id: student.parent.id,
-            name: [parentUser.first_name, parentUser.last_name].filter(Boolean).join(' ') || `Parent #${student.parent.id}`,
-            email: parentUser.email || '-',
-            is_payer: student.parent.is_payer || false,
-          }];
+          return [
+            {
+              id: student.parent.id,
+              name:
+                [parentUser.first_name, parentUser.last_name].filter(Boolean).join(" ") ||
+                `Parent #${student.parent.id}`,
+              email: parentUser.email || "-",
+              is_payer: student.parent.is_payer || false,
+              phone: parentUser.phone || "-",
+              status: parentUser.status || "active",
+            },
+          ];
         },
         columns: [
           { title: "ID", dataIndex: "id", key: "id", width: 80, render: (v) => v ?? "-" },
-          { title: "Name", dataIndex: "name", key: "name", render: (v) => v ?? "-" },
-          { title: "Email", dataIndex: "email", key: "email", render: (v) => v ?? "-" },
+          { title: "Name", dataIndex: "name", key: "name", render: (v) => v || "-" },
+          {
+            title: "Contact",
+            key: "contact",
+            render: (_, record) => (
+              <div>
+                <div className="text-sm">{record.email || "No email"}</div>
+                {record.phone && record.phone !== "-" && (
+                  <div className="text-xs text-gray-500">{record.phone}</div>
+                )}
+              </div>
+            ),
+          },
+          {
+            title: "Role",
+            dataIndex: "is_payer",
+            key: "role",
+            width: 120,
+            render: (isPayer) => (
+              <Tag color={isPayer ? "green" : "blue"}>{isPayer ? "Payer" : "Guardian"}</Tag>
+            ),
+          },
+          {
+            title: "Status",
+            dataIndex: "status",
+            key: "status",
+            width: 100,
+            render: (status) => (
+              <Tag color={status === "active" ? "green" : "red"} className="capitalize">
+                {status || "inactive"}
+              </Tag>
+            ),
+          },
           {
             title: "Actions",
             key: "actions",
@@ -163,7 +389,7 @@ export default function StudentDetail() {
         empty: "No parent linked to this student.",
       },
 
-      // Activity view: timestamp, homework type, scan info
+      // Activity
       activity: {
         enabled: true,
         label: "Activity",
@@ -195,7 +421,7 @@ export default function StudentDetail() {
         createPath: (id) => `/student/${id}/comments`,
       },
 
-      // BILLING snapshot (optional)
+      // Billing snapshot (optional)
       billing: {
         enabled: false,
         rows: (e) => {
