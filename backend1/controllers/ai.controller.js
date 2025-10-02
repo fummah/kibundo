@@ -1,12 +1,13 @@
 const { buildContext } = require('../services/parentContextBuilder');
 const { childBuildContext } = require('../services/childContextBuilder');
 const { teacherBuildContext } = require('../services/teacherContextBuilder');
+const { buildCustomAgentContext } = require('../services/customAgentContextBuilder');
 const OpenAI = require('openai');
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 exports.chatWithAgent = async (req, res) => {
   try {
-    const { question,ai_agent } = req.body;
+    const { question,ai_agent,entities, class: classFilter, state } = req.body;
 
     // Build structured context
     let contextObj = {};
@@ -26,8 +27,22 @@ exports.chatWithAgent = async (req, res) => {
         contextObj = await teacherBuildContext(req)
         trimmedContext = summarizeContextTeacher(contextObj);
       }
-    //console.log(contextObj);
-    //return;
+      else if (ai_agent === "CustomAgent") {
+      // For custom agents, use the dynamic builder
+      
+      contextObj = await buildCustomAgentContext({
+        user: req.user,
+        entities: entities || [], // list of table names selected in frontend
+        class: classFilter,
+        state
+      });
+    
+      
+      // Optionally, create a trimmed context for custom agent
+      //trimmedContext = summarizeCustomContext(contextObj, entities);
+    }
+    console.log(contextObj);
+    return;
      
     const systemContent = `You are an AI assistant for Kibundo Education System.
 Context: ${JSON.stringify(trimmedContext)}`;
@@ -91,7 +106,7 @@ function summarizeContextChild(ctx) {
       subject_name: s.subject_name
     })),
     invoices_count: (ctx.parent || []).reduce(
-      (sum, p) => sum + (p.invoiceuser?.length || 0),
+      (sum, p) => sum + (p.invoice?.length || 0),
       0
     ),
     last_active: ctx.last_active
@@ -103,4 +118,13 @@ function summarizeContextTeacher(ctx) {
     user: ctx.user,
     last_active: ctx.last_active
   };
+}
+
+function summarizeCustomContext(ctx, entities = []) {
+  const trimmed = { user: ctx.user, last_active: ctx.last_active };
+  entities.forEach(e => {
+    const key = e.toLowerCase();
+    trimmed[key] = (ctx[key] || []).slice(0, 3); // keep only first 3 records per entity for brevity
+  });
+  return trimmed;
 }

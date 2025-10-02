@@ -22,7 +22,7 @@ module.exports = (sequelize, DataTypes) => {
 
     Invoice.belongsTo(models.parent, {
       foreignKey: 'parent_id',
-      as: 'invoiceuser'
+      as: 'invoice'
     });
     
   };

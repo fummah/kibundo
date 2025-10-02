@@ -71,7 +71,7 @@ async function childBuildContext(req) {
         },
         {
           model: Invoice,
-          as: 'invoiceuser'
+          as: 'invoice'
         }
           ]
         }  

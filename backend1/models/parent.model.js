@@ -43,7 +43,7 @@ module.exports = (sequelize, DataTypes) => {
 
      Parent.hasMany(models.invoice, {
     foreignKey: 'parent_id',
-    as: 'invoiceuser'
+    as: 'invoice'
   });
      Parent.hasMany(models.subscription, {
     foreignKey: 'parent_id',

@@ -72,7 +72,7 @@ async function buildContext(req) {
         },
         {
           model: Invoice,
-          as: 'invoiceuser'
+          as: 'invoice'
         }
           ]
         }
@@ -88,7 +88,7 @@ const children = parents.flatMap(p => p.student || []);
 // Flatten subscriptions from all parents
 const subscriptions = parents.flatMap(p => p.subscription || []);
 // Flatten invoices from all parents
-const invoices = parents.flatMap(p => p.invoiceuser || []);
+const invoices = parents.flatMap(p => p.invoice || []);
 const context = {
   user: plainUser,
   parent: parents,

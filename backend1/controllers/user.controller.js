@@ -474,7 +474,7 @@ exports.getParentById = async (req, res) => {
         },
            {
           model: Invoice,
-          as: 'invoiceuser'
+          as: 'invoice'
         }
       ]
     });
@@ -865,7 +865,7 @@ exports.getAllInvoices = async (req, res) => {
       },
        include: {
           model: Parent,
-          as: 'invoiceuser', // Parent → Student
+          as: 'invoice', // Parent → Student
           include: [
             {
               model: User,
@@ -891,7 +891,7 @@ exports.getInvoiceById = async (req, res) => {
       where: { id },      
        include: {
           model: Parent,
-          as: 'invoiceuser', // Parent → Student
+          as: 'invoice', // Parent → Student
           include: [
             {
               model: User,
@@ -1301,5 +1301,55 @@ exports.getAllAgents = async (req, res) => {
   }
 };
 
+exports.getPublicTables = async (req, res) => {
+  try {
+    const query = `
+      SELECT UPPER(table_name) AS table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+      ORDER BY table_name;
+    `;
+
+    const [results] = await db.sequelize.query(query);
+
+    res.status(200).json({
+      success: true,
+      tables: results.map(r => r.table_name)
+    });
+  } catch (error) {
+    console.error("Error fetching public tables:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+exports.addAgent = async (req, res) => {
+  try {
+    const { agent_name, entities, grade, state, file_name = '', api = '' } = req.body;
+    const created_by = req.user.id; // from logged-in user
+
+    // Create the AgentPromptSet
+    const newAgent = await AgentPromptSet.create({
+      name: agent_name,
+      description: `Agent prompt set for ${agent_name}`,
+      prompts: [], // start empty, or you can accept from req.body
+      version: 'v1',
+      stage: 'staging',
+      created_by,
+      entities,
+      grade,
+      state,
+      file_name,
+      api
+    });
+
+    return res.status(201).json({
+      message: "Agent created successfully",
+      agent: newAgent
+    });
+  } catch (error) {
+    console.error("Error creating agent:", error);
+    return res.status(500).json({ error: "Failed to create agent" });
+  }
+};
 
   
