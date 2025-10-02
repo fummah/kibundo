@@ -1,3 +1,4 @@
+// src/pages/academics/worksheets/Worksheet.jsx
 import React, { useMemo, useState, useEffect } from "react";
 import {
   Button, Card, Form, Input, Select, Space, Tag, Drawer, Divider,
@@ -6,52 +7,108 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PlusOutlined, ReloadOutlined, SaveOutlined, MoreOutlined } from "@ant-design/icons";
 
-import { BUNDESLAENDER, GRADES } from "./_constants";
-import {
-  listWorksheets,
-  createWorksheet,
-  updateWorksheet,
-  deleteWorksheet,
-  seedWorksheets,
-} from "@/api/academics/worksheets";
-
+import api from "@/api/axios";
 import ResponsiveFilters from "@/components/ResponsiveFilters.jsx";
 import FluidTable from "@/components/FluidTable.jsx";
 import { SafeText, SafeTags } from "@/utils/safe";
 
 const { useBreakpoint } = Grid;
 
+// ---- Inline API helpers (no separate worksheets.js) ----
+async function apiListWorksheets(params = {}) {
+  const { page = 1, pageSize = 20, q, bundesland, subject, grade } = params;
+  const res = await api.get("/worksheets", {
+    params: { page, pageSize, q, bundesland, subject, grade },
+  });
+  const data = res?.data ?? {};
+  if (Array.isArray(data)) return { items: data, total: data.length };
+  if (Array.isArray(data.items) && typeof data.total === "number") return data;
+  if (Array.isArray(data.rows) && typeof data.count === "number") {
+    return { items: data.rows, total: data.count };
+  }
+  const items = data.items || data.data || data.results || data.rows || [];
+  const total =
+    typeof data.total === "number"
+      ? data.total
+      : typeof data.count === "number"
+      ? data.count
+      : Array.isArray(items)
+      ? items.length
+      : 0;
+  return { items, total };
+}
+
+async function apiCreateWorksheet(payload) {
+  const res = await api.post("/addworksheet", payload);
+  return res.data;
+}
+
+async function apiUpdateWorksheet(id, payload) {
+  // If your backend upserts on POST /addworksheet with {id,...}
+  const res = await api.post("/addworksheet", { id, ...payload });
+  return res.data;
+}
+
+async function apiDeleteWorksheet(id) {
+  const res = await api.delete(`/worksheet/${id}`);
+  return res.data;
+}
+
+async function apiGetStates() {
+  const res = await api.get("/states");
+  const data = res?.data ?? [];
+  // Expecting [{ id, state_name }, ...] but normalize defensively
+  const list = Array.isArray(data)
+    ? data
+    : Array.isArray(data.items)
+    ? data.items
+    : Array.isArray(data.rows)
+    ? data.rows
+    : [];
+  return list.map((s) => ({
+    id: s.id ?? s.state_id ?? s.value ?? s.code ?? s.name,
+    name: s.state_name ?? s.name ?? s.label ?? s.title ?? String(s),
+  }));
+}
+
+// If you still want a quick grade list without hitting another API:
+const GRADES = Array.from({ length: 12 }, (_, i) => i + 1);
+
 export default function Worksheet() {
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
   const qc = useQueryClient();
   const screens = useBreakpoint();
-  const SHOW_SEED = (import.meta?.env?.VITE_SHOW_SEED === 'true');
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const filters = Form.useWatch([], form);
 
-  const { data, isFetching, refetch, isError, error } = useQuery({
-    queryKey: ["worksheets", { page, pageSize, ...filters }],
-    queryFn: () => listWorksheets({ page, pageSize, ...filters }),
-    keepPreviousData: true,
+  // ---- States (Bundesländer) from API ----
+  const {
+    data: states,
+    isFetching: statesLoading,
+    isError: statesError,
+    error: statesErrorObj,
+    refetch: refetchStates,
+  } = useQuery({
+    queryKey: ["states"],
+    queryFn: apiGetStates,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // Auto-seed demo data once if store is empty and no filters are applied
-  useEffect(() => {
-    const noFilters = !filters?.q && !filters?.bundesland && !filters?.subject && !filters?.grade;
-    if (!isFetching && !isError && noFilters && (data?.total ?? 0) === 0) {
-      (async () => {
-        try {
-          await createWorksheet({ title: "Reading Comprehension A1", subject: "Deutsch", bundesland: "Bayern", grade: 1, difficulty: "easy", tags: ["reading"] });
-          await createWorksheet({ title: "Math Drill – Addition", subject: "Mathematik", bundesland: "Berlin", grade: 2, difficulty: "medium", tags: ["math"] });
-          await createWorksheet({ title: "Science: Plants", subject: "Sachkunde", bundesland: "Hamburg", grade: 3, difficulty: "easy", tags: ["science"] });
-          refetch();
-        } catch {}
-      })();
-    }
-  }, [isFetching, isError, data?.total, filters, refetch]);
+  // ---- Worksheets list ----
+  const {
+    data,
+    isFetching,
+    refetch,
+    isError,
+    error
+  } = useQuery({
+    queryKey: ["worksheets", { page, pageSize, ...filters }],
+    queryFn: () => apiListWorksheets({ page, pageSize, ...filters }),
+    keepPreviousData: true,
+  });
 
   // UI state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -61,10 +118,7 @@ export default function Worksheet() {
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
 
   const createMut = useMutation({
-    mutationFn: (payload) => {
-      console.log('[Worksheet#create] payload keys', Object.keys(payload || {}));
-      return createWorksheet(payload);
-    },
+    mutationFn: (payload) => apiCreateWorksheet(payload),
     onSuccess: () => {
       message.success("Worksheet created successfully");
       qc.invalidateQueries({ queryKey: ["worksheets"] });
@@ -76,11 +130,9 @@ export default function Worksheet() {
       message.error(err?.response?.data?.message || err?.message || "Failed to create worksheet");
     }
   });
+
   const updateMut = useMutation({
-    mutationFn: (payload) => {
-      console.log('[Worksheet#update] id', editId, 'payload keys', Object.keys(payload || {}));
-      return updateWorksheet(editId, payload);
-    },
+    mutationFn: (payload) => apiUpdateWorksheet(editId, payload),
     onSuccess: () => {
       message.success("Worksheet updated successfully");
       qc.invalidateQueries({ queryKey: ["worksheets"] });
@@ -91,12 +143,12 @@ export default function Worksheet() {
       message.error(err?.response?.data?.message || err?.message || "Failed to update worksheet");
     }
   });
+
   const del = useMutation({
-    mutationFn: (id) => deleteWorksheet(id),
+    mutationFn: (id) => apiDeleteWorksheet(id),
     onSuccess: () => {
       message.success("Worksheet deleted");
       qc.invalidateQueries({ queryKey: ["worksheets"] });
-      // close view drawer if it was open on the same record
       if (viewOpen && viewRec && viewRec.id === editId) setViewOpen(false);
     },
     onError: (err) => {
@@ -110,16 +162,20 @@ export default function Worksheet() {
     editForm.setFieldsValue({ grade: 1, difficulty: "easy" });
     setDrawerOpen(true);
   };
+
   const openEdit = (r) => {
     setEditId(r.id);
-    editForm.setFieldsValue(r);
+    // Ensure mapping if backend returns nested structures
+    const patch = {
+      ...r,
+      bundesland: r.bundesland?.name || r.bundesland || r.state_name || r.state,
+    };
+    editForm.setFieldsValue(patch);
     setDrawerOpen(true);
   };
 
   const onSubmit = async () => {
-    console.log('[Worksheet#onSubmit] start');
     const values = await editForm.validateFields();
-    console.log('[Worksheet#onSubmit] validated', { keys: Object.keys(values || {}) });
     if (editId) updateMut.mutate(values);
     else createMut.mutate(values);
   };
@@ -140,7 +196,7 @@ export default function Worksheet() {
       { title: "Title", dataIndex: "title", render: (v) => <SafeText value={v} /> },
       { title: "Subject", dataIndex: "subject", width: 140, render: (v) => <SafeText value={v} /> },
       { title: "Grade", dataIndex: "grade", width: 90, render: (v) => <SafeText value={v} /> },
-      { title: "State", dataIndex: "bundesland", width: 180, render: (v) => <SafeText value={v} /> },
+      { title: "State", dataIndex: "bundesland", width: 180, render: (v) => <SafeText value={v?.name || v} /> },
       {
         title: "Difficulty",
         dataIndex: "difficulty",
@@ -166,14 +222,9 @@ export default function Worksheet() {
             ],
             onClick: ({ key, domEvent }) => {
               domEvent?.stopPropagation?.();
-              if (key === "view") {
-                setViewRec(r);
-                setViewOpen(true);
-              } else if (key === "edit") {
-                openEdit(r);
-              } else if (key === "delete") {
-                confirmDelete(r.id);
-              }
+              if (key === "view") { setViewRec(r); setViewOpen(true); }
+              else if (key === "edit") { openEdit(r); }
+              else if (key === "delete") { confirmDelete(r.id); }
             },
           };
           return (
@@ -202,7 +253,7 @@ export default function Worksheet() {
       okText: "Delete",
       onOk: async () => {
         try {
-          await Promise.all((selectedRowKeys || []).map((id) => deleteWorksheet(id)));
+          await Promise.all((selectedRowKeys || []).map((id) => apiDeleteWorksheet(id)));
           message.success("Selected worksheets deleted");
           setSelectedRowKeys([]);
           qc.invalidateQueries({ queryKey: ["worksheets"] });
@@ -223,31 +274,43 @@ export default function Worksheet() {
             <p className="text-gray-500">Create and manage printable or interactive worksheets</p>
           </div>
           <Space wrap>
-            <Button icon={<ReloadOutlined />} onClick={() => refetch()} className="flex items-center">Refresh</Button>
-            {SHOW_SEED && (
-              <Button onClick={async () => { await seedWorksheets(); message.success('Sample worksheets added'); refetch(); }}>Seed sample data</Button>
-            )}
+            <Button icon={<ReloadOutlined />} onClick={() => { refetch(); refetchStates(); }} className="flex items-center">
+              Refresh
+            </Button>
             {selectedRowKeys.length > 0 && (
               <Button danger onClick={bulkDeleteSelected}>
                 Delete selected ({selectedRowKeys.length})
               </Button>
             )}
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} className="flex items-center">New Worksheet</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} className="flex items-center">
+              New Worksheet
+            </Button>
           </Space>
         </div>
+
         <Form form={form} layout="inline">
           <ResponsiveFilters>
             <Form.Item name="q">
               <Input placeholder="Search title/subject/tags…" allowClear style={{ width: 260 }} />
             </Form.Item>
             <Form.Item name="bundesland" label="State">
-              <Select allowClear options={BUNDESLAENDER.map((b) => ({ value: b, label: b }))} style={{ minWidth: 180 }} />
+              <Select
+                allowClear
+                loading={statesLoading}
+                options={(states || []).map((s) => ({ value: s.name, label: s.name }))}
+                style={{ minWidth: 180 }}
+                placeholder={statesError ? "Failed to load" : "Select state"}
+              />
             </Form.Item>
             <Form.Item name="subject" label="Subject">
               <Input allowClear style={{ minWidth: 160 }} />
             </Form.Item>
             <Form.Item name="grade" label="Grade">
-              <Select allowClear options={GRADES.map((g) => ({ value: g, label: `Grade ${g}` }))} style={{ minWidth: 120 }} />
+              <Select
+                allowClear
+                options={GRADES.map((g) => ({ value: g, label: `Grade ${g}` }))}
+                style={{ minWidth: 120 }}
+              />
             </Form.Item>
             <Form.Item>
               <Space>
@@ -291,7 +354,9 @@ export default function Worksheet() {
                   <Empty description="No worksheets found" />
                   {Boolean(form.getFieldValue('q') || form.getFieldValue('bundesland') || form.getFieldValue('subject') || form.getFieldValue('grade')) && (
                     <div className="text-center mt-2">
-                      <Button size="small" onClick={() => { form.resetFields(); refetch(); }}>Clear filters</Button>
+                      <Button size="small" onClick={() => { form.resetFields(); refetch(); }}>
+                        Clear filters
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -301,7 +366,7 @@ export default function Worksheet() {
         </Card>
       </div>
 
-      {/* Create/Edit Drawer (aligned with Curricula drawer) */}
+      {/* Create/Edit Drawer */}
       <Drawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -333,7 +398,11 @@ export default function Worksheet() {
             <Input.TextArea rows={4} />
           </Form.Item>
           <Form.Item name="bundesland" label="Bundesland" rules={[{ required: true }]}>
-            <Select options={BUNDESLAENDER.map((b) => ({ value: b, label: b }))} />
+            <Select
+              loading={statesLoading}
+              options={(states || []).map((s) => ({ value: s.name, label: s.name }))}
+              placeholder={statesError ? "Failed to load" : "Select state"}
+            />
           </Form.Item>
           <Form.Item name="subject" label="Subject" rules={[{ required: true }]}>
             <Input />
@@ -375,7 +444,7 @@ export default function Worksheet() {
           <>
             <Descriptions column={1} bordered size="middle">
               <Descriptions.Item label="Title"><SafeText value={viewRec.title} /></Descriptions.Item>
-              <Descriptions.Item label="Bundesland"><SafeText value={viewRec.bundesland} /></Descriptions.Item>
+              <Descriptions.Item label="Bundesland"><SafeText value={viewRec.bundesland?.name || viewRec.bundesland} /></Descriptions.Item>
               <Descriptions.Item label="Subject"><SafeText value={viewRec.subject} /></Descriptions.Item>
               <Descriptions.Item label="Grade"><SafeText value={viewRec.grade} /></Descriptions.Item>
               <Descriptions.Item label="Difficulty">

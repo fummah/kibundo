@@ -69,15 +69,15 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
           };
 
           const userBody = {
-            role_id: 1,
+            role_id: 1, // Student role
             first_name: payload.first_name,
             last_name: payload.last_name,
-            email: payload.email,
+            // No email needed for students - will use parent's email
             state: payload.state,
-            class_id: payload.class_id, // required for student creation
+            class_id: payload.class_id,
             parent_id: payload.parent_id ?? null,
             subjects: Array.isArray(payload.subjects) ? payload.subjects : [],
-            password: genTempPassword(14),
+            password: genTempPassword(14), // Generate temp password for the student
           };
 
           // POST /adduser; backend will create associated Student when role_id===1
@@ -88,11 +88,6 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
         // Basic
         { name: "first_name", label: "First name", rules: [{ required: true }] },
         { name: "last_name",  label: "Last name",  rules: [{ required: true }] },
-        {
-          name: "email",
-          label: "Email",
-          rules: [{ required: true }, { type: "email" }],
-        },
 
         // Class (IMPORTANT: backend wants class_id)
         {
@@ -166,7 +161,6 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
           autoloadOptions: false,
           searchParam: "q",
           allowClear: true,
-          // Store the state NAME so backend saves readable string
           transform: (it) => ({ value: it?.state_name ?? String(it), label: it?.state_name ?? String(it) }),
           rules: [{ required: true }],
         },
@@ -176,9 +170,9 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
         const payload = {
           first_name: values.first_name?.trim(),
           last_name: values.last_name?.trim(),
-          email: values.email?.trim(),
+          // No email for students - will be linked to parent's email
           state: values.state || null,
-          class_id: values.class_id, // map grade -> class_id
+          class_id: values.class_id,
           subjects: Array.isArray(values.subjects) ? values.subjects : [],
           parent_id: values.parent_id ?? mergedInitials.parent_id ?? null,
           school: values.school || null,

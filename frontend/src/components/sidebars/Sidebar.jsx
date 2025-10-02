@@ -85,6 +85,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
         { href: "/admin/academics/game", label: "Game", icon: ProjectOutlined },
         { href: "/admin/academics/kibundo", label: "Kibundo AI", icon: RobotOutlined },
         { href: "/admin/academics/subjects", label: "Subjects", icon: BookOutlined },
+        { href: "/admin/academics/grades", label: "Grades", icon: SafetyCertificateOutlined },
         { href: "/admin/academics/ocr/workspace", label: "OCR Workspace", icon: FileSearchOutlined },
       ],
     },

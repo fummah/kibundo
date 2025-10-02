@@ -53,7 +53,7 @@ import {
   SaveOutlined,
   PaperClipOutlined
 } from "@ant-design/icons";
-import dayjs from 'dayjs';
+import dayjs from "dayjs";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -323,7 +323,7 @@ export default function EntityDetail({ cfg }) {
     }
   }, [safeCfg?.tabs?.related, id, relatedListPath, entity]);
 
-  // Prefill related rows from entity when available (useful before first manual refresh)
+  // Prefill related rows from entity when available
   useEffect(() => {
     const rel = safeCfg?.tabs?.related || {};
     if (!rel.enabled) return;
@@ -334,82 +334,65 @@ export default function EntityDetail({ cfg }) {
   }, [entity, safeCfg?.tabs?.related]);
 
   /* --- Info edit state --- */
-  // Inline editing state
   const [editingField, setEditingField] = useState(null);
-  const [fieldValue, setFieldValue] = useState('');
+  const [fieldValue, setFieldValue] = useState("");
   const [savingField, setSavingField] = useState(false);
   const [infoForm] = Form.useForm();
-  
-  // Make all fields editable by default
   const isEditingInfo = true;
 
-  // Handle field updates
   const handleFieldUpdate = useCallback(async (field) => {
     if (!field.editable || savingField) return;
 
     setSavingField(true);
     try {
       const updateData = { [field.name]: fieldValue };
-      const updatePath = safeCfg.api?.updatePath || ((id) => `/${safeCfg.routeBase || 'entities'}/${id}`);
-      
+      const updatePath = safeCfg.api?.updatePath || ((id) => `/${safeCfg.routeBase || "entities"}/${id}`);
       await api.patch(updatePath(id), updateData, { withCredentials: true });
-      
-      // Update local state
-      setEntity(prev => ({
-        ...prev,
-        ...updateData
-      }));
-      
+      setEntity(prev => ({ ...prev, ...updateData }));
       messageApi.success(`${field.label} updated successfully`);
       setEditingField(null);
     } catch (error) {
-      console.error('Error updating field:', error);
+      console.error("Error updating field:", error);
       messageApi.error(`Failed to update ${field.label}`);
     } finally {
       setSavingField(false);
     }
   }, [fieldValue, id, messageApi, safeCfg.api?.updatePath, safeCfg.routeBase, savingField]);
 
-  // Handle key press for inline editing
   const handleKeyPress = useCallback((e, field) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
       handleFieldUpdate(field);
-    } else if (e.key === 'Escape') {
+    } else if (e.key === "Escape") {
       setEditingField(null);
     }
   }, [handleFieldUpdate]);
 
-  // Make all fields editable except IP and filter out parent_id
   const editableInfoFields = useMemo(() => {
     const configuredFields = (safeCfg.infoFields || [])
       .filter(field => {
-        const name = Array.isArray(field.name) ? field.name.join('.') : field.name;
-        // Keep all fields except parent_id and parent.id
-        return name !== 'parent_id' && !name.includes('parent.id');
+        const name = Array.isArray(field.name) ? field.name.join(".") : field.name;
+        return name !== "parent_id" && !name.includes("parent.id");
       })
       .map(field => {
-        const name = Array.isArray(field.name) ? field.name.join('.') : field.name;
-        const isIp = ['ip', 'ip_address', 'ipAddress'].some(ip => 
+        const name = Array.isArray(field.name) ? field.name.join(".") : field.name;
+        const isIp = ["ip", "ip_address", "ipAddress"].some(ip => 
           name.toLowerCase().includes(ip.toLowerCase())
         );
-        // Mark date_added and similar fields as not editable
-        const isDateAdded = ['date_added', 'created_at', 'createdAt', 'member_since']
+        const isDateAdded = ["date_added", "created_at", "createdAt", "member_since"]
           .some(dateField => name.toLowerCase().includes(dateField.toLowerCase()));
-        
-        const isReadOnly = isIp || isDateAdded || name.toLowerCase().includes('id');
+        const isReadOnly = isIp || isDateAdded || name.toLowerCase().includes("id");
 
         return {
           ...field,
           name,
           editable: !isReadOnly,
-          type: field.type || field.input || 'text'
+          type: field.type || field.input || "text"
         };
       });
 
-    // Manually add the ID field at the beginning
     return [
-      { name: idField, label: 'ID', editable: false, type: 'text' },
+      { name: idField, label: "ID", editable: false, type: "text" },
       ...configuredFields,
     ];
   }, [safeCfg.infoFields, idField]);
@@ -417,7 +400,6 @@ export default function EntityDetail({ cfg }) {
   const saveInfo = async () => {
     try {
       const values = await infoForm.validateFields();
-
       delete values[idField];
 
       for (const k of Object.keys(values)) {
@@ -434,7 +416,6 @@ export default function EntityDetail({ cfg }) {
       } else {
         setEntity((prev) => ({ ...(prev || {}), ...values }));
       }
-      setIsEditingInfo(false);
     } catch (err) {
       if (err?.errorFields) {
         messageApi.error("Please fix the highlighted fields.");
@@ -527,10 +508,10 @@ export default function EntityDetail({ cfg }) {
         const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
         setComments(list);
       } else {
-        setComments([]); // Show nothing by default
+        setComments([]);
       }
     } catch {
-      setComments([]); // Show nothing on error
+      setComments([]);
     } finally {
       setCommentsLoading(false);
     }
@@ -599,7 +580,6 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  // NEW: updateDocument used by Edit modal
   const updateDocument = async (docId, payload) => {
     try {
       if (typeof docsCfg?.updatePath === "function") {
@@ -664,17 +644,18 @@ export default function EntityDetail({ cfg }) {
   // Initial load
   useEffect(() => {
     load();
-    if (activeTab === 'information' && performancePath) {
+    if (activeTab === "information" && performancePath) {
       loadPerformance();
     }
-    if ((activeTab === 'communication' || activeTab === 'information') && commCfg?.enabled) {
+    if ((activeTab === "communication" || activeTab === "information") && commCfg?.enabled) {
       loadComments();
     }
   }, [load, activeTab, performancePath, commCfg?.enabled, loadPerformance, loadComments]);
 
   /* -------- actions -------- */
   const goBack = () => navigate(-1);
-  const goEdit = () => navigate(`${routeBase || location.pathname.replace(/\/[^/]+$/, "")}/${id}/edit`);
+  const goEdit = () =>
+    navigate(`${routeBase || location.pathname.replace(/\/[^/]+$/, "")}/${id}/edit`);
   const onDelete = () => {
     if (!removePath) return;
     Modal.confirm({
@@ -733,12 +714,11 @@ export default function EntityDetail({ cfg }) {
     const def = safeCfg.tabs?.related?.columns || [];
     const cols = def.map((c) => ({ ...c }));
 
-    // Add actions column if unlink path is provided
     if (apiObj.unlinkStudentPath) {
       cols.push({
-        title: 'Actions',
-        key: 'actions',
-        fixed: 'right',
+        title: "Actions",
+        key: "actions",
+        fixed: "right",
         width: 100,
         render: (_, record) => (
           <Button
@@ -760,19 +740,20 @@ export default function EntityDetail({ cfg }) {
   const handleTabChange = useCallback((key) => {
     setActiveTab(key);
     switch (key) {
-      case 'related':
+      case "related":
         if (safeCfg?.tabs?.related?.enabled || relatedListPath) loadRelated();
         break;
-      case 'information':
+      case "information":
         if (performancePath) loadPerformance();
         if (commCfg?.enabled) loadComments();
         break;
-      case 'tasks':
+      case "tasks":
         if (tasksCfg.enabled) loadTasks();
         break;
-      case 'documents':
+      case "documents":
         if (docsCfg?.enabled) loadDocuments();
         break;
+      // custom tabs (e.g., 'subjects') generally don't need loaders here unless you add one
       default:
         break;
     }
@@ -825,17 +806,13 @@ export default function EntityDetail({ cfg }) {
 
   const CommunicationPanel =
     commCfg?.enabled && (
-      <Card
-        className="!rounded-xl"
-        title="Comments / Notes"
-        styles={{ body: { padding: 0 } }}
-      >
+      <Card className="!rounded-xl" title="Comments / Notes" styles={{ body: { padding: 0 } }}>
         <div style={{ maxHeight: 420, overflowY: "auto" }}>
           <List
             dataSource={comments}
             loading={commentsLoading}
             locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No notes yet." /> }}
-            footer={<AddCommentForm onSubmit={addComment} />} // Add the form to the footer
+            footer={<AddCommentForm onSubmit={addComment} />}
             renderItem={(item, idx) => (
               <div key={item.id || idx}>
                 <div className="px-4 py-3">
@@ -871,25 +848,25 @@ export default function EntityDetail({ cfg }) {
       </Card>
     );
 
-    const informationTab = (
-      <Card title="Main information">
-        <Form form={infoForm} layout="vertical" initialValues={entity}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-            {editableInfoFields.map((field) => (
-              <Form.Item label={field.label} key={field.name} name={field.name}>
-                {field.type === 'select' ? (
-                  <Select placeholder={`Select ${field.label}`} options={field.options || []} disabled={!field.editable} />
-                ) : field.type === 'date' ? (
-                  <DatePicker className="w-full" disabled={!field.editable} />
-                ) : (
-                  <Input placeholder={field.label} disabled={!field.editable} />
-                )}
-              </Form.Item>
-            ))}
-          </div>
-        </Form>
-      </Card>
-    );
+  const informationTab = (
+    <Card title="Main information">
+      <Form form={infoForm} layout="vertical" initialValues={entity}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+          {editableInfoFields.map((field) => (
+            <Form.Item label={field.label} key={field.name} name={field.name}>
+              {field.type === "select" ? (
+                <Select placeholder={`Select ${field.label}`} options={field.options || []} disabled={!field.editable} />
+              ) : field.type === "date" ? (
+                <DatePicker className="w-full" disabled={!field.editable} />
+              ) : (
+                <Input placeholder={field.label} disabled={!field.editable} />
+              )}
+            </Form.Item>
+          ))}
+        </div>
+      </Form>
+    </Card>
+  );
 
   const relatedTab =
     safeCfg?.tabs?.related?.enabled &&
@@ -899,11 +876,7 @@ export default function EntityDetail({ cfg }) {
           <div className="p-3 flex items-center justify-between">
             <Text strong>{safeCfg.tabs.related.label || "Related"}</Text>
             <Space>
-              <Button 
-                icon={<PlusOutlined />} 
-                onClick={() => setLinkChildModalOpen(true)}
-                disabled={false}
-              >
+              <Button icon={<PlusOutlined />} onClick={() => setLinkChildModalOpen(true)} disabled={false}>
                 Add Student
               </Button>
               <Button icon={<ReloadOutlined />} onClick={loadRelated} />
@@ -940,14 +913,24 @@ export default function EntityDetail({ cfg }) {
               { title: "ID", dataIndex: "id" },
               { title: "Title", dataIndex: "title" },
               { title: "Priority", dataIndex: "priority", render: (p) => <Tag>{p}</Tag> },
-              { title: "Status", dataIndex: "status", render: (s) => <Tag color={s === "open" ? "orange" : s === "in_progress" ? "blue" : "green"}>{s}</Tag> },
+              {
+                title: "Status",
+                dataIndex: "status",
+                render: (s) => (
+                  <Tag color={s === "open" ? "orange" : s === "in_progress" ? "blue" : "green"}>{s}</Tag>
+                ),
+              },
               { title: "Due", dataIndex: "dueDate", render: (d) => fmtDate(d) },
               {
                 title: "Actions",
                 render: (_, r) => (
                   <Space>
-                    <Button size="small" onClick={() => updateTask(r.id, { status: "done" })}>Mark done</Button>
-                    <Button size="small" danger onClick={() => deleteTask(r.id)}>Delete</Button>
+                    <Button size="small" onClick={() => updateTask(r.id, { status: "done" })}>
+                      Mark done
+                    </Button>
+                    <Button size="small" danger onClick={() => deleteTask(r.id)}>
+                      Delete
+                    </Button>
                   </Space>
                 ),
               },
@@ -968,27 +951,51 @@ export default function EntityDetail({ cfg }) {
         const set = new Set(documents.map((d) => d?.type || d?.status || "Uploaded"));
         return ["All", ...Array.from(set)];
       }, [documents, docsCfg?.typeOptions]);
-  
+
       const filteredDocs = useMemo(() => {
         const q = docSearch.trim().toLowerCase();
         return (documents || []).filter((d) => {
           const matchesType = docType === "All" || (d?.type || d?.status || "Uploaded") === docType;
           if (!q) return matchesType;
           const hay = [
-            d?.id, d?.title, d?.description, d?.status, d?.type, d?.source,
-            d?.added_by, d?.updated_by, d?.date
+            d?.id,
+            d?.title,
+            d?.description,
+            d?.status,
+            d?.type,
+            d?.source,
+            d?.added_by,
+            d?.updated_by,
+            d?.date,
           ].map((x) => (x == null ? "" : String(x).toLowerCase()));
           return matchesType && hay.some((t) => t.includes(q));
         });
       }, [documents, docSearch, docType]);
-  
+
       const columns = [
-        { title: "Added (updated) by", dataIndex: "added_by", render: (v, r) => r.updated_by || r.added_by || "Administrator" },
-        { title: "Status", dataIndex: "status", render: (v) => <Tag>{v || "Uploaded"}</Tag>, filters: Array.from(new Set(documents.map(d => d.status || "Uploaded"))).map(v => ({text:v, value:v})), onFilter:(val, rec)=> (rec.status||"Uploaded")===val },
+        {
+          title: "Added (updated) by",
+          dataIndex: "added_by",
+          render: (v, r) => r.updated_by || r.added_by || "Administrator",
+        },
+        {
+          title: "Status",
+          dataIndex: "status",
+          render: (v) => <Tag>{v || "Uploaded"}</Tag>,
+          filters: Array.from(new Set(documents.map((d) => d.status || "Uploaded"))).map((v) => ({
+            text: v,
+            value: v,
+          })),
+          onFilter: (val, rec) => (rec.status || "Uploaded") === val,
+        },
         { title: "Source", dataIndex: "source", render: (v) => v || "Uploaded" },
         { title: "Title", dataIndex: "title", ellipsis: true },
-        { title: "Date", dataIndex: "date", sorter: (a, b) => new Date(a.date||0) - new Date(b.date||0),
-          render: (v) => v ? new Date(v).toLocaleString() : "-" },
+        {
+          title: "Date",
+          dataIndex: "date",
+          sorter: (a, b) => new Date(a.date || 0) - new Date(b.date || 0),
+          render: (v) => (v ? new Date(v).toLocaleString() : "-"),
+        },
         { title: "Description", dataIndex: "description", ellipsis: true },
         {
           title: "Actions",
@@ -1000,7 +1007,10 @@ export default function EntityDetail({ cfg }) {
                 size="small"
                 type="text"
                 icon={<EditOutlined />}
-                onClick={() => { setDocEditing(doc); setDocEditOpen(true); }}
+                onClick={() => {
+                  setDocEditing(doc);
+                  setDocEditOpen(true);
+                }}
                 title="Edit"
               />
               <Button
@@ -1021,7 +1031,7 @@ export default function EntityDetail({ cfg }) {
           ),
         },
       ];
-  
+
       return (
         <Card className="!rounded-xl" styles={{ body: { padding: 16 } }}>
           {/* Toolbar */}
@@ -1031,13 +1041,13 @@ export default function EntityDetail({ cfg }) {
               <Select
                 value={String(docPageSize)}
                 onChange={(v) => setDocPageSize(Number(v))}
-                options={["10","25","50","100"].map((n) => ({ value: n, label: n }))}
+                options={["10", "25", "50", "100"].map((n) => ({ value: n, label: n }))}
                 style={{ width: 160 }}
                 className="w-24"
               />
               <span className="text-gray-500">entries</span>
             </Space>
-  
+
             <div className="ml-auto flex items-center gap-2">
               <Select
                 value={docType}
@@ -1058,7 +1068,7 @@ export default function EntityDetail({ cfg }) {
               />
             </div>
           </div>
-  
+
           {/* Table */}
           <Table
             rowKey={(r) => r.id}
@@ -1068,15 +1078,14 @@ export default function EntityDetail({ cfg }) {
             pagination={{
               pageSize: docPageSize,
               showSizeChanger: false,
-              showTotal: (total, [start, end]) =>
-                `Showing ${start} to ${end} of ${total} entries`,
+              showTotal: (total, [start, end]) => `Showing ${start} to ${end} of ${total} entries`,
             }}
             scroll={{ x: 960 }}
             locale={{
               emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents." />,
             }}
           />
-  
+
           {/* Upload Modal */}
           <Modal
             title="Upload Document"
@@ -1092,12 +1101,15 @@ export default function EntityDetail({ cfg }) {
               }}
             />
           </Modal>
-  
+
           {/* Edit Modal */}
           <Modal
             title={docEditing ? `Edit — ${docEditing.title || docEditing.id}` : "Edit Document"}
             open={docEditOpen}
-            onCancel={() => { setDocEditOpen(false); setDocEditing(null); }}
+            onCancel={() => {
+              setDocEditOpen(false);
+              setDocEditing(null);
+            }}
             footer={null}
             destroyOnClose
           >
@@ -1146,42 +1158,94 @@ export default function EntityDetail({ cfg }) {
       );
     })();
 
+  /* ---------- NEW: custom tab plumbing (subjects, etc.) ---------- */
+  const BUILTIN_KEYS = ["information", "related", "billing", "audit", "tasks", "documents", "communication", "activity"];
+
+  // discover custom tabs present in cfg.tabs (enabled + has render function)
+  const customTabKeys = useMemo(() => {
+    const t = safeCfg.tabs || {};
+    return Object.keys(t)
+      .filter((k) => !BUILTIN_KEYS.includes(k))
+      .filter((k) => t[k]?.enabled && typeof t[k]?.render === "function");
+  }, [safeCfg.tabs]);
+
+  // compute the final order
+  const explicitOrder = useMemo(() => {
+    const order1 = Array.isArray(safeCfg.tabsOrder) ? safeCfg.tabsOrder : null;
+    const order2 = Array.isArray(safeCfg.tabs?.order) ? safeCfg.tabs.order : null;
+    const base = order1 || order2;
+    if (base && base.length) return base;
+
+    // default order: builtins then customs (append)
+    return ["information", "related", ...customTabKeys, "activity", "tasks", "documents", "communication", "billing", "audit"];
+  }, [safeCfg.tabsOrder, safeCfg.tabs, customTabKeys]);
+
+  // build a map of all available panels
+  const panelByKey = useMemo(() => {
+    const map = {
+      information: informationTab,
+      related: relatedTab,
+      billing: billingTab,
+      audit: auditTab,
+      tasks: tasksCfg.enabled ? TasksTab : null,
+      documents: docsCfg?.enabled ? DocumentsTab : null,
+      communication: commCfg?.enabled ? CommunicationPanel : null,
+      activity:
+        safeCfg.tabs?.activity?.enabled
+          ? (
+            <Card className="!rounded-xl" styles={{ body: { padding: 0 } }}>
+              <div className="p-3 flex items-center justify-between">
+                <Text strong>{safeCfg.tabs.activity.label || "Activity"}</Text>
+                <Space>
+                  {typeof safeCfg.tabs.activity.toolbar === "function" ? safeCfg.tabs.activity.toolbar(entity) : null}
+                  <Button icon={<ReloadOutlined />} onClick={() => {}} />
+                </Space>
+              </div>
+              <div className="px-3 pb-3">
+                <Table
+                  columns={safeCfg.tabs.activity.columns || []}
+                  dataSource={safeCfg.tabs.activity.data || []}
+                  pagination={{ pageSize: 10 }}
+                  scroll={{ x: 800 }}
+                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={safeCfg.tabs.activity.empty || "No activity."} /> }}
+                />
+              </div>
+            </Card>
+          )
+          : null,
+    };
+
+    // add custom tabs (e.g., 'subjects')
+    (customTabKeys || []).forEach((key) => {
+      const cfgTab = safeCfg.tabs[key];
+      map[key] = (
+        <Card className="!rounded-xl" styles={{ body: { padding: 16 } }}>
+          {cfgTab.render(entity || {})}
+        </Card>
+      );
+    });
+
+    return map;
+  }, [informationTab, relatedTab, billingTab, auditTab, TasksTab, DocumentsTab, CommunicationPanel, safeCfg.tabs, entity, customTabKeys, tasksCfg.enabled, docsCfg?.enabled, commCfg?.enabled]);
+
+  // turn map + order into Tabs items
   const tabItems = useMemo(() => {
-    const items = [{ key: "information", label: "Information", children: informationTab }];
-    if (relatedTab) items.push({ key: "related", label: safeCfg.tabs.related.label || "Related", children: relatedTab });
-    if (billingTab) items.push({ key: "billing", label: safeCfg.tabs.billing.label || "Billing", children: billingTab });
-    if (safeCfg.tabs?.audit?.enabled) items.push({ key: "audit", label: safeCfg.tabs.audit.label || "Audit Log", children: auditTab });
-    if (tasksCfg.enabled) items.push({ key: "tasks", label: tasksCfg.label || "Tasks", children: TasksTab });
-    if (docsCfg?.enabled) items.push({ key: "documents", label: docsCfg.label || "Documents", children: DocumentsTab });
-    if (commCfg?.enabled) items.push({ key: "communication", label: commCfg.label || "Comments", children: CommunicationPanel });
-    if (safeCfg.tabs?.activity?.enabled) {
-      items.push({
-        key: "activity",
-        label: safeCfg.tabs.activity.label || "Activity",
-        children: (
-          <Card className="!rounded-xl" styles={{ body: { padding: 0 } }}>
-            <div className="p-3 flex items-center justify-between">
-              <Text strong>{safeCfg.tabs.activity.label || "Activity"}</Text>
-              <Space>
-                {typeof safeCfg.tabs.activity.toolbar === "function" ? safeCfg.tabs.activity.toolbar(entity) : null}
-                <Button icon={<ReloadOutlined />} onClick={() => {}} />
-              </Space>
-            </div>
-            <div className="px-3 pb-3">
-              <Table
-                columns={safeCfg.tabs.activity.columns || []}
-                dataSource={safeCfg.tabs.activity.data || []}
-                pagination={{ pageSize: 10 }}
-                scroll={{ x: 800 }}
-                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={safeCfg.tabs.activity.empty || "No activity."} /> }}
-              />
-            </div>
-          </Card>
-        ),
-      });
+    const items = [];
+    explicitOrder.forEach((key) => {
+      const panel = panelByKey[key];
+      if (!panel) return;
+      // label from cfg if available
+      const label =
+        (safeCfg.tabs?.[key]?.label) ||
+        (key.charAt(0).toUpperCase() + key.slice(1));
+      items.push({ key, label, children: panel });
+    });
+    // ensure at least 'information' exists
+    if (!items.find((it) => it.key === "information")) {
+      items.unshift({ key: "information", label: "Information", children: informationTab });
     }
     return items;
-  }, [informationTab, relatedTab, billingTab, auditTab, tasksCfg.enabled, docsCfg?.enabled, commCfg?.enabled, safeCfg.tabs, entity]);
+  }, [explicitOrder, panelByKey, safeCfg.tabs, informationTab]);
 
   /* ---------- Render ---------- */
   const actionsMenu = {
@@ -1214,18 +1278,15 @@ export default function EntityDetail({ cfg }) {
     <div className="max-w-[1400px] mx-auto px-3 md:px-4">
       {ctx}
 
-      {/* Responsive header */}
+      {/* Header */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <Space wrap className="min-w-0">
-         
-
           {safeCfg?.ui?.showAvatar !== false ? (
             <Avatar size={screens.md ? "large" : "default"} style={{ backgroundColor: "#1677ff", fontWeight: 600 }}>
               {getInitials(entity) || "•"}
             </Avatar>
           ) : null}
 
-          {/* Title */}
           <div className="min-w-0">
             <div className="truncate font-semibold text-xl leading-6 md:text-2xl md:leading-7">
               {safeCfg.titleSingular || "Detail"} — <span className="font-normal">{titleName}</span>
@@ -1234,7 +1295,6 @@ export default function EntityDetail({ cfg }) {
           </div>
         </Space>
 
-        {/* Desktop actions */}
         {screens.md ? (
           <Space wrap>
             <Button type="primary" icon={<SaveOutlined />} onClick={saveInfo} disabled={!isEditingInfo} size="middle">
@@ -1245,7 +1305,6 @@ export default function EntityDetail({ cfg }) {
             </Dropdown>
           </Space>
         ) : (
-          // Mobile actions menu
           <Dropdown menu={actionsMenu} trigger={["click"]} placement="bottomRight">
             <Button shape="circle" aria-label="More actions" className="!flex !items-center !justify-center" icon={<MoreOutlined className="transform rotate-90" />} />
           </Dropdown>
@@ -1263,9 +1322,8 @@ export default function EntityDetail({ cfg }) {
         />
       </Card>
 
-   {/* Modal to Add Child */}
-   <Modal
-      
+      {/* Modal to Add Child */}
+      <Modal
         open={linkChildModalOpen}
         onCancel={() => setLinkChildModalOpen(false)}
         footer={null}
@@ -1274,19 +1332,18 @@ export default function EntityDetail({ cfg }) {
       >
         <StudentForm
           isModal
-          initialValues={{ parent_id: id }} // Pre-fill parent ID
-          onSuccess={async (response) => {
+          initialValues={{ parent_id: id }}
+          onSuccess={async () => {
             try {
-              messageApi.success('Student created successfully!');
-               setLinkChildModalOpen(false);
-               loadRelated(); // Refresh the list
+              messageApi.success("Student created successfully!");
+              setLinkChildModalOpen(false);
+              loadRelated();
             } catch (err) {
-              messageApi.error(err?.response?.data?.message || 'Failed to create student.');
+              messageApi.error(err?.response?.data?.message || "Failed to create student.");
             }
           }}
         />
       </Modal>
-
     </div>
   );
 }
@@ -1305,7 +1362,12 @@ function AddTaskForm({ onSubmit }) {
           const jsDate = d?.toDate ? d.toDate() : new Date(d);
           return isNaN(jsDate) ? null : jsDate.toISOString();
         };
-        const payload = { title: vals.title?.trim() || "-", priority: vals.priority || "medium", status: "open", dueDate: toIso(vals.dueDate) };
+        const payload = {
+          title: vals.title?.trim() || "-",
+          priority: vals.priority || "medium",
+          status: "open",
+          dueDate: toIso(vals.dueDate),
+        };
         onSubmit(payload);
         form.resetFields();
       }}
@@ -1314,7 +1376,14 @@ function AddTaskForm({ onSubmit }) {
         <Input placeholder="Task title" />
       </Form.Item>
       <Form.Item name="priority" initialValue="medium">
-        <Select style={{ width: 120 }} options={[{ value: "low", label: "Low" }, { value: "medium", label: "Medium" }, { value: "high", label: "High" }]} />
+        <Select
+          style={{ width: 120 }}
+          options={[
+            { value: "low", label: "Low" },
+            { value: "medium", label: "Medium" },
+            { value: "high", label: "High" },
+          ]}
+        />
       </Form.Item>
       <Form.Item name="dueDate">
         <DatePicker placeholder="Due date" />
@@ -1405,7 +1474,7 @@ function EditDocumentForm({ doc, onSubmit }) {
         date: doc.date ? dayjs(doc.date) : null,
       });
     }
-  }, [doc]);
+  }, [doc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Form
@@ -1426,7 +1495,13 @@ function EditDocumentForm({ doc, onSubmit }) {
         <Input />
       </Form.Item>
       <Form.Item label="Status" name="status">
-        <Select options={[{ value: "Uploaded", label: "Uploaded" }, { value: "Approved", label: "Approved" }, { value: "Rejected", label: "Rejected" }]} />
+        <Select
+          options={[
+            { value: "Uploaded", label: "Uploaded" },
+            { value: "Approved", label: "Approved" },
+            { value: "Rejected", label: "Rejected" },
+          ]}
+        />
       </Form.Item>
       <Form.Item label="Source" name="source">
         <Input />
@@ -1438,7 +1513,9 @@ function EditDocumentForm({ doc, onSubmit }) {
         <Input.TextArea autoSize={{ minRows: 2, maxRows: 6 }} />
       </Form.Item>
       <Space>
-        <Button htmlType="submit" type="primary">Save</Button>
+        <Button htmlType="submit" type="primary">
+          Save
+        </Button>
       </Space>
     </Form>
   );

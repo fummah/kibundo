@@ -145,7 +145,7 @@ export default function TreasureMap() {
               className={`rounded-2xl overflow-hidden border-0 shadow-sm ${
                 a.unlocked ? "" : "opacity-60"
               }`}
-              styles={{ body: {{ padding: 0 }}
+              styles={{ body: { padding: 0 } }}
             >
               <div className="relative">
                 <img
