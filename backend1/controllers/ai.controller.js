@@ -41,8 +41,8 @@ exports.chatWithAgent = async (req, res) => {
       // Optionally, create a trimmed context for custom agent
       //trimmedContext = summarizeCustomContext(contextObj, entities);
     }
-    console.log(contextObj);
-    return;
+    //console.log(contextObj);
+   // return;
      
     const systemContent = `You are an AI assistant for Kibundo Education System.
 Context: ${JSON.stringify(trimmedContext)}`;

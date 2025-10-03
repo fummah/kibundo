@@ -71,7 +71,7 @@ router.get('/worksheet/:id', verifyToken,getWorksheetById);
 router.delete('/worksheet/:id', verifyToken,deleteWorksheet);
 router.get("/states", verifyToken, getAllStates);
 router.get('/agents', verifyToken,getAllAgents);
-router.get('/entities', verifyToken,getPublicTables);
+router.get('/entities',getPublicTables);
 router.post("/addagent",verifyToken, addAgent);
 
 module.exports = router;
