@@ -678,7 +678,7 @@ export default function Invoices() {
                       okText={editingId ? "Update Invoice" : "Create Invoice"}
                       width={screens.md ? 800 : "95%"}
                       className="modern-modal"
-                      destroyOnClose
+                      destroyOnHidden
                       confirmLoading={formLoading}
                       footer={[
                         <Button key="cancel" onClick={() => { setModalOpen(false); setEditingId(null); form.resetFields(); }} className="border-slate-300 hover:border-slate-400">Cancel</Button>,

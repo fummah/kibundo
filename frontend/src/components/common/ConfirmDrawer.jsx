@@ -21,7 +21,7 @@ export default function ConfirmDrawer({
   danger = true,
   width = 420,
   placement = "right",
-  destroyOnClose = true,
+  destroyOnHidden = true,
   closable = true,
   showCloseButton = false,
   closeText = "Close",
@@ -35,7 +35,7 @@ export default function ConfirmDrawer({
       placement={placement}
       width={width}
       open={open}
-      destroyOnClose={destroyOnClose}
+      destroyOnHidden={destroyOnHidden}
       onClose={onClose}
       closable={closable}
       // 👇 keep panel and mask below the header

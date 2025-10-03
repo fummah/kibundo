@@ -576,7 +576,7 @@ export default function Coupons() {
         onOk={onSave}
         okText={editingId ? "Save" : "Create Coupon"}
         confirmLoading={saving}
-        destroyOnClose
+        destroyOnHidden
         width={isMdUp ? 720 : "100%"}
         style={isMdUp ? {} : { top: 8, padding: 0 }}
         styles={{ body: { paddingInline: 12 } }}

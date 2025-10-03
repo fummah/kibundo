@@ -486,7 +486,7 @@ export default function ScansOverview() {
         open={ocrOpen}
         onClose={() => setOcrOpen(false)}
         width={980}
-        destroyOnClose
+        destroyOnHidden
       >
         {ocrOpen && (
           <OCRWorkspace

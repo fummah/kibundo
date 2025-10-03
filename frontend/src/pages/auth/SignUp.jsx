@@ -1,6 +1,6 @@
 // src/pages/auth/SignUp.jsx
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useMemo } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
 import { Form, Input, Button, Select, Typography } from "antd";
 import { PhoneOutlined, UserOutlined, LockOutlined, MailOutlined } from "@ant-design/icons";
@@ -11,8 +11,28 @@ import { useAuthContext } from "../../context/AuthContext";
 // ✅ Onboarding flags (shared with WelcomeIntro / WelcomeTour)
 import { INTRO_LS_KEY, TOUR_LS_KEY } from "@/pages/student/onboarding/introFlags";
 
-const { Option } = Select;
 const { Title, Text } = Typography;
+const { Option } = Select;
+
+/** Local list of German Bundesländer (16) */
+const BUNDESLAENDER = [
+  "Baden-Württemberg",
+  "Bayern",
+  "Berlin",
+  "Brandenburg",
+  "Bremen",
+  "Hamburg",
+  "Hessen",
+  "Mecklenburg-Vorpommern",
+  "Niedersachsen",
+  "Nordrhein-Westfalen",
+  "Rheinland-Pfalz",
+  "Saarland",
+  "Sachsen",
+  "Sachsen-Anhalt",
+  "Schleswig-Holstein",
+  "Thüringen",
+];
 
 export default function SignUp() {
   const navigate = useNavigate();
@@ -20,11 +40,30 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuthContext(); // auto-login after signup
 
+  // Prebuilt <Option> nodes to keep JSX tidy
+  const bundeslandOptions = useMemo(
+    () =>
+      BUNDESLAENDER.map((name) => (
+        <Option key={name} value={name}>
+          {name}
+        </Option>
+      )),
+    []
+  );
+
   const handleFinish = async (values) => {
-    const { first_name, last_name, email, phone, password, confirm_password, role } = values;
+    const {
+      first_name,
+      last_name,
+      email,
+      phone,
+      password,
+      confirm_password,
+      role,
+      bundesland, // ➕ new field
+    } = values;
 
     // Map UI role -> backend numeric role_id (temporarily only Student/Parent/Teacher)
-    // If/when enabling School(4), Partner(5), or Admin(10), extend this map and the select options below.
     const roleMap = { student: 1, parent: 2, teacher: 3 };
     const role_id = roleMap[String(role)];
 
@@ -41,6 +80,7 @@ export default function SignUp() {
       password,
       confirm_password,
       role_id,
+      bundesland, // ➕ include in payload
     };
 
     try {
@@ -147,7 +187,8 @@ export default function SignUp() {
             label="Phone Number"
             rules={[
               { required: true, message: "Phone number is required" },
-              { pattern: /^[6-9]\d{9}$/, message: "Enter a valid 10-digit mobile number" },
+              // Allow +, spaces, brackets, dashes; 7-20 chars
+              { pattern: /^[+]?[\d\s()\-]{7,20}$/, message: "Enter a valid phone number" },
             ]}
           >
             <Input
@@ -156,6 +197,22 @@ export default function SignUp() {
               autoComplete="tel"
               disabled={loading}
             />
+          </Form.Item>
+
+          {/* ➕ Bundesland */}
+          <Form.Item
+            name="bundesland"
+            label="Bundesland"
+            rules={[{ required: true, message: "Bitte Bundesland auswählen" }]}
+          >
+            <Select
+              placeholder="Bundesland wählen"
+              showSearch
+              optionFilterProp="children"
+              disabled={loading}
+            >
+              {bundeslandOptions}
+            </Select>
           </Form.Item>
 
           <Form.Item
@@ -226,12 +283,9 @@ export default function SignUp() {
 
           <Text className="block text-center">
             Already have an account?{" "}
-            <span
-              className="text-indigo-600 cursor-pointer hover:underline"
-              onClick={() => navigate("/signin")}
-            >
+            <Link to="/signin" className="text-indigo-600 hover:underline">
               Sign In
-            </span>
+            </Link>
           </Text>
         </Form>
       </div>
