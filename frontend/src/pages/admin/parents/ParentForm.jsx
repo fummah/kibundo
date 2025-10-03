@@ -8,43 +8,145 @@ export default function ParentForm() {
       submitLabel="Save"
       toDetailRelative={(id) => `${id}`}
       apiCfg={{
-        // detail exists:
+        // Detail path (you already have GET /parent/:id)
         getPath: (id) => `/parent/${id}`,
 
-        // Use existing backend route: create a User with role_id=2; backend will create Parent
+        // Create parent with optional email and de-dupe by email if present
         create: async (api, payload) => {
-          const body = { ...payload, role_id: 2 };
-          const res = await api.post("/adduser", body);
-          const createdUser = res?.data?.user || res?.data?.data || res?.data || {};
-
-          // Try to resolve the Parent.id associated with this user by email
           try {
-            const parentsRes = await api.get("/parents");
-            const parents = Array.isArray(parentsRes?.data) ? parentsRes.data : [];
-            const match = parents.find((p) => (p?.user?.email && payload?.email) && p.user.email === payload.email);
-            if (match?.id) {
-              return { data: { id: match.id } };
-            }
-          } catch (e) {
-            // ignore and fall back
-          }
+            const hasEmail = !!(payload.email && String(payload.email).trim());
+            const email = hasEmail ? String(payload.email).trim() : null;
 
-          // If we can't resolve Parent.id, surface a clear message
-          throw new Error("Parent created, but could not resolve Parent ID for redirect. Refresh Parents list.");
+            // Build base user data for /adduser
+            const userData = {
+              first_name: payload.first_name,
+              last_name: payload.last_name,
+              contact_number: payload.contact_number || null,
+              state: payload.state || null,            // VARCHAR on users.state
+              status: "active",
+              role_id: 2,                              // Parent role
+              password: "TemporaryPassword123!",       // backend can force reset later
+              isActive: true,
+              ...(email ? { email } : {}),             // include only if provided
+            };
+
+            // If we have an email, try to reuse existing user
+            if (email) {
+              try {
+                const checkUserRes = await api.get(`/users`);
+                const allUsers = Array.isArray(checkUserRes.data)
+                  ? checkUserRes.data
+                  : (checkUserRes.data?.data || []);
+                const existingUser = allUsers.find(
+                  (u) => u?.email && u.email.toLowerCase() === email.toLowerCase()
+                );
+
+                if (existingUser?.id) {
+                  // Is this user already a parent?
+                  try {
+                    const parentCheckRes = await api.get(`/parents?user_id=${existingUser.id}`);
+                    const maybeArr = Array.isArray(parentCheckRes.data)
+                      ? parentCheckRes.data
+                      : (parentCheckRes.data?.data || []);
+                    const existingParent = Array.isArray(maybeArr) ? maybeArr[0] : maybeArr;
+
+                    if (existingParent?.id) {
+                      // Short-circuit: return existing parent
+                      return {
+                        data: {
+                          id: existingParent.id,
+                          message: "A parent with this email already exists.",
+                        },
+                      };
+                    }
+                  } catch (e) {
+                    // If this check fails, continue to create the parent record
+                    console.warn("Parent existence check failed, proceeding:", e);
+                  }
+
+                  // Create parent record linked to the existing user
+                  const parentRes = await api.post(`/addparent`, {
+                    user_id: existingUser.id,
+                    created_by: 1,
+                  });
+
+                  const newParentId =
+                    parentRes?.data?.id ||
+                    parentRes?.data?.parent?.id ||
+                    parentRes?.data?.data?.id;
+
+                  if (!newParentId) {
+                    throw new Error("Parent was created but no ID returned.");
+                  }
+
+                  return { data: { id: newParentId } };
+                }
+              } catch (e) {
+                // If user listing fails, fall through to create a new user
+                console.warn("User list check failed, creating new user:", e);
+              }
+            }
+
+            // Create a new user (works for no-email too)
+            const userRes = await api.post(`/adduser`, userData);
+            const createdUser =
+              userRes?.data?.user || userRes?.data?.data || userRes?.data;
+
+            if (!createdUser?.id) {
+              throw new Error("Failed to create user account.");
+            }
+
+            // Create the parent linked to that user
+            const parentRes = await api.post(`/addparent`, {
+              user_id: createdUser.id,
+              created_by: 1,
+            });
+
+            const parentId =
+              parentRes?.data?.id ||
+              parentRes?.data?.parent?.id ||
+              parentRes?.data?.data?.id;
+
+            if (!parentId) {
+              throw new Error("Failed to create parent profile.");
+            }
+
+            return { data: { id: parentId } };
+          } catch (error) {
+            console.error("Error in parent creation:", error);
+
+            const msg =
+              error?.response?.data?.message ||
+              error?.message ||
+              "Failed to create parent. Please try again.";
+
+            // Friendlier duplicate email message if applicable
+            if (typeof msg === "string" && msg.toLowerCase().includes("already exists")) {
+              throw new Error("This email is already registered. Please use a different email address.");
+            }
+            throw new Error(msg);
+          }
         },
 
-        // There’s no PUT/PATCH route for parents in your routes.
-        // updatePath: (id) => `/parent/${id}`,
-        requiredKeys: ["first_name", "last_name", "email"],
+        // No email required
+        requiredKeys: ["first_name", "last_name"],
       }}
 
       fields={[
         { name: "first_name", label: "First name", rules: [{ required: true }] },
-        { name: "last_name",  label: "Last name",  rules: [{ required: true }] },
-        { name: "email",      label: "Email", rules: [{ required: true }, { type: "email" }] },
+        { name: "last_name", label: "Last name", rules: [{ required: true }] },
+
+        // OPTIONAL email
+        {
+          name: "email",
+          label: "Email",
+          rules: [{ type: "email" }],
+          placeholder: "Optional",
+        },
+
         { name: "contact_number", label: "Phone number", placeholder: "+27 82 123 4567" },
 
-        // State is a VARCHAR on users.state → send the name string
+        // users.state is a string (state name)
         {
           name: "state",
           label: "State",
@@ -52,15 +154,15 @@ export default function ParentForm() {
           placeholder: "Search state…",
           optionsUrl: "/states",
           serverSearch: true,
-          autoloadOptions: false,
+          autoloadOptions: true,
           searchParam: "q",
           transform: (it) => ({
-            value: it?.state_name ?? it?.name ?? String(it),
-            label: it?.state_name ?? it?.name ?? String(it),
+            value: it?.state_name ?? it?.name ?? String(it ?? ""),
+            label: it?.state_name ?? it?.name ?? String(it ?? ""),
           }),
         },
 
-        // Optional: link students by IDs (not used by /adduser)
+        // Optional: link students (kept UI-only; your /addparent doesn’t consume this)
         {
           name: "student_ids",
           label: "Link Students (Optional)",
@@ -74,22 +176,29 @@ export default function ParentForm() {
           transform: (it) => {
             const u = it?.user ?? {};
             const nm = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
-            return { value: it?.id ?? it, label: nm ? `${nm} (ID: ${it?.id})` : `Student #${it?.id ?? ""}` };
+            return {
+              value: it?.id ?? it,
+              label: nm ? `${nm} (ID: ${it?.id})` : `Student #${it?.id ?? ""}`,
+            };
           },
           coerce: "number",
         },
       ]}
 
       transformSubmit={(vals) => {
+        const trimmedEmail = vals.email && String(vals.email).trim();
         const out = {
           first_name: vals.first_name?.trim(),
           last_name: vals.last_name?.trim(),
-          email: vals.email?.trim(),
+          ...(trimmedEmail ? { email: trimmedEmail } : {}), // omit empty email
           contact_number: vals.contact_number || null,
-          state: vals.state || null, // string name
+          state: vals.state || null,
           student_ids: Array.isArray(vals.student_ids) ? vals.student_ids : [],
         };
-        Object.keys(out).forEach((k) => out[k] == null && delete out[k]);
+        // Strip nullish
+        Object.keys(out).forEach((k) => {
+          if (out[k] == null) delete out[k];
+        });
         return out;
       }}
     />

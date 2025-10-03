@@ -1,6 +1,6 @@
 // src/pages/auth/SignIn.jsx
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useCallback } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
 import { Form, Input, Button, Typography } from "antd";
 import { MailOutlined, LockOutlined, ArrowLeftOutlined } from "@ant-design/icons";
@@ -18,7 +18,6 @@ const { Title, Text } = Typography;
 /* ----------------------------- helpers ----------------------------- */
 function extractToken(resp) {
   const d = resp?.data || {};
-  // common JSON token fields
   let t =
     d.token ??
     d.access_token ??
@@ -27,7 +26,6 @@ function extractToken(resp) {
     d?.data?.access_token ??
     null;
 
-  // also support "Authorization: Bearer <token>" header
   if (!t) {
     const authHeader =
       resp?.headers?.authorization ||
@@ -53,6 +51,9 @@ export default function SignIn() {
   const { login } = useAuthContext();
   const [loading, setLoading] = useState(false);
 
+  const goHome = useCallback(() => navigate("/"), [navigate]);
+  const goForgot = useCallback(() => navigate("/forgot-password"), [navigate]);
+
   const handleFinish = async (values) => {
     try {
       setLoading(true);
@@ -66,20 +67,15 @@ export default function SignIn() {
         return;
       }
 
-      // 🔎 Show token in console AFTER successful login
-      // (Mask in dev if you prefer: token.slice(0, 12) + "…")
       console.log("🔑 Login successful, received token:", token);
 
-      // Persist & apply token immediately
       localStorage.setItem("kibundo_token", token);
       api.defaults.headers.common.Authorization = `Bearer ${token}`;
 
-      // Store session in your context
       const roleId = normalizeRoleId(user);
       login(user, token);
       toast.success("Login successful!");
 
-      // Student onboarding gate
       if (roleId === ROLES.STUDENT) {
         if (!hasSeenIntro()) {
           navigate("/student/onboarding/welcome-intro", { replace: true });
@@ -91,7 +87,6 @@ export default function SignIn() {
         }
       }
 
-      // Fallback: role landing path (teacher/parent/admin/etc.)
       const rolePath = ROLE_PATHS[roleId] || "/dashboard";
       navigate(rolePath, { replace: true });
     } catch (err) {
@@ -115,7 +110,7 @@ export default function SignIn() {
         <Button
           type="link"
           icon={<ArrowLeftOutlined />}
-          onClick={() => navigate("/")}
+          onClick={goHome}
           className="text-indigo-600 hover:text-indigo-800"
         >
           Back
@@ -173,7 +168,7 @@ export default function SignIn() {
             <div className="text-right mb-3">
               <Text
                 className="text-indigo-600 hover:underline cursor-pointer"
-                onClick={() => navigate("/forgot-password")}
+                onClick={goForgot}
               >
                 Forgot Password?
               </Text>
@@ -192,12 +187,9 @@ export default function SignIn() {
 
             <div className="text-center text-sm">
               Don&apos;t have an account?{" "}
-              <span
-                className="text-indigo-600 hover:underline cursor-pointer"
-                onClick={() => navigate("/signup")}
-              >
+              <Link to="/signup" className="text-indigo-600 hover:underline">
                 Sign Up
-              </span>
+              </Link>
             </div>
           </Form>
         </div>

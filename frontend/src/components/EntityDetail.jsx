@@ -837,7 +837,7 @@ export default function EntityDetail({ cfg }) {
             )}
           />
         </div>
-        <Modal title="Add Comment" open={addCommentOpen} onCancel={() => setAddCommentOpen(false)} footer={null} destroyOnClose>
+        <Modal title="Add Comment" open={addCommentOpen} onCancel={() => setAddCommentOpen(false)} footer={null} destroyOnHidden>
           <AddCommentForm
             onSubmit={async (vals) => {
               await addComment({ author: vals.author || "You", text: vals.text });
@@ -1092,7 +1092,7 @@ export default function EntityDetail({ cfg }) {
             open={docUploadOpen}
             onCancel={() => setDocUploadOpen(false)}
             footer={null}
-            destroyOnClose
+            destroyOnHidden
           >
             <UploadDocumentForm
               onUpload={async (file, meta) => {
@@ -1111,7 +1111,7 @@ export default function EntityDetail({ cfg }) {
               setDocEditing(null);
             }}
             footer={null}
-            destroyOnClose
+            destroyOnHidden
           >
             <EditDocumentForm
               doc={docEditing}
@@ -1328,7 +1328,7 @@ export default function EntityDetail({ cfg }) {
         onCancel={() => setLinkChildModalOpen(false)}
         footer={null}
         width={800}
-        destroyOnClose
+        destroyOnHidden
       >
         <StudentForm
           isModal

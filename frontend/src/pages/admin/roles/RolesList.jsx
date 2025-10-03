@@ -814,7 +814,7 @@ export default function RolesLocal() {
           setEditingRole(null);
         }}
         width={drawerWidth}
-        destroyOnClose
+        destroyOnHidden
         footer={
           <Space style={{ float: "right" }}>
             <Button onClick={() => { setOpenRole(false); setEditingRole(null); }}>
@@ -868,7 +868,7 @@ export default function RolesLocal() {
           setEditingUser(null);
         }}
         width={drawerWidth}
-        destroyOnClose
+        destroyOnHidden
         footer={
           <Space style={{ float: "right" }}>
             <Button onClick={() => { setOpenUser(false); setEditingUser(null); }}>

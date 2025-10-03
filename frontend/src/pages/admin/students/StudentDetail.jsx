@@ -300,7 +300,7 @@ export default function StudentDetail() {
                 confirmLoading={assigning}
                 okText="Assign"
                 okButtonProps={{ disabled: !selectedSubjectId }}
-                destroyOnClose
+                destroyOnHidden
                 maskClosable={false}
               >
                 <Select

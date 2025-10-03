@@ -462,7 +462,7 @@ export default function Subscriptions() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         width={drawerWidth}
-        destroyOnClose
+        destroyOnHidden
         extra={
           <Space>
             <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
@@ -532,7 +532,7 @@ export default function Subscriptions() {
         open={viewOpen}
         onClose={closeView}
         width={drawerWidth}
-        destroyOnClose
+        destroyOnHidden
       >
         {viewLoading ? (
           <Skeleton active paragraph={{ rows: 10 }} />

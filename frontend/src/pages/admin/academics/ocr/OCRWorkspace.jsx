@@ -44,7 +44,7 @@ const { Title, Text } = Typography;
 const { Dragger } = Upload;
 
 const LS_HISTORY_KEY = "kibundo_ocr_history";
-const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_BYTES = 50 * 1024 * 1024; // Increased to 50MB to match server config
 const ACCEPTED_MIME = [
   "image/jpeg",
   "image/png",
@@ -64,6 +64,9 @@ export default function OCRWorkspace() {
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [previewModal, setPreviewModal] = useState({ open: false, text: "", title: "" });
+  const [fileList, setFileList] = useState([]);
+  const [tags, setTags] = useState([]);
+  const [inputTag, setInputTag] = useState("");
 
   // Options
   const [lang, setLang] = useState("eng");
@@ -147,23 +150,56 @@ export default function OCRWorkspace() {
 
   // ------- Upload ------
   const beforeUpload = (file) => {
+    // Reset file list to ensure only one file is uploaded at a time
+    setFileList([file]);
+    
+    // Check file size
     if (file.size > MAX_FILE_BYTES) {
-      message.error("File too large. Max 10MB.");
+      const maxSizeMB = MAX_FILE_BYTES / (1024 * 1024);
+      message.error({
+        content: `File "${file.name}" is too large. Maximum file size is ${maxSizeMB}MB.`,
+        duration: 5,
+      });
       return Upload.LIST_IGNORE;
     }
-    if (!ACCEPTED_MIME.includes(file.type)) {
-      if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
-        message.warning("Unsupported file type. Try JPG/PNG/HEIC/PDF.");
-        return Upload.LIST_IGNORE;
-      }
+    
+    // Check file type
+    if (!ACCEPTED_MIME.includes(file.type) && 
+        !file.type.startsWith("image/") && 
+        file.type !== "application/pdf") {
+      message.warning({
+        content: `Unsupported file type (${file.type}). Please upload JPG, PNG, HEIC, or PDF files.`,
+        duration: 5,
+      });
+      return Upload.LIST_IGNORE;
     }
+    
+    // Show upload starting message
+    message.info({
+      content: `Processing ${file.name}...`,
+      key: 'upload-status',
+      duration: 3,
+    });
+    
     return true;
+  };
+
+  const handleTagClose = (removedTag) => {
+    setTags(tags.filter(tag => tag !== removedTag));
+  };
+
+  const handleTagAdd = () => {
+    if (inputTag && !tags.includes(inputTag)) {
+      setTags([...tags, inputTag]);
+      setInputTag('');
+    }
   };
 
   const customRequest = async ({ file, onProgress, onSuccess, onError }) => {
     setUploading(true);
     setProgress(0);
     setResult(null);
+    setTags([]); // Reset tags for new upload
 
     const controller = new AbortController();
     setAbortCtrl(controller);
@@ -174,20 +210,48 @@ export default function OCRWorkspace() {
       form.append("lang", lang);
       form.append("subject", subject ?? "");
       form.append("grade", grade ?? "");
+      form.append("tags", JSON.stringify(tags)); // Send tags to backend
       form.append("deskew", String(deskew));
       form.append("denoise", String(denoise));
       form.append("enhanceContrast", String(enhanceContrast));
 
       const { data } = await api.post("/api/ocr/scan", form, {
         withCredentials: true,
-        headers: { "Content-Type": "multipart/form-data" },
+        headers: { 
+          "Content-Type": "multipart/form-data",
+          'X-Requested-With': 'XMLHttpRequest',
+        },
         signal: controller.signal,
+        timeout: 300000, // 5 minutes timeout
+        maxContentLength: MAX_FILE_BYTES,
+        maxBodyLength: MAX_FILE_BYTES,
         onUploadProgress: (evt) => {
           if (!evt.total) return;
           const pct = Math.round((evt.loaded / evt.total) * 100);
           setProgress(pct);
           onProgress?.({ percent: pct });
+          
+          // Update the status message with progress
+          if (pct < 100) {
+            message.loading({
+              content: `Uploading ${file.name}: ${pct}%`,
+              key: 'upload-status',
+              duration: 0,
+            });
+          }
         },
+      }).catch(error => {
+        if (error.code === 'ECONNABORTED' || error.message === 'Network Error') {
+          throw new Error('Upload timed out. The server took too long to respond. Please try a smaller file or check your internet connection.');
+        } else if (error.response?.status === 413) {
+          const maxSizeMB = MAX_FILE_BYTES / (1024 * 1024);
+          throw new Error(`File too large. The server rejected the file because it exceeds the maximum allowed size of ${maxSizeMB}MB.`);
+        } else if (error.response?.status === 415) {
+          throw new Error('Unsupported file type. The server cannot process this file format.');
+        } else if (error.response?.status >= 500) {
+          throw new Error('Server error. Please try again later or contact support if the problem persists.');
+        }
+        throw new Error(error.response?.data?.message || error.message || 'An unknown error occurred');
       });
 
       const shaped = {
@@ -195,26 +259,68 @@ export default function OCRWorkspace() {
         text: data?.text ?? "",
         confidence: data?.confidence ?? null,
         blocks: data?.blocks ?? [],
+        tags: data?.tags ?? tags, // Include tags from response or use local tags
         meta: {
           filename: data?.meta?.filename ?? file.name,
           subject: data?.meta?.subject ?? subject ?? null,
           grade: data?.meta?.grade ?? grade ?? null,
           lang: data?.meta?.lang ?? lang,
           createdAt: data?.meta?.createdAt ?? new Date().toISOString(),
+          fileSize: file.size,
+          mimeType: file.type,
         },
       };
 
       setResult(shaped);
       pushHistoryLocal(shaped);
-      message.success("OCR complete");
+      
+      // Show success message with file info
+      message.success({
+        content: `Successfully processed ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`,
+        duration: 5,
+      });
+      
       onSuccess?.(data);
       setActiveTab("result");
+      setFileList([]); // Clear file list after successful upload
     } catch (err) {
+      message.destroy('upload-status'); // Clear any existing upload status messages
+      
       if (controller.signal.aborted) {
-        message.info("Upload canceled");
+        message.info({
+          content: "Upload was canceled by the user",
+          duration: 3,
+        });
       } else {
-        const msg = err?.response?.data?.message || err?.message || "OCR failed";
-        message.error(msg);
+        const errorMsg = err?.response?.data?.message || err?.message || "OCR processing failed";
+        
+        // More user-friendly error messages
+        let displayMsg = errorMsg;
+        if (errorMsg.includes('413')) {
+          const maxSizeMB = MAX_FILE_BYTES / (1024 * 1024);
+          displayMsg = `File too large. Maximum file size is ${maxSizeMB}MB.`;
+        } else if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
+          displayMsg = 'The operation timed out. Please try again with a smaller file or better network connection.';
+        } else if (errorMsg.includes('network')) {
+          displayMsg = 'Network error. Please check your internet connection and try again.';
+        }
+        
+        message.error({
+          content: (
+            <div>
+              <div style={{ fontWeight: 'bold', marginBottom: 4 }}>Processing Failed</div>
+              <div>{displayMsg}</div>
+              {errorMsg !== displayMsg && (
+                <div style={{ fontSize: '0.8em', opacity: 0.8, marginTop: 4 }}>
+                  Error details: {errorMsg}
+                </div>
+              )}
+            </div>
+          ),
+          duration: 8,
+        });
+        
+        console.error('OCR Error:', err);
         onError?.(err);
       }
     } finally {
@@ -229,13 +335,47 @@ export default function OCRWorkspace() {
     } catch {}
   };
 
+  // ------- Tag Display Component -------
+  const TagDisplay = ({ tags }) => (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ marginBottom: 8, fontWeight: 500 }}>Tags:</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {tags && tags.length > 0 ? (
+          tags.map((tag, index) => (
+            <Tag key={index} color="blue" closable onClose={() => handleTagClose(tag)}>
+              {tag}
+            </Tag>
+          ))
+        ) : (
+          <span style={{ color: 'rgba(0, 0, 0, 0.25)' }}>No tags added</span>
+        )}
+      </div>
+    </div>
+  );
+
   // ------- History Table -------
   const historyCols = [
     {
       title: "File",
       dataIndex: ["meta", "filename"],
       key: "filename",
-      render: (v) => <Text ellipsis style={{ maxWidth: 220 }}>{v}</Text>,
+      render: (v, record) => (
+        <div style={{ maxWidth: 220 }}>
+          <div style={{ fontWeight: 500 }} className="truncate">{v}</div>
+          {record.tags && record.tags.length > 0 && (
+            <div className="truncate">
+              {record.tags.slice(0, 2).map((tag, i) => (
+                <Tag key={i} color="blue" size="small" style={{ marginTop: 4, marginRight: 4 }}>
+                  {tag.length > 12 ? `${tag.substring(0, 10)}...` : tag}
+                </Tag>
+              ))}
+              {record.tags.length > 2 && (
+                <Tag size="small" style={{ marginTop: 4 }}>+{record.tags.length - 2} more</Tag>
+              )}
+            </div>
+          )}
+        </div>
+      ),
     },
     {
       title: "Subject",
@@ -357,6 +497,7 @@ export default function OCRWorkspace() {
       label: (
         <span>
           <UploadOutlined /> Upload
+          {fileList.length > 0 && <Badge count={fileList.length} style={{ marginLeft: 8 }} />}
         </span>
       ),
       children: (
@@ -619,19 +760,7 @@ export default function OCRWorkspace() {
       children: (
         <Card className="dark:bg-gray-800">
           <Space className="mb-3" wrap>
-            <Popconfirm
-              title="Clear local history?"
-              okText="Clear"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => {
-                localStorage.setItem(LS_HISTORY_KEY, "[]");
-                setHistory([]);
-              }}
-            >
-              <Button icon={<ClearOutlined />} danger>
-                Clear All (local)
-              </Button>
-            </Popconfirm>
+           
           </Space>
           <Table
             loading={historyLoading}

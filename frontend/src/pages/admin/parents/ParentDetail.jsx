@@ -109,7 +109,7 @@ export default function ParentDetail() {
             title: "Grade",
             dataIndex: "grade",
             key: "grade",
-            render: (_, r) => r?.class?.name ?? r?.class_name ?? r?.class_id ?? "N/A",
+            render: (_, r) => r?.class?.class_name ?? r?.class?.name ?? r?.class_name ?? r?.class_id ?? "N/A",
             width: 120,
           },
           {
@@ -141,14 +141,7 @@ export default function ParentDetail() {
         render: (entity) => <BillingTab entity={entity} />,
       },
       audit: { enabled: true, label: "Audit Log" },
-      tasks: { enabled: true, label: "Tasks" },
       documents: { enabled: true, label: "Documents" },
-      communication: {
-        enabled: true,
-        label: "Comments",
-        listPath: (id) => `/parent/${id}/comments`,
-        createPath: (id) => `/parent/${id}/comments`,
-      },
     },
   };
 

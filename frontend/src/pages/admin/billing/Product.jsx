@@ -601,7 +601,7 @@ const onSave = async () => {
         onOk={onSave}
         okText={editingId ? "Save" : "Create Product"}
         confirmLoading={saving}
-        destroyOnClose
+        destroyOnHidden
         width={isMdUp ? 720 : "100%"}
         style={isMdUp ? {} : { top: 8, padding: 0 }}
         styles={{ body: { paddingInline: 12 } }}

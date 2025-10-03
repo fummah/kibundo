@@ -27,7 +27,7 @@ export default function AddSchoolDrawer({ open, onClose, onAdd }) {
       width={400}
       onClose={onClose}
       open={open}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form layout="vertical" form={form} onFinish={handleFinish}>
         <Form.Item name="name" label="School Name" rules={[{ required: true }]}>

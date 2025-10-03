@@ -828,7 +828,7 @@ export default function Newsletter() {
         onCancel={() => setTemplateModalOpen(false)}
         okText={editingTemplate ? "Save" : "Create"}
         onOk={() => templateForm.submit()}
-        destroyOnClose
+        destroyOnHidden
         width={820}
       >
         <Form
@@ -897,7 +897,7 @@ export default function Newsletter() {
         onCancel={() => setCampaignModalOpen(false)}
         okText={editingCampaign ? "Save" : "Create"}
         onOk={() => campaignForm.submit()}
-        destroyOnClose
+        destroyOnHidden
         width={720}
       >
         <Form

@@ -372,7 +372,7 @@ export default function Worksheet() {
         onClose={() => setDrawerOpen(false)}
         title={editId ? "Edit Worksheet" : "New Worksheet"}
         width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 32 : 720)}
-        destroyOnClose
+        destroyOnHidden
         footer={
           <div style={{ textAlign: "right" }}>
             <Space>

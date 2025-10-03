@@ -271,7 +271,7 @@ export default function AddStudentModal({ open, onClose, onSuccess }) {
       centered
       title={step === "search" ? "Add Student" : ""}
       width={isMobile ? 520 : 680}
-      destroyOnClose
+      destroyOnHidden
       maskClosable={false}
       rootClassName={`add-student-modal ${isMobile && step === "intro" ? "add-student-intro" : ""}`}
       footer={
