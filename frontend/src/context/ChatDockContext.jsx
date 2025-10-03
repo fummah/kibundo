@@ -22,14 +22,45 @@ export function ChatDockProvider({ children }) {
   const openChat = ({ mode = "homework", task = null, initialMessages = null } = {}) => {
     try {
       if (mode === "homework") {
+        // If we have an existing task with messages, use those as initial messages
+        const existingTask = task?.id ? 
+          JSON.parse(localStorage.getItem(TASKS_KEY) || "[]")
+            .find(t => t.id === task.id) : null;
+            
+        const messagesToUse = existingTask?.messages || initialMessages;
+        
+        // Update the task in local storage to include the latest messages
+        if (existingTask && messagesToUse) {
+          const updatedTask = { ...existingTask, messages: messagesToUse };
+          const tasks = JSON.parse(localStorage.getItem(TASKS_KEY) || "[]");
+          const updatedTasks = tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
+          localStorage.setItem(TASKS_KEY, JSON.stringify(updatedTasks));
+          
+          // Update the task reference to include messages
+          task = { ...task, messages: messagesToUse };
+        }
+        
         const prev = JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}");
         localStorage.setItem(
           PROGRESS_KEY,
-          JSON.stringify({ ...prev, step: 1, taskId: task?.id || null, task })
+          JSON.stringify({ 
+            ...prev, 
+            step: 1, 
+            taskId: task?.id || null, 
+            task: task ? { ...task, messages: messagesToUse } : null 
+          })
         );
       }
-    } catch {}
-    setState({ visible: true, expanded: true, mode, task, initialMessages });
+    } catch (error) {
+      console.error("Error in openChat:", error);
+    }
+    setState({ 
+      visible: true, 
+      expanded: true, 
+      mode, 
+      task, 
+      initialMessages: task?.messages || initialMessages 
+    });
   };
 
   const expandChat = () => setState((s) => ({ ...s, expanded: true, visible: true }));

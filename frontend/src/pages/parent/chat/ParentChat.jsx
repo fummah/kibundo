@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Card,
   Button,
   Avatar,
   Typography,
-  Spin,
   Tooltip,
   Empty,
   Badge,
@@ -24,7 +22,6 @@ import {
 import ParentShell from "@/components/parent/ParentShell";
 import globalBg from "@/assets/backgrounds/global-bg.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
-import studIcon from "@/assets/mobile/icons/stud-icon.png";
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import api from "@/api/axios";
 
@@ -40,12 +37,13 @@ const makeMsg = ({ type, content, sender }) => ({
   sender,
 });
 
-function useAtBottom(containerRef, offset) {
+function useAtBottom(containerRef, offset = 24) {
   const [atBottom, setAtBottom] = useState(true);
+
   const check = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= (offset ?? 24);
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= offset;
     setAtBottom(nearBottom);
   }, [containerRef, offset]);
 
@@ -57,13 +55,12 @@ function useAtBottom(containerRef, offset) {
     return () => el.removeEventListener("scroll", check);
   }, [check]);
 
-  return {
-    atBottom,
-    scrollToBottom: () => {
-      const el = containerRef.current;
-      if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    },
-  };
+  const scrollToBottom = useCallback(() => {
+    const el = containerRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [containerRef]);
+
+  return { atBottom, scrollToBottom };
 }
 
 export default function ParentChat() {
@@ -71,7 +68,10 @@ export default function ParentChat() {
   const { user } = useAuthContext();
   const { message } = App.useApp();
 
-  const firstName = useMemo(() => user?.first_name || user?.name?.split(" ")[0] || "there", [user]);
+  const firstName = useMemo(
+    () => user?.first_name || user?.name?.split(" ")[0] || "there",
+    [user]
+  );
   const welcomeMessage = useMemo(
     () => `Hello ${firstName}! I'm your Kibundo AI assistant. How can I help you today?`,
     [firstName]
@@ -88,8 +88,12 @@ export default function ParentChat() {
   const [confirmAutoClose, setConfirmAutoClose] = useState(false);
 
   const chatRef = useRef(null);
-  const endRef = useRef(null);
   const { atBottom, scrollToBottom } = useAtBottom(chatRef, 32);
+
+  // Auto-scroll when new messages arrive and the user is at (or near) bottom
+  useEffect(() => {
+    if (atBottom) scrollToBottom();
+  }, [messages, atBottom, scrollToBottom]);
 
   // Inactivity: warn at 50s, close at 60s if not cancelled
   useEffect(() => {
@@ -119,16 +123,6 @@ export default function ParentChat() {
 
   const formatTime = (date) =>
     new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }).format(date);
-
-  const formatDate = (date) => {
-    const today = new Date();
-    const d = new Date(date);
-    const y = new Date(today);
-    y.setDate(y.getDate() - 1);
-    if (d.toDateString() === today.toDateString()) return "Today";
-    if (d.toDateString() === y.toDateString()) return "Yesterday";
-    return d.toLocaleDateString();
-  };
 
   const pushMessage = useCallback((msg) => setMessages((prev) => [...prev, msg]), []);
 
@@ -164,7 +158,7 @@ export default function ParentChat() {
     }
 
     setSending(false);
-  }, [input, sending, sendToAPI, pushMessage, resetInactivity, user?.name]);
+  }, [input, sending, sendToAPI, pushMessage, resetInactivity, user?.name, message]);
 
   const handleRetryLast = useCallback(() => {
     const lastUser = [...messages].reverse().find((m) => m.type === "sent");
@@ -205,10 +199,12 @@ export default function ParentChat() {
 
   return (
     <ParentShell bgImage={globalBg}>
-      <div className="w-full min-h-[100dvh] flex flex-col">
-        <section className="relative w-full max-w-[720px] mx-auto px-4 pt-6 flex-1 flex flex-col">
+      {/* Page wrapper fills viewport height; column flow ensures input sits above any footer */}
+      <div className="w-full min-h-screen flex flex-col">
+        {/* Centered column for content width */}
+        <div className="w-full max-w-3xl mx-auto flex flex-col flex-1">
           {/* Header */}
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 p-4 bg-white/90 backdrop-blur border-b sticky top-0 z-10">
             <Button
               type="text"
               icon={<ArrowLeftOutlined />}
@@ -216,7 +212,7 @@ export default function ParentChat() {
               className="!p-0 !h-auto text-neutral-700"
               aria-label="Back"
             />
-            <div className="flex items-center gap-3 flex-1">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
               <Badge dot color="green">
                 <Avatar src={agentIcon} size={40} icon={<CustomerServiceOutlined />} />
               </Badge>
@@ -235,96 +231,73 @@ export default function ParentChat() {
             </div>
           </div>
 
-          {/* Chat */}
-          <Card className="rounded-2xl shadow-sm flex-1 flex flex-col" styles={{ body: { display: "flex", flexDirection: "column", minHeight: 360 } }}>
-            <div
-              ref={chatRef}
-              role="log"
-              aria-live="polite"
-              className="flex-1 overflow-y-auto space-y-3 p-2"
-              style={{ maxHeight: "calc(100vh - 320px)" }}
-              onClick={resetInactivity}
-            >
-              {messages.length === 0 ? (
+          {/* Messages Area (fills remaining height) */}
+          <div
+            ref={chatRef}
+            className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50"
+          >
+            {messages.length === 0 ? (
+              <div className="w-full h-full flex items-center justify-center">
                 <Empty description="No messages yet" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              ) : (
-                <>
-                  {messages.map((m, idx) => {
-                    const showSep = idx === 0 || formatDate(m.timestamp) !== formatDate(messages[idx - 1].timestamp);
-                    const isYou = m.type === "sent";
-
-                    let bubbleClass = "bg-gray-100 text-gray-800";
-                    if (isYou) bubbleClass = "bg-blue-500 text-white";
-                    if (m.type === "error") bubbleClass = "bg-red-50 text-red-600 border border-red-100";
-                    if (m.type === "system") bubbleClass = "bg-amber-50 text-amber-700 border border-amber-100";
-
-                    return (
-                      <div key={m.id}>
-                        {showSep && (
-                          <div className="flex justify-center my-3">
-                            <Text type="secondary" className="text-xs bg-gray-100 px-3 py-1 rounded-full">
-                              {formatDate(m.timestamp)}
-                            </Text>
-                          </div>
+              </div>
+            ) : (
+              <>
+                {messages.map((msg) => (
+                  <div key={msg.id} className={`flex ${msg.type === 'sent' ? 'justify-end' : 'justify-start'}`}>
+                    <div
+                      className={`max-w-[80%] p-3 rounded-lg ${
+                        msg.type === 'sent'
+                          ? 'bg-blue-100 text-blue-900'
+                          : msg.type === 'error'
+                            ? 'bg-red-100 text-red-900'
+                            : 'bg-white border border-gray-200 text-gray-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        {msg.sender === 'Kibundo Assistant' && (
+                          <Avatar src={agentIcon} size={20} className="!flex-shrink-0" />
                         )}
-                        <div className={`flex ${isYou ? "justify-end" : "justify-start"}`}>
-                          <div className={`flex gap-2 max-w-[80%] ${isYou ? "flex-row-reverse" : "flex-row"}`}>
-                            <Avatar size="small" src={isYou ? studIcon : agentIcon} className={isYou ? "bg-blue-500" : "bg-green-500"} />
-                            <div className={`flex flex-col ${isYou ? "items-end" : "items-start"}`}>
-                              <div className="flex items-center gap-2 mb-1">
-                                <Text className="text-xs font-medium text-gray-600">{m.sender}</Text>
-                                <Text className="text-xs text-gray-400">{formatTime(m.timestamp)}</Text>
-                                {m.type === "received" && (
-                                  <Tooltip title="Copy message">
-                                    <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => copyToClipboard(m.content)} />
-                                  </Tooltip>
-                                )}
-                              </div>
-                              <div className={`px-3 py-2 rounded-lg ${bubbleClass}`}>
-                                <Text>{m.content}</Text>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                        <span className="font-medium">{msg.sender}</span>
+                        <span className="text-xs opacity-60">{formatTime(msg.timestamp)}</span>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<CopyOutlined />}
+                          onClick={() => copyToClipboard(msg.content)}
+                          className="!p-0 !h-4 !w-4 ml-1 opacity-50 hover:opacity-100"
+                        />
                       </div>
-                    );
-                  })}
-
-                  {typing && (
-                    <div className="flex justify-start">
-                      <div className="flex gap-2 max-w-[80%]">
-                        <Avatar size="small" src={agentIcon} className="bg-green-500" />
-                        <div className="flex flex-col items-start">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Text className="text-xs font-medium text-gray-600">Kibundo Assistant</Text>
-                            <Text className="text-xs text-gray-400">typing…</Text>
-                          </div>
-                          <div className="px-3 py-2 bg-gray-100 rounded-lg">
-                            <div className="flex gap-1">
-                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} />
-                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                      <div className="whitespace-pre-wrap">{msg.content}</div>
                     </div>
-                  )}
-                </>
-              )}
-              <div ref={endRef} />
-            </div>
+                  </div>
+                ))}
 
-            {/* Composer */}
-            <div className="border-t pt-3">
+                {typing && (
+                  <div className="flex items-center gap-2 p-2 bg-white rounded-lg w-fit border border-gray-200">
+                    <div className="w-2 h-2 rounded-full animate-bounce bg-gray-400" />
+                    <div className="w-2 h-2 rounded-full animate-bounce bg-gray-400" style={{ animationDelay: '0.2s' }} />
+                    <div className="w-2 h-2 rounded-full animate-bounce bg-gray-400" style={{ animationDelay: '0.4s' }} />
+                    <span className="text-xs text-gray-500 ml-2">typing...</span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Give space so last message isn't hidden behind the input row */}
+            <div className="pb-24" />
+          </div>
+
+          {/* Input Area (sits above any footer because we're in column flow) */}
+          <div className="w-full border-t bg-white sticky bottom-0 z-10">
+            <div className="max-w-3xl mx-auto p-3">
               <div className="flex gap-2 items-end">
                 <TextArea
                   value={input}
                   onChange={(e) => { setInput(e.target.value); resetInactivity(); }}
                   onKeyDown={handleKeyDown}
                   placeholder="Ask me anything about Kibundo…"
-                  autoSize={{ minRows: 1, maxRows: 5 }}
-                  className="rounded-xl"
+                  autoSize={{ minRows: 1, maxRows: 6 }}
+                  className="rounded-xl flex-1"
                   disabled={sending}
                 />
                 <Button
@@ -333,7 +306,7 @@ export default function ParentChat() {
                   onClick={handleSend}
                   loading={sending}
                   disabled={!input.trim()}
-                  className="rounded-xl"
+                  className="rounded-xl h-10"
                 >
                   Send
                 </Button>
@@ -343,17 +316,8 @@ export default function ParentChat() {
                 <Text className="text-xs text-orange-400">Auto-closes after 1 minute of inactivity</Text>
               </div>
             </div>
-          </Card>
-
-          {/* Sticky jump-to-bottom */}
-          {!atBottom && (
-            <div className="fixed bottom-24 right-6">
-              <Button shape="round" onClick={scrollToBottom} icon={<ArrowLeftOutlined rotate={90} />}>
-                New messages
-              </Button>
-            </div>
-          )}
-        </section>
+          </div>
+        </div>
       </div>
     </ParentShell>
   );
