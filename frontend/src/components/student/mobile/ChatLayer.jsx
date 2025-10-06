@@ -1,9 +1,10 @@
 // src/components/student/mobile/ChatLayer.jsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-import { CheckOutlined } from "@ant-design/icons";           // ⬅️ NEW
-import { useChatDock } from "@/context/ChatDockContext.jsx";  // ⬅️ NEW
+import { App } from "antd";
+import api from "@/api/axios";
+import { CheckOutlined } from "@ant-design/icons";
+import { useChatDock } from "@/context/ChatDockContext.jsx";
 
 // Assets
 import minimiseBg from "@/assets/backgrounds/minimise.png";
@@ -15,32 +16,44 @@ import micIcon from "@/assets/mobile/icons/mic.png";
 import studentIcon from "@/assets/mobile/icons/stud-icon.png";
 import agentChats from "@/assets/mobile/icons/agent-chats.png";
 
-// Optional: analytics + ASR hooks
+// Analytics + ASR hooks
 import { track } from "@/lib/analytics";
 import useASR from "@/lib/voice/useASR";
+
+// Helper to format messages for ChatLayer
+const formatMessage = (content, from = "agent", type = 'text', meta = {}) => ({
+  id: Date.now() + Math.random().toString(36).slice(2, 9),
+  from,
+  type,
+  content,
+  timestamp: new Date().toISOString(),
+  ...meta
+});
 
 export default function ChatLayer({
   messages: controlledMessages,
   onMessagesChange,
   initialMessages = [
-    { id: 1, from: "student", text: "Hallo Kibundo" },
-    { id: 2, from: "agent",   text: "Hallo Michael, hattest Du einen schönen Tag in der Schule?" },
-    { id: 3, from: "student", text: "Ja, ausser Mathe und Reli war doof, sonst gut." },
-    { id: 4, from: "agent",   text: "Freut mich! Für Religion und Mathe können wir zusammen üben. Soll ich Dir helfen?" },
-    { id: 5, from: "student", text: "ok, aber nur wenn du lustig bist." },
+    formatMessage(
+      "Hallo! Ich bin dein KI-Lernhelfer. Wie kann ich dir bei deinen Hausaufgaben helfen?",
+      "agent"
+    ),
   ],
   onSendText,
   onSendMedia,
+  isTyping: externalTyping = false,
   onClose,
-  minimiseTo = "/student/home",
+  minimiseTo = "/student/homework",
   minimiseHeight = 54,
   className = "",
 }) {
   const [localMessages, setLocalMessages] = useState(initialMessages);
   const msgs = controlledMessages ?? localMessages;
-
   const [draft, setDraft] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -49,25 +62,25 @@ export default function ChatLayer({
   const objectUrlsRef = useRef([]);
 
   const navigate = useNavigate();
+  const { message: antdMessage } = App.useApp();
   const { listening, start, stop, reset } = useASR?.({ lang: "de-DE" }) ?? {};
 
-  // ⬇️ Chat dock integration (for “Done” action and mode)
+  // Chat dock integration
   const { state: dockState, markHomeworkDone } = useChatDock?.() ?? {};
-  const showDone = dockState?.mode === "homework"; // show only in homework flow
+  const showDone = dockState?.mode === "homework";
 
   // utilities
-  const setMessages = (next) => {
+  const setMessages = useCallback((next) => {
     const nextVal = typeof next === "function" ? next(msgs) : next;
     if (controlledMessages && onMessagesChange) onMessagesChange(nextVal);
     else setLocalMessages(nextVal);
-  };
+  }, [msgs, controlledMessages, onMessagesChange]);
 
-  // scroll after message append
+  // autoscroll
   useEffect(() => {
     const el = listRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight + 9999, behavior: "smooth" });
-  }, [msgs.length]);
+    if (el) el.scrollTo({ top: el.scrollHeight + 9999, behavior: "smooth" });
+  }, [msgs.length, typing]);
 
   // cleanup blobs
   useEffect(() => {
@@ -85,89 +98,178 @@ export default function ChatLayer({
     return () => document.removeEventListener("keydown", onKey);
   }, [showEmoji]);
 
-  // actions
-  const sendText = () => {
-    const t = draft.trim();
-    if (!t) return;
-    setMessages((m) => [...m, { id: Date.now(), from: "student", text: t }]);
-    onSendText?.(t);
+  // Handle sending a new message
+  const handleSendText = useCallback(async (text) => {
+    const t = (text || "").trim();
+    if (!t || sending) return;
+
+    setSending(true);
+    const userMessage = formatMessage(t, "student");
+    setMessages((m) => [...m, userMessage]);
     track?.("chat_message_send", { length: t.length });
-    setDraft("");
-  };
+
+    try {
+      if (onSendText) {
+        await onSendText(t);
+      } else {
+        // Fallback if onSendText is not provided
+        const { data } = await api.post("/ai/chat", {
+          question: t,
+          ai_agent: "ChildAgent",
+        });
+        const aiMessage = formatMessage(data?.answer || "Entschuldigung, ich konnte keine Antwort generieren.", "agent");
+        setMessages((m) => [...m, aiMessage]);
+      }
+    } catch (err) {
+      const errorMessage = formatMessage(
+        "Es gab ein Problem beim Senden deiner Nachricht. Bitte versuche es später erneut.",
+        "agent"
+      );
+      setMessages((m) => [...m, errorMessage]);
+      antdMessage.error("Nachricht konnte nicht gesendet werden");
+    } finally {
+      setSending(false);
+    }
+  }, [sending, onSendText, setMessages, antdMessage]);
+
+  // Handle media upload
+  const handleMediaUpload = useCallback(async (files) => {
+    if (!files.length || uploading) return;
+    setUploading(true);
+
+    const newMessages = [];
+    const formData = new FormData();
+    
+    for (const file of files) {
+      const url = URL.createObjectURL(file);
+      objectUrlsRef.current.push(url);
+      
+      const message = {
+        id: Date.now() + Math.random().toString(36).slice(2, 9),
+        from: "student",
+        type: "image",
+        content: url,
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+      };
+      
+      newMessages.push(message);
+      formData.append('files', file);
+    }
+
+    // Add loading message
+    const loadingMessage = formatMessage(
+      "Ich analysiere dein Bild...",
+      "agent"
+    );
+    
+    setMessages((m) => [...m, ...newMessages, loadingMessage]);
+
+    try {
+      if (onSendMedia) {
+        await onSendMedia(files);
+      } else {
+        // Fallback if onSendMedia is not provided
+        const { data } = await api.post("/ai/analyze-image", formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+
+        // Replace loading message with actual response
+        setMessages(m => {
+          const newMsgs = [...m];
+          const loadingIndex = newMsgs.findIndex(msg => msg.id === loadingMessage.id);
+          if (loadingIndex !== -1) {
+            newMsgs[loadingIndex] = formatMessage(
+              data?.analysis || "Ich habe das Bild erhalten, aber konnte es nicht analysieren.",
+              "agent"
+            );
+          }
+          return newMsgs;
+        });
+      }
+    } catch (error) {
+      console.error("Error uploading media:", error);
+      setMessages(m => {
+        const newMsgs = [...m];
+        const loadingIndex = newMsgs.findIndex(msg => msg.id === loadingMessage.id);
+        if (loadingIndex !== -1) {
+          newMsgs[loadingIndex] = formatMessage(
+            "Entschuldigung, beim Hochladen des Bildes ist ein Fehler aufgetreten. Bitte versuche es später erneut.",
+            "agent"
+          );
+        }
+        return newMsgs;
+      });
+      antdMessage.error("Bild konnte nicht hochgeladen werden");
+    } finally {
+      setUploading(false);
+    }
+  }, [onSendMedia, setMessages, antdMessage, uploading]);
+
+  // Event handlers
+  const sendText = useCallback(() => {
+    if (!draft.trim()) return;
+    handleSendText(draft).then(() => {
+      setDraft("");
+      requestAnimationFrame(() => inputRef.current?.focus());
+    });
+  }, [draft, handleSendText]);
 
   const onCamera = () => cameraInputRef.current?.click();
   const onGallery = () => galleryInputRef.current?.click();
   const onEmoji = () => setShowEmoji((p) => !p);
-
   const onMinimise = () => {
     if (typeof onClose === "function") onClose();
     else navigate(minimiseTo);
   };
 
-  const onPrimaryButton = async () => {
-    if (draft.trim()) {
-      sendText();
-      return;
-    }
-    if (!start || !stop) return;
-    if (!listening) {
-      reset?.();
-      track?.("chat_mic_started");
-      start();
-    } else {
-      const t = await stop();
-      track?.("chat_mic_stopped", { transcript_len: t?.length || 0 });
-      if (t?.trim()) {
-        setMessages((m) => [...m, { id: Date.now(), from: "student", text: t.trim() }]);
-        onSendText?.(t.trim());
-      }
-    }
-  };
-
-  // file handlers
+  // Handle camera input
   const handleCameraChange = (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    objectUrlsRef.current.push(url);
-    const msg = {
-      id: Date.now(),
-      from: "student",
-      image: url,
-      fileName: file.name,
-      fileType: file.type,
-      fileSize: file.size,
-    };
-    setMessages((m) => [...m, msg]);
-    onSendMedia?.([file]);
-    track?.("chat_image_send", { source: "camera", name: file.name, size: file.size });
+    if (file) handleMediaUpload([file]);
     e.target.value = "";
   };
 
+  // Handle gallery input
   const handleGalleryChange = (e) => {
     const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    const newMsgs = files.map((file) => {
-      const url = URL.createObjectURL(file);
-      objectUrlsRef.current.push(url);
-      return {
-        id: Date.now() + Math.random(),
-        from: "student",
-        image: url,
-        fileName: file.name,
-        fileType: file.type,
-        fileSize: file.size,
-      };
-    });
-    setMessages((m) => [...m, ...newMsgs]);
-    onSendMedia?.(files);
-    track?.("chat_images_send", { source: "gallery", count: files.length });
+    if (files.length) handleMediaUpload(files);
     e.target.value = "";
+  };
+
+  // Render message content based on type
+  const renderMessageContent = (message) => {
+    switch (message.type) {
+      case 'image':
+        return (
+          <div className="relative">
+            <img
+              src={message.content}
+              alt={message.fileName || "Hochgeladenes Bild"}
+              className="max-w-full max-h-64 rounded-lg"
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = '/placeholder-image.png';
+              }}
+            />
+            {message.fileName && (
+              <div className="text-xs text-gray-500 mt-1 truncate">
+                {message.fileName}
+              </div>
+            )}
+          </div>
+        );
+      default:
+        return <div className="whitespace-pre-wrap">{message.content}</div>;
+    }
   };
 
   return (
     <div className={["relative w-full h-full bg-white overflow-hidden", className].join(" ")}>
-      {/* hidden inputs */}
+      {/* Hidden file inputs */}
       <input
         ref={cameraInputRef}
         type="file"
@@ -179,13 +281,13 @@ export default function ChatLayer({
       <input
         ref={galleryInputRef}
         type="file"
-        accept="image/*,video/*"
+        accept="image/*"
         multiple
         onChange={handleGalleryChange}
         className="hidden"
       />
 
-      {/* minimise strip as the ONLY header */}
+      {/* Minimize strip */}
       <div
         onClick={onMinimise}
         className="w-full cursor-pointer"
@@ -202,18 +304,18 @@ export default function ChatLayer({
         onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onMinimise()}
       />
 
-      {/* messages */}
+      {/* Messages container */}
       <div
         ref={listRef}
         className="relative px-3 pt-4 pb-28 overflow-y-auto bg-[#f3f7eb]"
         style={{ height: `calc(100% - ${minimiseHeight}px)` }}
         aria-live="polite"
       >
-        {msgs.map((m) => {
-          const isAgent = m.from === "agent";
+        {msgs.map((message) => {
+          const isAgent = message.from === "agent";
           return (
             <div
-              key={m.id}
+              key={message.id}
               className={`w-full flex ${isAgent ? "justify-end" : "justify-start"} mb-3`}
             >
               {!isAgent && (
@@ -225,31 +327,14 @@ export default function ChatLayer({
               )}
 
               <div
-                className={`max-w-[78%] px-3 py-2 rounded-2xl shadow-sm overflow-hidden ${
-                  isAgent ? "bg-[#aee17b] text-[#1b3a1b]" : "bg-[#f3ebe6] text-[#444]"
+                className={`max-w-[78%] px-3 py-2 rounded-2xl shadow-sm ${
+                  isAgent ? "bg-[#aee17b] text-[#1b3a1b]" : "bg-white text-[#444]"
                 }`}
               >
-                {m.image ? (
-                  <a
-                    href={m.image}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="block"
-                    title={m.fileName || "image"}
-                  >
-                    <img
-                      src={m.image}
-                      alt={m.fileName || "Attachment"}
-                      className="rounded-xl w-full h-auto max-h-72 object-cover"
-                      draggable={false}
-                    />
-                    {m.fileName && (
-                      <div className="mt-1 text-xs opacity-70 truncate">{m.fileName}</div>
-                    )}
-                  </a>
-                ) : (
-                  m.text
-                )}
+                {renderMessageContent(message)}
+                <div className={`text-xs mt-1 ${isAgent ? 'text-[#1b3a1b]/80' : 'text-gray-500'}`}>
+                  {new Date(message.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                </div>
               </div>
 
               {isAgent && (
@@ -262,9 +347,29 @@ export default function ChatLayer({
             </div>
           );
         })}
+
+        {/* Typing indicator */}
+        {(typing || externalTyping) && (
+          <div className="w-full flex justify-end mb-3">
+            <div className="max-w-[78%] px-3 py-2 rounded-2xl shadow-sm bg-[#aee17b] text-[#1b3a1b]">
+              <div className="flex gap-1">
+                <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" />
+                <div
+                  className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce"
+                  style={{ animationDelay: "0.1s" }}
+                />
+                <div
+                  className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce"
+                  style={{ animationDelay: "0.2s" }}
+                />
+              </div>
+            </div>
+            <img src={agentIcon} alt="Kibundo" className="w-7 h-7 rounded-full ml-2 self-end" />
+          </div>
+        )}
       </div>
 
-      {/* emoji picker */}
+      {/* Emoji picker */}
       {showEmoji && (
         <div
           className="absolute bottom-20 left-0 right-0 bg-white shadow-md p-3 grid grid-cols-6 gap-2 text-xl z-50"
@@ -288,19 +393,20 @@ export default function ChatLayer({
         </div>
       )}
 
-      {/* composer */}
+      {/* Message composer */}
       <div
         className="absolute left-0 right-0 bottom-0 z-40"
         style={{ backgroundColor: "#b2c10a", paddingBottom: "env(safe-area-inset-bottom)" }}
         role="form"
-        aria-label="Message composer"
+        aria-label="Nachrichten-Eingabe"
       >
         <div className="mx-auto max-w-[900px] px-3 py-2 flex items-center gap-3">
           <button
             onClick={onCamera}
             className="w-10 h-10 grid place-items-center bg-white/30 rounded-full"
-            aria-label="Open Camera"
+            aria-label="Kamera öffnen"
             type="button"
+            disabled={sending || uploading}
           >
             <img src={cameraIcon} alt="" className="w-6 h-6" />
           </button>
@@ -308,8 +414,9 @@ export default function ChatLayer({
           <button
             onClick={onGallery}
             className="w-10 h-10 grid place-items-center bg-white/30 rounded-full"
-            aria-label="Open Gallery"
+            aria-label="Galerie öffnen"
             type="button"
+            disabled={sending || uploading}
           >
             <img src={galleryIcon} alt="" className="w-6 h-6" />
           </button>
@@ -323,43 +430,48 @@ export default function ChatLayer({
               placeholder="Schreibe eine Nachricht…"
               className="w-full bg-transparent outline-none text-[15px]"
               aria-label="Nachricht eingeben"
+              disabled={sending || uploading}
             />
           </div>
 
           <button
             onClick={onEmoji}
             className="w-10 h-10 grid place-items-center bg-white/30 rounded-full"
-            aria-label="Emoji"
+            aria-label="Emoji auswählen"
             type="button"
+            disabled={sending || uploading}
           >
             <img src={emojiIcon} alt="" className="w-6 h-6" />
           </button>
 
-          {/* ✅ NEW: 'Fertig' button (only in homework mode) */}
+          {/* Done button for homework */}
           {showDone && (
             <button
               onClick={() => markHomeworkDone?.()}
               className="w-11 h-11 grid place-items-center rounded-full"
               style={{ backgroundColor: "#8fd85d" }}
-              aria-label="Fertig – Aufgabe abschließen"
+              aria-label="Aufgabe abschließen"
               type="button"
-              title="Fertig"
+              disabled={sending || uploading}
             >
               <CheckOutlined style={{ color: "#fff", fontSize: 16 }} />
             </button>
           )}
 
           <button
-            onClick={onPrimaryButton}
-            className="w-11 h-11 grid place-items-center rounded-full"
+            onClick={sendText}
+            className={`w-11 h-11 grid place-items-center rounded-full ${
+              sending || uploading ? "opacity-50" : ""
+            }`}
             style={{ backgroundColor: "#ff7a00" }}
-            aria-label={draft.trim() ? "Send" : listening ? "Stop recording" : "Start recording"}
+            aria-label={sending ? "Wird gesendet..." : "Nachricht senden"}
             type="button"
+            disabled={sending || uploading || !draft.trim()}
           >
-            {draft.trim() ? (
-              <img src={agentChats} alt="Send" className="w-5 h-5" />
+            {sending || uploading ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : (
-              <img src={micIcon} alt="Mic" className="w-6 h-6" />
+              <img src={agentChats} alt="Senden" className="w-5 h-5" />
             )}
           </button>
         </div>

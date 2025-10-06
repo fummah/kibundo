@@ -1,7 +1,7 @@
 // src/pages/student/homework/HomeworkList.jsx
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CheckOutlined, LeftOutlined, RightOutlined } from "@ant-design/icons";
+import { CheckOutlined, LeftOutlined, RightOutlined, PlusOutlined } from "@ant-design/icons";
 import {
   CalculatorOutlined,
   ReadOutlined,
@@ -215,10 +215,19 @@ export default function HomeworkList() {
           >
             <span className="mr-1">Weiter</span> <RightOutlined />
           </button>
+          
+          {/* Floating Action Button */}
+          <button
+            onClick={() => navigate("/student/homework/doing")}
+            className="ml-4 w-10 h-10 rounded-full bg-[#2b6a5b] text-white shadow-lg
+                     flex items-center justify-center hover:bg-[#1f4f43] transition-colors duration-200
+                     focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2b6a5b]"
+            aria-label="Neue Aufgabe scannen"
+          >
+            <PlusOutlined className="text-lg" />
+          </button>
         </div>
       </div>
-
-      <div className="h-4" />
     </section>
   );
 }

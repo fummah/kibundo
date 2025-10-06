@@ -1,14 +1,148 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import ChatLayer from "@/components/student/mobile/ChatLayer.jsx";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useChatDock } from "@/context/ChatDockContext.jsx";
+import { message } from "antd";
+import api from "@/api/axios";
 
 const PROGRESS_KEY = "kibundo.homework.progress.v1";
 
+// Helper to format messages for ChatLayer
+const formatMessage = (content, from = "agent", type = 'text') => ({
+  id: Date.now() + Math.random().toString(36).slice(2, 9),
+  from,
+  type,
+  content,
+  timestamp: new Date().toISOString()
+});
+
+// Helper to analyze image with AI
+const analyzeImage = async (imageData) => {
+  try {
+    const formData = new FormData();
+    formData.append('image', imageData);
+    
+    const response = await api.post('/ai/analyze-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('Error analyzing image:', error);
+    return {
+      success: false,
+      error: 'Failed to analyze image. Please try again.'
+    };
+  }
+};
+
 export default function HomeworkChat() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { markHomeworkDone } = useChatDock() || {};
-  const [open, setOpen] = useState(true); // close drawer in place
+  const [open, setOpen] = useState(true);
+  const [isTyping, setIsTyping] = useState(false);
+  const [chatHistory, setChatHistory] = useState([
+    formatMessage("Hallo! Ich bin dein KI-Lernhelfer. Wie kann ich dir bei deinen Hausaufgaben helfen?")
+  ]);
+  
+  // Handle initial image upload from HomeworkDoing
+  useEffect(() => {
+    if (location.state?.image) {
+      const imageMessage = {
+        id: Date.now(),
+        from: 'student',
+        type: 'image',
+        content: URL.createObjectURL(location.state.image),
+        timestamp: new Date().toISOString()
+      };
+      
+      setChatHistory(prev => [...prev, imageMessage]);
+      
+      // Process the image with AI
+      const processImage = async () => {
+        setIsTyping(true);
+        try {
+          const formData = new FormData();
+          formData.append('image', location.state.image);
+          
+          const response = await api.post('/ai/analyze-image', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          
+          if (response.data) {
+            setChatHistory(prev => [
+              ...prev, 
+              formatMessage(response.data.analysis, 'agent')
+            ]);
+          }
+        } catch (error) {
+          console.error('Error processing image:', error);
+          setChatHistory(prev => [
+            ...prev, 
+            formatMessage("Entschuldigung, ich konnte das Bild nicht analysieren. Bitte versuche es später noch einmal.", 'agent')
+          ]);
+        } finally {
+          setIsTyping(false);
+        }
+      };
+      
+      processImage();
+    }
+  }, [location.state?.image]);
+
+  // Send message to AI backend
+  const sendToAI = useCallback(async (content, type = 'text') => {
+    try {
+      setIsTyping(true);
+      
+      if (type === 'image') {
+        // For images, we've already processed them in the useEffect
+        return { success: true, response: "Ich habe dein Bild erhalten. Lass mich das für dich analysieren..." };
+      }
+      
+      // For text messages
+      const { data } = await api.post("/ai/chat", { 
+        question: content,
+        ai_agent: "ChildAgent"
+      });
+      return { success: true, response: data?.answer };
+    } catch (error) {
+      console.error("AI Chat error:", error);
+      return { 
+        success: false, 
+        error: error.response?.data?.message || "Es ist ein Fehler aufgetreten. Bitte versuche es später erneut."
+      };
+    } finally {
+      setIsTyping(false);
+    }
+  }, []);
+
+  // Handle sending a new message or image
+  const handleSendMessage = useCallback(async (content, type = 'text') => {
+    if (!content) return;
+
+    // Add user message to chat
+    const userMessage = type === 'image' 
+      ? { ...content, from: 'student', type: 'image' }
+      : formatMessage(content, 'student');
+      
+    setChatHistory(prev => [...prev, userMessage]);
+
+    // Get AI response
+    const { success, response, error } = await sendToAI(content, type);
+    
+    if (success) {
+      setChatHistory(prev => [...prev, formatMessage(response, 'agent')]);
+    } else {
+      message.error(error);
+    }
+  }, [sendToAI]);
 
   // Keep progress at step 2 while chatting
   useEffect(() => {
@@ -36,10 +170,25 @@ export default function HomeworkChat() {
       {open ? (
         <ChatLayer
           className="h-full"
-          // Preferred: close the drawer without navigation
+          messages={chatHistory}
+          onSendText={handleSendMessage}
+          onSendMedia={(file) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              handleSendMessage({
+                id: Date.now(),
+                content: e.target.result,
+                type: 'image',
+                fileName: file.name,
+                fileType: file.type,
+                size: file.size
+              }, 'image');
+            };
+            reader.readAsDataURL(file);
+          }}
+          isTyping={isTyping}
           onMinimise={() => setOpen(false)}
-          // If your ChatLayer ignores onMinimise and requires a route,
-          // uncomment this line and remove onMinimise:
+          // Uncomment if needed:
           // minimiseTo="/student/homework"
         />
       ) : (
