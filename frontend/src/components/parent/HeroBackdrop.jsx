@@ -36,11 +36,11 @@ export default function HeroBackdrop({
         aria-hidden
       />
 
-      {/* Int background (ABOVE global) */}
+      {/* Int background (ABOVE global) – fill entire frame to avoid inner "phone" look */}
       <img
         src={intBack}
         alt=""
-        className="absolute bottom-0 top-1/2 left-1/2 -translate-x-1/2 w-[140%] max-w-none md:w-full h-auto z-[2] select-none pointer-events-none"
+        className="absolute inset-0 w-full h-full object-cover z-[2] select-none pointer-events-none"
         draggable={false}
         aria-hidden
       />

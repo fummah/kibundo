@@ -3,8 +3,8 @@ import { Row, Col } from "antd";
 import { useNavigate } from "react-router-dom";
 
 import ImageTile from "@/components/student/mobile/ImageTile";
-import FooterChat from "@/components/student/mobile/FooterChat";
 import SettingsRibbon from "@/components/student/mobile/SettingsRibbon";
+// FooterChat is rendered globally in App.jsx for selected routes
 
 import buddyMascot from "@/assets/buddies/kibundo-buddy.png";
 import { TILE_BG } from "@/assets/mobile/tiles";
@@ -39,10 +39,8 @@ function computeHomeworkEntryRoute() {
 export default function HomeMobile() {
   const navigate = useNavigate();
 
-  const goHomework = () => navigate(computeHomeworkEntryRoute());
-
-  return (
-    <div className="flex flex-col min-h-[100dvh] bg-[#f7f2ec]">
+  const HomeContent = () => (
+    <div className="flex flex-col min-h-[100dvh] md:min-h-0 md:h-full bg-[#f7f2ec]">
       {/* Sticky settings (safe-area aware) */}
       <div className="sticky top-0 z-50 flex justify-end px-4 pt-[env(safe-area-inset-top)] pointer-events-none">
         <div className="pointer-events-auto">
@@ -65,14 +63,13 @@ export default function HomeMobile() {
           src={buddyMascot}
           alt="Buddy"
           loading="lazy"
-          draggable={false}
-          className="w-[108px] md:w-[116px] lg:w-[128px] h-auto select-none drop-shadow-[0_10px_18px_rgba(0,0,0,.18)]"
+          className="w-[120px] md:w-[130px] lg:w-[162px] h-auto select-none drop-shadow-[0_10px_18px_rgba(0,0,0,.18)]"
         />
       </header>
 
       {/* CARDS SECTION — bottom background lives here so tiles ALWAYS sit on it */}
       <main
-        className="relative flex-1 overflow-y-auto px-4 pb-[calc(96px+env(safe-area-inset-bottom))]"
+        className="relative flex-1 px-4 pb-0"
         style={{
           backgroundImage: `url(${bottomBg})`,
           backgroundRepeat: "no-repeat",
@@ -82,17 +79,17 @@ export default function HomeMobile() {
         }}
         aria-label="Schnellzugriffe"
       >
-        <div className="pt-8 md:pt-10 lg:pt-12 max-w-[980px] mx-auto">
+        <div className="pt-2 md:pt-5 lg:pt-6 max-w-[980px] mx-auto">
           <Row gutter={[14, 14]}>
             <Col xs={12}>
               <ImageTile
-  title="Hausaufgaben"
-  bg={TILE_BG.blue}
-  illustration={IMGS.homework}
-  onClick={() => navigate("/student/homework")} // <— always list
-  ariaLabel="Zu Hausaufgaben"
-  data-testid="tile-homework"
-/>
+                title="Hausaufgaben"
+                bg={TILE_BG.blue}
+                illustration={IMGS.homework}
+                onClick={() => navigate("/student/homework")} // <— always list
+                ariaLabel="Zu Hausaufgaben"
+                data-testid="tile-homework"
+              />
             </Col>
 
             <Col xs={12}>
@@ -122,17 +119,16 @@ export default function HomeMobile() {
                 title="Schatzkarte"
                 bg={TILE_BG.green}
                 illustration={IMGS.map}
-                onClick={() => navigate("/student/map")}
                 ariaLabel="Zur Schatzkarte"
                 data-testid="tile-map"
               />
             </Col>
           </Row>
         </div>
+        {/* Footer chat is injected globally */}
       </main>
-
-      {/* Footer chat dock */}
-      <FooterChat />
     </div>
   );
+
+  return <HomeContent />;
 }

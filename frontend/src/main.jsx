@@ -1,15 +1,11 @@
+// src/main.jsx (or src/index.jsx)
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, unstable_HistoryRouter as HistoryRouter } from "react-router-dom";
+import { unstable_HistoryRouter as HistoryRouter } from "react-router-dom";
 import { createBrowserHistory } from "history";
 
-// Create a custom history object to access navigation outside components
-const history = createBrowserHistory({
-  future: {
-    v7_startTransition: true,
-    v7_relativeSplatPath: true,
-  },
-});
+// 🔁 Custom history for navigation outside components
+export const history = createBrowserHistory();
 
 // 🔐 Auth Context
 import { AuthProvider } from "./context/AuthContext";
@@ -20,6 +16,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import "react-toastify/dist/ReactToastify.css";
 import "antd/dist/reset.css";
+import { App as AntdApp } from "antd";
 import "./index.css";
 
 import App from "./App";
@@ -27,7 +24,7 @@ import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import AppTheme from "./AppTheme.jsx";
 
 // 🌍 i18n
-import "./i18n"; // <-- 👈 add this line to initialize translations
+import "./i18n"; // initialize translations
 
 // 🌙 Dark mode persistence
 const theme = localStorage.getItem("theme");
@@ -38,7 +35,7 @@ else document.documentElement.classList.remove("dark");
 const lang = localStorage.getItem("i18nextLng") || "en";
 document.documentElement.lang = lang;
 
-// ✅ Create a single QueryClient for the app
+// ✅ Single QueryClient for the app
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -55,14 +52,19 @@ root.render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       {/* <ReactQueryDevtools initialIsOpen={false} /> */}
-      <HistoryRouter history={history} future={{
-        v7_startTransition: true,
-        v7_relativeSplatPath: true,
-      }}>
+      <HistoryRouter
+        history={history}
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
         <AuthProvider>
           <ErrorBoundary>
             <AppTheme>
-              <App />
+              <AntdApp>
+                <App />
+              </AntdApp>
             </AppTheme>
           </ErrorBoundary>
         </AuthProvider>

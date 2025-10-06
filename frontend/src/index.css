@@ -1,7 +1,8 @@
+/* ---------- Framework imports ---------- */
 /* Ant Design reset first */
 @import "antd/dist/reset.css";
 
-/* Tailwind */
+/* Tailwind layers */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,9 +11,11 @@
 html, body, #root {
   height: 100%;
 }
+
 html {
   color-scheme: light dark;
 }
+
 body {
   font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
   background-color: #ffffff;
@@ -21,23 +24,51 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   transition: background-color .2s ease, color .2s ease;
+
+  /* ✅ Allow scroll globally (we lock it only inside framed shells) */
+  overflow: auto;
 }
+
+/* Dark mode base */
 .dark body {
   background-color: #0f172a; /* slate-900 */
   color: #e5e7eb; /* gray-200 */
 }
 
-/* Nice scrollbars */
+/* ---------- Invisible-yet-scrollable helper ---------- */
+/* Use on inner containers like the framed screen or chat layer */
+.scroll-y-invisible {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE/old Edge */
+}
+.scroll-y-invisible::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+.scroll-y-invisible {
+  scrollbar-color: transparent transparent !important;
+}
+
+/* ---------- Nice scrollbars (default globally) ---------- */
+/* These appear everywhere EXCEPT when .scroll-y-invisible is used */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(0,0,0,0.25) transparent;
 }
-*::-webkit-scrollbar { height: 8px; width: 8px; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background-color: rgba(0,0,0,0.25); border-radius: 999px; }
-.dark *::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.25); }
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(0,0,0,0.25);
+  border-radius: 999px;
+}
+.dark *::-webkit-scrollbar-thumb {
+  background-color: rgba(255,255,255,0.25);
+}
 
-/* ---------- AntD rounding & soft UI ---------- */
+/* ---------- Ant Design rounding & soft UI ---------- */
 .ant-card { border-radius: 1rem !important; }
 .ant-input,
 .ant-input-affix-wrapper,
@@ -60,13 +91,15 @@ body {
 }
 
 /* ---------- Keep header above modal ---------- */
-.global-header { position: sticky; top: 0; z-index: 3000; }
+.global-header {
+  position: sticky;
+  top: 0;
+  z-index: 3000;
+}
 
-/* ---------- Add Student modal (shown under header) ---------- */
+/* ---------- Add Student modal (compact with scroll) ---------- */
 .add-student-modal .ant-modal      { top: 4rem !important; }
 .add-student-modal .ant-modal-mask { top: 4rem !important; }
-
-/* Not full height; compact with scroll if needed */
 .add-student-modal .ant-modal-content { 
   max-height: calc(70vh - 4rem);
 }
@@ -75,9 +108,9 @@ body {
   overflow-y: auto;
 }
 
-/* Clean hero look for the intro step */
+/* Clean hero look for intro step */
 .add-student-intro .ant-modal-header { display: none; }
-.add-student-intro .ant-modal-body   { padding: 0; } /* edge-to-edge GradientShell */
+.add-student-intro .ant-modal-body   { padding: 0; }
 
 /* Ensure AntD messages appear above all other UI */
 .ant-message {

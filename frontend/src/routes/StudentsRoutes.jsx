@@ -32,7 +32,6 @@ const ReadingQuizFlow   = lazy(() => import("@/pages/student/reading/ReadingQuiz
 import HomeworkLayout from "@/pages/student/homework/HomeworkLayout.jsx";
 const HomeworkList       = lazy(() => import("@/pages/student/homework/HomeworkList.jsx"));       // step 0
 const HomeworkDoing      = lazy(() => import("@/pages/student/homework/HomeworkDoing.jsx"));      // step 1
-const HomeworkChat       = lazy(() => import("@/pages/student/homework/HomeworkChat.jsx"));       // step 2
 const HomeworkFeedback   = lazy(() => import("@/pages/student/homework/HomeworkFeedback.jsx"));   // step 3
 
 // Progress / Motivation
@@ -42,8 +41,7 @@ const MotivationTool    = lazy(() => import("@/pages/student/MotivationTool.jsx"
 // Settings
 const StudentSettings   = lazy(() => import("@/pages/student/StudentSettings.jsx"));
 
-// Chat layer
-const ChatLayer         = lazy(() => import("@/components/student/mobile/ChatLayer.jsx"));
+// Chat opener was removed; routes that referenced it now redirect to concrete pages
 
 // Gate helper
 import IntroGate from "@/routes/IntroGate.jsx";
@@ -117,7 +115,7 @@ export default function StudentRoutes() {
               <Route path="homework" element={<HomeworkLayout />}>
                 <Route index element={<HomeworkList />} />
                 <Route path="doing"      element={<HomeworkDoing />} />
-                <Route path="chat"       element={<HomeworkChat />} />
+                <Route path="chat" element={<Navigate to="/student/homework/doing" replace />} />
                 <Route path="feedback"   element={<HomeworkFeedback />} />
 
                 {/* Legacy fallback routes */}
@@ -134,8 +132,8 @@ export default function StudentRoutes() {
               {/* Settings */}
               <Route path="settings"    element={<StudentSettings />} />
 
-              {/* Chat layer (outside homework) */}
-              <Route path="chat"        element={<ChatLayer />} />
+              {/* Legacy chat route fallback */}
+              <Route path="chat" element={<Navigate to="/student/home" replace />} />
 
               {/* Legacy intro redirect */}
               <Route path="onboarding/intro" element={<Navigate to="/student/onboarding/welcome-intro" replace />} />

@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from "react";
-import { message } from "antd";
+import { App } from "antd";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useChatDock } from "@/context/ChatDockContext.jsx";
 
@@ -48,9 +48,10 @@ const formatMessage = (content, from = "agent", type = 'text', meta = {}) => ({
 
 /* --------------------------------------------------------------- */
 export default function HomeworkDoing() {
+  const { message: antdMessage } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
-  const { openChat, state: dockState } = useChatDock() || {};
+  const { openChat, expandChat, state: dockState } = useChatDock() || {};
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const initialLoad = useRef(true);
@@ -75,6 +76,8 @@ export default function HomeworkDoing() {
             task: existingTask,
             initialMessages: existingTask.messages
           });
+          // open expanded so the chat screen is shown immediately
+          expandChat?.();
         } else {
           // Start a new chat for this task
           openChat({
@@ -84,6 +87,7 @@ export default function HomeworkDoing() {
               formatMessage("Hallo! Ich bin dein KI-Lernhelfer. Wie kann ich dir bei deinen Hausaufgaben helfen?", "agent")
             ]
           });
+          expandChat?.();
         }
       }
     }
@@ -145,11 +149,14 @@ export default function HomeworkDoing() {
         console.error("Error creating object URL:", error);
       }
       
+      const isImg = (file.type || "").startsWith("image/");
       initialMessages.push({
         id: Date.now(),
         from: "student",
-        type: "image",
-        content: objectUrl,
+        type: isImg ? "image" : "file",
+        content: isImg
+          ? { url: objectUrl, file }
+          : { url: objectUrl, name: file.name, size: file.size, type: file.type },
         fileName: file.name,
         fileType: file.type,
         fileSize: file.size,
@@ -175,6 +182,13 @@ export default function HomeworkDoing() {
       timestamp: new Date().toISOString()
     });
 
+    // Attach messages to task and pre-populate chat history storage for immediate load
+    try {
+      task.messages = initialMessages;
+      const persistKey = `kibundo.chat.history.homework.${id}`;
+      localStorage.setItem(persistKey, JSON.stringify(initialMessages));
+    } catch {}
+
     // Open the chat dock with the task and initial messages
     if (openChat) {
       openChat({
@@ -182,6 +196,8 @@ export default function HomeworkDoing() {
         task,
         initialMessages
       });
+      // ensure expanded so user sees the chat immediately with the uploaded file
+      expandChat?.();
     } else {
       // Fallback to navigation if openChat is not available
       navigate("/student/homework/chat", { 
@@ -194,9 +210,9 @@ export default function HomeworkDoing() {
 
     // Show appropriate message to user
     if (!storageOk) {
-      message.warning("Aufgabe erstellt, aber lokaler Speicher ist voll. Bild wird nicht dauerhaft gespeichert.");
+      antdMessage.warning("Aufgabe erstellt, aber lokaler Speicher ist voll. Bild wird nicht dauerhaft gespeichert.");
     } else {
-      message.success("Aufgabe gespeichert – Chat geöffnet.");
+      antdMessage.success("Aufgabe gespeichert – Chat geöffnet.");
     }
   };
 
@@ -238,7 +254,7 @@ export default function HomeworkDoing() {
       createTaskAndOpenChat({ 
         file, 
         meta: { 
-          source: "image",
+          source: file.type?.startsWith("image/") ? "image" : "file",
           taskId: taskId
         } 
       });
@@ -261,7 +277,7 @@ export default function HomeworkDoing() {
       <input
         ref={galleryInputRef}
         type="file"
-        accept="image/*"
+        accept="*/*"
         className="hidden"
         onChange={onGalleryChange}
       />

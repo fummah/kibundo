@@ -99,7 +99,7 @@ export default function TreasureMap() {
 
   return (
     // Scrollable in all views; soft gradient; space reserved for chat footer
-    <div className="relative px-3 md:px-6 py-4 bg-gradient-to-b from-white to-neutral-50 min-h-[100svh] lg:h-full overflow-y-auto">
+    <div className="relative px-3 md:px-6 py-4 bg-gradient-to-b from-white to-neutral-50 min-h-[100svh] md:min-h-0 md:h-full lg:h-full overflow-y-auto">
       {/* Header: back + banner + badges; wraps on small screens */}
       <div className="flex items-center gap-3 pt-6 mb-4 flex-wrap">
         <BackButton

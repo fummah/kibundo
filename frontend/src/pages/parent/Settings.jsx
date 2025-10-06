@@ -11,7 +11,7 @@ import {
 } from "@ant-design/icons";
 
 import { useAuthContext } from "@/context/AuthContext.jsx";
-import BottomTabBar from "@/components/parent/BottomTabBar.jsx";
+import ParentShell from "@/components/parent/ParentShell.jsx";
 import globalBg from "@/assets/backgrounds/global-bg.png";
 
 const { useBreakpoint } = Grid;
@@ -70,39 +70,9 @@ export default function Settings() {
   const goInvoices     = (e) => { e?.stopPropagation(); navigate("/parent/billing/invoices"); };
   const goCoupons      = (e) => { e?.stopPropagation(); navigate("/parent/billing/coupons"); };
 
-  return lg ? (
-    /* ===== Desktop "phone frame" — only one instance mounted ===== */
-    <div className="flex items-center justify-center min-h-screen bg-neutral-100">
-      <div
-        className="relative rounded-[42px] shadow-2xl border border-black/5 bg-white"
-        style={{ width: 420, height: 860 }}
-      >
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 mt-2 h-6 w-40 rounded-full bg-black/10" />
-        <div className="absolute inset-0 overflow-hidden rounded-[42px]">
-          <ScreenScaffold>
-            <SettingsContent
-              form={form}
-              isAuthenticated={isAuthenticated}
-              twoFA={twoFA}
-              setTwoFA={setTwoFA}
-              confirmLogout={confirmLogout}
-              save={save}
-              openBilling={openBilling}
-              goOverview={goOverview}
-              goSubscription={goSubscription}
-              goInvoices={goInvoices}
-              goCoupons={goCoupons}
-              navigate={navigate}
-            />
-            <div className="h-16 md:h-20" aria-hidden="true" />
-            <BottomTabBar />
-          </ScreenScaffold>
-        </div>
-      </div>
-    </div>
-  ) : (
-    /* ===== Mobile/Tablet container — only one instance mounted ===== */
-    <ScreenScaffold>
+  // Use ParentShell for all breakpoints; it handles the framed layout and sticky bottom nav
+  return (
+    <ParentShell bgImage={globalBg}>
       <SettingsContent
         form={form}
         isAuthenticated={isAuthenticated}
@@ -117,30 +87,11 @@ export default function Settings() {
         goCoupons={goCoupons}
         navigate={navigate}
       />
-      <div className="h-16 md:h-20" aria-hidden="true" />
-      <BottomTabBar />
-    </ScreenScaffold>
+    </ParentShell>
   );
 }
 
-/* ---------- Presentational wrappers & content ---------- */
-
-function ScreenScaffold({ children }) {
-  return (
-    <div
-      className="min-h-screen flex flex-col"
-      style={{
-        backgroundImage: `url(${globalBg})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        paddingTop: "env(safe-area-inset-top)",
-      }}
-    >
-      <main className="flex-1 overflow-y-auto px-5">{children}</main>
-    </div>
-  );
-}
-
+/* ---------- Presentational content ---------- */
 function SettingsContent({
   form,
   isAuthenticated,

@@ -103,7 +103,7 @@ export default function AiReadingTextFlow() {
 
   return (
     // Scrollable in ALL views; keeps content above the chat strip
-    <div className="relative mx-auto w-full max-w-5xl px-3 md:px-6 py-4 overflow-y-auto min-h-[100svh] lg:min-h-0 lg:h-full">
+    <div className="relative mx-auto w-full max-w-5xl px-3 md:px-6 py-4 overflow-y-auto min-h-[100svh] md:min-h-0 md:h-full lg:min-h-0 lg:h-full">
       {/* Header with Back + Greeting + Timer */}
       <div className="flex items-center gap-3 pt-6 mb-4">
         <BackButton

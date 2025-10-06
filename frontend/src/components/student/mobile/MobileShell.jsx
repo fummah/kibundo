@@ -1,7 +1,6 @@
 // src/pages/student/mobile/MobileShell.jsx
 import React from "react";
 import { Outlet } from "react-router-dom";
-import DeviceFrame from "@/components/student/mobile/DeviceFrame";
 
 /**
  * MobileShell
@@ -10,9 +9,7 @@ import DeviceFrame from "@/components/student/mobile/DeviceFrame";
  * - inside DeviceFrame when on desktop
  */
 export default function MobileShell() {
-  return (
-    <DeviceFrame>
-      <Outlet />
-    </DeviceFrame>
-  );
+  // App-level device frame is applied in src/App.jsx. To prevent double frames,
+  // this shell simply renders the nested routes.
+  return <Outlet />;
 }

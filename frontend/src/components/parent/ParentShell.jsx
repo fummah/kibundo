@@ -2,7 +2,6 @@
 import React from "react";
 import PropTypes from "prop-types";
 
-import DeviceFrame from "@/components/student/mobile/DeviceFrame";
 import BottomTabBar from "@/components/parent/BottomTabBar";
 import ParentSpaceBar from "@/components/parent/ParentSpaceBar.jsx";
 import defaultBg from "@/assets/backgrounds/global-bg.png";
@@ -29,10 +28,10 @@ export default function ParentShell({
   contentClassName = "px-5",
 }) {
   return (
-    <DeviceFrame className={className}>
-      {/* Background + layout */}
+    <div className={className}>
+      {/* Background + layout that fills the App's framed screen */}
       <div
-        className="min-h-screen flex flex-col"
+        className="min-h-[100svh] md:min-h-0 md:h-full flex flex-col"
         style={{
           backgroundImage: `url(${bgImage})`,
           backgroundSize: "cover",
@@ -40,14 +39,15 @@ export default function ParentShell({
           paddingTop: "env(safe-area-inset-top)",
         }}
       >
-        {/* Scrollable content (sticky bottom bar must live inside here) */}
-        <main className={["flex-1 overflow-y-auto", contentClassName].join(" ")}>
-          {children}
+        {/* Content fills available height; the outer screen (App.jsx) provides scrolling */}
+        <main id="parent-shell" className="flex-1 relative">
+          {/* Padded content wrapper */}
+          <div className={contentClassName}>{children}</div>
 
-          {/* Keep content clear of the sticky bottom bar */}
+          {/* Keep content clear of the sticky bottom bar on mobile */}
           {!hideBottomBar && <ParentSpaceBar />}
 
-          {/* Sticky bottom nav inside the scroller */}
+          {/* Sticky bottom nav lives inside the same screen; full-width edge-to-edge */}
           {!hideBottomBar && (
             <BottomTabBar
               includeOnRoutes={includeOnRoutes}
@@ -56,7 +56,7 @@ export default function ParentShell({
           )}
         </main>
       </div>
-    </DeviceFrame>
+    </div>
   );
 }
 

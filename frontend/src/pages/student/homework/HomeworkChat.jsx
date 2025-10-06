@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import ChatLayer from "@/components/student/mobile/ChatLayer.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useChatDock } from "@/context/ChatDockContext.jsx";
+
 import { message } from "antd";
 import api from "@/api/axios";
 
