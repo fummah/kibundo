@@ -5,6 +5,8 @@ import React, {
   useMemo,
   useState,
   useCallback,
+  useEffect,
+  useRef,
 } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -20,7 +22,8 @@ const DEFAULT_CTX = {
     mode: null,
     task: null,
     initialMessages: null,
-    chatByKey: {},              // ✅ persisted chats
+    chatByKey: {},
+    analyzeOnOpen: false,
   },
   openChat: NOOP,
   expandChat: NOOP,
@@ -44,24 +47,107 @@ const loadAllChats = () => {
     return {};
   }
 };
-
 const saveAllChats = (chatByKey) => {
   try {
     localStorage.setItem(CHAT_NS, JSON.stringify(chatByKey));
   } catch {}
 };
 
+const mergeById = (a = [], b = []) => {
+  const seen = new Set();
+  const out = [];
+  for (const arr of [a, b]) {
+    if (!Array.isArray(arr)) continue;
+    for (const m of arr) {
+      const key =
+        m?.id ??
+        `${m?.from}|${m?.timestamp}|${String(m?.content).slice(0, 64)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(m);
+    }
+  }
+  return out;
+};
+
+const fmt = (content, from = "agent", type = "text", extra = {}) => ({
+  id: Date.now() + Math.random().toString(36).slice(2, 9),
+  from,
+  type,
+  content,
+  timestamp: new Date().toISOString(),
+  ...extra,
+});
+
+/** Build a Markdown table + extracted text (safe for text-only renderers) */
+const qaToMarkdown = (extractedText = "", qa = []) => {
+  const header = "| # | Frage | Antwort |\n|---:|-------|---------|";
+  const rows =
+    Array.isArray(qa) && qa.length
+      ? qa
+          .map((q, i) => {
+            const question = (q?.text || "—").replace(/\n+/g, " ");
+            const answer = (q?.answer || "—").replace(/\n+/g, " ");
+            return `| ${i + 1} | ${question} | ${answer} |`;
+          })
+          .join("\n")
+      : "| – | Keine Fragen erkannt | – |";
+
+  const extractedBlock = extractedText?.trim()
+    ? `\n\n**Erkannter Text**\n\n\`\`\`\n${extractedText}\n\`\`\`\n`
+    : "\n\n**Erkannter Text**\n\n_(keine Daten gefunden)_\n";
+
+  return `**Analyse-Ergebnis**\n\n${header}\n${rows}${extractedBlock}`;
+};
+
 export function ChatDockProvider({ children }) {
   const navigate = useNavigate();
+  const analyzingRef = useRef(false);
 
   const [state, setState] = useState(() => ({
-    visible: false, // start hidden
+    visible: false,
     expanded: false,
     mode: null,
     task: null,
     initialMessages: null,
-    chatByKey: loadAllChats(), // ✅ hydrate
+    chatByKey: loadAllChats(),
+    analyzeOnOpen: false,
   }));
+
+  /** One-time migration: convert any legacy {type:'qa', content:{...}} to Markdown text */
+  useEffect(() => {
+    setState((s) => {
+      let changed = false;
+      const chatByKey = Object.fromEntries(
+        Object.entries(s.chatByKey || {}).map(([key, arr]) => {
+          const nextArr = Array.isArray(arr)
+            ? arr.map((m) => {
+                if (m?.type === "qa" && m?.content && typeof m.content === "object") {
+                  const extracted = m.content.analysisText || "";
+                  const rows = Array.isArray(m.content.rows) ? m.content.rows : [];
+                  const qa = rows.map((r) => ({
+                    text: r?.question || "",
+                    answer: r?.answer || "",
+                  }));
+                  const md = qaToMarkdown(extracted, qa);
+                  changed = true;
+                  return { ...m, type: "text", content: md };
+                }
+                return m;
+              })
+            : arr;
+          return [key, nextArr];
+        })
+      );
+      if (changed) {
+        try {
+          localStorage.setItem(CHAT_NS, JSON.stringify(chatByKey));
+        } catch {}
+        return { ...s, chatByKey };
+      }
+      return s;
+    });
+  }, []);
 
   const getChatMessages = useCallback(
     (mode = "general", taskId = null) => {
@@ -71,11 +157,19 @@ export function ChatDockProvider({ children }) {
     [state.chatByKey]
   );
 
-  const setChatMessages = useCallback((mode, taskId, messages) => {
+  const setChatMessages = useCallback((mode, taskId, next) => {
     setState((s) => {
       const key = getKey(mode, taskId);
-      const chatByKey = { ...s.chatByKey, [key]: messages };
-      saveAllChats(chatByKey);                 // ✅ persist
+      const current = s.chatByKey[key] || [];
+      const base = mergeById(current, current);
+      const nextVal =
+        typeof next === "function"
+          ? next(base)
+          : Array.isArray(next)
+          ? mergeById(base, next)
+          : base;
+      const chatByKey = { ...s.chatByKey, [key]: nextVal };
+      saveAllChats(chatByKey);
       return { ...s, chatByKey };
     });
   }, []);
@@ -83,15 +177,14 @@ export function ChatDockProvider({ children }) {
   const clearChatMessages = useCallback((mode, taskId) => {
     setState((s) => {
       const key = getKey(mode, taskId);
-      const { [key]: _, ...rest } = s.chatByKey;
+      const { [key]: _drop, ...rest } = s.chatByKey;
       saveAllChats(rest);
       return { ...s, chatByKey: rest };
     });
   }, []);
 
   const openChat = useCallback(
-    ({ mode = "general", task = null, initialMessages = null } = {}) => {
-      // Seed history if empty and an initial payload is provided
+    ({ mode = "general", task = null, initialMessages = null, analyze = false } = {}) => {
       const hasProvided = Array.isArray(initialMessages) && initialMessages.length > 0;
       const hasTaskMsgs = Array.isArray(task?.messages) && task.messages.length > 0;
       const existing = getChatMessages(mode, task?.id);
@@ -104,10 +197,11 @@ export function ChatDockProvider({ children }) {
       setState((s) => ({
         ...s,
         visible: true,
-        expanded: false,
+        expanded: s.expanded,
         mode,
         task,
-        initialMessages: null, // history now lives in chatByKey
+        initialMessages: null,
+        analyzeOnOpen: Boolean(analyze && task?.file),
       }));
     },
     [getChatMessages, setChatMessages]
@@ -117,12 +211,10 @@ export function ChatDockProvider({ children }) {
     () => setState((s) => ({ ...s, expanded: true, visible: true })),
     []
   );
-
   const minimizeChat = useCallback(
     () => setState((s) => ({ ...s, expanded: false, visible: true })),
     []
   );
-
   const closeChat = useCallback(
     () => setState((s) => ({ ...s, expanded: false, visible: false })),
     []
@@ -142,7 +234,6 @@ export function ChatDockProvider({ children }) {
         );
         localStorage.setItem(TASKS_KEY, JSON.stringify(nextTasks));
       }
-
       if (hasStorage) {
         const prevProgress = JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}");
         localStorage.setItem(
@@ -151,20 +242,77 @@ export function ChatDockProvider({ children }) {
             ...prevProgress,
             step: 3,
             taskId: task?.id || null,
-            task: {
-              ...task,
-              done: true,
-              completedAt: new Date().toISOString(),
-            },
+            task: { ...task, done: true, completedAt: new Date().toISOString() },
           })
         );
       }
-    } catch (error) {
-      console.error("Error marking homework as done:", error);
+    } catch (e) {
+      console.error("Error marking homework as done:", e);
     }
 
     navigate("/student/homework/feedback", { state: { taskId: task?.id || null } });
   }, [state.task, navigate]);
+
+  /* -------------------- AUTO ANALYZE USING /api/ai/upload -------------------- */
+  useEffect(() => {
+    const { analyzeOnOpen, task, mode } = state;
+    if (!analyzeOnOpen || !task?.file || analyzingRef.current) return;
+
+    analyzingRef.current = true;
+
+    const isImage = task.file.type?.startsWith("image/");
+    const previewUrl = isImage ? URL.createObjectURL(task.file) : null;
+
+    // 1) Show “analyzing…” + optional image bubble
+    setChatMessages(mode, task.id, (prev) => [
+      ...prev,
+      fmt("Ich analysiere dein Bild …", "system"),
+      ...(previewUrl ? [fmt(previewUrl, "student", "image", { transient: true })] : []),
+    ]);
+
+    // 2) Upload to your scanner API (same as HomeworkScanner)
+    (async () => {
+      try {
+        const fd = new FormData();
+        fd.append("file", task.file, task.fileName || "upload");
+        if (task.userId) fd.append("userId", task.userId);
+
+        const res = await fetch("http://localhost:3001/api/ai/upload", {
+          method: "POST",
+          body: fd,
+        });
+        if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+        const data = await res.json();
+
+        // Extract structured info
+        const extracted = data?.scan?.raw_text || "";
+        const qa = Array.isArray(data?.parsed?.questions) ? data.parsed.questions : [];
+
+        // 3) Emit Markdown (safe for your ChatLayer)
+        const md = qaToMarkdown(extracted, qa);
+        setChatMessages(mode, task.id, (prev) => [...prev, fmt(md, "agent", "text")]);
+
+        // 4) Store scanId onto the task for later steps
+        const scanId = data?.scan?.id || null;
+        if (scanId) {
+          setState((s) => ({
+            ...s,
+            task: { ...s.task, scanId },
+          }));
+        }
+      } catch (err) {
+        console.error(err);
+        setChatMessages(mode, task.id, (prev) => [
+          ...prev,
+          fmt("Sorry, die Bildanalyse ist fehlgeschlagen. Bitte versuche es erneut.", "system"),
+        ]);
+      } finally {
+        setState((s) => ({ ...s, analyzeOnOpen: false }));
+        analyzingRef.current = false;
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+      }
+    })();
+  }, [state.analyzeOnOpen, state.task, state.mode, setChatMessages]);
 
   const value = useMemo(
     () => ({

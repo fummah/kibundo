@@ -8,8 +8,7 @@ export const handleUpload = async (req, res) => {
     const filePath = req.file.path;
 
     // OCR extraction
-      //const userId = req.user.id;
-
+    //const userId = req.user?.id;
       const userId = 1;
 
     // ✅ Get student_id linked to this user

@@ -45,6 +45,11 @@ async function buildContext(req) {
                   as: 'class',
                   attributes: ['id', 'class_name']
                 },
+                  {
+          model: HomeworkScan,
+          as: 'homeworkscan',
+          attributes: ['id', 'raw_text', 'file_url', 'created_at']
+        },
                 {
                   model: StudentSubjects,
                   as: 'subject',

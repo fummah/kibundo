@@ -69,6 +69,11 @@ async function childBuildContext(req) {
             }
           ]
         },
+          {
+          model: HomeworkScan,
+          as: 'homeworkscan',
+          attributes: ['id', 'raw_text', 'file_url', 'created_at']
+        },
         {
           model: Invoice,
           as: 'invoice'
@@ -88,6 +93,7 @@ const context = {
   user: plainUser,
   parent: (plainUser.student || []).map(s => s.parent).filter(Boolean) || [],
   class_or_grade: (plainUser.student || []).map(s => s.class) || [],
+  homework_scans:(plainUser.student || []).flatMap(s => s.homeworkscan || []) || [],
   subjects: (plainUser.student || []).flatMap(s => (s.subject || []).map(sub => sub.subject)) || [],
   last_active: new Date().toISOString(),
   preferences: { language: 'en', timezone: 'Africa/Johannesburg' }

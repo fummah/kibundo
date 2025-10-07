@@ -59,10 +59,6 @@ module.exports = (sequelize, DataTypes) => {
   });
 
   HomeworkScan.associate = (models) => {
-    HomeworkScan.belongsTo(models.user, {
-      foreignKey: 'created_by',
-      as: 'userCreated'
-    });
 
     HomeworkScan.belongsTo(models.student, {
       foreignKey: 'student_id',

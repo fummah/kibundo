@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useChatDock } from "@/context/ChatDockContext";
 import ChatLayer from "@/components/student/mobile/ChatLayer";
+import HomeworkChat from "@/components/student/mobile/HomeworkChat";
 
 /**
  * ChatDockContainer
@@ -45,15 +46,27 @@ export default function ChatDockContainer() {
       }}
     >
       <div className="relative h-full w-full overflow-hidden pointer-events-auto">
-        <ChatLayer
-          key={state?.mode ?? "chat"}
-          onClose={() => {
-            try {
-              minimizeChat?.();
-              closeChat?.();
-            } catch {}
-          }}
-        />
+        {state?.mode === "homework" ? (
+          <HomeworkChat
+            key={`homework-${state?.task?.id ?? "chat"}`}
+            onClose={() => {
+              try {
+                minimizeChat?.();
+                closeChat?.();
+              } catch {}
+            }}
+          />
+        ) : (
+          <ChatLayer
+            key={state?.mode ?? "chat"}
+            onClose={() => {
+              try {
+                minimizeChat?.();
+                closeChat?.();
+              } catch {}
+            }}
+          />
+        )}
       </div>
     </div>,
     container
