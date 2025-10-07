@@ -73,6 +73,6 @@ router.get("/states", verifyToken, getAllStates);
 router.get('/agents', verifyToken,getAllAgents);
 router.get('/entities',getPublicTables);
 router.post("/addagent",verifyToken, addAgent);
-router.get("/homeworkscans", getHomeworks);
+router.get("/homeworkscans",verifyToken, getHomeworks);
 
 module.exports = router;

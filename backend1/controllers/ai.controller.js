@@ -101,6 +101,12 @@ function summarizeContextChild(ctx) {
       id: c.id,
       class_name: c.class_name
     })),
+     homework_scans: (ctx.homework_scans || []).map(scan => ({
+      id: scan.id,
+      file_url: scan.file_url,
+      raw_text: scan.raw_text,
+      created_at: scan.created_at
+    })),
     subjects: (ctx.subjects || []).map(s => ({
       id: s.id,
       subject_name: s.subject_name
