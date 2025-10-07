@@ -241,12 +241,12 @@ export default function ChatLayer({
           "agent"
         );
         updateMessages((m) => [...m, errorMessage]);
-        antdMessage.error("Nachricht konnte nicht gesendet werden");
+      //  antdMessage.error("Nachricht konnte nicht gesendet werden");
       } finally {
         setSending(false);
       }
     },
-    [sending, onSendText, updateMessages, antdMessage]
+    [sending, onSendText, updateMessages,]
   );
 
   // Send media

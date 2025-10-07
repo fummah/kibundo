@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
+import api from "@/api/axios";
 
 export default function ChatBot({ conversationId, userId, scanId }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [convId, setConvId] = useState(conversationId);
-  const BASE = "http://localhost:3001";
 
   const toArray = (data) => {
     if (Array.isArray(data)) return data;
@@ -17,51 +17,44 @@ export default function ChatBot({ conversationId, userId, scanId }) {
     if (!text.trim()) return;
     try {
       // Build proper URL: create vs existing conversation
-      let url = convId
-        ? `${BASE}/api/ai/conversations/${convId}/message`
-        : `${BASE}/api/ai/conversations/message`;
-      let resp = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, message: text, scanId }),
-      });
-
-      if (!resp.ok && convId) {
-        // Retry once without convId (let server create a conversation)
-        const errText = await resp.text().catch(() => "");
-        console.warn("sendMessage failed with convId, retrying w/o id", resp.status, errText);
-        url = `${BASE}/api/ai/conversations/message`;
-        resp = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId, message: text, scanId }),
-        });
+      let urlPath = convId
+        ? `/ai/conversations/${convId}/message`
+        : `/ai/conversations/message`;
+      let j;
+      try {
+        const { data } = await api.post(urlPath, { userId, message: text, scanId });
+        j = data;
+      } catch (err) {
+        if (convId) {
+          // Retry once without convId (let server create a conversation)
+          console.warn("sendMessage failed with convId, retrying w/o id", err?.response?.status);
+          try {
+            const { data } = await api.post(`/ai/conversations/message`, { userId, message: text, scanId });
+            j = data;
+          } catch (err2) {
+            console.error("sendMessage failed", err2?.response?.status);
+            return;
+          }
+        } else {
+          console.error("sendMessage failed", err?.response?.status);
+          return;
+        }
       }
 
-      if (!resp.ok) {
-        const errText2 = await resp.text().catch(() => "");
-        console.error("sendMessage failed", resp.status, errText2);
-        return; // don't proceed to GET
-      }
-
-      const j = await resp.json();
       if (j?.conversationId) setConvId(j.conversationId);
 
       const cid = j?.conversationId || convId;
       if (!cid) return;
 
       // fetch messages
-      const r2 = await fetch(
-        `${BASE}/api/ai/conversations/${cid}/messages`
-      );
-      if (!r2.ok) {
-        const errText = await r2.text().catch(() => "");
-        console.error("fetch messages failed", r2.status, errText);
+      try {
+        const { data: msgs } = await api.get(`/ai/conversations/${cid}/messages`);
+        setMessages(toArray(msgs));
+        setText("");
+      } catch (e) {
+        console.error("fetch messages failed", e?.response?.status);
         return;
       }
-      const msgs = await r2.json();
-      setMessages(toArray(msgs));
-      setText("");
     } catch (e) {
       console.error("ChatBot sendMessage error", e);
     }
@@ -72,16 +65,10 @@ export default function ChatBot({ conversationId, userId, scanId }) {
     const ctrl = new AbortController();
     (async () => {
       try {
-        const r = await fetch(
-          `${BASE}/api/ai/conversations/${convId}/messages`,
+        const { data: msgs } = await api.get(
+          `/ai/conversations/${convId}/messages`,
           { signal: ctrl.signal }
         );
-        if (!r.ok) {
-          const errText = await r.text().catch(() => "");
-          console.error("initial fetch messages failed", r.status, errText);
-          return;
-        }
-        const msgs = await r.json();
         setMessages(toArray(msgs));
       } catch (e) {
         if (e.name !== "AbortError") console.error("ChatBot init error", e);
