@@ -18,7 +18,7 @@ export default function HomeworkScanner({ userId }) {
     formData.append("userId", userId);
 
     try {
-      const res = await fetch("http://localhost:3001/api/ai/upload", {
+      const res = await fetch("/api/ai/upload", {
         method: "POST",
         body: formData,
       });
