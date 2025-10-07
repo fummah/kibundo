@@ -1,6 +1,6 @@
 // src/components/parent/BottomTabBar.jsx
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   HomeOutlined,
   PlusCircleOutlined,
@@ -10,6 +10,7 @@ import {
   CustomerServiceOutlined,
 } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
+import { useChatDock } from "@/context/ChatDockContext";
 
 // Use the imported spacer (and re-export for convenience)
 import ParentSpaceBar from "@/components/parent/ParentSpaceBar.jsx";
@@ -28,11 +29,22 @@ export default function BottomTabBar({
   hideOnRoutes = [
     "/parent/communications/news/preview",
     "/parent/myfamily/add-student-flow",
+    "/parent/chat",
   ],
   className = "",
+  /** open the global chat dock inline instead of navigating to /parent/chat */
+  openChatInline = true,
+  /** optional badges */
+  unread = {
+    news: 0,
+    chat: 0,
+    feedback: 0,
+  },
 }) {
   const { t } = useTranslation();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { openChat, expandChat } = useChatDock();
 
   const isHidden = hideOnRoutes?.some((r) => pathname.startsWith(r));
   const isIncluded =
@@ -46,34 +58,93 @@ export default function BottomTabBar({
   const active = "text-lime-950";
 
   const TABS = [
-    { key: "home", to: "/parent/home", icon: <HomeOutlined className="text-xl" />, label: t("parent.nav.home") },
-    { key: "addChild", to: "/parent/myfamily/family?add-student=1", icon: <PlusCircleOutlined className="text-xl" />, label: t("parent.nav.addChild") },
-    { key: "news", to: "/parent/communications/news", icon: <ReadOutlined className="text-xl" />, label: t("parent.nav.news") },
+    {
+      key: "home",
+      to: "/parent/home",
+      icon: <HomeOutlined className="text-xl" />,
+      label: t("parent.nav.home", "Home"),
+    },
+    {
+      key: "addChild",
+      to: "/parent/myfamily/family?add-student=1",
+      icon: <PlusCircleOutlined className="text-xl" />,
+      label: t("parent.nav.addChild", "Add child"),
+    },
+    {
+      key: "news",
+      to: "/parent/communications/news",
+      icon: <ReadOutlined className="text-xl" />,
+      label: t("parent.nav.news", "News"),
+      badge: unread?.news || 0,
+    },
     // Chat for real-time messaging
-    { key: "chat", to: "/parent/chat", icon: <CustomerServiceOutlined className="text-xl" />, label: t("parent.nav.chat") },
+    {
+      key: "chat",
+      to: "/parent/chat",
+      icon: <CustomerServiceOutlined className="text-xl" />,
+      label: t("parent.nav.chat", "Chat"),
+      badge: unread?.chat || 0,
+      onClick: (e) => {
+        if (!openChatInline) return; // fall back to normal route nav
+        e.preventDefault();
+        try {
+          openChat({ mode: "general" });
+          expandChat();
+        } catch {
+          // if context not ready, gracefully navigate
+          navigate("/parent/chat");
+        }
+      },
+    },
     // Feedback for tickets/support
-    { key: "feedback", to: "/parent/feedback/tickets", icon: <MessageOutlined className="text-xl" />, label: t("parent.nav.feedback") },
-    { key: "settings", to: "/parent/settings", icon: <SettingOutlined className="text-xl" />, label: t("parent.nav.settings") },
+    {
+      key: "feedback",
+      to: "/parent/feedback/tickets",
+      icon: <MessageOutlined className="text-xl" />,
+      label: t("parent.nav.feedback", "Feedback"),
+      badge: unread?.feedback || 0,
+    },
+    {
+      key: "settings",
+      to: "/parent/settings",
+      icon: <SettingOutlined className="text-xl" />,
+      label: t("parent.nav.settings", "Settings"),
+    },
   ];
+
+  const TabBadge = ({ count }) =>
+    !count ? null : (
+      <span className="min-w-[16px] h-[16px] px-1 rounded-full text-[10px] leading-[16px] text-white bg-red-500 ml-1 inline-flex items-center justify-center">
+        {count > 99 ? "99+" : count}
+      </span>
+    );
 
   const renderTabs = () => (
     <div
-      className="mx-auto max-w-[1024px] px-2 flex bg-lime-400/90 backdrop-blur border-t border-lime-500/30 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] rounded-t-2xl pointer-events-auto"
+      className="w-full flex bg-lime-400/90 backdrop-blur border-t border-lime-500/30 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] rounded-none pointer-events-auto"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       role="navigation"
       aria-label="Parent bottom navigation"
     >
       {TABS.map((tab) => {
-        const selected = pathname === tab.to || pathname.startsWith(tab.to);
+        const classNameFn = ({ isActive }) =>
+          [base, item, isActive ? active : ""].join(" ");
         const commonProps = {
-          className: [base, item, selected ? active : ""].join(" "),
-          "aria-current": selected ? "page" : undefined,
+          className: classNameFn,
+          "aria-label": tab.label,
+          "data-tab": tab.key,
+          onClick: tab.onClick,
         };
         return (
-          <Link key={tab.key} to={tab.to} {...commonProps}>
-            {tab.icon}
-            <span>{tab.label}</span>
-          </Link>
+          <NavLink key={tab.key} to={tab.to} {...commonProps} end={false}>
+            <div className="relative flex flex-col items-center">
+              {tab.icon}
+              <span className="flex items-center">
+                {tab.label}
+                <TabBadge count={tab.badge} />
+              </span>
+            </div>
+          </NavLink>
         );
       })}
     </div>
@@ -91,12 +162,13 @@ export default function BottomTabBar({
         {renderTabs()}
       </div>
 
-      {/* Desktop/tablet: absolute inside DeviceFrame/ParentShell (parent must be relative) */}
+      {/* Desktop/tablet: sticky inside the framed screen */}
       <div
         className={[
-          "hidden md:block absolute inset-x-0 bottom-0 z-40 pointer-events-none",
+          "hidden md:block sticky bottom-0 left-0 right-0 w-full z-40 pointer-events-none",
           className,
         ].join(" ")}
+        style={{ marginBottom: "-1px" }}
       >
         {renderTabs()}
       </div>

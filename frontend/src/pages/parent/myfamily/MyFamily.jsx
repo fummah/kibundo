@@ -4,22 +4,23 @@ import { useNavigate } from "react-router-dom";
 import { PlusOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
-import DeviceFrame from "@/components/student/mobile/DeviceFrame";
+import ParentShell from "@/components/parent/ParentShell.jsx";
 import HeroBackdrop from "@/components/parent/HeroBackdrop";
-import BottomTabBar, { ParentTabSpacer } from "@/components/parent/BottomTabBar";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 
 export default function AddStudentIntro() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const goToCreateFlow = () => navigate("/parent/myfamily/add-student-flow?step=2");
 
   return (
-    <DeviceFrame showFooterChat={false} className="bg-neutral-100">
+    <ParentShell bgImage={globalBg}>
       <HeroBackdrop
         showBuddy
-        buddySize={280}
+        buddySize={120}
         buddyTop={76}             // leave room for header
         headerTop={20}
-        contentClassName="pb-24"  // space for the bottom bar
+        contentClassName="pb-24"
         header={
           <h2 className="text-center text-[28px] font-extrabold text-neutral-800">
             {t("parent.addChild.intro.kicker", "Los geht‘s")}
@@ -43,7 +44,7 @@ export default function AddStudentIntro() {
         <div className="mt-7 flex justify-center">
           <button
             type="button"
-            onClick={() => navigate("/parent/myfamily/family?add-student=1")}
+            onClick={goToCreateFlow}
             className="group w-full max-w-[420px] rounded-[20px] bg-white shadow-[0_14px_36px_rgba(0,0,0,0.12)] ring-1 ring-black/5 px-6 py-5 transition active:scale-[0.995] hover:shadow-[0_18px_48px_rgba(0,0,0,0.14)]"
           >
             <div className="flex items-center gap-4 justify-center">
@@ -65,10 +66,7 @@ export default function AddStudentIntro() {
           )}
         </p>
 
-        {/* Spacer + Bottom Tab Bar */}
-        <ParentTabSpacer />
-        <BottomTabBar />
       </HeroBackdrop>
-    </DeviceFrame>
+    </ParentShell>
   );
 }

@@ -4,16 +4,16 @@ import { useNavigate } from "react-router-dom";
 import { PlusOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
-import DeviceFrame from "@/components/student/mobile/DeviceFrame";
+import ParentShell from "@/components/parent/ParentShell.jsx";
 import HeroBackdrop from "@/components/parent/HeroBackdrop";
-import BottomTabBar, { ParentTabSpacer } from "@/components/parent/BottomTabBar";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 
 export default function AddAnotherChildIntro() {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
   return (
-    <DeviceFrame showFooterChat={false} className="bg-neutral-100">
+    <ParentShell bgImage={globalBg}>
       <HeroBackdrop
         showBuddy
         buddySize={280}
@@ -77,10 +77,7 @@ export default function AddAnotherChildIntro() {
           </button>
         </div>
 
-        {/* Spacer + Bottom tabs */}
-        <ParentTabSpacer />
-        <BottomTabBar />
       </HeroBackdrop>
-    </DeviceFrame>
+    </ParentShell>
   );
 }

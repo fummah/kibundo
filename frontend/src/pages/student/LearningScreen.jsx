@@ -56,7 +56,7 @@ export default function LearningScreen() {
 
   return (
     // Scrollable in all views and safe with chat footer
-    <div className="relative px-3 md:px-6 py-4 mx-auto w-full max-w-5xl min-h-[100svh] lg:h-full overflow-y-auto">
+    <div className="relative px-3 md:px-6 py-4 mx-auto w-full max-w-5xl min-h-[100svh] md:min-h-0 md:h-full lg:h-full overflow-y-auto">
       {/* Header: Back + Greeting */}
       <div className="flex items-center gap-3 pt-6 mb-4">
         <BackButton className="p-2 rounded-full hover:bg-neutral-100 active:scale-95" />

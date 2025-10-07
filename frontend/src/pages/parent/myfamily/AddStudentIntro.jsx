@@ -3,22 +3,22 @@ import { useNavigate } from "react-router-dom";
 import { PlusOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
-import DeviceFrame from "@/components/student/mobile/DeviceFrame";
+import ParentShell from "@/components/parent/ParentShell.jsx";
 import HeroBackdrop from "@/components/parent/HeroBackdrop";
-import BottomTabBar, { ParentTabSpacer } from "@/components/parent/BottomTabBar";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 
 export default function AddStudentIntro() {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
   return (
-    <DeviceFrame showFooterChat={false} className="bg-neutral-100">
+    <ParentShell bgImage={globalBg}>
       <HeroBackdrop
         showBuddy
         buddySize={280}
         buddyTop={76}             // lower the buddy a touch to give header room
         headerTop={20}
-        contentClassName="pb-24" // room for the bottom bar
+        contentClassName="pb-24"
         header={
           <h2 className="text-center text-[28px] font-extrabold text-neutral-800">
             {t("parent.addChild.intro.kicker", "Los geht‘s")}
@@ -64,10 +64,7 @@ export default function AddStudentIntro() {
           )}
         </p>
 
-        {/* Spacer + Bottom Tab Bar */}
-        <ParentTabSpacer />
-     <BottomTabBar />
       </HeroBackdrop>
-    </DeviceFrame>
+    </ParentShell>
   );
 }

@@ -20,6 +20,12 @@ import dino from "@/assets/onboarding-dino.png";
 
 const { Text } = Typography;
 
+// Feature flag: allow searching/linking students by ID/email in modal.
+// Defaults to false; can be enabled via Vite env at build time.
+const ALLOW_B2B_ID_SEARCH =
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_ALLOW_B2B_ID_SEARCH === "true") ||
+  false;
+
 /** Persist linked student ids for the mock flow */
 const LS_KEY = "kib_parent_family_student_ids";
 
@@ -268,9 +274,11 @@ export default function AddStudentModal({ open, onClose, onSuccess }) {
     <Modal
       open={open}
       onCancel={onClose}
-      centered
+      centered={!isMobile}
       title={step === "search" ? "Add Student" : ""}
-      width={isMobile ? 520 : 680}
+      width={isMobile ? "100%" : 820}
+      style={isMobile ? { top: 0, padding: 0, margin: 0 } : {}}
+      getContainer={() => document.getElementById("chat-root") || document.body}
       destroyOnHidden
       maskClosable={false}
       rootClassName={`add-student-modal ${isMobile && step === "intro" ? "add-student-intro" : ""}`}

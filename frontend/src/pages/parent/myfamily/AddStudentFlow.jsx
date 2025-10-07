@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import GradientShell from "@/components/GradientShell";
+import ParentShell from "@/components/parent/ParentShell.jsx";
 import BuddyAvatar from "@/components/student/BuddyAvatar";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 
 import {
   Button,
@@ -32,9 +33,12 @@ const MOCK_STUDENTS = [
 export default function AddStudentFlow() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
 
   // 0:intro, 1:list, 2:form, 3:success
-  const [step, setStep] = useState(0);
+  const urlStep = Number(params.get("step"));
+  const initialStep = Number.isFinite(urlStep) ? Math.max(0, Math.min(3, urlStep)) : 0;
+  const [step, setStep] = useState(initialStep);
   const [submitting, setSubmitting] = useState(false);
 
   const goBack = () => setStep((s) => Math.max(0, s - 1));
@@ -55,8 +59,8 @@ export default function AddStudentFlow() {
   };
 
   return (
-    <GradientShell>
-      <div className="mx-auto w-full max-w-[720px] py-6 px-4">
+    <ParentShell bgImage={globalBg}>
+      <div className="mx-auto w-full max-w-[820px] py-6 px-4">
         {/* ---------- Step 0: Intro (with mascot) ---------- */}
         {step === 0 && (
           <Card className="rounded-2xl shadow-sm">
@@ -275,6 +279,6 @@ export default function AddStudentFlow() {
           </Card>
         )}
       </div>
-    </GradientShell>
+    </ParentShell>
   );
 }

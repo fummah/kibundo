@@ -18,12 +18,8 @@ export default function ParentSpaceBar({ height = 72, className = "" }) {
         style={{ height: h, paddingBottom: "env(safe-area-inset-bottom)" }}
         aria-hidden
       />
-      {/* Tablet / desktop (inside mock frame) */}
-      <div
-        className={["hidden md:block", className].join(" ")}
-        style={{ height: h }}
-        aria-hidden
-      />
+      {/* Tablet / desktop: no spacer to keep nav tight to bottom */}
+      <div className={["hidden md:block h-0", className].join(" ")} aria-hidden />
     </>
   );
 }

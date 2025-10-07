@@ -1,6 +1,7 @@
 // src/pages/student/homework/HomeworkList.jsx
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ChatStripSpacer } from "@/components/student/mobile/FooterChat.jsx";
 import { CheckOutlined, LeftOutlined, RightOutlined, PlusOutlined } from "@ant-design/icons";
 import {
   CalculatorOutlined,
@@ -15,27 +16,27 @@ import {
 const TASKS_KEY = "kibundo.homework.tasks.v1";
 const PROGRESS_KEY = "kibundo.homework.progress.v1";
 
-// one source of truth for column widths (header + every row use this)
-const COLS = "150px 80px minmax(0,1.3fr) 112px 64px";
+// Adjusted column widths so "fertig" column fits properly
+const COLS = "140px 72px minmax(0,0.9fr) 96px 64px";
 
 // Subject icons (swap emoji for your real assets anytime)
 const SUBJECTS = {
-  Mathe:     { color: "#bfe3ff", icon: "🔢" },
-  Deutsch:   { color: "#e6f6c9", icon: "📗" },
+  Mathe: { color: "#bfe3ff", icon: "🔢" },
+  Deutsch: { color: "#e6f6c9", icon: "📗" },
   Sonstiges: { color: "#ffe2e0", icon: "🧩" },
 };
 
 // fallback demo items if localStorage is empty
 const FALLBACK = [
-  { id: "demo1", subject: "Mathe",   what: "Multiplikations Aufgaben", description: "Multiplikations Aufgaben", due: "Mi. 07.08", done: false, createdAt: "2024-08-06T10:00:00Z" },
-  { id: "demo2", subject: "Mathe",   what: "Geteilt durch",            description: "Geteilt durch",            due: "Mi. 07.08", done: true,  createdAt: "2024-08-06T10:10:00Z" },
-  { id: "demo3", subject: "Mathe",   what: "7er Reihe üben",           description: "7er Reihe üben",           due: "Do. 08.08", done: false, createdAt: "2024-08-07T08:00:00Z" },
-  { id: "demo4", subject: "Deutsch", what: "Lesen",                    description: "Lesen inkl. Beschreibung", due: "Mi. 07.08", done: false, createdAt: "2024-08-06T09:00:00Z" },
-  { id: "demo5", subject: "Deutsch", what: "Aufsatz schreiben",        description: "Elefanten in der Wildnis", due: "Mo. 12.08", done: false, createdAt: "2024-08-08T12:00:00Z" },
-  { id: "demo6", subject: "Sonstiges", what: "Drachen basteln",        description: "Einen kleinen Drachen",    due: "Mo. 12.08", done: false, createdAt: "2024-08-08T13:00:00Z" },
-  { id: "demo7", subject: "Sonstiges", what: "Farben sortieren",       description: "Kreative Aufgabe",         due: "Mo. 12.08", done: false, createdAt: "2024-08-08T14:00:00Z" },
-  { id: "demo8", subject: "Mathe",   what: "Arbeitsblatt 3",           description: "Division",                 due: "Di. 13.08", done: false, createdAt: "2024-08-09T08:00:00Z" },
-  { id: "demo9", subject: "Deutsch", what: "Wörter üben",              description: "Rechtschreibung",          due: "Di. 13.08", done: false, createdAt: "2024-08-09T09:00:00Z" },
+  { id: "demo1", subject: "Mathe", what: "Multiplikations Aufgaben", description: "Multiplikations Aufgaben", due: "Mi. 07.08", done: false, createdAt: "2024-08-06T10:00:00Z" },
+  { id: "demo2", subject: "Mathe", what: "Geteilt durch", description: "Geteilt durch", due: "Mi. 07.08", done: true, createdAt: "2024-08-06T10:10:00Z" },
+  { id: "demo3", subject: "Mathe", what: "7er Reihe üben", description: "7er Reihe üben", due: "Do. 08.08", done: false, createdAt: "2024-08-07T08:00:00Z" },
+  { id: "demo4", subject: "Deutsch", what: "Lesen", description: "Lesen inkl. Beschreibung", due: "Mi. 07.08", done: false, createdAt: "2024-08-06T09:00:00Z" },
+  { id: "demo5", subject: "Deutsch", what: "Aufsatz schreiben", description: "Elefanten in der Wildnis", due: "Mo. 12.08", done: false, createdAt: "2024-08-08T12:00:00Z" },
+  { id: "demo6", subject: "Sonstiges", what: "Drachen basteln", description: "Einen kleinen Drachen", due: "Mo. 12.08", done: false, createdAt: "2024-08-08T13:00:00Z" },
+  { id: "demo7", subject: "Sonstiges", what: "Farben sortieren", description: "Kreative Aufgabe", due: "Mo. 12.08", done: false, createdAt: "2024-08-08T14:00:00Z" },
+  { id: "demo8", subject: "Mathe", what: "Arbeitsblatt 3", description: "Division", due: "Di. 13.08", done: false, createdAt: "2024-08-09T08:00:00Z" },
+  { id: "demo9", subject: "Deutsch", what: "Wörter üben", description: "Rechtschreibung", due: "Di. 13.08", done: false, createdAt: "2024-08-09T09:00:00Z" },
 ];
 
 // load tasks from localStorage; sort newest first
@@ -115,7 +116,12 @@ const CompactRow = ({ id, subject, what, description, due, done, onOpen }) => {
       {/* Col 5: fertig */}
       <div className="px-3 py-2 flex justify-center items-center" role="cell">
         {done ? (
-          <span className="inline-grid place-items-center w-6 h-6 rounded-full" style={{ backgroundColor: "#ff8a3d", color: "#fff" }} aria-label="fertig" title="fertig">
+          <span
+            className="inline-grid place-items-center w-6 h-6 rounded-full"
+            style={{ backgroundColor: "#ff8a3d", color: "#fff" }}
+            aria-label="fertig"
+            title="fertig"
+          >
             <CheckOutlined style={{ fontSize: 12 }} />
           </span>
         ) : (
@@ -128,7 +134,6 @@ const CompactRow = ({ id, subject, what, description, due, done, onOpen }) => {
 
 export default function HomeworkList() {
   const navigate = useNavigate();
-
   const allRows = loadTasks();
 
   const pageSize = 7;
@@ -140,7 +145,7 @@ export default function HomeworkList() {
     return allRows.slice(start, start + pageSize);
   }, [allRows, page]);
 
-  // Clicking a task → Doing if open, Feedback if done (moves ProgressBar 1/2)
+  // Clicking a task → Doing if open, Feedback if done
   const openTask = (r) => {
     try {
       localStorage.setItem(
@@ -156,14 +161,13 @@ export default function HomeworkList() {
   };
 
   return (
-    <section className="w-full">
-      <div className="w-full rounded-[20px] overflow-hidden border-2 border-gray-300 bg-white">
+    <>
+      <section className="w-full">
+        <div className="w-full rounded-[20px] overflow-hidden border-2 border-gray-300 bg-white">
         {/* Header */}
         <div
-          className="grid w-full divide-x-2 divide-gray-300 border-b-2 border-gray-300
-                     bg-[#f6faf7] text-[#2b6a5b] font-semibold text-[12px] md:text-[13px]"
+          className="grid w-full divide-x-2 divide-gray-300 border-b-2 border-gray-300 bg-[#f6faf7] text-[#2b6a5b] font-semibold text-[12px] md:text-[13px]"
           style={{ gridTemplateColumns: COLS }}
-          role="row"
         >
           <div className="px-3 py-2" role="columnheader">Fächer</div>
           <div className="px-3 py-2 text-center" role="columnheader">Was</div>
@@ -215,7 +219,7 @@ export default function HomeworkList() {
           >
             <span className="mr-1">Weiter</span> <RightOutlined />
           </button>
-          
+
           {/* Floating Action Button */}
           <button
             onClick={() => navigate("/student/homework/doing")}
@@ -228,6 +232,9 @@ export default function HomeworkList() {
           </button>
         </div>
       </div>
-    </section>
+      </section>
+      {/* Reserve space for the sticky footer chat so it doesn't overlap content */}
+      <ChatStripSpacer />
+    </>
   );
 }

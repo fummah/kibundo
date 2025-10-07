@@ -201,8 +201,8 @@ export default function ParentChat() {
     <ParentShell bgImage={globalBg}>
       {/* Page wrapper fills viewport height; column flow ensures input sits above any footer */}
       <div className="w-full min-h-screen flex flex-col">
-        {/* Centered column for content width */}
-        <div className="w-full max-w-3xl mx-auto flex flex-col flex-1">
+        {/* Full-width content inside parent frame */}
+        <div className="w-full flex flex-col flex-1">
           {/* Header */}
           <div className="flex items-center gap-3 p-4 bg-white/90 backdrop-blur border-b sticky top-0 z-10">
             <Button
@@ -287,9 +287,9 @@ export default function ParentChat() {
             <div className="pb-24" />
           </div>
 
-          {/* Input Area (sits above any footer because we're in column flow) */}
-          <div className="w-full border-t bg-white sticky bottom-0 z-10">
-            <div className="max-w-3xl mx-auto p-3">
+          {/* Input Area (full-width, sticks to frame edges) */}
+          <div className="w-full border-t bg-white sticky bottom-0 z-10 left-0 right-0">
+            <div className="w-full p-3">
               <div className="flex gap-2 items-end">
                 <TextArea
                   value={input}
@@ -311,10 +311,7 @@ export default function ParentChat() {
                   Send
                 </Button>
               </div>
-              <div className="flex items-center justify-between mt-2">
-                <Text className="text-xs text-gray-400">Press Enter to send • Shift+Enter for newline</Text>
-                <Text className="text-xs text-orange-400">Auto-closes after 1 minute of inactivity</Text>
-              </div>
+              {/* removed helper hints below input */}
             </div>
           </div>
         </div>
