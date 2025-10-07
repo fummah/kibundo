@@ -7,7 +7,7 @@ deleteProduct, addsubscription, getAllSubscriptions, getSubscriptionById, delete
 getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice, addcoupon, 
 getAllCoupons, getCouponById,deleteCoupon, addrole, adduser,addquiz,  getQuizzes, getQuizById,  deleteQuiz, 
 addcurriculum, getAllCurriculum,getCurriculumById, deleteCurriculum, addWorksheet, getAllWorksheets, getWorksheetById, deleteWorksheet,
-getAllStates, getAllAgents,getPublicTables,addAgent } = require("../controllers/user.controller");
+getAllStates, getAllAgents,getPublicTables,addAgent, getHomeworks } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
 
@@ -73,5 +73,6 @@ router.get("/states", verifyToken, getAllStates);
 router.get('/agents', verifyToken,getAllAgents);
 router.get('/entities',getPublicTables);
 router.post("/addagent",verifyToken, addAgent);
+router.get("/homeworkscans", getHomeworks);
 
 module.exports = router;

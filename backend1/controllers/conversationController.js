@@ -1,4 +1,4 @@
-import { pool } from "../db.js";
+import { pool } from "../config/db.js";
 import { askOpenAI } from "./openaiHelper.js";
 
 export const handleConversation = async (req, res) => {

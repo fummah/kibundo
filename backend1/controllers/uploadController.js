@@ -1,5 +1,5 @@
 import fs from "fs";
-import { pool } from "../db.js"; // create a separate db.js for pg Pool
+import { pool } from "../config/db.js"; // create a separate db.js for pg Pool
 import Tesseract from "tesseract.js";
 import { askOpenAI } from "./openaiHelper.js";
 

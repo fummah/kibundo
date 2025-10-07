@@ -21,6 +21,7 @@ const Worksheet = db.worksheet;
 const State = db.state;
 const StudentSubjects = db.student_subjects;
 const AgentPromptSet = db.agentPromptSet;
+const HomeworkScan = db.homeworkScan;
 
 
 exports.adduser = async (req, res) => {
@@ -1352,4 +1353,23 @@ exports.addAgent = async (req, res) => {
   }
 };
 
-  
+  exports.getHomeworks = async (req, res) => {
+  try {
+    const { student_id } = req.query; // or req.params depending on your route setup
+
+    let whereClause = {};
+    if (student_id) {
+      whereClause.student_id = student_id;
+    }
+
+    const homeworks = await HomeworkScan.findAll({
+      where: whereClause,
+      order: [['created_at', 'DESC']]
+    });
+
+    res.json(homeworks);
+  } catch (err) {
+    console.error("Error fetching homeworks:", err);
+    res.status(500).json({ message: err.message });
+  }
+};

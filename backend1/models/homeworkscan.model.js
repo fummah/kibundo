@@ -1,19 +1,74 @@
 module.exports = (sequelize, DataTypes) => {
-  const HomeworkScan = sequelize.define('HomeworkScan', {
-    id: { type: DataTypes.BIGINT, autoIncrement: true, primaryKey: true },
-    child_id: DataTypes.INTEGER,
-    file_url: { type: DataTypes.TEXT, allowNull: false },
-    detected_subject: DataTypes.TEXT,
-    grade: DataTypes.INTEGER,
-    publisher: DataTypes.TEXT,
-    tags: DataTypes.ARRAY(DataTypes.TEXT),
-    notes: DataTypes.TEXT,
-    processed_at: DataTypes.DATE,
-    created_by: DataTypes.INTEGER,
-    created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+  const HomeworkScan = sequelize.define("HomeworkScan", {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true
+    },
+    student_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    file_url: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    detected_subject: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    grade: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    publisher: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    tags: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    notes: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    processed_at: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    created_by: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    created_at: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    },
+    raw_text: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    status: {
+      type: DataTypes.ENUM('pending', 'completed', 'cancelled'),
+      defaultValue: 'pending'
+    }
   }, {
-    tableName: 'homework_scans',
-    timestamps: false
+    timestamps: false, // disable Sequelize's automatic createdAt/updatedAt
+    tableName: "homework_scans"
   });
+
+  HomeworkScan.associate = (models) => {
+    HomeworkScan.belongsTo(models.user, {
+      foreignKey: 'created_by',
+      as: 'userCreated'
+    });
+
+    HomeworkScan.belongsTo(models.student, {
+      foreignKey: 'student_id',
+      as: 'student'
+    });
+  };
+
   return HomeworkScan;
 };
