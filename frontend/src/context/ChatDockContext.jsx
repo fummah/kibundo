@@ -277,7 +277,7 @@ export function ChatDockProvider({ children }) {
         fd.append("file", task.file, task.fileName || "upload");
         if (task.userId) fd.append("userId", task.userId);
 
-        const res = await fetch("http://localhost:3001/api/ai/upload", {
+        const res = await fetch("/api/ai/upload", {
           method: "POST",
           body: fd,
         });
