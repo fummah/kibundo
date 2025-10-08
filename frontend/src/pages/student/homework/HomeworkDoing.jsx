@@ -18,13 +18,21 @@ const loadTasks = () => {
   catch { return []; }
 };
 
+// DO NOT persist the File object. Strip it before saving.
+const stripVolatile = (task) => {
+  if (!task) return task;
+  const { file, ...rest } = task;
+  return rest;
+};
+
 const safeSaveTasks = (tasks) => {
   try {
-    localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+    const serializable = tasks.map(stripVolatile);
+    localStorage.setItem(TASKS_KEY, JSON.stringify(serializable));
     return true;
   } catch {
     try {
-      const pruned = tasks.slice(0, 30);
+      const pruned = tasks.slice(0, 30).map(stripVolatile);
       localStorage.setItem(TASKS_KEY, JSON.stringify(pruned));
       return true;
     } catch {}
@@ -45,7 +53,6 @@ const formatMessage = (content, from = "agent", type = "text", meta = {}) => ({
   ...meta,
 });
 
-/* --------------------------------------------------------------- */
 export default function HomeworkDoing() {
   const { message: antdMessage } = App.useApp();
   const navigate = useNavigate();
@@ -62,7 +69,7 @@ export default function HomeworkDoing() {
     initialLoad.current = false;
 
     const taskFromState = location.state?.task;
-    if (!taskFromState) return;
+    if (!taskFromState?.id) return;
 
     const existingTasks = loadTasks();
     const existingTask = existingTasks.find((t) => t.id === taskFromState.id);
@@ -70,14 +77,14 @@ export default function HomeworkDoing() {
     if (existingTask && Array.isArray(existingTask.messages) && existingTask.messages.length > 0) {
       openChat({
         mode: "homework",
-        task: existingTask,
+        task: existingTask,  // no File here; just resumes messages
         // no analyze here; we're resuming
       });
       expandChat?.();
     } else {
       openChat({
         mode: "homework",
-        task: taskFromState,
+        task: stripVolatile(taskFromState),
         initialMessages: [
           formatMessage(
             "Hallo! Ich bin dein KI-Lernhelfer. Wie kann ich dir bei deinen Hausaufgaben helfen?",
@@ -97,7 +104,8 @@ export default function HomeworkDoing() {
     const id = existingTask?.id || makeId();
     const now = new Date().toISOString();
 
-    const task = {
+    // Task used for UI/state (includes File ONLY in memory)
+    const taskForChat = {
       id,
       createdAt: existingTask?.createdAt || now,
       updatedAt: now,
@@ -111,47 +119,49 @@ export default function HomeworkDoing() {
       fileType: existingTask?.fileType || file?.type || null,
       fileSize: existingTask?.fileSize || file?.size || null,
       hasImage: Boolean(existingTask?.hasImage || (file && file.type?.startsWith("image/"))),
-      // IMPORTANT: attach the raw File so ChatDockContext can upload/analyze it
-      file: file || existingTask?.file || null,
-      // Keep any existing messages; we won't pre-seed image bubbles to avoid duplicates
+      file: file || existingTask?.file || null, // ⚠️ keep in memory only
       messages: Array.isArray(existingTask?.messages) ? existingTask.messages : [],
     };
 
-    // Upsert task (avoid duplicates)
+    // Persistable copy WITHOUT the File
+    const taskForStorage = stripVolatile(taskForChat);
+
+    // Upsert task
     const idx = tasks.findIndex((t) => t.id === id);
-    if (idx >= 0) tasks[idx] = { ...tasks[idx], ...task };
-    else tasks.unshift(task);
+    if (idx >= 0) tasks[idx] = { ...tasks[idx], ...taskForStorage };
+    else tasks.unshift(taskForStorage);
 
     const storageOk = safeSaveTasks(tasks);
 
-    // Persist progress (Doing)
+    // Persist progress (Doing) — also without File
     try {
       localStorage.setItem(
         PROGRESS_KEY,
-        JSON.stringify({ step: 1, taskId: id, task })
+        JSON.stringify({ step: 1, taskId: id, task: taskForStorage })
       );
     } catch (error) {
       console.error("Error saving progress:", error);
     }
 
-    // If no file (manual/audio), seed a friendly welcome; else let context add analyzing + preview
+    // If no file (manual/audio), seed a friendly welcome; else let Provider add analyzing + preview
     const initialMessages =
       file
-        ? task.messages // keep existing only (no new seed to avoid double bubbles)
+        ? taskForChat.messages // keep existing only (no new seed to avoid double bubbles)
         : [
-            ...task.messages,
+            ...taskForChat.messages,
             formatMessage("Super! Lass uns mit der Aufgabe starten. Wie kann ich dir helfen?", "agent"),
           ];
 
     if (openChat) {
       openChat({
         mode: "homework",
-        task,           // include task.file and (optionally) task.userId
-        initialMessages, // optional seed (don’t include an image bubble if you want the Provider to show the preview)
-        analyze: !!task.file   // 🔥 this kicks off the /api/ai/upload analyze flow
+        task: taskForChat,     // includes File in memory so Provider can upload
+        initialMessages,
+        analyze: !!taskForChat.file, // triggers /api/ai/upload in Provider
       });
-      expandChat?.();            // show the chat immediately
+      expandChat?.();
     } else {
+      // Fallback navigation (if you render chat on a dedicated route)
       navigate("/student/homework/chat", {
         state: { taskId: id, initialMessages, analyze: !!file },
       });
@@ -162,7 +172,7 @@ export default function HomeworkDoing() {
         "Aufgabe erstellt, aber lokaler Speicher ist voll. Bild wird nicht dauerhaft gespeichert."
       );
     } else {
-      antdMessage.success;
+      antdMessage.success("Aufgabe erstellt.");
     }
   };
 

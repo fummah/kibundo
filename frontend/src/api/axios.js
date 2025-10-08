@@ -2,23 +2,51 @@
 import axios from "axios";
 import { message } from "antd";
 
-const normalizeBase = (raw) => {
-  if (!raw) return "http://localhost:8080/api";
-  let base = String(raw).trim();
+/* ----------------------------- base URL ----------------------------- */
+/**
+ * Strategy:
+ *  - If VITE_API_BASE is set -> use it.
+ *  - Else if in dev -> http://localhost:<VITE_BACKEND_PORT || 3001>/api
+ *  - Else (prod) -> '/api' (same-origin, behind reverse-proxy).
+ */
+const DEFAULT_DEV_PORT = String(import.meta?.env?.VITE_BACKEND_PORT || "3001");
 
-  if (base === "/" || base === "") return "http://localhost:8080/api";
+// Resolve base preference with dev safeguards
+let RAW_BASE = import.meta?.env?.VITE_API_BASE;
+if (!RAW_BASE) {
+  RAW_BASE = import.meta?.env?.DEV
+    ? `http://localhost:${DEFAULT_DEV_PORT}/api`
+    : "/api";
+} else if (import.meta?.env?.DEV) {
+  // If developer provided a relative path (e.g., '/api') in dev, rewrite to absolute
+  const trimmed = String(RAW_BASE).trim();
+  if (trimmed.startsWith("/")) {
+    RAW_BASE = `http://localhost:${DEFAULT_DEV_PORT}${trimmed}`;
+  }
+}
+
+/** Ensures absolute origins get an '/api' path if none was provided. */
+const normalizeBase = (raw) => {
+  let base = (raw || "").trim();
+  if (!base) return `http://localhost:${DEFAULT_DEV_PORT}/api`;
+
+  // strip trailing slashes
   base = base.replace(/\/+$/, "");
 
+  // absolute origin with no path -> add '/api'
   if (/^https?:\/\/[^/]+$/i.test(base)) return `${base}/api`;
+
+  // otherwise keep as given (supports '/api', '/v1', 'https://x.y/api', etc.)
   return base;
 };
 
-const BASE_URL = normalizeBase(import.meta?.env?.VITE_API_BASE || "/api");
+const BASE_URL = normalizeBase(RAW_BASE);
 
+/* ------------------------------ auth mode --------------------------- */
 /**
- * Auth mode:
+ * AUTH_MODE:
  *  - 'bearer'  -> attach Authorization: Bearer <token> from localStorage
- *  - 'cookie'  -> use session cookies (e.g., Laravel Sanctum) + CSRF
+ *  - 'cookie'  -> use session cookies + CSRF (e.g., Laravel Sanctum)
  */
 const AUTH_MODE = (import.meta?.env?.VITE_AUTH_MODE || "bearer").toLowerCase();
 
@@ -29,16 +57,7 @@ const AUTH_MODE = (import.meta?.env?.VITE_AUTH_MODE || "bearer").toLowerCase();
  */
 const AUTH_DEBUG = String(import.meta?.env?.VITE_AUTH_DEBUG || "").toLowerCase();
 
-/**
- * CSRF endpoints (for cookie mode, e.g., Laravel Sanctum).
- */
-const CSRF_URL = import.meta?.env?.VITE_CSRF_URL || "/sanctum/csrf-cookie";
-const XSRF_COOKIE_NAME =
-  import.meta?.env?.VITE_XSRF_COOKIE_NAME || "XSRF-TOKEN";
-const XSRF_HEADER_NAME =
-  import.meta?.env?.VITE_XSRF_HEADER_NAME || "X-XSRF-TOKEN";
-
-/** Create a single Axios instance used across the app */
+/* ---------------------------- axios instance ------------------------ */
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 20000,
@@ -48,11 +67,16 @@ const api = axios.create({
     "Content-Type": "application/json",
     "X-Requested-With": "XMLHttpRequest",
   },
-  xsrfCookieName: XSRF_COOKIE_NAME,
-  xsrfHeaderName: XSRF_HEADER_NAME,
+  xsrfCookieName: import.meta?.env?.VITE_XSRF_COOKIE_NAME || "XSRF-TOKEN",
+  xsrfHeaderName: import.meta?.env?.VITE_XSRF_HEADER_NAME || "X-XSRF-TOKEN",
 });
 
-/* ----------------------------- helpers ----------------------------- */
+if (import.meta?.env?.DEV) {
+  // Useful to confirm requests won’t go to Vite’s 5173 origin
+  console.log("[api] baseURL =", api.defaults.baseURL);
+}
+
+/* ----------------------------- helpers ------------------------------ */
 const TOKEN_KEYS = ["kibundo_token", "token"];
 
 const isGet = (cfg) => (cfg?.method || "get").toLowerCase() === "get";
@@ -86,10 +110,9 @@ const readToken = () => {
 const logToken = (token, where) => {
   if (!AUTH_DEBUG) return;
   if (!token) {
-    // still useful to know we tried
     console.log(`🔑 [${where}] no token found`);
     return;
-    }
+  }
   if (AUTH_DEBUG === "full") {
     console.log(`🔑 [${where}] token:`, token);
   } else {
@@ -99,11 +122,14 @@ const logToken = (token, where) => {
   }
 };
 
-/**
- * For cookie mode: ensure we have the CSRF cookie set once.
- * We memoize the request to avoid duplicate calls.
- */
+/* --------------------------- CSRF bootstrap ------------------------- */
 let csrfBootPromise = null;
+const CSRF_URL = import.meta?.env?.VITE_CSRF_URL || "/sanctum/csrf-cookie";
+const XSRF_COOKIE_NAME =
+  import.meta?.env?.VITE_XSRF_COOKIE_NAME || "XSRF-TOKEN";
+const XSRF_HEADER_NAME =
+  import.meta?.env?.VITE_XSRF_HEADER_NAME || "X-XSRF-TOKEN";
+
 const ensureCsrfCookie = () => {
   if (AUTH_MODE !== "cookie") return Promise.resolve();
   if (getCookie(XSRF_COOKIE_NAME)) return Promise.resolve();
@@ -129,17 +155,14 @@ const ensureCsrfCookie = () => {
   return csrfBootPromise;
 };
 
-/* ------------------------------ boot -------------------------------- */
-// Attach token at startup if present (helps non-intercepted libs, too)
+/* ------------------------------- boot ------------------------------- */
 (() => {
   const t = readToken();
-  if (t) {
-    api.defaults.headers.common.Authorization = `Bearer ${t}`;
-  }
+  if (t) api.defaults.headers.common.Authorization = `Bearer ${t}`;
   logToken(t, "boot");
 })();
 
-/* ------------------------ request interceptor ----------------------- */
+/* ----------------------- request interceptor ------------------------ */
 api.interceptors.request.use(
   async (config) => {
     const meta = getMeta(config);
@@ -149,20 +172,17 @@ api.interceptors.request.use(
         ? config.withCredentials
         : api.defaults.withCredentials;
 
-    // COOKIE mode: ensure CSRF cookie
+    // Cookie mode -> ensure CSRF and avoid Authorization unless forced
     if (AUTH_MODE === "cookie" || useCookies) {
       await ensureCsrfCookie();
-      if (!meta.forceAuthHeader) {
-        if (config.headers && "Authorization" in config.headers) {
-          delete config.headers.Authorization;
-        }
+      if (!meta.forceAuthHeader && config.headers && "Authorization" in config.headers) {
+        delete config.headers.Authorization;
       }
     }
 
-    // BEARER mode: attach token unless explicitly disabled
+    // Bearer mode -> attach token unless disabled
     const usingBearer =
       AUTH_MODE === "bearer" || (meta.forceAuthHeader && !meta.noAuthHeader);
-
     if (usingBearer && !meta.noAuthHeader) {
       const token = readToken();
       if (token) {
@@ -177,7 +197,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-/* ------------------------ response interceptor ---------------------- */
+/* ----------------------- response interceptor ----------------------- */
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -194,10 +214,11 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    // 404 from Vite without proxy often returns index.html (text/html)
     if (looksLikeHtml(error)) {
-      // This is often a 404 from a missing API route that falls back to the index.html.
-      // We don't want to show a big error for this, especially for non-critical fetches
-      // like comments on a detail page. We'll just reject silently.
+      if (status === 404 && meta.toast404 !== false) {
+        message.error("Requested resource not found (404).");
+      }
       return Promise.reject(error);
     }
 
@@ -221,16 +242,12 @@ api.interceptors.response.use(
 
     if (status === 403) {
       if (meta.toast403 !== false) {
-        message.warning(
-          "Forbidden: you don’t have permission to perform this action."
-        );
+        message.warning("Forbidden: you don’t have permission to perform this action.");
       }
       if (meta.redirectOn403) {
         setTimeout(() => {
           window.location.href =
-            typeof meta.redirectOn403 === "string"
-              ? meta.redirectOn403
-              : "/unauthorized";
+            typeof meta.redirectOn403 === "string" ? meta.redirectOn403 : "/unauthorized";
         }, 300);
       }
       return Promise.reject(error);
@@ -256,7 +273,7 @@ api.interceptors.response.use(
 
     if (status >= 500) {
       if (meta.toast5xx !== false) {
-       // message.error("Server error. Please try again later.");
+        // message.error("Server error. Please try again later.");
       }
       return Promise.reject(error);
     }
@@ -268,11 +285,9 @@ api.interceptors.response.use(
 /* ----------------------------- utilities ---------------------------- */
 api.isCancel = isCanceled;
 
-/** Runtime helpers */
 export const setAuthToken = (token) => {
   try {
     if (token) {
-      // Write to both keys for compatibility
       TOKEN_KEYS.forEach((k) => localStorage.setItem(k, token));
       api.defaults.headers.common.Authorization = `Bearer ${token}`;
       logToken(token, "setAuthToken");

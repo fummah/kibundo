@@ -1,20 +1,16 @@
-// src/components/student/mobile/HomeworkChat.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { App, Tabs } from "antd";
+import { App } from "antd";
 import { CheckOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
-
-import api from "@/api/axios"; // still used for image analyze if needed elsewhere
+import api from "@/api/axios";
 import { useChatDock } from "@/context/ChatDockContext.jsx";
 
-// Assets (reuse from ChatLayer for identical look)
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
 import cameraIcon from "@/assets/mobile/icons/camera.png";
 import galleryIcon from "@/assets/mobile/icons/galary.png";
 import studentIcon from "@/assets/mobile/icons/stud-icon.png";
 
-// Local helpers
 const FALLBACK_IMAGE_DATA_URL =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
@@ -58,10 +54,7 @@ export default function HomeworkChat({
   messages: controlledMessagesProp,
   onMessagesChange: onMessagesChangeProp,
   initialMessages = [
-    formatMessage(
-      "Lade ein Foto deiner Hausaufgabe hoch, oder frag mich etwas darüber!",
-      "agent"
-    ),
+    formatMessage("Lade ein Foto deiner Hausaufgabe hoch, oder frag mich etwas darüber!", "agent"),
   ],
   onSendText,
   onSendMedia,
@@ -73,23 +66,31 @@ export default function HomeworkChat({
 }) {
   const navigate = useNavigate();
   const { message: antdMessage } = App.useApp();
-  const { state: dockState, markHomeworkDone, getChatMessages, setChatMessages, clearChatMessages } =
-    useChatDock?.() ?? {};
+  const { state: dockState, markHomeworkDone, getChatMessages, setChatMessages, clearChatMessages } = useChatDock();
 
-  const taskId = dockState?.task?.id || null;
-  const stableModeRef = useRef("homework");
+  // Conversation/task wiring
+  const mode = "homework";
+  const taskId = dockState?.task?.id ?? null;
+  const stableModeRef = useRef(mode);
   const stableTaskIdRef = useRef(taskId);
+  useEffect(() => {
+    if (taskId !== stableTaskIdRef.current) {
+      stableTaskIdRef.current = taskId;
+      didSeedRef.current = false; // new thread can seed greeting
+      uploadNudgeShownRef.current = false;
+    }
+  }, [taskId]);
 
-  // Single interface: uploads + chatbot in one composer
-  const BASE = "http://localhost:3001";
-  const scanId = dockState?.task?.scanId || dockState?.task?.id || null;
-  const userId = dockState?.task?.userId || null;
-  const [conversationId, setConversationId] = useState(dockState?.task?.conversationId || null);
+  const scanId = dockState?.task?.scanId ?? null;
+  const userId = dockState?.task?.userId ?? null;
+  const [conversationId, setConversationId] = useState(dockState?.task?.conversationId ?? null);
 
+  // Local buffer (keeps transient previews even if not persisted)
   const [localMessages, setLocalMessages] = useState(
     controlledMessagesProp ?? getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) ?? initialMessages
   );
 
+  // Seed persistence once per thread
   const didSeedRef = useRef(false);
   useEffect(() => {
     if (didSeedRef.current) return;
@@ -100,8 +101,9 @@ export default function HomeworkChat({
     }
     didSeedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setChatMessages, getChatMessages, initialMessages]);
+  }, [setChatMessages, getChatMessages, initialMessages, taskId]);
 
+  // Read view
   const msgs = useMemo(() => {
     if (controlledMessagesProp) return controlledMessagesProp;
     const persisted = getChatMessages?.(stableModeRef.current, stableTaskIdRef.current);
@@ -109,33 +111,45 @@ export default function HomeworkChat({
       return mergeById(persisted || [], localMessages || []);
     }
     return localMessages || [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controlledMessagesProp, getChatMessages, localMessages]);
 
+  // Filter: never persist base64 previews/transient
+  const filterForPersist = useCallback((arr) => {
+    return (arr || []).filter((m) => {
+      if (m?.transient === true) return false;
+      if (m?.type === "image" && typeof m.content === "string" && m.content.startsWith("data:")) {
+        return false;
+      }
+      return true;
+    });
+  }, []);
+
+  // Writer
   const updateMessages = useCallback(
     (next) => {
+      const compute = (base) => (typeof next === "function" ? next(base) : next);
+
       if (controlledMessagesProp && onMessagesChangeProp) {
-        const base = typeof next === "function" ? next(controlledMessagesProp) : next;
+        const base = compute(controlledMessagesProp);
         if (base !== controlledMessagesProp) onMessagesChangeProp(base);
         return;
       }
-      if (setChatMessages && getChatMessages) {
-        const current = getChatMessages(stableModeRef.current, stableTaskIdRef.current) || [];
-        const baseArr = mergeById(current, Array.isArray(msgs) ? msgs : []);
-        const nextVal = typeof next === "function" ? next(baseArr) : next;
-        if (nextVal !== current) {
-          setChatMessages(stableModeRef.current, stableTaskIdRef.current, nextVal);
-        }
-        setLocalMessages(nextVal);
-        return;
+
+      const current = getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) || [];
+      const baseArr = mergeById(current, Array.isArray(msgs) ? msgs : []);
+      const nextVal = compute(baseArr);
+
+      if (setChatMessages) {
+        const persisted = filterForPersist(nextVal);
+        setChatMessages(stableModeRef.current, stableTaskIdRef.current, persisted);
       }
-      setLocalMessages((curr) => (typeof next === "function" ? next(curr) : next));
+      setLocalMessages(nextVal);
     },
-    [controlledMessagesProp, onMessagesChangeProp, setChatMessages, getChatMessages, msgs]
+    [controlledMessagesProp, onMessagesChangeProp, setChatMessages, getChatMessages, msgs, filterForPersist]
   );
 
+  // UI state
   const [draft, setDraft] = useState("");
-  const [showEmoji, setShowEmoji] = useState(false);
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -145,95 +159,136 @@ export default function HomeworkChat({
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
 
+  // HARD gate to stop double-fire before React state updates
+  const sendingRef = useRef(false);
+
+  // Smooth autoscroll
+  const lastLenRef = useRef(0);
   useEffect(() => {
     if (!listRef.current) return;
+    if (msgs?.length === lastLenRef.current && !typing && !externalTyping) return;
+    lastLenRef.current = msgs?.length ?? 0;
     listRef.current.scrollTo({ top: listRef.current.scrollHeight + 9999, behavior: "smooth" });
   }, [msgs, typing, externalTyping]);
 
-  // Helpers to normalize server messages -> internal format
+  // Normalize server messages -> internal
   const toArray = (data) => {
     if (Array.isArray(data)) return data;
     if (data && Array.isArray(data.messages)) return data.messages;
     if (data && Array.isArray(data.items)) return data.items;
     return [];
   };
-
   const mapServerToInternal = (arr) =>
     toArray(arr).map((m) =>
       formatMessage(
         m?.content ?? "",
         (m?.sender || "agent").toLowerCase() === "student" ? "student" : "agent",
-        "text",
-        {}
+        "text"
       )
     );
 
-  // Text send (Chatbot tab) using conversations API
+  // Any image yet?
+  const hasAnyImage = useMemo(
+    () => Array.isArray(msgs) && msgs.some((m) => m?.type === "image"),
+    [msgs]
+  );
+
+  // suppress duplicate immediate sends
+  const isSameAsLastStudent = useCallback(
+    (text) => {
+      if (!text) return false;
+      const lastStudent = (Array.isArray(msgs) ? msgs : [])
+        .slice()
+        .reverse()
+        .find((x) => (x?.from ?? x?.sender) === "student");
+      return !!lastStudent && String(lastStudent.content).trim() === text.trim();
+    },
+    [msgs]
+  );
+
+  // show the “please upload” nudge only once per thread
+  const uploadNudgeShownRef = useRef(false);
+
   const handleSendText = useCallback(
     async (text) => {
       const t = (text || "").trim();
-      if (!t || sending) return;
+      if (!t) return;
+      if (sendingRef.current || sending) return; // hard guard
+      if (isSameAsLastStudent(t)) return;       // duplicate guard
+      sendingRef.current = true;
       setSending(true);
+
+      // show student's bubble
       const optimisticMsg = formatMessage(t, "student");
       updateMessages((m) => [...m, optimisticMsg]);
+
+      // Gate: if no scan & no image yet -> nudge once
+      if (!scanId && !hasAnyImage && !uploadNudgeShownRef.current) {
+        uploadNudgeShownRef.current = true;
+        updateMessages((m) => [
+          ...m,
+          formatMessage("Lade ein Foto deiner Hausaufgabe hoch, oder frag mich etwas darüber!", "agent"),
+        ]);
+        setSending(false);
+        sendingRef.current = false;
+        return;
+      }
+
       try {
         if (onSendText) {
           await onSendText(t);
-          setSending(false);
           return;
         }
 
-        // Build URL properly: create vs. existing conversation
-        let url = conversationId
-          ? `${BASE}/api/ai/conversations/${conversationId}/message`
-          : `${BASE}/api/ai/conversations/message`;
-        let resp = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId, message: t, scanId }),
-        });
+        const firstUrl = conversationId
+          ? `/ai/conversations/${conversationId}/message`
+          : `/ai/conversations/message`;
 
-        if (!resp.ok && conversationId) {
-          const _ = await resp.text().catch(() => "");
-          // Retry once without conversation id (server will create conversation)
-          url = `${BASE}/api/ai/conversations/message`;
-          resp = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId, message: t, scanId }),
-          });
+        let resp;
+        try {
+          resp = await api.post(firstUrl, { userId, message: t, scanId });
+        } catch (err) {
+          const code = err?.response?.status;
+          if (conversationId && (code === 404 || code === 400)) {
+            resp = await api.post(`/ai/conversations/message`, { userId, message: t, scanId });
+          } else {
+            throw err;
+          }
         }
 
-        if (!resp.ok) {
-          const _err = await resp.text().catch(() => "");
-          throw new Error(`sendMessage failed: ${resp.status}`);
+        const j = resp?.data || {};
+        if (j?.conversationId && j.conversationId !== conversationId) {
+          setConversationId(j.conversationId);
         }
 
-        const j = await resp.json();
-        if (j?.conversationId) setConversationId(j.conversationId);
         const cid = j?.conversationId || conversationId;
-        if (!cid) return;
-
-        const r2 = await fetch(`${BASE}/api/ai/conversations/${cid}/messages`);
-        if (!r2.ok) throw new Error(`fetch messages failed: ${r2.status}`);
-        const msgs = await r2.json();
-        const normalized = mapServerToInternal(msgs);
-        updateMessages(normalized);
+        if (cid) {
+          const r2 = await api.get(`/ai/conversations/${cid}/messages`);
+          updateMessages(mapServerToInternal(r2.data)); // replace with server truth
+        } else if (j?.answer) {
+          updateMessages((m) => [...m, formatMessage(j.answer, "agent")]);
+        }
       } catch (err) {
-        const errorMessage = formatMessage(
-          "Es gab ein Problem beim Senden deiner Nachricht. Bitte versuche es später erneut.",
-          "agent"
-        );
-        updateMessages((m) => [...m, errorMessage]);
-        antdMessage.error("Nachricht konnte nicht gesendet werden");
+        const status = err?.response?.status;
+        const serverMsg =
+          err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          "Unbekannter Fehler";
+        updateMessages((m) => [
+          ...m,
+          formatMessage(`Fehler beim Senden (${status ?? "?"}). ${serverMsg}`, "agent"),
+        ]);
+        antdMessage.error(`Nachricht fehlgeschlagen: ${serverMsg}`);
       } finally {
         setSending(false);
+        sendingRef.current = false;
       }
     },
-    [sending, onSendText, updateMessages, antdMessage, BASE, conversationId, scanId, userId]
+    [sending, onSendText, updateMessages, antdMessage, conversationId, scanId, userId, hasAnyImage, isSameAsLastStudent]
   );
 
-  // Media upload (Scan tab) using user's upload API
+  // Media upload (scan) — previews are transient; Axios with detailed errors
   const handleMediaUpload = useCallback(
     async (files) => {
       if (!files.length || uploading) return;
@@ -249,12 +304,14 @@ export default function HomeworkChat({
 
       try {
         for (const file of files) {
-          // show preview/message from student
           const isImg = (file.type || "").startsWith("image/");
           let dataUrl = null;
           if (isImg) {
-            try { dataUrl = await readAsDataURL(file); } catch {}
+            try {
+              dataUrl = await readAsDataURL(file);
+            } catch {}
           }
+
           const studentMsg = isImg
             ? {
                 id: Date.now() + Math.random().toString(36).slice(2, 9),
@@ -266,94 +323,85 @@ export default function HomeworkChat({
                 fileType: file.type,
                 fileSize: file.size,
                 timestamp: new Date().toISOString(),
+                transient: true,
               }
-            : formatMessage(`Datei hochgeladen: ${file.name}`, "student");
+            : formatMessage(`Datei hochgeladen: ${file.name}`, "student", "text", { transient: true });
 
-          const loadingMessage = formatMessage("Ich analysiere dein Bild...", "agent");
+          const loadingMessage = formatMessage("Ich analysiere dein Bild...", "agent", "status", { transient: true });
           updateMessages((m) => [...m, studentMsg, loadingMessage]);
 
-          // upload to user's API
-          const formData = new FormData();
-          formData.append("file", file);
-          if (userId) formData.append("userId", userId);
-
-          let res;
           try {
             if (onSendMedia) {
               await onSendMedia([file]);
-              res = null;
             } else {
-              res = await fetch(`${BASE}/api/ai/upload`, { method: "POST", body: formData });
-            }
-          } catch (e) {
-            res = null;
-          }
+              const formData = new FormData();
+              formData.append("file", file);
+              if (userId) formData.append("userId", userId);
 
-          if (!res || !res.ok) {
-            // Replace loading with a brief note and append error at bottom
+              const res = await api.post(`/ai/upload`, formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+              });
+
+              const data = res?.data || {};
+              const extracted = data?.scan?.raw_text || data?.extractedText || "";
+              const qa =
+                Array.isArray(data?.parsed?.questions) ? data.parsed.questions :
+                Array.isArray(data?.qa) ? data.qa : [];
+
+              updateMessages((m) => {
+                const arr = [...m];
+                const idx = arr.findIndex((msg) => msg.id === loadingMessage.id);
+                if (idx !== -1) arr[idx] = formatMessage("Analyse abgeschlossen.", "agent");
+                if (extracted || qa.length > 0) {
+                  arr.push(formatMessage({ extractedText: extracted, qa }, "agent", "table"));
+                } else {
+                  arr.push(
+                    formatMessage(
+                      "Ich habe das Dokument erhalten, konnte aber nichts Brauchbares extrahieren.",
+                      "agent"
+                    )
+                  );
+                }
+                return arr;
+              });
+
+              const newCid = data?.conversationId;
+              if (newCid && newCid !== conversationId) setConversationId(newCid);
+            }
+          } catch (err) {
+            const status = err?.response?.status;
+            const serverMsg =
+              err?.response?.data?.message ||
+              err?.response?.data?.error ||
+              err?.message ||
+              "Unbekannter Fehler";
+            console.error("Upload/Analyse failed:", status, serverMsg, err?.response?.data);
             updateMessages((m) => {
               const arr = [...m];
               const idx = arr.findIndex((msg) => msg.id === loadingMessage.id);
               if (idx !== -1) {
-                arr[idx] = formatMessage("Analyse fehlgeschlagen.", "agent");
+                arr[idx] = formatMessage(`Analyse fehlgeschlagen (${status ?? "?"}). ${serverMsg}`, "agent");
               }
-              arr.push(
-                formatMessage(
-                  "Entschuldigung, beim Hochladen/Analysieren ist ein Fehler aufgetreten. Bitte versuche es später erneut.",
-                  "agent"
-                )
-              );
               return arr;
             });
-            continue;
+            antdMessage.error(`Upload/Analyse fehlgeschlagen: ${serverMsg}`);
           }
-
-          const data = await res.json().catch(() => ({}));
-          const extracted = data?.scan?.raw_text;
-          const qa = Array.isArray(data?.parsed?.questions) ? data.parsed.questions : [];
-
-          // Turn loading into a short done note, then append full analysis at the bottom
-          updateMessages((m) => {
-            const arr = [...m];
-            const idx = arr.findIndex((msg) => msg.id === loadingMessage.id);
-            if (idx !== -1) {
-              arr[idx] = formatMessage("Analyse abgeschlossen.", "agent");
-            }
-            if (extracted || qa.length > 0) {
-              arr.push(
-                formatMessage(
-                  { extractedText: extracted || "", qa },
-                  "agent",
-                  "table"
-                )
-              );
-            } else {
-              arr.push(
-                formatMessage(
-                  "Ich habe das Dokument erhalten, konnte aber keine verwertbaren Informationen extrahieren.",
-                  "agent"
-                )
-              );
-            }
-            return arr;
-          });
         }
-      } catch (error) {
-        antdMessage.error("Bild/Dokument konnte nicht hochgeladen werden");
       } finally {
         setUploading(false);
       }
     },
-    [onSendMedia, updateMessages, antdMessage, uploading, userId, BASE]
+    [onSendMedia, updateMessages, antdMessage, uploading, userId, conversationId]
   );
 
   const sendText = useCallback(() => {
     if (!draft.trim()) return;
+    if (sendingRef.current || sending) return;
     handleSendText(draft).then(() => {
       setDraft("");
       requestAnimationFrame(() => inputRef.current?.focus());
     });
-  }, [draft, handleSendText]);
+  }, [draft, handleSendText, sending]);
 
   const onMinimise = () => {
     if (typeof onClose === "function") onClose();
@@ -364,14 +412,17 @@ export default function HomeworkChat({
     const modeKey = stableModeRef.current;
     const taskKey = stableTaskIdRef.current;
     clearChatMessages?.(modeKey, taskKey);
-    const seed = Array.isArray(initialMessages) && initialMessages.length > 0
-      ? [...initialMessages]
-      : [formatMessage("Hallo! Ich bin dein KI-Lernhelfer. Wie kann ich dir bei deinen Hausaufgaben helfen?", "agent")];
+    const seed =
+      Array.isArray(initialMessages) && initialMessages.length > 0
+        ? [...initialMessages]
+        : [formatMessage("Hallo! Ich bin dein KI-Lernhelfer. Wie kann ich dir bei deinen Hausaufgaben helfen?", "agent")];
     setChatMessages?.(modeKey, taskKey, seed);
     setLocalMessages(seed);
     setDraft("");
     setTyping(false);
-    requestAnimationFrame(() => listRef.current?.scrollTo({ top: 999999, behavior: "smooth" }));
+    requestAnimationFrame(() =>
+      listRef.current?.scrollTo({ top: 999999, behavior: "smooth" })
+    );
   }, [clearChatMessages, setChatMessages, initialMessages]);
 
   const handleCameraChange = (e) => {
@@ -379,7 +430,6 @@ export default function HomeworkChat({
     if (file) handleMediaUpload([file]);
     e.target.value = "";
   };
-
   const handleGalleryChange = (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length) handleMediaUpload(files);
@@ -392,7 +442,7 @@ export default function HomeworkChat({
         return (
           <div className="relative">
             <img
-              src={typeof message.content === "string" ? message.content : (message.content?.url || "")}
+              src={typeof message.content === "string" ? message.content : message.content?.url || ""}
               alt={message.fileName || "Hochgeladenes Bild"}
               className="max-w-full max-h-64 rounded-lg"
               onError={(e) => {
@@ -433,12 +483,8 @@ export default function HomeworkChat({
                   <tbody>
                     {qa.map((q, i) => (
                       <tr key={i}>
-                        <td className="align-top border border-gray-200 px-2 py-2 whitespace-pre-wrap">
-                          {q?.text || "-"}
-                        </td>
-                        <td className="align-top border border-gray-200 px-2 py-2 whitespace-pre-wrap">
-                          {q?.answer || "(keine)"}
-                        </td>
+                        <td className="align-top border border-gray-200 px-2 py-2 whitespace-pre-wrap">{q?.text || "-"}</td>
+                        <td className="align-top border border-gray-200 px-2 py-2 whitespace-pre-wrap">{q?.answer || "(keine)"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -449,7 +495,7 @@ export default function HomeworkChat({
         );
       }
       default:
-        return <div className="whitespace-pre-wrap">{message.content}</div>;
+        return <div className="whitespace-pre-wrap">{String(message.content ?? "")}</div>;
     }
   };
 
@@ -489,9 +535,6 @@ export default function HomeworkChat({
         tabIndex={0}
         onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onMinimise()}
       />
-
-      {/* Single header space to match spacing */}
-      <div className="px-3 pt-2 bg-[#f3f7eb] border-b" />
 
       {/* Messages */}
       <div
@@ -544,20 +587,18 @@ export default function HomeworkChat({
         aria-label="Nachrichten-Eingabe"
       >
         <div className="mx-auto max-w-[900px] px-3 py-2 flex items-center gap-3">
-          {/* Camera and gallery buttons (always enabled) */}
           <button
             onClick={() => cameraInputRef.current?.click()}
-            className={`w-10 h-10 grid place-items-center rounded-full bg-white/30`}
+            className="w-10 h-10 grid place-items-center rounded-full bg-white/30"
             aria-label="Kamera öffnen"
             type="button"
             disabled={sending || uploading}
           >
             <img src={cameraIcon} alt="" className="w-6 h-6" />
           </button>
-
           <button
             onClick={() => galleryInputRef.current?.click()}
-            className={`w-10 h-10 grid place-items-center rounded-full bg-white/30`}
+            className="w-10 h-10 grid place-items-center rounded-full bg-white/30"
             aria-label="Galerie öffnen"
             type="button"
             disabled={sending || uploading}
@@ -570,7 +611,20 @@ export default function HomeworkChat({
               ref={inputRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendText()}
+              onKeyDown={(e) => {
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  !e.nativeEvent.isComposing &&
+                  !sendingRef.current &&
+                  !sending &&
+                  draft.trim()
+                ) {
+                  e.preventDefault();
+                  handleSendText(draft);
+                  setDraft("");
+                }
+              }}
               placeholder="Frag etwas zur Aufgabe oder lade ein Bild über die Kamera/Galerie hoch…"
               className="w-full bg-transparent outline-none text-[15px]"
               aria-label="Nachricht eingeben"
@@ -578,10 +632,9 @@ export default function HomeworkChat({
             />
           </div>
 
-          {/* Reset/new chat button: always enabled */}
           <button
             onClick={() => startNewChat()}
-            className={`w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm`}
+            className="w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm"
             style={{ backgroundColor: "#ff7a00" }}
             aria-label="Neuen Chat starten"
             type="button"
@@ -592,7 +645,6 @@ export default function HomeworkChat({
             </svg>
           </button>
 
-          {/* Send button (chatbot) */}
           <button
             onClick={() => draft.trim() && sendText()}
             className={`w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm ${
@@ -612,7 +664,6 @@ export default function HomeworkChat({
             )}
           </button>
 
-          {/* Done button if in homework mode */}
           {dockState?.mode === "homework" && (
             <button
               onClick={() => markHomeworkDone?.()}

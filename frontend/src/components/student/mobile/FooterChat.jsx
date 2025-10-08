@@ -1,9 +1,9 @@
 // src/components/student/mobile/FooterChat.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { bottomChat } from "@/assets/mobile/tiles";
 import ChatLayer from "@/components/student/mobile/ChatLayer.jsx";
-import { useChatDock } from "@/context/ChatDockContext.jsx";
+import HomeworkChat from "@/components/student/mobile/HomeworkChat.jsx";
 
 /** Spacer so page content never hides behind footer. */
 export function ChatStripSpacer({ className = "" }) {
@@ -32,21 +32,39 @@ export default function FooterChat({
 }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
-  const { state: dockState } = useChatDock?.() ?? {};
-  const isDockOpen = !!dockState?.visible;
 
-  // If the global dock opens, ensure the local footer sheet is closed
-  useEffect(() => {
-    if (isDockOpen && open) setOpen(false);
-  }, [isDockOpen, open]);
+  // Route helpers
+  const isOnHomework = useMemo(
+    () => pathname.startsWith("/student/homework"),
+    [pathname]
+  );
+  const isOnHome = useMemo(
+    () => pathname.startsWith("/student/home"),
+    [pathname]
+  );
+
+  // Extract taskId from common homework routes:
+  // /student/homework/doing/:taskId
+  // /student/homework/interaction/:taskId
+  // /student/homework/overview/:taskId
+  // /student/homework/:taskId  (fallback)
+  const taskId = useMemo(() => {
+    const m =
+      pathname.match(/\/student\/homework\/(?:doing|interaction|overview)\/(\d+)/) ||
+      pathname.match(/\/student\/homework\/(\d+)/);
+    return m ? m[1] : null;
+  }, [pathname]);
 
   const isHidden = hideOnRoutes.some((r) => pathname.startsWith(r));
   const isIncluded =
     !includeOnRoutes?.length ||
     includeOnRoutes.some((r) => pathname.startsWith(r));
 
-  // Hide the footer trigger whenever the global chat dock is visible
-  if (isHidden || !isIncluded || isDockOpen) return null;
+  // Hide the footer trigger if not included or explicitly hidden
+  if (isHidden || !isIncluded) return null;
+
+  // Which component should the sheet show?
+  const SheetContent = isOnHomework ? HomeworkChat : ChatLayer;
 
   return (
     <>
@@ -62,7 +80,7 @@ export default function FooterChat({
           type="button"
           onClick={() => setOpen(true)}
           className="block w-full pointer-events-auto active:scale-[0.98] transition"
-          aria-label="Chat öffnen"
+          aria-label="Open chat"
         >
           <img
             src={bottomChat}
@@ -84,7 +102,7 @@ export default function FooterChat({
           type="button"
           onClick={() => setOpen(true)}
           className="block w-full pointer-events-auto active:scale-[0.98] transition"
-          aria-label="Chat öffnen"
+          aria-label="Open chat"
         >
           <img
             src={bottomChat}
@@ -108,7 +126,7 @@ export default function FooterChat({
           {/* Mask */}
           <button
             type="button"
-            aria-label="Schließen"
+            aria-label="Close"
             className="absolute inset-0 bg-black/40"
             onClick={() => setOpen(false)}
           />
@@ -118,14 +136,24 @@ export default function FooterChat({
             className="absolute left-0 right-0 bottom-0"
             style={{
               height: sheetHeight,
-              // Rounded top corners and clipping for inner content
               borderTopLeftRadius: "1rem",
               borderTopRightRadius: "1rem",
               overflow: "hidden",
               background: "white",
             }}
           >
-            <ChatLayer onClose={() => setOpen(false)} />
+            {/* IMPORTANT:
+                - On homework routes we mount HomeworkChat and pass taskId so it
+                  uses its own storageKey (e.g., kibundo.chat.hw.<taskId>.v1).
+                - On home routes we mount ChatLayer which uses its own storageKey
+                  (e.g., kibundo.chat.home.v1).
+                - Closing the sheet fully unmounts the chat to avoid scanner lockups.
+            */}
+            {isOnHomework ? (
+              <SheetContent taskId={taskId} onClose={() => setOpen(false)} />
+            ) : (
+              <SheetContent onClose={() => setOpen(false)} />
+            )}
           </div>
         </div>
       )}

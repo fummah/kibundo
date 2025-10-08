@@ -9,6 +9,7 @@ import React, {
   useRef,
 } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "@/api/axios"; // ⬅️ use your centralized Axios instance
 
 export const TASKS_KEY = "kibundo.homework.tasks.v1";
 export const PROGRESS_KEY = "kibundo.homework.progress.v1";
@@ -19,8 +20,8 @@ const DEFAULT_CTX = {
   state: {
     visible: false,
     expanded: false,
-    mode: null,
-    task: null,
+    mode: null,              // "general" | "homework"
+    task: null,              // { id, file?, fileName?, userId?, scanId?, conversationId? }
     initialMessages: null,
     chatByKey: {},
     analyzeOnOpen: false,
@@ -86,7 +87,7 @@ const qaToMarkdown = (extractedText = "", qa = []) => {
     Array.isArray(qa) && qa.length
       ? qa
           .map((q, i) => {
-            const question = (q?.text || "—").replace(/\n+/g, " ");
+            const question = (q?.text || q?.question || "—").replace(/\n+/g, " ");
             const answer = (q?.answer || "—").replace(/\n+/g, " ");
             return `| ${i + 1} | ${question} | ${answer} |`;
           })
@@ -99,6 +100,16 @@ const qaToMarkdown = (extractedText = "", qa = []) => {
 
   return `**Analyse-Ergebnis**\n\n${header}\n${rows}${extractedBlock}`;
 };
+
+/** 🚫 Never persist transient messages or base64 previews (Data URLs) */
+const filterPersistable = (arr = []) =>
+  (arr || []).filter((m) => {
+    if (m?.transient === true) return false;
+    if (m?.type === "image" && typeof m.content === "string" && m.content.startsWith("data:")) {
+      return false;
+    }
+    return true;
+  });
 
 export function ChatDockProvider({ children }) {
   const navigate = useNavigate();
@@ -161,14 +172,18 @@ export function ChatDockProvider({ children }) {
     setState((s) => {
       const key = getKey(mode, taskId);
       const current = s.chatByKey[key] || [];
-      const base = mergeById(current, current);
+      const base = [...current];
       const nextVal =
         typeof next === "function"
           ? next(base)
           : Array.isArray(next)
           ? mergeById(base, next)
           : base;
-      const chatByKey = { ...s.chatByKey, [key]: nextVal };
+
+      // 🚫 Persist only safe messages
+      const safeToPersist = filterPersistable(nextVal);
+
+      const chatByKey = { ...s.chatByKey, [key]: safeToPersist };
       saveAllChats(chatByKey);
       return { ...s, chatByKey };
     });
@@ -253,56 +268,79 @@ export function ChatDockProvider({ children }) {
     navigate("/student/homework/feedback", { state: { taskId: task?.id || null } });
   }, [state.task, navigate]);
 
-  /* -------------------- AUTO ANALYZE USING /api/ai/upload -------------------- */
+  /* -------------------- AUTO ANALYZE USING /api/ai/upload (Axios) -------------------- */
   useEffect(() => {
     const { analyzeOnOpen, task, mode } = state;
     if (!analyzeOnOpen || !task?.file || analyzingRef.current) return;
 
     analyzingRef.current = true;
 
-    const isImage = task.file.type?.startsWith("image/");
-    const previewUrl = isImage ? URL.createObjectURL(task.file) : null;
+    // snapshot values to avoid races if state flips mid-request
+    const snapshot = {
+      mode,
+      taskId: task.id,
+      file: task.file,
+      fileName: task.fileName,
+      userId: task.userId,
+    };
 
-    // 1) Show “analyzing…” + optional image bubble
-    setChatMessages(mode, task.id, (prev) => [
+    const isImage = snapshot.file.type?.startsWith("image/");
+    const previewUrl = isImage ? URL.createObjectURL(snapshot.file) : null;
+
+    // 1) Show “analyzing…” + optional image bubble (transient preview)
+    setChatMessages(snapshot.mode, snapshot.taskId, (prev) => [
       ...prev,
       fmt("Ich analysiere dein Bild …", "system"),
       ...(previewUrl ? [fmt(previewUrl, "student", "image", { transient: true })] : []),
     ]);
 
-    // 2) Upload to your scanner API (same as HomeworkScanner)
     (async () => {
       try {
+        // 2) Upload to your scanner API via Axios
         const fd = new FormData();
-        fd.append("file", task.file, task.fileName || "upload");
-        if (task.userId) fd.append("userId", task.userId);
+        fd.append("file", snapshot.file, snapshot.fileName || "upload");
+        if (snapshot.userId) fd.append("userId", snapshot.userId);
 
-        const res = await fetch("/api/ai/upload", {
-          method: "POST",
-          body: fd,
+        // Authorization is handled by axios interceptor; no need to set headers unless you want to force multipart
+        const { data } = await api.post("/ai/upload", fd, {
+          headers: { "Content-Type": "multipart/form-data" },
         });
-        if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-        const data = await res.json();
 
-        // Extract structured info
-        const extracted = data?.scan?.raw_text || "";
-        const qa = Array.isArray(data?.parsed?.questions) ? data.parsed.questions : [];
+        // Extract structured info safely
+        const extracted =
+          data?.scan?.raw_text ??
+          data?.parsed?.raw_text ??
+          data?.extractedText ??
+          "";
+        const qa =
+          (Array.isArray(data?.parsed?.questions) && data.parsed.questions) ||
+          (Array.isArray(data?.qa) && data.qa) ||
+          [];
 
-        // 3) Emit Markdown (safe for your ChatLayer)
+        // 3) Emit Markdown (persistable)
         const md = qaToMarkdown(extracted, qa);
-        setChatMessages(mode, task.id, (prev) => [...prev, fmt(md, "agent", "text")]);
+        setChatMessages(snapshot.mode, snapshot.taskId, (prev) => [
+          ...prev,
+          fmt(md, "agent", "text"),
+        ]);
 
-        // 4) Store scanId onto the task for later steps
-        const scanId = data?.scan?.id || null;
-        if (scanId) {
+        // 4) Store scanId / conversationId on the current task (kept in state only)
+        const scanId = data?.scan?.id ?? data?.scanId ?? null;
+        const conversationId = data?.conversationId ?? null;
+
+        if (scanId || conversationId) {
           setState((s) => ({
             ...s,
-            task: { ...s.task, scanId },
+            task: {
+              ...s.task,
+              scanId: scanId ?? s.task?.scanId,
+              conversationId: conversationId ?? s.task?.conversationId,
+            },
           }));
         }
       } catch (err) {
         console.error(err);
-        setChatMessages(mode, task.id, (prev) => [
+        setChatMessages(snapshot.mode, snapshot.taskId, (prev) => [
           ...prev,
           fmt("Sorry, die Bildanalyse ist fehlgeschlagen. Bitte versuche es erneut.", "system"),
         ]);
@@ -343,10 +381,6 @@ export function ChatDockProvider({ children }) {
 }
 
 export const useChatDock = () => {
-  const context = useContext(ChatDockCtx);
-  if (!context) {
-    console.warn("useChatDock must be used within a ChatDockProvider");
-    return DEFAULT_CTX;
-  }
-  return context;
+  // Because we created the context with DEFAULT_CTX, this will never be null.
+  return useContext(ChatDockCtx);
 };

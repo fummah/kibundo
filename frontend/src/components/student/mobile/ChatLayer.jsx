@@ -3,26 +3,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom";
 import { App } from "antd";
 import api from "@/api/axios";
-import { CheckOutlined } from "@ant-design/icons";
 import { useChatDock } from "@/context/ChatDockContext.jsx";
 
-// 🔽 NEW: safe renderer for any message.content shape
-import { MessageBody } from "@/components/chats/MessageBody.jsx";
-
-// Assets
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
 import cameraIcon from "@/assets/mobile/icons/camera.png";
 import galleryIcon from "@/assets/mobile/icons/galary.png";
-import emojiIcon from "@/assets/mobile/icons/imoji.png";
 import studentIcon from "@/assets/mobile/icons/stud-icon.png";
-import agentChats from "@/assets/mobile/icons/agent-chats.png";
 
-// Analytics + ASR
-import { track } from "@/lib/analytics";
-import useASR from "@/lib/voice/useASR";
-
-// ✅ Keep this as a constant string (no JSX at top-level!)
 const FALLBACK_IMAGE_DATA_URL =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
@@ -37,14 +25,13 @@ const FALLBACK_IMAGE_DATA_URL =
 const formatMessage = (content, from = "agent", type = "text", meta = {}) => ({
   id: Date.now() + Math.random().toString(36).slice(2, 9),
   from,
-  sender: from, // compatibility with payloads using `sender`
+  sender: from,
   type,
   content,
   timestamp: new Date().toISOString(),
   ...meta,
 });
 
-// Merge helper that preserves items across sources and avoids drops when persistence lags
 const mergeById = (a = [], b = []) => {
   const seen = new Set();
   const out = [];
@@ -60,7 +47,6 @@ const mergeById = (a = [], b = []) => {
   return out;
 };
 
-// Stable key generator for React list items (handles missing/duplicate ids)
 const messageKey = (m, i) =>
   m?.id ?? `${m?.from || "unk"}|${m?.timestamp || "t0"}|${String(m?.content ?? "").slice(0,64)}|${i}`;
 
@@ -77,104 +63,86 @@ export default function ChatLayer({
   onSendMedia,
   isTyping: externalTyping = false,
   onClose,
-  minimiseTo = "/student/homework",
+  minimiseTo = "/student/home",
   minimiseHeight = 54,
   className = "",
 }) {
   const navigate = useNavigate();
   const { message: antdMessage } = App.useApp();
-  const {
-    state: dockState,
-    markHomeworkDone,
-    getChatMessages,
-    setChatMessages,
-    clearChatMessages,
-  } = useChatDock?.() ?? {};
 
-  const mode = dockState?.mode || "general";
-  const taskId = dockState?.task?.id || null;
-  // Freeze the chat key for the entire lifetime of this layer mount.
+  const { getChatMessages, setChatMessages, clearChatMessages } = useChatDock();
+
+  // Always "general" mode (no task id)
+  const mode = "general";
+  const taskId = null;
   const stableModeRef = useRef(mode);
   const stableTaskIdRef = useRef(taskId);
 
-  // Local fallback when not persisted/controlled
+  // Local UI buffer
   const [localMessages, setLocalMessages] = useState(
-    controlledMessagesProp ?? getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) ?? initialMessages
+    controlledMessagesProp ??
+      getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) ??
+      initialMessages
   );
 
-  // ----- SEED PERSISTENCE ONCE (NO LOOPS) -----
+  // Seed once if empty
   const didSeedRef = useRef(false);
   useEffect(() => {
     if (didSeedRef.current) return;
     if (!setChatMessages || !getChatMessages) return;
-
     const current = getChatMessages(stableModeRef.current, stableTaskIdRef.current) || [];
     if (current.length === 0 && initialMessages?.length) {
       setChatMessages(stableModeRef.current, stableTaskIdRef.current, [...initialMessages]);
     }
     didSeedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, taskId, setChatMessages, getChatMessages, initialMessages]);
-  // --------------------------------------------
+  }, [setChatMessages, getChatMessages, initialMessages]);
 
-  // Single source of truth for reading
+  // Single source for reading
   const msgs = useMemo(() => {
     if (controlledMessagesProp) return controlledMessagesProp;
     const persisted = getChatMessages?.(stableModeRef.current, stableTaskIdRef.current);
     if (Array.isArray(persisted) || Array.isArray(localMessages)) {
-      // Merge both sources so locally-added messages don't disappear if persistence lags
       return mergeById(persisted || [], localMessages || []);
     }
     return localMessages || [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controlledMessagesProp, getChatMessages, localMessages]);
 
-  // ---------- SAFE WRITER (no render-time churn) ----------
+  // Never persist transient/base64 images
+  const filterForPersist = useCallback((arr) => {
+    return (arr || []).filter((m) => {
+      if (m?.transient === true) return false;
+      if (m?.type === "image" && typeof m.content === "string" && m.content.startsWith("data:")) {
+        return false;
+      }
+      return true;
+    });
+  }, []);
+
   const updateMessages = useCallback(
     (next) => {
-      // Controlled usage from parent component
+      const compute = (base) => (typeof next === "function" ? next(base) : next);
+
       if (controlledMessagesProp && onMessagesChangeProp) {
-        const base =
-          typeof next === "function" ? next(controlledMessagesProp) : next;
-        // Only call if actually changed to avoid parent loops
+        const base = compute(controlledMessagesProp);
         if (base !== controlledMessagesProp) onMessagesChangeProp(base);
         return;
       }
 
-      // Persisted context
-      if (setChatMessages && getChatMessages) {
-        const current = getChatMessages(stableModeRef.current, stableTaskIdRef.current) || [];
-        // Use merged view as base to avoid losing items during concurrent writes
-        const baseArr = mergeById(current, Array.isArray(msgs) ? msgs : []);
-        const nextVal = typeof next === "function" ? next(baseArr) : next;
-        // Write to context store
-        if (nextVal !== current) {
-          setChatMessages(stableModeRef.current, stableTaskIdRef.current, nextVal);
-        }
-        // Also mirror into local state so UI never blanks between writes
-        setLocalMessages(nextVal);
-        return;
-      }
+      const current = getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) || [];
+      const baseArr = mergeById(current, Array.isArray(msgs) ? msgs : []);
+      const nextVal = compute(baseArr);
 
-      // Local state fallback
-      setLocalMessages((curr) =>
-        typeof next === "function" ? next(curr) : next
-      );
+      if (setChatMessages) {
+        const persisted = filterForPersist(nextVal);
+        setChatMessages(stableModeRef.current, stableTaskIdRef.current, persisted);
+      }
+      setLocalMessages(nextVal);
     },
-    [
-      controlledMessagesProp,
-      onMessagesChangeProp,
-      setChatMessages,
-      getChatMessages,
-      mode,
-      taskId,
-      msgs,
-    ]
+    [controlledMessagesProp, onMessagesChangeProp, setChatMessages, getChatMessages, msgs, filterForPersist]
   );
-  // --------------------------------------------------------
 
   const [draft, setDraft] = useState("");
-  const [showEmoji, setShowEmoji] = useState(false);
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -183,30 +151,15 @@ export default function ChatLayer({
   const inputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
-  const objectUrlsRef = useRef([]);
 
-  const { listening, start, stop, reset } = useASR?.({ lang: "de-DE" }) ?? {};
-  const showDone = dockState?.mode === "homework";
-
-  // Smooth autoscroll without causing loops
+  // Auto scroll
   const lastLenRef = useRef(0);
   useEffect(() => {
     if (!listRef.current) return;
     if (msgs?.length === lastLenRef.current && !typing && !externalTyping) return;
     lastLenRef.current = msgs?.length ?? 0;
-    listRef.current.scrollTo({
-      top: listRef.current.scrollHeight + 9999,
-      behavior: "smooth",
-    });
+    listRef.current.scrollTo({ top: listRef.current.scrollHeight + 9999, behavior: "smooth" });
   }, [msgs, typing, externalTyping]);
-
-  // cleanup blobs
-  useEffect(() => {
-    return () => {
-      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-      objectUrlsRef.current = [];
-    };
-  }, []);
 
   // Send text
   const handleSendText = useCallback(
@@ -216,9 +169,7 @@ export default function ChatLayer({
 
       setSending(true);
       const userMessage = formatMessage(t, "student");
-  
       updateMessages((m) => [...m, userMessage]);
-      track?.("chat_message_send", { length: t.length });
 
       try {
         if (onSendText) {
@@ -227,38 +178,35 @@ export default function ChatLayer({
           const { data } = await api.post("/ai/chat", {
             question: t,
             ai_agent: "ChildAgent",
+            mode: "general",
           });
           const aiMessage = formatMessage(
-            data?.answer ??
-              "Entschuldigung, ich konnte keine Antwort generieren.",
+            data?.answer ?? "Entschuldigung, ich konnte keine Antwort generieren.",
             "agent"
           );
           updateMessages((m) => [...m, aiMessage]);
         }
       } catch (err) {
-        const errorMessage = formatMessage(
-          "Es gab ein Problem beim Senden deiner Nachricht. Bitte versuche es später erneut.",
-          "agent"
-        );
-        updateMessages((m) => [...m, errorMessage]);
-      //  antdMessage.error("Nachricht konnte nicht gesendet werden");
+        updateMessages((m) => [
+          ...m,
+          formatMessage(
+            "Es gab ein Problem beim Senden deiner Nachricht. Bitte versuche es später erneut.",
+            "agent"
+          ),
+        ]);
       } finally {
         setSending(false);
       }
     },
-    [sending, onSendText, updateMessages,]
+    [sending, onSendText, updateMessages]
   );
 
-  // Send media
+  // Upload images (kept simple)
   const handleMediaUpload = useCallback(
     async (files) => {
       if (!files.length || uploading) return;
       setUploading(true);
 
-      const newMessages = [];
-      const formData = new FormData();
-
-      // Read files as Data URLs for reliable immediate preview
       const readAsDataURL = (file) =>
         new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -267,58 +215,56 @@ export default function ChatLayer({
           reader.readAsDataURL(file);
         });
 
+      const previews = [];
+      const fd = new FormData();
+
       for (const file of files) {
         try {
-          const dataUrl = await readAsDataURL(file);
-          const message = {
+          previews.push({
             id: Date.now() + Math.random().toString(36).slice(2, 9),
             from: "student",
             sender: "student",
             type: "image",
-            content: dataUrl, // stable preview within session
+            content: await readAsDataURL(file),
             fileName: file.name,
             fileType: file.type,
             fileSize: file.size,
-          };
-          newMessages.push(message);
+            transient: true,
+            timestamp: new Date().toISOString(),
+          });
         } catch {}
-        formData.append("files", file);
+        fd.append("files", file);
       }
 
-      // Add loading message once, after enqueuing previews
-      const loadingMessage = formatMessage("Ich analysiere dein Bild...", "agent");
-      updateMessages((m) => [...m, ...newMessages, loadingMessage]);
+      const loading = formatMessage("Ich analysiere dein Bild...", "agent", "status", { transient: true });
+      updateMessages((m) => [...m, ...previews, loading]);
 
       try {
         if (onSendMedia) {
           await onSendMedia(files);
         } else {
-          const { data } = await api.post("/ai/analyze-image", formData, {
+          const { data } = await api.post("/ai/analyze-image", fd, {
             headers: { "Content-Type": "multipart/form-data" },
           });
-
           updateMessages((m) => {
             const arr = [...m];
-            const idx = arr.findIndex((msg) => msg.id === loadingMessage.id);
+            const idx = arr.findIndex((x) => x.id === loading.id);
             if (idx !== -1) {
-              // data.analysis can be string or object — MessageBody will handle either
               arr[idx] = formatMessage(
-                data?.analysis ||
-                  "Ich habe das Bild erhalten, aber konnte es nicht analysieren.",
+                data?.analysis || "Ich habe das Bild erhalten, aber konnte es nicht analysieren.",
                 "agent"
               );
             }
             return arr;
           });
         }
-      } catch (error) {
-        console.error("Error uploading media:", error);
+      } catch {
         updateMessages((m) => {
           const arr = [...m];
-          const idx = arr.findIndex((msg) => msg.id === loadingMessage.id);
+          const idx = arr.findIndex((x) => x.id === loading.id);
           if (idx !== -1) {
             arr[idx] = formatMessage(
-              "Entschuldigung, beim Hochladen des Bildes ist ein Fehler aufgetreten. Bitte versuche es später erneut.",
+              "Entschuldigung, beim Hochladen ist ein Fehler aufgetreten. Bitte versuche es später erneut.",
               "agent"
             );
           }
@@ -329,7 +275,7 @@ export default function ChatLayer({
         setUploading(false);
       }
     },
-    [onSendMedia, updateMessages, antdMessage, uploading]
+    [onSendMedia, updateMessages, uploading, antdMessage]
   );
 
   const sendText = useCallback(() => {
@@ -340,97 +286,116 @@ export default function ChatLayer({
     });
   }, [draft, handleSendText]);
 
-  const onCamera = () => cameraInputRef.current?.click();
-  const onGallery = () => galleryInputRef.current?.click();
-  const onEmoji = () => setShowEmoji((p) => !p);
   const onMinimise = () => {
     if (typeof onClose === "function") onClose();
     else navigate(minimiseTo);
   };
 
-  // Start a new chat: clear persistence for current key and reseed greeting
   const startNewChat = useCallback(() => {
-    const modeKey = stableModeRef.current;
-    const taskKey = stableTaskIdRef.current;
-    clearChatMessages?.(modeKey, taskKey);
-    const seed = Array.isArray(initialMessages) && initialMessages.length > 0
-      ? [...initialMessages]
-      : [formatMessage("Hallo! Ich bin dein KI-Lernhelfer. Wie kann ich dir bei deinen Hausaufgaben helfen?", "agent")];
-    setChatMessages?.(modeKey, taskKey, seed);
+    clearChatMessages?.(stableModeRef.current, stableTaskIdRef.current);
+    const seed =
+      Array.isArray(initialMessages) && initialMessages.length > 0
+        ? [...initialMessages]
+        : [formatMessage("Hallo! Ich bin dein KI-Lernhelfer. Wie kann ich dir helfen?", "agent")];
+    setChatMessages?.(stableModeRef.current, stableTaskIdRef.current, seed);
     setLocalMessages(seed);
     setDraft("");
-    setTyping(false);
     requestAnimationFrame(() => listRef.current?.scrollTo({ top: 999999, behavior: "smooth" }));
   }, [clearChatMessages, setChatMessages, initialMessages]);
 
   const handleCameraChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) handleMediaUpload([file]);
+    const f = e.target.files?.[0];
+    if (f) handleMediaUpload([f]);
     e.target.value = "";
   };
-
   const handleGalleryChange = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length) handleMediaUpload(files);
+    const fs = Array.from(e.target.files || []);
+    if (fs.length) handleMediaUpload(fs);
     e.target.value = "";
   };
 
-  // ⬇️ Render message bodies safely (strings, objects, arrays)
+  /** ---------- RENDER CONTENT (fix for “only timestamp”) ---------- */
   const renderMessageContent = (message) => {
-    switch (message.type) {
-      case "image":
-        return (
-          <div className="relative">
-            <img
-              src={message.content}
-              alt={message.fileName || "Hochgeladenes Bild"}
-              className="max-w-full max-h-64 rounded-lg"
-              onError={(e) => {
-                const img = e.currentTarget;
-                if (img.dataset.fallbackApplied === "1") return;
-                img.dataset.fallbackApplied = "1";
-                img.src = FALLBACK_IMAGE_DATA_URL;
-              }}
-            />
-            {message.fileName && (
-              <div className="text-xs text-gray-500 mt-1 truncate">
-                {message.fileName}
-              </div>
-            )}
-          </div>
-        );
-      default:
-        // ✅ This handles strings, objects (extractedText/qa/analysis), arrays, etc.
-        return <MessageBody content={message.content} />;
+    const type = (message?.type || "text").toLowerCase();
+
+    if (type === "image") {
+      const src = typeof message.content === "string" ? message.content : message?.content?.url || "";
+      return (
+        <div className="relative">
+          <img
+            src={src}
+            alt={message.fileName || "Hochgeladenes Bild"}
+            className="max-w-full max-h-64 rounded-lg"
+            onError={(e) => {
+              const img = e.currentTarget;
+              if (img.dataset.fallbackApplied === "1") return;
+              img.dataset.fallbackApplied = "1";
+              img.src = FALLBACK_IMAGE_DATA_URL;
+            }}
+          />
+          {message.fileName && (
+            <div className="text-xs text-gray-500 mt-1 truncate">{message.fileName}</div>
+          )}
+        </div>
+      );
     }
+
+    if (type === "table") {
+      const extracted = message.content?.extractedText;
+      const qa = Array.isArray(message.content?.qa) ? message.content.qa : [];
+      return (
+        <div className="w-full">
+          {extracted && (
+            <div className="mb-3">
+              <div className="font-semibold mb-1">Erkannter Text</div>
+              <div className="p-2 bg-gray-50 rounded border border-gray-200 whitespace-pre-wrap">
+                {extracted}
+              </div>
+            </div>
+          )}
+          {qa.length > 0 && (
+            <div>
+              <div className="font-semibold mb-2">Erkannte Fragen und Antworten</div>
+              <table className="w-full text-sm border-separate border-spacing-0">
+                <thead>
+                  <tr>
+                    <th className="text-left bg-gray-100 border border-gray-200 px-2 py-1 rounded-tl">Frage</th>
+                    <th className="text-left bg-gray-100 border border-gray-200 px-2 py-1 rounded-tr">Antwort</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {qa.map((q, i) => (
+                    <tr key={i}>
+                      <td className="align-top border border-gray-200 px-2 py-2 whitespace-pre-wrap">
+                        {q?.text || "-"}
+                      </td>
+                      <td className="align-top border border-gray-200 px-2 py-2 whitespace-pre-wrap">
+                        {q?.answer || "(keine)"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // default: show text/status; stringify unknown shapes safely
+    const body =
+      typeof message?.content === "string"
+        ? message.content
+        : message?.content == null
+        ? ""
+        : JSON.stringify(message.content, null, 2);
+
+    return <div className="whitespace-pre-wrap">{body}</div>;
   };
 
   return (
-    <div
-      className={[
-        "relative w-full h-full bg-white overflow-hidden",
-        className,
-      ].join(" ")}
-    >
-      {/* Hidden file inputs */}
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        onChange={handleCameraChange}
-        className="hidden"
-      />
-      <input
-        ref={galleryInputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        onChange={handleGalleryChange}
-        className="hidden"
-      />
-
-      {/* Minimize strip (visual only, sits on top) */}
+    <div className={["relative w-full h-full bg-white overflow-hidden", className].join(" ")}>
+      {/* Minimize strip */}
       <div
         onClick={onMinimise}
         className="w-full cursor-pointer"
@@ -459,41 +424,15 @@ export default function ChatLayer({
           const isStudent = roleLower === "student" || roleLower === "user";
           const isAgent = !isStudent;
           return (
-            <div
-              key={messageKey(message, idx)}
-              className={`w-full flex ${isAgent ? "justify-start" : "justify-end"} mb-3`}
-            >
-              {isAgent && (
-                <img
-                  src={agentIcon}
-                  alt="Kibundo"
-                  className="w-7 h-7 rounded-full mr-2 self-end"
-                />
-              )}
-
-              <div
-                className={`max-w-[78%] px-3 py-2 rounded-2xl shadow-sm ${
-                  isAgent ? "bg-white text-[#444]" : "bg-[#aee17b] text-[#1b3a1b]"
-                }`}
-              >
+            <div key={messageKey(message, idx)} className={`w-full flex ${isAgent ? "justify-start" : "justify-end"} mb-3`}>
+              {isAgent && <img src={agentIcon} alt="Kibundo" className="w-7 h-7 rounded-full mr-2 self-end" />}
+              <div className={`max-w-[78%] px-3 py-2 rounded-2xl shadow-sm ${isAgent ? "bg-white text-[#444]" : "bg-[#aee17b] text-[#1b3a1b]"}`}>
                 {renderMessageContent(message)}
-                <div
-                  className={`text-xs mt-1 ${isAgent ? "text-[#1b3a1b]/80" : "text-gray-500"}`}
-                >
-                  {new Date(message.timestamp).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                <div className={`text-xs mt-1 ${isAgent ? "text-[#1b3a1b]/80" : "text-gray-600"}`}>
+                  {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </div>
               </div>
-
-              {!isAgent && (
-                <img
-                  src={studentIcon}
-                  alt="Schüler"
-                  className="w-7 h-7 rounded-full ml-2 self-end"
-                />
-              )}
+              {!isAgent && <img src={studentIcon} alt="Schüler" className="w-7 h-7 rounded-full ml-2 self-end" />}
             </div>
           );
         })}
@@ -504,51 +443,18 @@ export default function ChatLayer({
             <div className="max-w-[78%] px-3 py-2 rounded-2xl shadow-sm bg-[#aee17b] text-[#1b3a1b]">
               <div className="flex gap-1">
                 <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" />
-                <div
-                  className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce"
-                  style={{ animationDelay: "0.1s" }}
-                />
-                <div
-                  className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce"
-                  style={{ animationDelay: "0.2s" }}
-                />
+                <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" style={{ animationDelay: "0.1s" }} />
+                <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" style={{ animationDelay: "0.2s" }} />
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Emoji picker */}
-      {showEmoji && (
-        <div
-          className="absolute bottom-20 left-0 right-0 bg-white shadow-md p-3 grid grid-cols-6 gap-2 text-xl z-50"
-          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-        >
-          {["😀", "😂", "🥳", "🤔", "👍", "❤️"].map((emo) => (
-            <button
-              key={emo}
-              type="button"
-              onClick={() => {
-                setDraft((d) => d + emo);
-                setShowEmoji(false);
-                requestAnimationFrame(() => inputRef.current?.focus());
-              }}
-              className="hover:bg-neutral-100 rounded"
-              aria-label={`Emoji ${emo}`}
-            >
-              {emo}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Composer */}
       <div
         className="absolute left-0 right-0 bottom-0 z-40"
-        style={{
-          backgroundColor: "#b2c10a",
-          paddingBottom: "env(safe-area-inset-bottom)",
-        }}
+        style={{ backgroundColor: "#b2c10a", paddingBottom: "env(safe-area-inset-bottom)" }}
         role="form"
         aria-label="Nachrichten-Eingabe"
       >
@@ -573,6 +479,24 @@ export default function ChatLayer({
             <img src={galleryIcon} alt="" className="w-6 h-6" />
           </button>
 
+          {/* Hidden file inputs */}
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleCameraChange}
+            className="hidden"
+          />
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleGalleryChange}
+            className="hidden"
+          />
+
           <div className="flex-1 h-10 flex items-center px-3 bg-white rounded-full">
             <input
               ref={inputRef}
@@ -587,47 +511,9 @@ export default function ChatLayer({
           </div>
 
           <button
-            onClick={() => setShowEmoji((p) => !p)}
-            className={`w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm ${
-              sending || uploading ? "opacity-70" : "hover:brightness-95"
-            }`}
-            style={{ backgroundColor: "#ff7a00" }}
-            aria-label="Emoji auswählen"
-            type="button"
-            disabled={sending || uploading}
-          >
-            {/* White emoji icon */}
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              className="w-6 h-6"
-              fill="#ffffff"
-            >
-              <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-3.5 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM12 18a6 6 0 0 1-5.196-3h10.392A6 6 0 0 1 12 18Z" />
-            </svg>
-          </button>
-
-          {showDone && (
-            <button
-              onClick={() => markHomeworkDone?.()}
-              className="w-11 h-11 grid place-items-center rounded-full"
-              style={{ backgroundColor: "#8fd85d" }}
-              aria-label="Aufgabe abschließen"
-              type="button"
-              disabled={sending || uploading}
-            >
-              <CheckOutlined style={{ color: "#fff", fontSize: 16 }} />
-            </button>
-          )}
-
-          <button
             onClick={() => {
-              const hasText = !!draft.trim();
-              if (hasText) {
-                sendText();
-              } else {
-                startNewChat();
-              }
+              if (!draft.trim()) return startNewChat();
+              sendText();
             }}
             className={`w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm ${
               sending || uploading ? "opacity-70" : "hover:brightness-95"
@@ -639,28 +525,14 @@ export default function ChatLayer({
           >
             {sending || uploading ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : draft.trim() ? (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
+                <path d="M21.44 2.56a1 1 0 0 0-1.05-.22L3.6 9.06a1 1 0 0 0 .04 1.87l6.9 2.28 2.3 6.91a1 1 0 0 0 1.86.03l6.74-16.78a1 1 0 0 0-.99-1.81ZM11.8 13.18l-4.18-1.38 9.68-4.04-5.5 5.42Z" />
+              </svg>
             ) : (
-              draft.trim() ? (
-                // Paper plane icon white on orange background (send)
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  className="w-5 h-5"
-                  fill="#ffffff"
-                >
-                  <path d="M21.44 2.56a1 1 0 0 0-1.05-.22L3.6 9.06a1 1 0 0 0 .04 1.87l6.9 2.28 2.3 6.91a1 1 0 0 0 1.86.03l6.74-16.78a1 1 0 0 0-.99-1.81ZM11.8 13.18l-4.18-1.38 9.68-4.04-5.5 5.42Z" />
-                </svg>
-              ) : (
-                // Plus icon white on orange background (new chat)
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  className="w-5 h-5"
-                  fill="#ffffff"
-                >
-                  <path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z" />
-                </svg>
-              )
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
+                <path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 1 0 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z" />
+              </svg>
             )}
           </button>
         </div>
