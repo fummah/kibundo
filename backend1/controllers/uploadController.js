@@ -3,13 +3,16 @@ import { pool } from "../config/db.js"; // create a separate db.js for pg Pool
 import Tesseract from "tesseract.js";
 import { askOpenAI } from "./openaiHelper.js";
 
+
 export const handleUpload = async (req, res) => {
   try {
+       const userId = req.user?.id;
+    console.log("👤 User ID from token:", userId);
     const filePath = req.file.path;
 
     // OCR extraction
-    //const userId = req.user?.id;
-      const userId = 1;
+ 
+      //const userId = 1;
 
     // ✅ Get student_id linked to this user
     const studentRes = await pool.query(
@@ -37,12 +40,14 @@ const convRes = await pool.query(
   `INSERT INTO conversations(user_id, scan_id, title)
    VALUES($1, $2, $3)
    RETURNING *`,
-  [1, scanId, title]
+  [userId, scanId, title]
 );
 
 const conversation = convRes.rows[0];
 
-console.log("🧩 New conversation created:", conversation);
+const conversationId = conversation.id; // ✅ Extract the ID
+
+console.log("New conversation created:", conversationId);
 
     // AI processing
     const systemPrompt = `
@@ -63,9 +68,9 @@ console.log("🧩 New conversation created:", conversation);
       )));
     }
 
-    res.json({ scan, parsed, aiText, aiRaw: raw });
+    res.json({ scan, parsed, aiText, aiRaw: raw,conversationId });
   } catch (err) {
-    console.error("❌ Upload error:", err);
+    console.error("❌ Upload error:", err); 
     res.status(500).json({ error: err.message });
   }
 };
