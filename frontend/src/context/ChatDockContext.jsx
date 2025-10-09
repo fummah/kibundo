@@ -302,7 +302,7 @@ export function ChatDockProvider({ children }) {
         if (snapshot.userId) fd.append("userId", snapshot.userId);
 
         // Authorization is handled by axios interceptor; no need to set headers unless you want to force multipart
-        const { data } = await api.post("/ai/upload", fd, {
+        const { data } = await api.post("ai/upload", fd, {
           headers: { "Content-Type": "multipart/form-data" },
         });
 

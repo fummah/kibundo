@@ -1,15 +1,20 @@
+// src/components/student/mobile/HomeworkChat.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+
 import { App } from "antd";
 import { CheckOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import api from "@/api/axios";
-import { useChatDock } from "@/context/ChatDockContext.jsx";
+import { useChatDock } from "@/context/ChatDockContext";
 
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
 import cameraIcon from "@/assets/mobile/icons/camera.png";
 import galleryIcon from "@/assets/mobile/icons/galary.png";
 import studentIcon from "@/assets/mobile/icons/stud-icon.png";
+  
+
 
 const FALLBACK_IMAGE_DATA_URL =
   "data:image/svg+xml;utf8," +
@@ -32,13 +37,24 @@ const formatMessage = (content, from = "agent", type = "text", meta = {}) => ({
   ...meta,
 });
 
+/** Build a stable signature independent of timestamp to avoid dupes */
+const msgSig = (m) => {
+  const type = m?.type ?? "text";
+  const from = (m?.from ?? m?.sender ?? "agent").toLowerCase();
+  const body =
+    typeof m?.content === "string"
+      ? m.content.trim().replace(/\s+/g, " ")
+      : JSON.stringify(m?.content ?? "");
+  return `${type}|${from}|${body.slice(0, 160)}`;
+};
+
 const mergeById = (a = [], b = []) => {
   const seen = new Set();
   const out = [];
   for (const arr of [a, b]) {
     if (!Array.isArray(arr)) continue;
     for (const m of arr) {
-      const key = m?.id ?? `${m?.from}|${m?.timestamp}|${String(m?.content).slice(0, 64)}`;
+      const key = m?.id ?? msgSig(m);
       if (seen.has(key)) continue;
       seen.add(key);
       out.push(m);
@@ -47,14 +63,16 @@ const mergeById = (a = [], b = []) => {
   return out;
 };
 
-const messageKey = (m, i) =>
-  m?.id ?? `${m?.from || "unk"}|${m?.timestamp || "t0"}|${String(m?.content ?? "").slice(0, 64)}|${i}`;
+const messageKey = (m, i) => m?.id ?? `${msgSig(m)}|${i}`;
 
 export default function HomeworkChat({
   messages: controlledMessagesProp,
   onMessagesChange: onMessagesChangeProp,
   initialMessages = [
-    formatMessage("Lade ein Foto deiner Hausaufgabe hoch, oder frag mich etwas darüber!", "agent"),
+    formatMessage(
+      "Lade ein Foto deiner Hausaufgabe hoch, oder frag mich etwas darüber!",
+      "agent"
+    ),
   ],
   onSendText,
   onSendMedia,
@@ -66,7 +84,13 @@ export default function HomeworkChat({
 }) {
   const navigate = useNavigate();
   const { message: antdMessage } = App.useApp();
-  const { state: dockState, markHomeworkDone, getChatMessages, setChatMessages, clearChatMessages } = useChatDock();
+  const {
+    state: dockState,
+    markHomeworkDone,
+    getChatMessages,
+    setChatMessages,
+    clearChatMessages,
+  } = useChatDock();
 
   // Conversation/task wiring
   const mode = "homework";
@@ -77,17 +101,21 @@ export default function HomeworkChat({
     if (taskId !== stableTaskIdRef.current) {
       stableTaskIdRef.current = taskId;
       didSeedRef.current = false; // new thread can seed greeting
-      uploadNudgeShownRef.current = false;
+      uploadNudgeShownRef.current = false; // reset nudge per thread
     }
   }, [taskId]);
 
   const scanId = dockState?.task?.scanId ?? null;
   const userId = dockState?.task?.userId ?? null;
-  const [conversationId, setConversationId] = useState(dockState?.task?.conversationId ?? null);
+  const [conversationId, setConversationId] = useState(
+    dockState?.task?.conversationId ?? null
+  );
 
   // Local buffer (keeps transient previews even if not persisted)
   const [localMessages, setLocalMessages] = useState(
-    controlledMessagesProp ?? getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) ?? initialMessages
+    controlledMessagesProp ??
+      getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) ??
+      initialMessages
   );
 
   // Seed persistence once per thread
@@ -95,9 +123,14 @@ export default function HomeworkChat({
   useEffect(() => {
     if (didSeedRef.current) return;
     if (!setChatMessages || !getChatMessages) return;
-    const current = getChatMessages(stableModeRef.current, stableTaskIdRef.current) || [];
+    const current =
+      getChatMessages(stableModeRef.current, stableTaskIdRef.current) || [];
     if (current.length === 0 && initialMessages?.length) {
-      setChatMessages(stableModeRef.current, stableTaskIdRef.current, [...initialMessages]);
+      setChatMessages(
+        stableModeRef.current,
+        stableTaskIdRef.current,
+        [...initialMessages]
+      );
     }
     didSeedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -106,7 +139,8 @@ export default function HomeworkChat({
   // Read view
   const msgs = useMemo(() => {
     if (controlledMessagesProp) return controlledMessagesProp;
-    const persisted = getChatMessages?.(stableModeRef.current, stableTaskIdRef.current);
+    const persisted =
+      getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) || [];
     if (Array.isArray(persisted) || Array.isArray(localMessages)) {
       return mergeById(persisted || [], localMessages || []);
     }
@@ -117,7 +151,11 @@ export default function HomeworkChat({
   const filterForPersist = useCallback((arr) => {
     return (arr || []).filter((m) => {
       if (m?.transient === true) return false;
-      if (m?.type === "image" && typeof m.content === "string" && m.content.startsWith("data:")) {
+      if (
+        m?.type === "image" &&
+        typeof m.content === "string" &&
+        m.content.startsWith("data:")
+      ) {
         return false;
       }
       return true;
@@ -135,17 +173,29 @@ export default function HomeworkChat({
         return;
       }
 
-      const current = getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) || [];
+      const current =
+        getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) || [];
       const baseArr = mergeById(current, Array.isArray(msgs) ? msgs : []);
       const nextVal = compute(baseArr);
 
       if (setChatMessages) {
         const persisted = filterForPersist(nextVal);
-        setChatMessages(stableModeRef.current, stableTaskIdRef.current, persisted);
+        setChatMessages(
+          stableModeRef.current,
+          stableTaskIdRef.current,
+          persisted
+        );
       }
       setLocalMessages(nextVal);
     },
-    [controlledMessagesProp, onMessagesChangeProp, setChatMessages, getChatMessages, msgs, filterForPersist]
+    [
+      controlledMessagesProp,
+      onMessagesChangeProp,
+      setChatMessages,
+      getChatMessages,
+      msgs,
+      filterForPersist,
+    ]
   );
 
   // UI state
@@ -166,9 +216,13 @@ export default function HomeworkChat({
   const lastLenRef = useRef(0);
   useEffect(() => {
     if (!listRef.current) return;
-    if (msgs?.length === lastLenRef.current && !typing && !externalTyping) return;
+    if (msgs?.length === lastLenRef.current && !typing && !externalTyping)
+      return;
     lastLenRef.current = msgs?.length ?? 0;
-    listRef.current.scrollTo({ top: listRef.current.scrollHeight + 9999, behavior: "smooth" });
+    listRef.current.scrollTo({
+      top: listRef.current.scrollHeight + 9999,
+      behavior: "smooth",
+    });
   }, [msgs, typing, externalTyping]);
 
   // Normalize server messages -> internal
@@ -182,27 +236,16 @@ export default function HomeworkChat({
     toArray(arr).map((m) =>
       formatMessage(
         m?.content ?? "",
-        (m?.sender || "agent").toLowerCase() === "student" ? "student" : "agent",
+        (m?.sender || "agent").toLowerCase() === "student"
+          ? "student"
+          : "agent",
         "text"
       )
     );
 
-  // Any image yet?
+  // Has the student already uploaded any image in this thread?
   const hasAnyImage = useMemo(
     () => Array.isArray(msgs) && msgs.some((m) => m?.type === "image"),
-    [msgs]
-  );
-
-  // suppress duplicate immediate sends
-  const isSameAsLastStudent = useCallback(
-    (text) => {
-      if (!text) return false;
-      const lastStudent = (Array.isArray(msgs) ? msgs : [])
-        .slice()
-        .reverse()
-        .find((x) => (x?.from ?? x?.sender) === "student");
-      return !!lastStudent && String(lastStudent.content).trim() === text.trim();
-    },
     [msgs]
   );
 
@@ -214,20 +257,24 @@ export default function HomeworkChat({
       const t = (text || "").trim();
       if (!t) return;
       if (sendingRef.current || sending) return; // hard guard
-      if (isSameAsLastStudent(t)) return;       // duplicate guard
       sendingRef.current = true;
       setSending(true);
 
-      // show student's bubble
-      const optimisticMsg = formatMessage(t, "student");
+      // Optimistic student bubble (transient so it won't persist/duplicate)
+      const optimisticMsg = formatMessage(t, "student", "text", {
+        transient: true,
+      });
       updateMessages((m) => [...m, optimisticMsg]);
 
-      // Gate: if no scan & no image yet -> nudge once
+      // Gate: if there is no scan yet AND no image uploaded in this thread, nudge once
       if (!scanId && !hasAnyImage && !uploadNudgeShownRef.current) {
         uploadNudgeShownRef.current = true;
         updateMessages((m) => [
           ...m,
-          formatMessage("Lade ein Foto deiner Hausaufgabe hoch, oder frag mich etwas darüber!", "agent"),
+          formatMessage(
+            "Lade ein Foto deiner Hausaufgabe hoch, oder frag mich etwas darüber!",
+            "agent"
+          ),
         ]);
         setSending(false);
         sendingRef.current = false;
@@ -240,17 +287,40 @@ export default function HomeworkChat({
           return;
         }
 
+        // Prefer append; on 400/404 retry create; on 404 overall fallback to ai/chat
         const firstUrl = conversationId
-          ? `/ai/conversations/${conversationId}/message`
-          : `/ai/conversations/message`;
+          ? `ai/conversations/${conversationId}/message`
+          : `ai/conversations/message`;
 
         let resp;
         try {
           resp = await api.post(firstUrl, { userId, message: t, scanId });
         } catch (err) {
           const code = err?.response?.status;
-          if (conversationId && (code === 404 || code === 400)) {
-            resp = await api.post(`/ai/conversations/message`, { userId, message: t, scanId });
+          if (code === 404) {
+            // Backend doesn’t have conversation endpoints -> fallback
+            const r = await api.post("ai/chat", {
+              question: t,
+              ai_agent: "ChildAgent",
+              mode: "homework",
+              scanId,
+              conversationId,
+            });
+            updateMessages((m) => [
+              ...m,
+              formatMessage(r?.data?.answer || "Okay!", "agent"),
+            ]);
+            setSending(false);
+            sendingRef.current = false;
+            return;
+          }
+          if (conversationId && (code === 400 || code === 404)) {
+            // create new conversation
+            resp = await api.post(`ai/conversations/message`, {
+              userId,
+              message: t,
+              scanId,
+            });
           } else {
             throw err;
           }
@@ -259,12 +329,14 @@ export default function HomeworkChat({
         const j = resp?.data || {};
         if (j?.conversationId && j.conversationId !== conversationId) {
           setConversationId(j.conversationId);
+        
         }
 
         const cid = j?.conversationId || conversationId;
         if (cid) {
-          const r2 = await api.get(`/ai/conversations/${cid}/messages`);
-          updateMessages(mapServerToInternal(r2.data)); // replace with server truth
+          const r2 = await api.get(`ai/conversations/${cid}/messages`);
+          // Replace history with server truth to avoid optimistic duplicates
+          updateMessages(mapServerToInternal(r2.data));
         } else if (j?.answer) {
           updateMessages((m) => [...m, formatMessage(j.answer, "agent")]);
         }
@@ -277,7 +349,10 @@ export default function HomeworkChat({
           "Unbekannter Fehler";
         updateMessages((m) => [
           ...m,
-          formatMessage(`Fehler beim Senden (${status ?? "?"}). ${serverMsg}`, "agent"),
+          formatMessage(
+            `Fehler beim Senden (${status ?? "?"}). ${serverMsg}`,
+            "agent"
+          ),
         ]);
         antdMessage.error(`Nachricht fehlgeschlagen: ${serverMsg}`);
       } finally {
@@ -285,7 +360,16 @@ export default function HomeworkChat({
         sendingRef.current = false;
       }
     },
-    [sending, onSendText, updateMessages, antdMessage, conversationId, scanId, userId, hasAnyImage, isSameAsLastStudent]
+    [
+      sending,
+      onSendText,
+      updateMessages,
+      antdMessage,
+      conversationId,
+      scanId,
+      userId,
+      hasAnyImage,
+    ]
   );
 
   // Media upload (scan) — previews are transient; Axios with detailed errors
@@ -323,11 +407,21 @@ export default function HomeworkChat({
                 fileType: file.type,
                 fileSize: file.size,
                 timestamp: new Date().toISOString(),
-                transient: true,
+                transient: true, // don't persist previews
               }
-            : formatMessage(`Datei hochgeladen: ${file.name}`, "student", "text", { transient: true });
+            : formatMessage(
+                `Datei hochgeladen: ${file.name}`,
+                "student",
+                "text",
+                { transient: true }
+              );
 
-          const loadingMessage = formatMessage("Ich analysiere dein Bild...", "agent", "status", { transient: true });
+          const loadingMessage = formatMessage(
+            "Ich analysiere dein Bild...",
+            "agent",
+            "status",
+            { transient: true }
+          );
           updateMessages((m) => [...m, studentMsg, loadingMessage]);
 
           try {
@@ -338,22 +432,27 @@ export default function HomeworkChat({
               formData.append("file", file);
               if (userId) formData.append("userId", userId);
 
-              const res = await api.post(`/ai/upload`, formData, {
+              const res = await api.post(`ai/upload`, formData, {
                 headers: { "Content-Type": "multipart/form-data" },
               });
 
               const data = res?.data || {};
               const extracted = data?.scan?.raw_text || data?.extractedText || "";
-              const qa =
-                Array.isArray(data?.parsed?.questions) ? data.parsed.questions :
-                Array.isArray(data?.qa) ? data.qa : [];
+              const qa = Array.isArray(data?.parsed?.questions)
+                ? data.parsed.questions
+                : Array.isArray(data?.qa)
+                ? data.qa
+                : [];
 
               updateMessages((m) => {
                 const arr = [...m];
                 const idx = arr.findIndex((msg) => msg.id === loadingMessage.id);
-                if (idx !== -1) arr[idx] = formatMessage("Analyse abgeschlossen.", "agent");
+                if (idx !== -1)
+                  arr[idx] = formatMessage("Analyse abgeschlossen.", "agent");
                 if (extracted || qa.length > 0) {
-                  arr.push(formatMessage({ extractedText: extracted, qa }, "agent", "table"));
+                  arr.push(
+                    formatMessage({ extractedText: extracted, qa }, "agent", "table")
+                  );
                 } else {
                   arr.push(
                     formatMessage(
@@ -367,6 +466,7 @@ export default function HomeworkChat({
 
               const newCid = data?.conversationId;
               if (newCid && newCid !== conversationId) setConversationId(newCid);
+             
             }
           } catch (err) {
             const status = err?.response?.status;
@@ -375,12 +475,20 @@ export default function HomeworkChat({
               err?.response?.data?.error ||
               err?.message ||
               "Unbekannter Fehler";
-            console.error("Upload/Analyse failed:", status, serverMsg, err?.response?.data);
+            console.error(
+              "Upload/Analyse failed:",
+              status,
+              serverMsg,
+              err?.response?.data
+            );
             updateMessages((m) => {
               const arr = [...m];
               const idx = arr.findIndex((msg) => msg.id === loadingMessage.id);
               if (idx !== -1) {
-                arr[idx] = formatMessage(`Analyse fehlgeschlagen (${status ?? "?"}). ${serverMsg}`, "agent");
+                arr[idx] = formatMessage(
+                  `Analyse fehlgeschlagen (${status ?? "?"}). ${serverMsg}`,
+                  "agent"
+                );
               }
               return arr;
             });
@@ -415,7 +523,12 @@ export default function HomeworkChat({
     const seed =
       Array.isArray(initialMessages) && initialMessages.length > 0
         ? [...initialMessages]
-        : [formatMessage("Hallo! Ich bin dein KI-Lernhelfer. Wie kann ich dir bei deinen Hausaufgaben helfen?", "agent")];
+        : [
+            formatMessage(
+              "Hallo! Ich bin dein KI-Lernhelfer. Wie kann ich dir bei deinen Hausaufgaben helfen?",
+              "agent"
+            ),
+          ];
     setChatMessages?.(modeKey, taskKey, seed);
     setLocalMessages(seed);
     setDraft("");
@@ -442,7 +555,11 @@ export default function HomeworkChat({
         return (
           <div className="relative">
             <img
-              src={typeof message.content === "string" ? message.content : message.content?.url || ""}
+              src={
+                typeof message.content === "string"
+                  ? message.content
+                  : message.content?.url || ""
+              }
               alt={message.fileName || "Hochgeladenes Bild"}
               className="max-w-full max-h-64 rounded-lg"
               onError={(e) => {
@@ -453,7 +570,9 @@ export default function HomeworkChat({
               }}
             />
             {message.fileName && (
-              <div className="text-xs text-gray-500 mt-1 truncate">{message.fileName}</div>
+              <div className="text-xs text-gray-500 mt-1 truncate">
+                {message.fileName}
+              </div>
             )}
           </div>
         );
@@ -476,15 +595,23 @@ export default function HomeworkChat({
                 <table className="w-full text-sm border-separate border-spacing-0">
                   <thead>
                     <tr>
-                      <th className="text-left bg-gray-100 border border-gray-200 px-2 py-1 rounded-tl">Frage</th>
-                      <th className="text-left bg-gray-100 border border-gray-200 px-2 py-1 rounded-tr">Antwort</th>
+                      <th className="text-left bg-gray-100 border border-gray-200 px-2 py-1 rounded-tl">
+                        Frage
+                      </th>
+                      <th className="text-left bg-gray-100 border border-gray-200 px-2 py-1 rounded-tr">
+                        Antwort
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {qa.map((q, i) => (
                       <tr key={i}>
-                        <td className="align-top border border-gray-200 px-2 py-2 whitespace-pre-wrap">{q?.text || "-"}</td>
-                        <td className="align-top border border-gray-200 px-2 py-2 whitespace-pre-wrap">{q?.answer || "(keine)"}</td>
+                        <td className="align-top border border-gray-200 px-2 py-2 whitespace-pre-wrap">
+                          {q?.text || "-"}
+                        </td>
+                        <td className="align-top border border-gray-200 px-2 py-2 whitespace-pre-wrap">
+                          {q?.answer || "(keine)"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -495,12 +622,20 @@ export default function HomeworkChat({
         );
       }
       default:
-        return <div className="whitespace-pre-wrap">{String(message.content ?? "")}</div>;
+        return (
+          <div className="whitespace-pre-wrap">
+            {String(message.content ?? "")}
+          </div>
+        );
     }
   };
 
   return (
-    <div className={["relative w-full h-full bg-white overflow-hidden", className].join(" ")}>
+    <div
+      className={["relative w-full h-full bg-white overflow-hidden", className].join(
+        " "
+      )}
+    >
       {/* Hidden file inputs */}
       <input
         ref={cameraInputRef}
@@ -548,18 +683,42 @@ export default function HomeworkChat({
           const isStudent = roleLower === "student" || roleLower === "user";
           const isAgent = !isStudent;
           return (
-            <div key={messageKey(message, idx)} className={`w-full flex ${isAgent ? "justify-start" : "justify-end"} mb-3`}>
+            <div
+              key={messageKey(message, idx)}
+              className={`w-full flex ${
+                isAgent ? "justify-start" : "justify-end"
+              } mb-3`}
+            >
               {isAgent && (
-                <img src={agentIcon} alt="Kibundo" className="w-7 h-7 rounded-full mr-2 self-end" />
+                <img
+                  src={agentIcon}
+                  alt="Kibundo"
+                  className="w-7 h-7 rounded-full mr-2 self-end"
+                />
               )}
-              <div className={`max-w-[78%] px-3 py-2 rounded-2xl shadow-sm ${isAgent ? "bg-white text-[#444]" : "bg-[#aee17b] text-[#1b3a1b]"}`}>
+              <div
+                className={`max-w-[78%] px-3 py-2 rounded-2xl shadow-sm ${
+                  isAgent ? "bg-white text-[#444]" : "bg-[#aee17b] text-[#1b3a1b]"
+                }`}
+              >
                 {renderMessageContent(message)}
-                <div className={`text-xs mt-1 ${isAgent ? "text-[#1b3a1b]/80" : "text-gray-500"}`}>
-                  {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                <div
+                  className={`text-xs mt-1 ${
+                    isAgent ? "text-[#1b3a1b]/80" : "text-gray-500"
+                  }`}
+                >
+                  {new Date(message.timestamp).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </div>
               </div>
               {!isAgent && (
-                <img src={studentIcon} alt="Schüler" className="w-7 h-7 rounded-full ml-2 self-end" />
+                <img
+                  src={studentIcon}
+                  alt="Schüler"
+                  className="w-7 h-7 rounded-full ml-2 self-end"
+                />
               )}
             </div>
           );
@@ -567,12 +726,22 @@ export default function HomeworkChat({
 
         {(typing || externalTyping) && (
           <div className="w-full flex justify-start mb-3">
-            <img src={agentIcon} alt="Kibundo" className="w-7 h-7 rounded-full mr-2 self-end" />
+            <img
+              src={agentIcon}
+              alt="Kibundo"
+              className="w-7 h-7 rounded-full mr-2 self-end"
+            />
             <div className="max-w-[78%] px-3 py-2 rounded-2xl shadow-sm bg-[#aee17b] text-[#1b3a1b]">
               <div className="flex gap-1">
                 <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" />
-                <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" style={{ animationDelay: "0.1s" }} />
-                <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" style={{ animationDelay: "0.2s" }} />
+                <div
+                  className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce"
+                  style={{ animationDelay: "0.1s" }}
+                />
+                <div
+                  className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce"
+                  style={{ animationDelay: "0.2s" }}
+                />
               </div>
             </div>
           </div>
@@ -633,33 +802,27 @@ export default function HomeworkChat({
           </div>
 
           <button
-            onClick={() => startNewChat()}
-            className="w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm"
-            style={{ backgroundColor: "#ff7a00" }}
-            aria-label="Neuen Chat starten"
-            type="button"
-            disabled={sending || uploading}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
-              <path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z" />
-            </svg>
-          </button>
-
-          <button
-            onClick={() => draft.trim() && sendText()}
+            onClick={() => {
+              if (!draft.trim()) return startNewChat();
+              sendText();
+            }}
             className={`w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm ${
               sending || uploading ? "opacity-70" : "hover:brightness-95"
             }`}
             style={{ backgroundColor: "#ff7a00" }}
-            aria-label={sending ? "Wird gesendet..." : "Nachricht senden"}
+            aria-label={sending ? "Wird gesendet..." : draft.trim() ? "Nachricht senden" : "Neuen Chat starten"}
             type="button"
-            disabled={sending || uploading || !draft.trim()}
+            disabled={sending || uploading}
           >
             {sending || uploading ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
+            ) : draft.trim() ? (
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
                 <path d="M21.44 2.56a1 1 0 0 0-1.05-.22L3.6 9.06a1 1 0 0 0 .04 1.87l6.9 2.28 2.3 6.91a1 1 0 0 0 1.86.03l6.74-16.78a1 1 0 0 0-.99-1.81ZM11.8 13.18l-4.18-1.38 9.68-4.04-5.5 5.42Z" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
+                <path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z" />
               </svg>
             )}
           </button>

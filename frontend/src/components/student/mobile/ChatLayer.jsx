@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom";
 import { App } from "antd";
 import api from "@/api/axios";
-import { useChatDock } from "@/context/ChatDockContext.jsx";
+import { useChatDock } from "@/context/ChatDockContext";
 
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
@@ -175,7 +175,7 @@ export default function ChatLayer({
         if (onSendText) {
           await onSendText(t);
         } else {
-          const { data } = await api.post("/ai/chat", {
+          const { data } = await api.post("ai/chat", {
             question: t,
             ai_agent: "ChildAgent",
             mode: "general",
