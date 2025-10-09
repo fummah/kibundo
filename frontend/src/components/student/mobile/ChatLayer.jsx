@@ -7,9 +7,9 @@ import { useChatDock } from "@/context/ChatDockContext";
 
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
-import cameraIcon from "@/assets/mobile/icons/camera.png";
-import galleryIcon from "@/assets/mobile/icons/galary.png";
 import studentIcon from "@/assets/mobile/icons/stud-icon.png";
+
+/** Text-only ChatLayer (no media capture/upload) */
 
 const FALLBACK_IMAGE_DATA_URL =
   "data:image/svg+xml;utf8," +
@@ -60,7 +60,6 @@ export default function ChatLayer({
     ),
   ],
   onSendText,
-  onSendMedia,
   isTyping: externalTyping = false,
   onClose,
   minimiseTo = "/student/home",
@@ -145,12 +144,9 @@ export default function ChatLayer({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
-  const [uploading, setUploading] = useState(false);
 
   const listRef = useRef(null);
   const inputRef = useRef(null);
-  const cameraInputRef = useRef(null);
-  const galleryInputRef = useRef(null);
 
   // Auto scroll
   const lastLenRef = useRef(0);
@@ -201,83 +197,6 @@ export default function ChatLayer({
     [sending, onSendText, updateMessages]
   );
 
-  // Upload images (kept simple)
-  const handleMediaUpload = useCallback(
-    async (files) => {
-      if (!files.length || uploading) return;
-      setUploading(true);
-
-      const readAsDataURL = (file) =>
-        new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-
-      const previews = [];
-      const fd = new FormData();
-
-      for (const file of files) {
-        try {
-          previews.push({
-            id: Date.now() + Math.random().toString(36).slice(2, 9),
-            from: "student",
-            sender: "student",
-            type: "image",
-            content: await readAsDataURL(file),
-            fileName: file.name,
-            fileType: file.type,
-            fileSize: file.size,
-            transient: true,
-            timestamp: new Date().toISOString(),
-          });
-        } catch {}
-        fd.append("files", file);
-      }
-
-      const loading = formatMessage("Ich analysiere dein Bild...", "agent", "status", { transient: true });
-      updateMessages((m) => [...m, ...previews, loading]);
-
-      try {
-        if (onSendMedia) {
-          await onSendMedia(files);
-        } else {
-          const { data } = await api.post("/ai/analyze-image", fd, {
-            headers: { "Content-Type": "multipart/form-data" },
-          });
-          updateMessages((m) => {
-            const arr = [...m];
-            const idx = arr.findIndex((x) => x.id === loading.id);
-            if (idx !== -1) {
-              arr[idx] = formatMessage(
-                data?.analysis || "Ich habe das Bild erhalten, aber konnte es nicht analysieren.",
-                "agent"
-              );
-            }
-            return arr;
-          });
-        }
-      } catch {
-        updateMessages((m) => {
-          const arr = [...m];
-          const idx = arr.findIndex((x) => x.id === loading.id);
-          if (idx !== -1) {
-            arr[idx] = formatMessage(
-              "Entschuldigung, beim Hochladen ist ein Fehler aufgetreten. Bitte versuche es später erneut.",
-              "agent"
-            );
-          }
-          return arr;
-        });
-        antdMessage.error("Bild konnte nicht hochgeladen werden");
-      } finally {
-        setUploading(false);
-      }
-    },
-    [onSendMedia, updateMessages, uploading, antdMessage]
-  );
-
   const sendText = useCallback(() => {
     if (!draft.trim()) return;
     handleSendText(draft).then(() => {
@@ -303,22 +222,12 @@ export default function ChatLayer({
     requestAnimationFrame(() => listRef.current?.scrollTo({ top: 999999, behavior: "smooth" }));
   }, [clearChatMessages, setChatMessages, initialMessages]);
 
-  const handleCameraChange = (e) => {
-    const f = e.target.files?.[0];
-    if (f) handleMediaUpload([f]);
-    e.target.value = "";
-  };
-  const handleGalleryChange = (e) => {
-    const fs = Array.from(e.target.files || []);
-    if (fs.length) handleMediaUpload(fs);
-    e.target.value = "";
-  };
-
-  /** ---------- RENDER CONTENT (fix for “only timestamp”) ---------- */
+  /** ---------- RENDER CONTENT ---------- */
   const renderMessageContent = (message) => {
     const type = (message?.type || "text").toLowerCase();
 
     if (type === "image") {
+      // Kept for safety if older messages exist with images
       const src = typeof message.content === "string" ? message.content : message?.content?.url || "";
       return (
         <div className="relative">
@@ -451,7 +360,7 @@ export default function ChatLayer({
         )}
       </div>
 
-      {/* Composer */}
+      {/* Composer (text only) */}
       <div
         className="absolute left-0 right-0 bottom-0 z-40"
         style={{ backgroundColor: "#b2c10a", paddingBottom: "env(safe-area-inset-bottom)" }}
@@ -459,44 +368,6 @@ export default function ChatLayer({
         aria-label="Nachrichten-Eingabe"
       >
         <div className="mx-auto max-w-[900px] px-3 py-2 flex items-center gap-3">
-          <button
-            onClick={() => cameraInputRef.current?.click()}
-            className="w-10 h-10 grid place-items-center bg-white/30 rounded-full"
-            aria-label="Kamera öffnen"
-            type="button"
-            disabled={sending || uploading}
-          >
-            <img src={cameraIcon} alt="" className="w-6 h-6" />
-          </button>
-
-          <button
-            onClick={() => galleryInputRef.current?.click()}
-            className="w-10 h-10 grid place-items-center bg-white/30 rounded-full"
-            aria-label="Galerie öffnen"
-            type="button"
-            disabled={sending || uploading}
-          >
-            <img src={galleryIcon} alt="" className="w-6 h-6" />
-          </button>
-
-          {/* Hidden file inputs */}
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleCameraChange}
-            className="hidden"
-          />
-          <input
-            ref={galleryInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handleGalleryChange}
-            className="hidden"
-          />
-
           <div className="flex-1 h-10 flex items-center px-3 bg-white rounded-full">
             <input
               ref={inputRef}
@@ -506,7 +377,7 @@ export default function ChatLayer({
               placeholder="Schreibe eine Nachricht…"
               className="w-full bg-transparent outline-none text-[15px]"
               aria-label="Nachricht eingeben"
-              disabled={sending || uploading}
+              disabled={sending}
             />
           </div>
 
@@ -516,14 +387,14 @@ export default function ChatLayer({
               sendText();
             }}
             className={`w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm ${
-              sending || uploading ? "opacity-70" : "hover:brightness-95"
+              sending ? "opacity-70" : "hover:brightness-95"
             }`}
             style={{ backgroundColor: "#ff7a00" }}
             aria-label={sending ? "Wird gesendet..." : (draft.trim() ? "Nachricht senden" : "Neuen Chat starten")}
             type="button"
-            disabled={sending || uploading}
+            disabled={sending}
           >
-            {sending || uploading ? (
+            {sending ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : draft.trim() ? (
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
