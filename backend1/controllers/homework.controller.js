@@ -16,20 +16,14 @@ dotenv.config();
 const { Pool } = pkg;
 const app = express();
 app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json({ limit: "50mb" }));
+app.use(bodyParser.urlencoded({ extended: true, limit: "50mb" }));
 
-const upload = multer({ dest: "uploads/" });
-
-// ================================
-// 🧩 PostgreSQL Setup
-// ================================
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: process.env.DB_PORT || 5432,
+const upload = multer({
+  dest: "uploads/",
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50 MB
+  }
 });
 
 console.log("📦 Connected as DB user:", process.env.DB_USER);
