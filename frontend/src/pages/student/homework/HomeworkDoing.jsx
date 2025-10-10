@@ -93,6 +93,7 @@ export default function HomeworkDoing() {
     // Do NOT send userId; server infers from auth (bearer token)
     const { data } = await api.post("ai/upload", fd, {
       headers: { "Content-Type": "multipart/form-data" },
+      meta: { forceAuthHeader: true },
     });
     return data;
   };
@@ -173,13 +174,22 @@ export default function HomeworkDoing() {
       try {
         scanData = await uploadWithApi(file);
       } catch (e) {
+        const status = e?.response?.status;
+        const serverMsg =
+          e?.response?.data?.message ||
+          e?.response?.data?.error ||
+          e?.message ||
+          "Unbekannter Fehler";
         if (loadingMsg) {
           replaceMessageInChat(mode, scopedKey, loadingMsg.id, () =>
-            fmt("Analyse fehlgeschlagen. Bitte versuche es erneut.", "agent")
+            fmt(
+              `Analyse fehlgeschlagen (${status ?? "?"}). ${serverMsg}`,
+              "agent"
+            )
           );
         }
-        antdMessage.error("Upload/Analyse fehlgeschlagen.",e.message);
-        antdMessage.error("My : ",file);
+        console.error("Upload/Analyse failed (HomeworkDoing)", status, serverMsg, e?.response?.data);
+        antdMessage.error(`Upload/Analyse fehlgeschlagen: ${serverMsg}`);
       } finally {
         setUploading(false); // hide overlay; chat keeps status bubble until result
       }
