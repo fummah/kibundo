@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { App } from "antd";
 import api from "@/api/axios";
 import { useChatDock } from "@/context/ChatDockContext";
+import { useAuthContext } from "@/context/AuthContext";
 
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
@@ -38,7 +39,7 @@ const mergeById = (a = [], b = []) => {
   for (const arr of [a, b]) {
     if (!Array.isArray(arr)) continue;
     for (const m of arr) {
-      const key = m?.id ?? `${m?.from}|${m?.timestamp}|${String(m?.content).slice(0,64)}`;
+      const key = m?.id ?? `${m?.from}|${m?.timestamp}|${String(m?.content).slice(0, 64)}`;
       if (seen.has(key)) continue;
       seen.add(key);
       out.push(m);
@@ -48,7 +49,7 @@ const mergeById = (a = [], b = []) => {
 };
 
 const messageKey = (m, i) =>
-  m?.id ?? `${m?.from || "unk"}|${m?.timestamp || "t0"}|${String(m?.content ?? "").slice(0,64)}|${i}`;
+  m?.id ?? `${m?.from || "unk"}|${m?.timestamp || "t0"}|${String(m?.content ?? "").slice(0, 64)}|${i}`;
 
 export default function ChatLayer({
   messages: controlledMessagesProp,
@@ -70,12 +71,34 @@ export default function ChatLayer({
   const { message: antdMessage } = App.useApp();
 
   const { getChatMessages, setChatMessages, clearChatMessages } = useChatDock();
+  const { user: authUser } = useAuthContext();
 
-  // Always "general" mode (no task id)
+  // Always "general" mode — but now we SCOPE the key PER STUDENT
   const mode = "general";
-  const taskId = null;
+  const baseTaskId = "global";
+  const studentId =
+    authUser?.id ??
+    // fallback places if you carry it elsewhere in state:
+    // dockState?.student?.id ?? dockState?.task?.userId ??
+    "anon";
+
+  // IMPORTANT: scoped key so storage/history is per-student
+  const scopedTaskKey = useMemo(
+    () => `${baseTaskId}::u:${studentId}`,
+    [baseTaskId, studentId]
+  );
+
   const stableModeRef = useRef(mode);
-  const stableTaskIdRef = useRef(taskId);
+  const stableTaskIdRef = useRef(scopedTaskKey);
+
+  // If student changes (or we log in/out), reset seed flags and switch thread
+  const didSeedRef = useRef(false);
+  useEffect(() => {
+    if (scopedTaskKey !== stableTaskIdRef.current) {
+      stableTaskIdRef.current = scopedTaskKey;
+      didSeedRef.current = false;
+    }
+  }, [scopedTaskKey]);
 
   // Local UI buffer
   const [localMessages, setLocalMessages] = useState(
@@ -84,23 +107,30 @@ export default function ChatLayer({
       initialMessages
   );
 
-  // Seed once if empty
-  const didSeedRef = useRef(false);
+  // Seed once if empty (per scoped key)
   useEffect(() => {
     if (didSeedRef.current) return;
     if (!setChatMessages || !getChatMessages) return;
-    const current = getChatMessages(stableModeRef.current, stableTaskIdRef.current) || [];
+    const current =
+      getChatMessages(stableModeRef.current, stableTaskIdRef.current) || [];
     if (current.length === 0 && initialMessages?.length) {
-      setChatMessages(stableModeRef.current, stableTaskIdRef.current, [...initialMessages]);
+      setChatMessages(
+        stableModeRef.current,
+        stableTaskIdRef.current,
+        [...initialMessages]
+      );
     }
     didSeedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setChatMessages, getChatMessages, initialMessages]);
+  }, [setChatMessages, getChatMessages, initialMessages, scopedTaskKey]);
 
   // Single source for reading
   const msgs = useMemo(() => {
     if (controlledMessagesProp) return controlledMessagesProp;
-    const persisted = getChatMessages?.(stableModeRef.current, stableTaskIdRef.current);
+    const persisted = getChatMessages?.(
+      stableModeRef.current,
+      stableTaskIdRef.current
+    );
     if (Array.isArray(persisted) || Array.isArray(localMessages)) {
       return mergeById(persisted || [], localMessages || []);
     }
@@ -128,17 +158,29 @@ export default function ChatLayer({
         return;
       }
 
-      const current = getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) || [];
+      const current =
+        getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) || [];
       const baseArr = mergeById(current, Array.isArray(msgs) ? msgs : []);
       const nextVal = compute(baseArr);
 
       if (setChatMessages) {
         const persisted = filterForPersist(nextVal);
-        setChatMessages(stableModeRef.current, stableTaskIdRef.current, persisted);
+        setChatMessages(
+          stableModeRef.current,
+          stableTaskIdRef.current,
+          persisted
+        );
       }
       setLocalMessages(nextVal);
     },
-    [controlledMessagesProp, onMessagesChangeProp, setChatMessages, getChatMessages, msgs, filterForPersist]
+    [
+      controlledMessagesProp,
+      onMessagesChangeProp,
+      setChatMessages,
+      getChatMessages,
+      msgs,
+      filterForPersist,
+    ]
   );
 
   const [draft, setDraft] = useState("");
@@ -157,7 +199,7 @@ export default function ChatLayer({
     listRef.current.scrollTo({ top: listRef.current.scrollHeight + 9999, behavior: "smooth" });
   }, [msgs, typing, externalTyping]);
 
-  // Send text
+  // Send text (do NOT send any userId; server must infer from auth)
   const handleSendText = useCallback(
     async (text) => {
       const t = (text || "").trim();
@@ -190,11 +232,16 @@ export default function ChatLayer({
             "agent"
           ),
         ]);
+        antdMessage.error(
+          err?.response?.data?.message ||
+            err?.message ||
+            "Nachricht fehlgeschlagen."
+        );
       } finally {
         setSending(false);
       }
     },
-    [sending, onSendText, updateMessages]
+    [sending, onSendText, updateMessages, antdMessage]
   );
 
   const sendText = useCallback(() => {
@@ -219,7 +266,9 @@ export default function ChatLayer({
     setChatMessages?.(stableModeRef.current, stableTaskIdRef.current, seed);
     setLocalMessages(seed);
     setDraft("");
-    requestAnimationFrame(() => listRef.current?.scrollTo({ top: 999999, behavior: "smooth" }));
+    requestAnimationFrame(() =>
+      listRef.current?.scrollTo({ top: 999999, behavior: "smooth" })
+    );
   }, [clearChatMessages, setChatMessages, initialMessages]);
 
   /** ---------- RENDER CONTENT ---------- */
@@ -291,7 +340,7 @@ export default function ChatLayer({
       );
     }
 
-    // default: show text/status; stringify unknown shapes safely
+    // default: text/status; stringify unknown shapes safely
     const body =
       typeof message?.content === "string"
         ? message.content
@@ -373,7 +422,17 @@ export default function ChatLayer({
               ref={inputRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendText()}
+              onKeyDown={(e) => {
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  !e.nativeEvent.isComposing &&
+                  draft.trim()
+                ) {
+                  e.preventDefault();
+                  sendText();
+                }
+              }}
               placeholder="Schreibe eine Nachricht…"
               className="w-full bg-transparent outline-none text-[15px]"
               aria-label="Nachricht eingeben"
@@ -402,7 +461,7 @@ export default function ChatLayer({
               </svg>
             ) : (
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
-                <path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 1 0 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z" />
+                <path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z" />
               </svg>
             )}
           </button>

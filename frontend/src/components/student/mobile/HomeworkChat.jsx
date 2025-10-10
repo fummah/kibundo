@@ -1,20 +1,18 @@
 // src/components/student/mobile/HomeworkChat.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-
 import { App } from "antd";
 import { CheckOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import api from "@/api/axios";
-import { useChatDock } from "@/context/ChatDockContext";
+import { useChatDock, TASKS_KEY } from "@/context/ChatDockContext";
+import { useAuthContext } from "@/context/AuthContext";
 
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
 import cameraIcon from "@/assets/mobile/icons/camera.png";
 import galleryIcon from "@/assets/mobile/icons/galary.png";
 import studentIcon from "@/assets/mobile/icons/stud-icon.png";
-  
-
 
 const FALLBACK_IMAGE_DATA_URL =
   "data:image/svg+xml;utf8," +
@@ -81,6 +79,7 @@ export default function HomeworkChat({
   minimiseTo = "/student/homework",
   minimiseHeight = 54,
   className = "",
+  onDone,
 }) {
   const navigate = useNavigate();
   const { message: antdMessage } = App.useApp();
@@ -91,25 +90,66 @@ export default function HomeworkChat({
     setChatMessages,
     clearChatMessages,
   } = useChatDock();
+  const { user: authUser } = useAuthContext();
 
-  // Conversation/task wiring
+  // Conversation/task wiring, now SCOPED PER STUDENT
   const mode = "homework";
   const taskId = dockState?.task?.id ?? null;
+
+  // determine the active student id (prefer authenticated user)
+  const studentId =
+    authUser?.id ??
+    dockState?.task?.userId ??
+    dockState?.student?.id ??
+    "anon";
+
+  // IMPORTANT: scope the persisted key by student so nothing leaks across users
+  const scopedTaskKey = useMemo(
+    () => `${taskId ?? "global"}::u:${studentId}`,
+    [taskId, studentId]
+  );
+
   const stableModeRef = useRef(mode);
-  const stableTaskIdRef = useRef(taskId);
+  const stableTaskIdRef = useRef(scopedTaskKey);
+
   useEffect(() => {
-    if (taskId !== stableTaskIdRef.current) {
-      stableTaskIdRef.current = taskId;
+    if (scopedTaskKey !== stableTaskIdRef.current) {
+      stableTaskIdRef.current = scopedTaskKey;
       didSeedRef.current = false; // new thread can seed greeting
       uploadNudgeShownRef.current = false; // reset nudge per thread
     }
-  }, [taskId]);
+  }, [scopedTaskKey]);
 
   const scanId = dockState?.task?.scanId ?? null;
-  const userId = dockState?.task?.userId ?? null;
-  const [conversationId, setConversationId] = useState(
-    dockState?.task?.conversationId ?? null
+
+  // Persist conversationId PER (mode + task + student)
+  const convKey = useMemo(
+    () => `kibundo.convId.${mode}.${scopedTaskKey}`,
+    [mode, scopedTaskKey]
   );
+
+  const [conversationId, setConversationId] = useState(() => {
+    try {
+      return (
+        (typeof window !== "undefined" &&
+          window.localStorage.getItem(convKey)) ||
+        dockState?.task?.conversationId ||
+        null
+      );
+    } catch {
+      return dockState?.task?.conversationId || null;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (conversationId) {
+        window.localStorage.setItem(convKey, conversationId);
+      } else {
+        window.localStorage.removeItem(convKey);
+      }
+    } catch {}
+  }, [conversationId, convKey]);
 
   // Local buffer (keeps transient previews even if not persisted)
   const [localMessages, setLocalMessages] = useState(
@@ -134,7 +174,7 @@ export default function HomeworkChat({
     }
     didSeedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setChatMessages, getChatMessages, initialMessages, taskId]);
+  }, [setChatMessages, getChatMessages, initialMessages, scopedTaskKey]);
 
   // Read view
   const msgs = useMemo(() => {
@@ -260,26 +300,14 @@ export default function HomeworkChat({
       sendingRef.current = true;
       setSending(true);
 
-      // Optimistic student bubble (transient so it won't persist/duplicate)
+      // Optimistic student bubble (persisted so it survives close/reopen; dedupe handled by mergeById)
       const optimisticMsg = formatMessage(t, "student", "text", {
-        transient: true,
+        pending: true,
       });
       updateMessages((m) => [...m, optimisticMsg]);
 
       // Gate: if there is no scan yet AND no image uploaded in this thread, nudge once
-      if (!scanId && !hasAnyImage && !uploadNudgeShownRef.current) {
-        uploadNudgeShownRef.current = true;
-        updateMessages((m) => [
-          ...m,
-          formatMessage(
-            "Lade ein Foto deiner Hausaufgabe hoch, oder frag mich etwas darüber!",
-            "agent"
-          ),
-        ]);
-        setSending(false);
-        sendingRef.current = false;
-        return;
-      }
+   
 
       try {
         if (onSendText) {
@@ -294,7 +322,8 @@ export default function HomeworkChat({
 
         let resp;
         try {
-          resp = await api.post(firstUrl, { userId, message: t, scanId });
+          // NOTE: do NOT send userId; the server must read the user from auth
+          resp = await api.post(firstUrl, { message: t, scanId });
         } catch (err) {
           const code = err?.response?.status;
           if (code === 404) {
@@ -317,7 +346,6 @@ export default function HomeworkChat({
           if (conversationId && (code === 400 || code === 404)) {
             // create new conversation
             resp = await api.post(`ai/conversations/message`, {
-              userId,
               message: t,
               scanId,
             });
@@ -329,7 +357,6 @@ export default function HomeworkChat({
         const j = resp?.data || {};
         if (j?.conversationId && j.conversationId !== conversationId) {
           setConversationId(j.conversationId);
-        
         }
 
         const cid = j?.conversationId || conversationId;
@@ -367,7 +394,6 @@ export default function HomeworkChat({
       antdMessage,
       conversationId,
       scanId,
-      userId,
       hasAnyImage,
     ]
   );
@@ -430,14 +456,15 @@ export default function HomeworkChat({
             } else {
               const formData = new FormData();
               formData.append("file", file);
-              if (userId) formData.append("userId", userId);
+              // DO NOT append userId — server infers from auth
 
               const res = await api.post(`ai/upload`, formData, {
                 headers: { "Content-Type": "multipart/form-data" },
               });
 
               const data = res?.data || {};
-              const extracted = data?.scan?.raw_text || data?.extractedText || "";
+              const extracted =
+                data?.scan?.raw_text || data?.extractedText || "";
               const qa = Array.isArray(data?.parsed?.questions)
                 ? data.parsed.questions
                 : Array.isArray(data?.qa)
@@ -466,7 +493,58 @@ export default function HomeworkChat({
 
               const newCid = data?.conversationId;
               if (newCid && newCid !== conversationId) setConversationId(newCid);
-             
+
+              // Upsert a task so the homework list shows this scan
+              try {
+                const sid = studentId || "anon";
+                const tasksKeyUser = `${TASKS_KEY}::u:${sid}`;
+                const nowIso = new Date().toISOString();
+                const effectiveTaskId = taskId || "global";
+                const load = () => {
+                  try {
+                    return JSON.parse(localStorage.getItem(tasksKeyUser) || "[]");
+                  } catch {
+                    return [];
+                  }
+                };
+                const save = (arr) => {
+                  try {
+                    localStorage.setItem(tasksKeyUser, JSON.stringify(arr));
+                    return true;
+                  } catch {
+                    return false;
+                  }
+                };
+                const tasks = load();
+                const idx = tasks.findIndex((t) => t?.id === effectiveTaskId);
+                const base = idx >= 0 ? tasks[idx] : {};
+                const updated = {
+                  id: effectiveTaskId,
+                  createdAt: base.createdAt || nowIso,
+                  updatedAt: nowIso,
+                  subject: base.subject || "Sonstiges",
+                  what: base.what || "Foto-Aufgabe",
+                  description: base.description || (files?.[0]?.name || ""),
+                  due: base.due || null,
+                  done: base.done ?? false,
+                  source: base.source || "image",
+                  fileName: base.fileName || files?.[0]?.name || null,
+                  fileType: base.fileType || files?.[0]?.type || null,
+                  fileSize: base.fileSize || files?.[0]?.size || null,
+                  hasImage: true,
+                  scanId: data?.scan?.id ?? base.scanId ?? null,
+                  conversationId: newCid ?? base.conversationId ?? null,
+                  userId: sid,
+                };
+                const next = [...tasks];
+                if (idx >= 0) next[idx] = { ...base, ...updated };
+                else next.unshift(updated);
+                if (save(next)) {
+                  try {
+                    window.dispatchEvent(new Event("kibundo:tasks-updated"));
+                  } catch {}
+                }
+              } catch {}
             }
           } catch (err) {
             const status = err?.response?.status;
@@ -492,14 +570,15 @@ export default function HomeworkChat({
               }
               return arr;
             });
-            antdMessage.error(`Upload/Analyse fehlgeschlagen: ${serverMsg}`);
+            antdMessage.error(`Upload/Analyse fehlgeschlagen GGG: ${err}`);
+            antdMessage.error(`My token is --- : ${err}`);
           }
         }
       } finally {
         setUploading(false);
       }
     },
-    [onSendMedia, updateMessages, antdMessage, uploading, userId, conversationId]
+    [onSendMedia, updateMessages, antdMessage, uploading, conversationId]
   );
 
   const sendText = useCallback(() => {
@@ -533,6 +612,8 @@ export default function HomeworkChat({
     setLocalMessages(seed);
     setDraft("");
     setTyping(false);
+    // clear the conversationId for this scoped chat
+    setConversationId(null);
     requestAnimationFrame(() =>
       listRef.current?.scrollTo({ top: 999999, behavior: "smooth" })
     );
@@ -685,9 +766,7 @@ export default function HomeworkChat({
           return (
             <div
               key={messageKey(message, idx)}
-              className={`w-full flex ${
-                isAgent ? "justify-start" : "justify-end"
-              } mb-3`}
+              className={`w-full flex ${isAgent ? "justify-start" : "justify-end"} mb-3`}
             >
               {isAgent && (
                 <img
@@ -703,9 +782,7 @@ export default function HomeworkChat({
               >
                 {renderMessageContent(message)}
                 <div
-                  className={`text-xs mt-1 ${
-                    isAgent ? "text-[#1b3a1b]/80" : "text-gray-500"
-                  }`}
+                  className={`text-xs mt-1 ${isAgent ? "text-[#1b3a1b]/80" : "text-gray-500"}`}
                 >
                   {new Date(message.timestamp).toLocaleTimeString([], {
                     hour: "2-digit",

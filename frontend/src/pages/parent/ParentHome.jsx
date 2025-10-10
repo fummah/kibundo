@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import api from "@/api/axios";
+import { useAuthContext } from "@/context/AuthContext";
 
 import ParentShell from "@/components/parent/ParentShell";
 // ✅ explicit extension + alias to avoid any shadowing
@@ -83,18 +84,9 @@ export default function ParentHome() {
   const inputRef = useRef(null);
   const greetingAddedRef = useRef(false);
 
-  // Get current user information
-  const getCurrentUser = () => {
-    try {
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      return user;
-    } catch {
-      return {};
-    }
-  };
-
-  const currentUser = getCurrentUser();
-  const parentName = currentUser.first_name || currentUser.name || 'there';
+  // Current user from context (small, safe summary)
+  const { user } = useAuthContext();
+  const parentName = user?.first_name || user?.name || 'there';
 
   // Prevent background scroll when chat is open
   React.useEffect(() => {

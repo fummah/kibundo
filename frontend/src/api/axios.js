@@ -97,6 +97,23 @@ const looksLikeHtml = (error) => {
   return ct.includes("text/html");
 };
 
+// Single-toast helper: normalize URL and use a keyed message to avoid duplicates
+const normalizePath = (u = "") => {
+  try {
+    const url = new URL(u, window.location.origin);
+    return `${url.origin}${url.pathname}`; // drop query/hash
+  } catch {
+    // relative or invalid: best-effort strip query/hash
+    const s = String(u || "");
+    return s.split("?")[0].split("#")[0];
+  }
+};
+
+const toastOnce = (status, url, content) => {
+  const key = `err:${status}:${normalizePath(url)}`;
+  message.open({ key, type: "error", content, duration: 3 });
+};
+
 const readToken = () => {
   try {
     for (const k of TOKEN_KEYS) {
@@ -216,16 +233,12 @@ api.interceptors.response.use(
 
     // 404 from Vite without proxy often returns index.html (text/html)
     if (looksLikeHtml(error)) {
-      if (status === 404 && meta.toast404 !== false) {
-        message.error("Requested resource not found (404).");
-      }
+      // No toast here; let backend/consumers handle messaging
       return Promise.reject(error);
     }
 
     if (status === 401) {
-      if (meta.toast401 !== false) {
-        message.error("Session expired. Please log in again.");
-      }
+      // No auth toast; backend handles messaging
       try {
         TOKEN_KEYS.forEach((k) => localStorage.removeItem(k));
         localStorage.removeItem("user");
@@ -241,9 +254,7 @@ api.interceptors.response.use(
     }
 
     if (status === 403) {
-      if (meta.toast403 !== false) {
-        message.warning("Forbidden: you don’t have permission to perform this action.");
-      }
+      // No auth toast; backend handles messaging
       if (meta.redirectOn403) {
         setTimeout(() => {
           window.location.href =
@@ -254,20 +265,12 @@ api.interceptors.response.use(
     }
 
     if (status === 404) {
-      if (!isGet(cfg) || meta.toast404 === true) {
-        message.error("Requested resource not found (404).");
-      }
+      // No toast here; let backend/consumers handle messaging
       return Promise.reject(error);
     }
 
     if (status >= 400 && status < 500) {
-      if (meta.toast4xx !== false) {
-        const msg =
-          error?.response?.data?.message ||
-          error?.response?.data?.error ||
-          "Request error.";
-        message.error(msg);
-      }
+      // No generic 4xx toast for auth; let backend/callers decide
       return Promise.reject(error);
     }
 

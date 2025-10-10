@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 import { bottomChat } from "@/assets/mobile/tiles";
 import ChatLayer from "@/components/student/mobile/ChatLayer.jsx";
 import HomeworkChat from "@/components/student/mobile/HomeworkChat.jsx";
+import { useChatDock } from "@/context/ChatDockContext";
 
 /** Spacer so page content never hides behind footer. */
 export function ChatStripSpacer({ className = "" }) {
@@ -32,6 +33,7 @@ export default function FooterChat({
 }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
+  const { state: dockState, closeChat, expandChat } = useChatDock();
 
   // Route helpers
   const isOnHomework = useMemo(
@@ -60,11 +62,18 @@ export default function FooterChat({
     !includeOnRoutes?.length ||
     includeOnRoutes.some((r) => pathname.startsWith(r));
 
-  // Hide the footer trigger if not included or explicitly hidden
-  if (isHidden || !isIncluded) return null;
-
   // Which component should the sheet show?
   const SheetContent = isOnHomework ? HomeworkChat : ChatLayer;
+
+  // Sync the bottom sheet with global chat dock visibility/expansion and task changes
+  useEffect(() => {
+    const shouldOpen = isOnHomework && (dockState?.visible || dockState?.expanded);
+    if (shouldOpen) setOpen(true);
+    if (!dockState?.visible && !dockState?.expanded) setOpen(false);
+  }, [isOnHomework, dockState?.visible, dockState?.expanded, dockState?.task?.id, dockState?.task?.updatedAt]);
+
+  // Hide the footer trigger if not included or explicitly hidden
+  if (isHidden || !isIncluded) return null;
 
   return (
     <>
@@ -78,7 +87,10 @@ export default function FooterChat({
       >
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setOpen(true);
+            expandChat?.();
+          }}
           className="block w-full pointer-events-auto active:scale-[0.98] transition"
           aria-label="Open chat"
         >
@@ -100,8 +112,11 @@ export default function FooterChat({
       >
         <button
           type="button"
-          onClick={() => setOpen(true)}
-          className="block w-full pointer-events-auto active:scale-[0.98] transition"
+          onClick={() => {
+            setOpen(true);
+            expandChat?.();
+          }}
+          className="block w-full pointer-events-auto active:scale-[0.98] transition dd"
           aria-label="Open chat"
         >
           <img
@@ -128,7 +143,10 @@ export default function FooterChat({
             type="button"
             aria-label="Close"
             className="absolute inset-0 bg-black/40"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              setOpen(false);
+              closeChat?.();
+            }}
           />
 
           {/* Sheet panel */}
@@ -150,9 +168,21 @@ export default function FooterChat({
                 - Closing the sheet fully unmounts the chat to avoid scanner lockups.
             */}
             {isOnHomework ? (
-              <SheetContent taskId={taskId} onClose={() => setOpen(false)} />
+              <SheetContent
+                taskId={taskId}
+                onClose={() => {
+                  setOpen(false);
+                  closeChat?.();
+                }}
+                onDone={setOpen}
+              />
             ) : (
-              <SheetContent onClose={() => setOpen(false)} />
+              <SheetContent
+                onClose={() => {
+                  setOpen(false);
+                  closeChat?.();
+                }}
+              />
             )}
           </div>
         </div>

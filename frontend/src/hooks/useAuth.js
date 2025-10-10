@@ -1,41 +1,18 @@
 // src/hooks/useAuth.js
-import { useEffect, useState } from "react";
+// Legacy hook wrapper that proxies to the new AuthContext.
+// This keeps older imports working while removing direct localStorage usage.
+import { useAuthContext } from "@/context/AuthContext";
 
 export function useAuth() {
-  const [user, setUser] = useState(() => {
-    const storedUser = localStorage.getItem("user");
-    return storedUser ? JSON.parse(storedUser) : null;
-  });
-
-  const [token, setToken] = useState(() => localStorage.getItem("token"));
-
-  const isAuthenticated = !!user;
-
-  const login = (userData, token) => {
-    setUser(userData);
-    setToken(token);
-    localStorage.setItem("user", JSON.stringify(userData));
-    localStorage.setItem("token", token);
-  };
-
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-  };
-
-  // Optional: auto-logout on token expiration
-  useEffect(() => {
-    // You can add token expiration logic here if needed
-  }, []);
-
+  const ctx = useAuthContext();
+  // Maintain legacy surface where possible
   return {
-    user,
-    token,
-    isAuthenticated,
-    role: user?.role_id || null,
-    login,
-    logout,
+    user: ctx.user,
+    token: ctx.token,
+    isAuthenticated: ctx.isAuthenticated,
+    role: ctx.role,
+    login: ctx.login,
+    logout: ctx.logout,
+    updateUserSummary: ctx.updateUserSummary,
   };
 }

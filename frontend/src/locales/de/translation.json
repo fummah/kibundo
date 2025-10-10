@@ -3,6 +3,17 @@
     "exportCsv": "CSV exportieren",
     "reset": "Zurücksetzen"
   },
+  "common": {
+    "pending": "Ausstehend",
+    "active": "Aktiv",
+    "inactive": "Inaktiv",
+    "all": "Alle",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "moreActions": "Weitere Aktionen"
+  },
   "rolesList": {
     "accessControl": {
       "title": "Zugriffskontrolle",
@@ -21,6 +32,20 @@
       "count": "({{count}})",
       "new": "Neue Rolle"
     },
+    "columns": {
+      "permissions": "Berechtigungen",
+      "first": "Vorname",
+      "last": "Nachname",
+      "role": "Rolle",
+      "phone": "Telefon",
+      "status": "Status",
+      "created": "Erstellt"
+    },
+    "filters": {
+      "search": "Suche nach Name, E-Mail, Telefon, Rolle…",
+      "role": "Nach Rolle filtern",
+      "status": "Status"
+    },
     "users": {
       "title": "Benutzer",
       "count": "({{count}})",
@@ -30,14 +55,19 @@
       "name": {
         "label": "Rollenname",
         "required": "Rollenname ist erforderlich",
-        "maxLength": "Unter 50 Zeichen halten"
+        "maxLength": "Unter 50 Zeichen halten",
+        "placeholder": "z. B. Content Manager"
       },
       "edit": "Rolle bearbeiten",
       "create": "Rolle erstellen",
       "permissions": {
         "required": "Wählen Sie mindestens eine Berechtigung aus",
-        "adminOnly": "Nur Administratoren können 'agent:*' (Kibundo) Berechtigungen bearbeiten"
+        "adminOnly": "Nur Administratoren können 'agent:*' (Kibundo) Berechtigungen bearbeiten",
+        "placeholder": "Berechtigungen auswählen"
       }
+    },
+    "actions": {
+      "createAndSendReset": "Erstellen & Zurücksetzung senden"
     },
     "user": {
       "edit": "Benutzer bearbeiten",
@@ -53,11 +83,13 @@
         "placeholder": "Rolle auswählen"
       },
       "state": "Bundesland",
+      "state.placeholder": "z. B. Bayern",
       "status": {
         "tooltip": "Backend-String; Standard ist 'Pending'"
       },
       "active": "Aktiv?",
       "password": {
+        "label": "Passwort",
         "required": "Passwort ist für neue Benutzer erforderlich",
         "minLength": "Mindestens 6 Zeichen verwenden",
         "placeholder": "Passwort setzen",

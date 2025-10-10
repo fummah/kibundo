@@ -12,6 +12,7 @@ import {
 import dayjs from "dayjs";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/api/axios";
+import { useAuthContext } from "@/context/AuthContext";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 
@@ -160,6 +161,7 @@ export default function BlogPostEdit() {
   const params = useParams();
   const [searchParams] = useSearchParams();
   const [messageApi, contextHolder] = message.useMessage();
+  const { user } = useAuthContext();
 
   const routeId = params?.id ?? searchParams.get("id");
   const editingId = useMemo(() => {
@@ -313,7 +315,7 @@ export default function BlogPostEdit() {
         return;
       }
 
-      const currentUser = JSON.parse(localStorage.getItem("user") || "null");
+      const currentUser = user;
       if (!currentUser?.id) {
         messageApi.error("No logged-in user found.");
         return;

@@ -8,7 +8,7 @@ const Teacher = db.teacher;
 
 exports.signup = async (req, res) => {
   try {
-    const { first_name, last_name, email, password, confirm_password, role_id } = req.body;
+    const { first_name, last_name, email,contact_number, state, password, confirm_password, role_id } = req.body;
 
     // 1. Check if passwords match
     if (password !== confirm_password) {
@@ -28,6 +28,8 @@ exports.signup = async (req, res) => {
       first_name,
       last_name,
       email,
+      contact_number,
+      state,
       password: hashedPassword,
     });
 

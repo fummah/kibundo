@@ -3,15 +3,22 @@ import { useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
 import { Form, Input, Button, Typography } from "antd";
-import { MailOutlined, LockOutlined, ArrowLeftOutlined } from "@ant-design/icons";
-import { useAuthContext } from "../../context/AuthContext";
-import { ROLE_PATHS, ROLES } from "../../utils/roleMapper";
+import {
+  MailOutlined,
+  LockOutlined,
+  ArrowLeftOutlined,
+} from "@ant-design/icons";
+import { useAuthContext } from "@/context/AuthContext";
+import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
 import Lottie from "lottie-react";
-import loginAnimation from "../../assets/signup2.json";
-import api from "../../api/axios";
+import loginAnimation from "@/assets/signup2.json";
+import api from "@/api/axios";
 
-/* Onboarding flags (no HMR conflicts) */
-import { hasSeenIntro, hasDoneTour } from "@/pages/student/onboarding/introFlags";
+// Onboarding flags
+import {
+  hasSeenIntro,
+  hasDoneTour,
+} from "@/pages/student/onboarding/introFlags";
 
 const { Title, Text } = Typography;
 
@@ -50,9 +57,13 @@ export default function SignIn() {
   const navigate = useNavigate();
   const { login } = useAuthContext();
   const [loading, setLoading] = useState(false);
+  const [form] = Form.useForm();
 
   const goHome = useCallback(() => navigate("/"), [navigate]);
-  const goForgot = useCallback(() => navigate("/forgot-password"), [navigate]);
+  const goForgot = useCallback(
+    () => navigate("/forgot-password"),
+    [navigate]
+  );
 
   const handleFinish = async (values) => {
     try {
@@ -63,19 +74,16 @@ export default function SignIn() {
       const token = extractToken(resp);
 
       if (!user || !token) {
-        toast.error("Unexpected login response (missing user or token).");
+        // Let backend/interceptor handle errors; avoid duplicate frontend toasts
         return;
       }
 
-      console.log("🔑 Login successful, received token:", token);
-
-      localStorage.setItem("kibundo_token", token);
-      api.defaults.headers.common.Authorization = `Bearer ${token}`;
-
+      // ✅ Update auth context (persists tiny summary and sets axios header/token)
       const roleId = normalizeRoleId(user);
       login(user, token);
       toast.success("Login successful!");
 
+      // ✅ Student onboarding flow
       if (roleId === ROLES.STUDENT) {
         if (!hasSeenIntro()) {
           navigate("/student/onboarding/welcome-intro", { replace: true });
@@ -87,10 +95,25 @@ export default function SignIn() {
         }
       }
 
+      // ✅ Role-based landing
       const rolePath = ROLE_PATHS[roleId] || "/dashboard";
       navigate(rolePath, { replace: true });
     } catch (err) {
+      const status = err?.response?.status;
+
+      // Map field errors (422) into the form
+      if (status === 422 && err?.response?.data?.errors) {
+        const fields = Object.entries(err.response.data.errors).map(
+          ([name, errors]) => ({
+            name,
+            errors: Array.isArray(errors) ? errors : [String(errors)],
+          })
+        );
+        form.setFields(fields);
+      }
+
       const msg =
+        (status === 401 && "Invalid email or password.") ||
         err?.response?.data?.message ||
         err?.response?.data?.error ||
         err?.message ||
@@ -118,7 +141,7 @@ export default function SignIn() {
       </div>
 
       <div className="flex w-full max-w-5xl bg-white rounded-xl overflow-hidden shadow-xl">
-        {/* 🔵 Left Section - Lottie */}
+        {/* Left: Animation */}
         <div className="hidden md:flex flex-col justify-center items-center bg-blue-600 p-8 w-1/2 text-white">
           <Lottie animationData={loginAnimation} loop className="w-full max-w-xs" />
           <Title level={3} className="!text-white mt-4 text-center">
@@ -129,13 +152,13 @@ export default function SignIn() {
           </p>
         </div>
 
-        {/* ✏️ Right Section - Form */}
+        {/* Right: Form */}
         <div className="w-full md:w-1/2 p-8">
           <Title level={3} className="text-center text-gray-800 mb-6">
             Login to Kibundo
           </Title>
 
-          <Form layout="vertical" onFinish={handleFinish}>
+          <Form layout="vertical" form={form} onFinish={handleFinish}>
             <Form.Item
               label="Email"
               name="email"
@@ -149,6 +172,9 @@ export default function SignIn() {
                 placeholder="Enter your email"
                 className="rounded-md"
                 autoComplete="email"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
               />
             </Form.Item>
 
@@ -181,7 +207,7 @@ export default function SignIn() {
                 className="w-full bg-indigo-600 hover:bg-indigo-700"
                 loading={loading}
               >
-                {loading ? "Signing in..." : "Sign In"}
+                {loading ? "Sign in" : "Sign In"}
               </Button>
             </Form.Item>
 

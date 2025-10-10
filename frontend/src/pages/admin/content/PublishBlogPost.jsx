@@ -34,6 +34,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import api from "@/api/axios";
+import { useAuthContext } from "@/context/AuthContext";
 
 import ReactQuill from "react-quill"; // ✅ ReactQuill v2
 import "react-quill/dist/quill.snow.css";
@@ -284,6 +285,7 @@ export default function PublishBlogPost() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [messageApi, contextHolder] = message.useMessage();
+  const { user } = useAuthContext();
 
   const rawId = params.get("id");
   const editingId =
@@ -375,7 +377,7 @@ export default function PublishBlogPost() {
         return null;
       }
 
-      const currentUser = JSON.parse(localStorage.getItem("user"));
+      const currentUser = user;
       if (!currentUser?.id) {
         messageApi.error("No logged-in user found.");
         return null;

@@ -3,18 +3,23 @@ import { useState, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
 import { Form, Input, Button, Select, Typography } from "antd";
-import { PhoneOutlined, UserOutlined, LockOutlined, MailOutlined } from "@ant-design/icons";
-import api from "../../api/axios";
-import { ROLE_PATHS, ROLES } from "../../utils/roleMapper";
-import { useAuthContext } from "../../context/AuthContext";
+import {
+  PhoneOutlined,
+  UserOutlined,
+  LockOutlined,
+  MailOutlined,
+} from "@ant-design/icons";
+import api from "@/api/axios";
+import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
+import { useAuthContext } from "@/context/AuthContext";
 
-// ✅ Onboarding flags (shared with WelcomeIntro / WelcomeTour)
+// Onboarding flags (clear them on fresh student signup)
 import { INTRO_LS_KEY, TOUR_LS_KEY } from "@/pages/student/onboarding/introFlags";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-/** Local list of German Bundesländer (16) */
+/** German Bundesländer */
 const BUNDESLAENDER = [
   "Baden-Württemberg",
   "Bayern",
@@ -34,13 +39,43 @@ const BUNDESLAENDER = [
   "Thüringen",
 ];
 
+/* ----------------------------- helpers ----------------------------- */
+function extractToken(resp) {
+  const d = resp?.data || {};
+  let t =
+    d.token ??
+    d.access_token ??
+    d.jwt ??
+    d?.data?.token ??
+    d?.data?.access_token ??
+    null;
+
+  if (!t) {
+    const authHeader =
+      resp?.headers?.authorization ||
+      resp?.headers?.Authorization ||
+      d?.authorization;
+    if (authHeader && typeof authHeader === "string") {
+      const parts = authHeader.split(" ");
+      if (parts.length === 2 && /^Bearer$/i.test(parts[0])) {
+        t = parts[1];
+      }
+    }
+  }
+  return t || null;
+}
+
+function normalizeRoleId(user, fallback) {
+  return Number(user?.role_id ?? user?.roleId ?? user?.role?.id ?? fallback);
+}
+
+/* ------------------------------ page ------------------------------- */
 export default function SignUp() {
   const navigate = useNavigate();
-  const [form] = Form.useForm();
+  const { login } = useAuthContext();
   const [loading, setLoading] = useState(false);
-  const { login } = useAuthContext(); // auto-login after signup
+  const [form] = Form.useForm();
 
-  // Prebuilt <Option> nodes to keep JSX tidy
   const bundeslandOptions = useMemo(
     () =>
       BUNDESLAENDER.map((name) => (
@@ -59,14 +94,13 @@ export default function SignUp() {
       phone,
       password,
       confirm_password,
-      role,
-      bundesland, // ➕ new field
+      role,        // "student" | "parent" | "teacher"
+      bundesland,  // required
     } = values;
 
-    // Map UI role -> backend numeric role_id (temporarily only Student/Parent/Teacher)
-    const roleMap = { student: 1, parent: 2, teacher: 3 };
+    // UI role -> backend role_id
+    const roleMap = { student: ROLES.STUDENT, parent: ROLES.PARENT, teacher: ROLES.TEACHER };
     const role_id = roleMap[String(role)];
-
     if (!role_id) {
       toast.error("Invalid role selected.");
       return;
@@ -80,43 +114,61 @@ export default function SignUp() {
       password,
       confirm_password,
       role_id,
-      bundesland, // ➕ include in payload
+      bundesland,
     };
 
     try {
       setLoading(true);
-      const { data } = await api.post("/auth/signup", payload);
+      const resp = await api.post("/auth/signup", payload);
 
-      const user = data?.user;
-      const token = data?.token;
+      // Normalize user & token from various backend response shapes
+      const user = resp?.data?.user ?? resp?.data?.data?.user ?? null;
+      const token = extractToken(resp) ?? resp?.data?.token ?? null;
+
       if (!user || !token) {
-        toast.error("Unexpected response. Please try again.");
+        // Let backend/interceptor handle error messages; avoid duplicate toasts
         return;
       }
 
-      // Persist session
+      // Log user into context (persists tiny summary and sets axios header/token)
       login(user, token);
-      toast.success("Account created! Redirecting…");
+      toast.success("Account created!");
 
+      // Student onboarding (force fresh intro/tour)
       if (role_id === ROLES.STUDENT) {
-        // Fresh onboarding for students: clear any previous flags
         try {
           localStorage.removeItem(INTRO_LS_KEY);
           localStorage.removeItem(TOUR_LS_KEY);
         } catch {}
-        // Go to the Intro first
         navigate("/student/onboarding/welcome-intro", { replace: true });
         return;
       }
 
-      // Non-students → role landing (teacher/parent/admin/etc.)
-      const resolvedRoleId = Number(user.role_id ?? user.roleId ?? user?.role?.id ?? role_id);
+      // Non-students → role landing
+      const resolvedRoleId = normalizeRoleId(user, role_id);
       const rolePath = ROLE_PATHS[resolvedRoleId] || "/dashboard";
       navigate(rolePath, { replace: true });
     } catch (err) {
+      const status = err?.response?.status;
+
+      // Map backend validation errors (422) to form fields
+      if (status === 422 && err?.response?.data?.errors) {
+        const fields = Object.entries(err.response.data.errors).map(
+          ([name, errors]) => ({
+            name,
+            errors: Array.isArray(errors) ? errors : [String(errors)],
+          })
+        );
+        form.setFields(fields);
+      }
+
+      // Friendlier duplicate email/phone message
+      const isConflict = status === 409;
       const msg =
+        (isConflict && "An account with these details already exists.") ||
         err?.response?.data?.message ||
         err?.response?.data?.error ||
+        err?.message ||
         "Signup failed";
       toast.error(msg);
     } finally {
@@ -178,6 +230,9 @@ export default function SignUp() {
               prefix={<MailOutlined />}
               placeholder="Email address"
               autoComplete="email"
+              inputMode="email"
+              autoCapitalize="none"
+              autoCorrect="off"
               disabled={loading}
             />
           </Form.Item>
@@ -187,7 +242,6 @@ export default function SignUp() {
             label="Phone Number"
             rules={[
               { required: true, message: "Phone number is required" },
-              // Allow +, spaces, brackets, dashes; 7-20 chars
               { pattern: /^[+]?[\d\s()\-]{7,20}$/, message: "Enter a valid phone number" },
             ]}
           >
@@ -199,7 +253,6 @@ export default function SignUp() {
             />
           </Form.Item>
 
-          {/* ➕ Bundesland */}
           <Form.Item
             name="bundesland"
             label="Bundesland"
@@ -224,11 +277,6 @@ export default function SignUp() {
               <Option value="student">Student</Option>
               <Option value="parent">Parent</Option>
               <Option value="teacher">Teacher</Option>
-              {/** Temporarily hidden:
-               * <Option value="school">School</Option>
-               * <Option value="partner">Partner</Option>
-               * Admin is not self-signup and uses role_id 10
-               */}
             </Select>
           </Form.Item>
 

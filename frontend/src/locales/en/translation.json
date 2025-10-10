@@ -17,6 +17,20 @@
       "count": "({{count}})",
       "new": "New Role"
     },
+    "columns": {
+      "permissions": "Permissions",
+      "first": "First",
+      "last": "Last",
+      "role": "Role",
+      "phone": "Phone",
+      "status": "Status",
+      "created": "Created"
+    },
+    "filters": {
+      "search": "Search name, email, phone, role…",
+      "role": "Filter by role",
+      "status": "Status"
+    },
     "users": {
       "title": "Users",
       "count": "({{count}})",
@@ -26,10 +40,14 @@
       "name": {
         "label": "Role Name",
         "required": "Role name is required",
-        "maxLength": "Keep it under 50 characters"
+        "maxLength": "Keep it under 50 characters",
+        "placeholder": "e.g. Content Manager"
       },
       "edit": "Edit Role",
       "create": "Create Role"
+    },
+    "actions": {
+      "createAndSendReset": "Create & send reset"
     },
     "user": {
       "edit": "Edit User",
@@ -45,11 +63,13 @@
         "placeholder": "Select a role"
       },
       "state": "State (Bundesland)",
+      "state.placeholder": "e.g. Bavaria",
       "status": {
         "tooltip": "Back-end string; default is 'Pending'"
       },
       "active": "Active?",
       "password": {
+        "label": "Password",
         "required": "Password is required for new users",
         "minLength": "Use at least 6 characters",
         "placeholder": "Set a password",

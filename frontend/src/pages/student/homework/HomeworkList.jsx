@@ -1,8 +1,7 @@
 // src/pages/student/homework/HomeworkList.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChatStripSpacer } from "@/components/student/mobile/FooterChat.jsx";
-import HomeworkScanner from "./HomeworkScanner";
 import {
   CheckOutlined,
   LeftOutlined,
@@ -18,48 +17,44 @@ import {
   QuestionCircleOutlined,
 } from "@ant-design/icons";
 import { useChatDock } from "@/context/ChatDockContext.jsx";
+import { useAuthContext } from "@/context/AuthContext.jsx";
 
-// localStorage keys
+// ───────────────────────────────────────────────────────────────────────────────
+// Base (unscoped) localStorage keys — will be scoped per-student below
 const TASKS_KEY = "kibundo.homework.tasks.v1";
 const PROGRESS_KEY = "kibundo.homework.progress.v1";
 
 // Columns (incl. “Gescannt am”)
 const COLS = "140px 72px minmax(0,0.9fr) 96px 110px 64px";
 
-// Subject icons
+// Subject visual meta
 const SUBJECTS = {
   Mathe: { color: "#bfe3ff", icon: "🔢" },
   Deutsch: { color: "#e6f6c9", icon: "📗" },
   Sonstiges: { color: "#ffe2e0", icon: "🧩" },
 };
 
-// Fallback data
-const FALLBACK = [
-  { id: "demo1", subject: "Mathe", what: "Multiplikations Aufgaben", description: "Multiplikations Aufgaben", due: "Mi. 07.08", done: false, createdAt: "2024-08-06T10:00:00Z" },
-  { id: "demo2", subject: "Mathe", what: "Geteilt durch", description: "Geteilt durch", due: "Mi. 07.08", done: true, createdAt: "2024-08-06T10:10:00Z" },
-  { id: "demo3", subject: "Mathe", what: "7er Reihe üben", description: "7er Reihe üben", due: "Do. 08.08", done: false, createdAt: "2024-08-07T08:00:00Z" },
-  { id: "demo4", subject: "Deutsch", what: "Lesen", description: "Lesen inkl. Beschreibung", due: "Mi. 07.08", done: false, createdAt: "2024-08-06T09:00:00Z" },
-  { id: "demo5", subject: "Deutsch", what: "Aufsatz schreiben", description: "Elefanten in der Wildnis", due: "Mo. 12.08", done: false, createdAt: "2024-08-08T12:00:00Z" },
-  { id: "demo6", subject: "Sonstiges", what: "Drachen basteln", description: "Einen kleinen Drachen", due: "Mo. 12.08", done: false, createdAt: "2024-08-08T13:00:00Z" },
-  { id: "demo7", subject: "Sonstiges", what: "Farben sortieren", description: "Kreative Aufgabe", due: "Mo. 12.08", done: false, createdAt: "2024-08-08T14:00:00Z" },
-  { id: "demo8", subject: "Mathe", what: "Arbeitsblatt 3", description: "Division", due: "Di. 13.08", done: false, createdAt: "2024-08-09T08:00:00Z" },
-  { id: "demo9", subject: "Deutsch", what: "Wörter üben", description: "Rechtschreibung", due: "Di. 13.08", done: false, createdAt: "2024-08-09T09:00:00Z" },
-];
-
-// Load + sort
-function loadTasks() {
-  try {
-    const arr = JSON.parse(localStorage.getItem(TASKS_KEY) || "[]");
-    if (Array.isArray(arr) && arr.length) {
-      return [...arr].sort(
-        (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
-      );
-    }
-  } catch {}
-  return FALLBACK;
+// Load tasks from one or more keys and merge (sorted newest first)
+function loadTasksFromKeys(keys = []) {
+  const out = [];
+  const seen = new Set();
+  for (const k of keys) {
+    try {
+      const arr = JSON.parse(localStorage.getItem(k) || "[]");
+      if (Array.isArray(arr)) {
+        for (const t of arr) {
+          const id = t?.id || `${t?.what || ""}|${t?.createdAt || ""}`;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          out.push(t);
+        }
+      }
+    } catch {}
+  }
+  return out.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 }
 
-// Nice date
+// Nice date (Gescannt am)
 function formatScanDate(dateStr) {
   if (!dateStr) return "—";
   const d = new Date(dateStr);
@@ -70,29 +65,68 @@ function formatScanDate(dateStr) {
   });
 }
 
-// What icon
+// Derive subject from any available text (analysis/what/description)
+function deriveSubjectFromText(text = "") {
+  const t = (text || "").toLowerCase();
+
+  // math-ish
+  if (
+    /mathe|rechnung|addieren|subtrahieren|multiplizieren|division|dividieren|bruch|geometrie|gleichung|reihe|arbeitsblatt|aufgaben|worksheet|task|numbers?|times? table|multiply|divide/.test(
+      t
+    )
+  ) {
+    return "Mathe";
+  }
+
+  // german/reading/writing-ish
+  if (
+    /deutsch|lesen|vorlesen|buch|text|aufsatz|schreiben|diktat|grammatik|rechtschreibung|vokabeln|erzählen|bericht/.test(
+      t
+    )
+  ) {
+    return "Deutsch";
+  }
+
+  return "Sonstiges";
+}
+
+// Choose icon by what/subject text
 function WhatIcon({ what = "", subject = "" }) {
   const w = (what || "").toLowerCase();
   const s = (subject || "").toLowerCase();
-  if (s.includes("mathe") || /multiply|division|divide|reihe|worksheet|aufgaben|task|rechnung|arith|blatt/i.test(w)) {
+  if (
+    s.includes("mathe") ||
+    /multiply|division|divide|reihe|worksheet|aufgaben|task|rechnung|arith|blatt/.test(
+      w
+    )
+  ) {
     return <CalculatorOutlined style={{ fontSize: 18, color: "#2b6a5b" }} />;
   }
-  if (/lesen|read|vorlesen|buch|text/i.test(w) || s.includes("deutsch")) {
+  if (/lesen|read|vorlesen|buch|text/.test(w) || s.includes("deutsch")) {
     return <ReadOutlined style={{ fontSize: 18, color: "#2b6a5b" }} />;
   }
-  if (/aufsatz|essay|schreiben|write/i.test(w)) {
+  if (/aufsatz|essay|schreiben|write/.test(w)) {
     return <EditOutlined style={{ fontSize: 18, color: "#2b6a5b" }} />;
   }
-  if (/basteln|craft|schere|paper|drachen/i.test(w)) {
+  if (/basteln|craft|schere|paper|drachen/.test(w)) {
     return <ScissorOutlined style={{ fontSize: 18, color: "#2b6a5b" }} />;
   }
-  if (/experiment|lab|science|versuch/i.test(w)) {
+  if (/experiment|lab|science|versuch/.test(w)) {
     return <ExperimentOutlined style={{ fontSize: 18, color: "#2b6a5b" }} />;
   }
   return <QuestionCircleOutlined style={{ fontSize: 18, color: "#2b6a5b" }} />;
 }
 
-const CompactRow = ({ id, subject, what, description, due, done, createdAt, onOpen }) => {
+const CompactRow = ({
+  id,
+  subject,
+  what,
+  description,
+  due,
+  done,
+  createdAt,
+  onOpen,
+}) => {
   const meta = SUBJECTS[subject] || { color: "#eef0f3", icon: "📚" };
   const scanDate = formatScanDate(createdAt);
   return (
@@ -108,13 +142,26 @@ const CompactRow = ({ id, subject, what, description, due, done, createdAt, onOp
       aria-label={`Aufgabe öffnen: ${subject || "Sonstiges"} – ${what || ""}`}
     >
       {/* Fächer */}
-      <div className="flex items-center gap-2 px-3" style={{ backgroundColor: meta.color }} role="cell">
-        <span className="text-[16px]" aria-hidden>{meta.icon}</span>
-        <span className="font-semibold text-[#2b2b2b]">{subject || "Sonstiges"}</span>
+      <div
+        className="flex items-center gap-2 px-3"
+        style={{ backgroundColor: meta.color }}
+        role="cell"
+      >
+        <span className="text-[16px]" aria-hidden>
+          {meta.icon}
+        </span>
+        <span className="font-semibold text-[#2b2b2b]">
+          {subject || "Sonstiges"}
+        </span>
       </div>
 
       {/* Was (Icon only) */}
-      <div className="px-3 py-2 flex items-center justify-center" role="cell" title={what} aria-label={what}>
+      <div
+        className="px-3 py-2 flex items-center justify-center"
+        role="cell"
+        title={what}
+        aria-label={what}
+      >
         <WhatIcon what={what} subject={subject} />
         <span className="sr-only">{what}</span>
       </div>
@@ -132,7 +179,10 @@ const CompactRow = ({ id, subject, what, description, due, done, createdAt, onOp
       </div>
 
       {/* Gescannt am */}
-      <div className="px-3 py-2 text-center text-[#667b76] text-[12px]" role="cell">
+      <div
+        className="px-3 py-2 text-center text-[#667b76] text-[12px]"
+        role="cell"
+      >
         {scanDate}
       </div>
 
@@ -148,7 +198,11 @@ const CompactRow = ({ id, subject, what, description, due, done, createdAt, onOp
             <CheckOutlined style={{ fontSize: 12 }} />
           </span>
         ) : (
-          <span className="inline-grid place-items-center w-6 h-6 rounded-full bg-[#e8efe9]" title="offen" aria-label="offen" />
+          <span
+            className="inline-grid place-items-center w-6 h-6 rounded-full bg-[#e8efe9]"
+            title="offen"
+            aria-label="offen"
+          />
         )}
       </div>
     </div>
@@ -157,43 +211,135 @@ const CompactRow = ({ id, subject, what, description, due, done, createdAt, onOp
 
 export default function HomeworkList() {
   const navigate = useNavigate();
-  const { openChat, expandChat } = useChatDock(); // ⬅️ use chat dock
-  const allRows = loadTasks();
+  const { openChat, expandChat, getChatMessages } = useChatDock(); // ⬅️ we read analysis from chat
+  const { user: authUser } = useAuthContext();
+
+  // derive current student id (scope everything by this)
+  const studentId = authUser?.id ?? "anon";
+
+  // Build SCOPED storage keys per student
+  const TASKS_KEY_USER = `${TASKS_KEY}::u:${studentId}`;
+  const PROGRESS_KEY_USER = `${PROGRESS_KEY}::u:${studentId}`;
+
+  // Candidate keys: scoped, legacy unscoped, anon-scoped
+  const FALLBACK_KEYS = useMemo(
+    () => [TASKS_KEY_USER, TASKS_KEY, `${TASKS_KEY}::u:anon`],
+    [TASKS_KEY_USER]
+  );
+
+  // Maintain tasks in state so we can refresh when storage changes
+  const [tasks, setTasks] = useState(() => loadTasksFromKeys(FALLBACK_KEYS));
+
+  // Refresh helpers
+  const refreshTasks = useCallback(() => {
+    setTasks(loadTasksFromKeys(FALLBACK_KEYS));
+  }, [FALLBACK_KEYS]);
+
+  useEffect(() => {
+    // Update on storage changes (e.g., when HomeworkDoing saves)
+    const onStorage = (e) => {
+      if (!e?.key) return;
+      if (FALLBACK_KEYS.includes(e.key)) refreshTasks();
+    };
+    window.addEventListener("storage", onStorage);
+
+    // Also refresh when user returns to tab
+    const onVis = () => {
+      if (document.visibilityState === "visible") refreshTasks();
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    // Immediate same-tab updates (storage event does not fire in same tab)
+    const onTasksUpdated = () => refreshTasks();
+    window.addEventListener("kibundo:tasks-updated", onTasksUpdated);
+
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("kibundo:tasks-updated", onTasksUpdated);
+    };
+  }, [FALLBACK_KEYS, refreshTasks]);
+
+  // Enrich tasks with derived subject/description from latest analysis (if needed)
+  const enhancedRows = useMemo(() => {
+    return tasks.map((t) => {
+      const chatKey = `${t.id}::u:${studentId}`;
+      const msgs = getChatMessages?.("homework", chatKey) || [];
+
+      // Find latest analysis table (agent message with content.extractedText/qa)
+      const latestTable = [...msgs]
+        .reverse()
+        .find((m) => m?.type === "table" && m?.from !== "student");
+
+      let analysisText = "";
+      if (latestTable) {
+        const extracted = latestTable?.content?.extractedText || "";
+        const qa = Array.isArray(latestTable?.content?.qa)
+          ? latestTable.content.qa
+          : [];
+        const qaStr =
+          qa
+            .slice(0, 3)
+            .map((q) => [q?.text, q?.answer].filter(Boolean).join(": "))
+            .join(" • ") || "";
+        analysisText = [extracted, qaStr].filter(Boolean).join(" • ");
+      }
+
+      // If subject missing or generic, derive from analysis/what/description
+      const baseText = [t.what, t.description, analysisText].filter(Boolean).join(" ");
+      const derivedSubject =
+        !t.subject || t.subject === "Sonstiges"
+          ? deriveSubjectFromText(baseText)
+          : t.subject;
+
+      // If description is empty, take a short snippet from analysis
+      const derivedDescription =
+        t.description && t.description.trim().length > 0
+          ? t.description
+          : analysisText
+          ? analysisText.slice(0, 120)
+          : "";
+
+      return {
+        ...t,
+        subject: derivedSubject,
+        description: derivedDescription,
+      };
+    });
+  }, [tasks, getChatMessages, studentId]);
 
   const pageSize = 7;
   const [page, setPage] = useState(1);
-  const pageCount = Math.max(1, Math.ceil(allRows.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(enhancedRows.length / pageSize));
 
   const rows = useMemo(() => {
     const start = (page - 1) * pageSize;
-    return allRows.slice(start, start + pageSize);
-  }, [allRows, page]);
+    return enhancedRows.slice(start, start + pageSize);
+  }, [enhancedRows, page]);
 
   // Clicking a task → open HomeworkChat at last message (restore history)
   const openTask = (task) => {
     try {
       localStorage.setItem(
-        PROGRESS_KEY,
+        PROGRESS_KEY_USER,
         JSON.stringify({ step: task.done ? 2 : 1, taskId: task.id })
       );
     } catch {}
 
-    // 1) Open/restore the task-specific homework chat (dock UI)
-    // NOTE: ChatDockContext should handle restore from storage/server by key.
+    const chatKey = `homework:${task.id}::u:${studentId}`;
+
+    // Open scoped chat
     openChat?.({
       mode: "homework",
-      taskId: task.id,
-      task,
-      key: `homework:${task.id}`,       // stable key for persistence
-      restore: true,                    // hydrate last saved messages
-      focus: "last",                    // scroll to last message
-      analyzeOnOpen: false,             // no auto-analyze unless you want it
+      task: { ...task, userId: studentId },
+      key: chatKey,
+      restore: true,
+      focus: "last",
+      analyzeOnOpen: false,
     });
 
-    // ensure the dock is visible/expanded
     expandChat?.(true);
 
-    // 2) Stay inside Homework flow and hint the page to show HomeworkChat
     navigate("/student/homework/doing", {
       state: { taskId: task.id, openHomeworkChat: true },
       replace: false,
@@ -209,28 +355,48 @@ export default function HomeworkList() {
             className="grid w-full divide-x-2 divide-gray-300 border-b-2 border-gray-300 bg-[#f6faf7] text-[#2b6a5b] font-semibold text-[12px] md:text-[13px]"
             style={{ gridTemplateColumns: COLS }}
           >
-            <div className="px-3 py-2" role="columnheader">Fächer</div>
-            <div className="px-3 py-2 text-center" role="columnheader">Was</div>
-            <div className="px-3 py-2" role="columnheader">Beschreibung</div>
-            <div className="px-3 py-2 text-center" role="columnheader">Bis wann</div>
-            <div className="px-3 py-2 text-center" role="columnheader">Gescannt am</div>
-            <div className="px-3 py-2 text-center" role="columnheader">fertig</div>
+            <div className="px-3 py-2" role="columnheader">
+              Fächer
+            </div>
+            <div className="px-3 py-2 text-center" role="columnheader">
+              Was
+            </div>
+            <div className="px-3 py-2" role="columnheader">
+              Beschreibung
+            </div>
+            <div className="px-3 py-2 text-center" role="columnheader">
+              Bis wann
+            </div>
+            <div className="px-3 py-2 text-center" role="columnheader">
+              Gescannt am
+            </div>
+            <div className="px-3 py-2 text-center" role="columnheader">
+              fertig
+            </div>
           </div>
 
           {/* Body */}
           {rows.length ? (
             <div className="divide-y-2 divide-gray-300" role="rowgroup">
               {rows.map((r) => (
-                <CompactRow key={r.id || `${r.subject}-${r.what}`} {...r} onOpen={() => openTask(r)} />
+                <CompactRow
+                  key={r.id || `${r.subject}-${r.what}`}
+                  {...r}
+                  onOpen={() => openTask(r)}
+                />
               ))}
             </div>
           ) : (
             <div className="p-6 text-center text-[#51625e]">
-              Keine Aufgaben vorhanden.
+              Noch keine Aufgaben gescannt oder hinzugefügt.
               <div className="mt-3">
                 <button
                   type="button"
-                  onClick={() => navigate("/student/homework/doing", { state: { openHomeworkChat: true } })}
+                  onClick={() =>
+                    navigate("/student/homework/doing", {
+                      state: { openHomeworkChat: true },
+                    })
+                  }
                   className="px-3 py-1.5 rounded-full bg-[#e7ecea] text-[#51625e]"
                 >
                   Aufgabe hinzufügen
@@ -239,7 +405,7 @@ export default function HomeworkList() {
             </div>
           )}
 
-          {/* Pagination */}
+          {/* Pagination + FAB */}
           <div className="flex items-center justify-between px-3 py-2 border-t-2 border-gray-300 w-full bg-white">
             <button
               className="px-2 py-1 rounded-full bg-[#e7ecea] text-[#51625e] disabled:opacity-50"
@@ -263,7 +429,11 @@ export default function HomeworkList() {
 
             {/* FAB */}
             <button
-              onClick={() => navigate("/student/homework/doing", { state: { openHomeworkChat: true } })}
+              onClick={() =>
+                navigate("/student/homework/doing", {
+                  state: { openHomeworkChat: true },
+                })
+              }
               className="ml-4 w-10 h-10 rounded-full bg-[#2b6a5b] text-white shadow-lg
                      flex items-center justify-center hover:bg-[#1f4f43] transition-colors duration-200
                      focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2b6a5b]"

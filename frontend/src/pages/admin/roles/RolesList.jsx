@@ -37,6 +37,7 @@ import {
   TeamOutlined,
 } from "@ant-design/icons";
 import api from "@/api/axios";
+import { useAuthContext } from "@/context/AuthContext";
 
 const { Title, Text } = Typography;
 
@@ -67,16 +68,9 @@ const ROLE_API = {
 };
 
 /* ----------------------------- security helpers ---------------------------- */
-const getCurrentUser = () => {
-  try {
-    return JSON.parse(localStorage.getItem("user") || "null");
-  } catch {
-    return null;
-  }
-};
-const isAdminUser = () => {
-  const u = getCurrentUser();
-  const name = (u?.role_name || u?.role || "").toLowerCase();
+// Derive admin rights from the small summary in AuthContext
+const isAdminFromUser = (u) => {
+  const name = String(u?.role_name || u?.role || "").toLowerCase();
   return u?.role_id === 1 || name === "admin";
 };
 
@@ -107,6 +101,7 @@ const toPermArray = (raw) => {
 export default function RolesLocal() {
   const { t, i18n } = useTranslation();
   const [messageApi, contextHolder] = message.useMessage();
+  const { user } = useAuthContext();
 
   // Log once per language change (avoid spam from re-renders)
   useEffect(() => {
@@ -131,20 +126,13 @@ export default function RolesLocal() {
   const [editingUser, setEditingUser] = useState(null);
   const [userForm] = Form.useForm();
 
-  // Users list UI state
   const [q, setQ] = useState("");
   const [roleFilter, setRoleFilter] = useState();
   const [statusFilter, setStatusFilter] = useState();
   const [activeFilter, setActiveFilter] = useState(); // true | false | undefined
 
-  /* -------------------------- derived data & utils ------------------------- */
-  const isAdmin = isAdminUser();
-
-  const roleSelectOptions = useMemo(
-    () => roles.map((r) => ({ value: r.id, label: r.name })),
-    [roles]
-  );
-
+  /* ------------------------------ derived data & utils ------------------------- */
+  const isAdmin = isAdminFromUser(user);
   const getRoleById = useCallback((id) => roles.find((r) => String(r.id) === String(id)), [roles]);
   const getRolePermsById = useCallback(
     (id) => {
@@ -152,6 +140,12 @@ export default function RolesLocal() {
       return Array.isArray(perms) ? perms : [];
     },
     [getRoleById]
+  );
+
+  // Options for role filter select in Users tab
+  const roleSelectOptions = useMemo(
+    () => roles.map((r) => ({ value: r.id, label: r.name })),
+    [roles]
   );
 
   const permOptions = useMemo(

@@ -1,3 +1,4 @@
+// src/App.jsx
 import React from "react";
 import AppRoutes from "./routes/AppRoutes";
 import { useLocation } from "react-router-dom";
@@ -6,12 +7,12 @@ import { ChatDockProvider } from "@/context/ChatDockContext";
 import ChatDockContainer from "@/components/chats/ChatDockContainer.jsx";
 import FooterChat from "@/components/student/mobile/FooterChat";
 
-import "react-toastify/dist/ReactToastify.css";
-import "./index.css"; // <-- includes .scroll-y-invisible and global overflow-hidden
+import "./index.css"; // includes .scroll-y-invisible and global overflow-hidden
 
 export default function App() {
   const { pathname } = useLocation();
   const isFramed = pathname.startsWith("/student") || pathname.startsWith("/parent");
+
   const AppContent = () => (
     <>
       {/* Chat portal mount point (fills the framed screen and stays clipped) */}
