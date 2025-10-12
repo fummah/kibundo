@@ -2,12 +2,12 @@
 import React, { useMemo, useState } from "react";
 import {
   Button, Card, Form, Input, Select, Space, Tag, Drawer, Divider,
-  Grid, Dropdown, Modal, Descriptions, Tabs, InputNumber, Tooltip, message
+  Grid, Dropdown, Modal, Descriptions, Tabs, InputNumber, Tooltip, message, Upload, Image, Checkbox
 } from "antd";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   DownloadOutlined, PlusOutlined, ReloadOutlined, SaveOutlined, MoreOutlined,
-  ArrowUpOutlined, ArrowDownOutlined, CopyOutlined, DeleteOutlined, EyeOutlined
+  ArrowUpOutlined, ArrowDownOutlined, CopyOutlined, DeleteOutlined, EyeOutlined, UploadOutlined, CloseCircleOutlined
 } from "@ant-design/icons";
 import { BUNDESLAENDER, GRADES } from "./_constants";
 import PageHeader from "@/components/PageHeader.jsx";
@@ -41,8 +41,9 @@ const newQuestion = (type = "mcq") => {
       type,
       prompt: "",  // HTML from Quill
       points: 1,
-      choices: [{ text: "" }, { text: "" }, { text: "" }, { text: "" }],
+      choices: [{ text: "", image_url: "", tags: [] }, { text: "", image_url: "", tags: [] }, { text: "", image_url: "", tags: [] }, { text: "", image_url: "", tags: [] }],
       answerIndex: 0,
+      randomize: true,
       tags: [],
     };
   }
@@ -56,13 +57,31 @@ const fromApiItem = (it = {}) => {
   if (t === "multiple-choice" || t === "multiple_choice") {
     const options = Array.isArray(it.options) ? it.options : [];
     const answerStr = Array.isArray(it.answer_key) ? it.answer_key[0] : undefined;
-    const answerIndex = Math.max(0, options.findIndex((o) => String(o) === String(answerStr)));
+    
+    // Handle both old format (strings) and new format (objects with text/image)
+    const choices = options.map((o) => {
+      if (typeof o === "string") {
+        return { text: o, image_url: "", tags: [] };
+      }
+      return {
+        text: o?.text || "",
+        image_url: o?.image_url || "",
+        tags: Array.isArray(o?.tags) ? o.tags : []
+      };
+    });
+    
+    const answerIndex = Math.max(0, choices.findIndex((c) => 
+      String(c.text) === String(answerStr) || 
+      (typeof options[choices.indexOf(c)] === "string" && String(options[choices.indexOf(c)]) === String(answerStr))
+    ));
+    
     return {
       type: "mcq",
       prompt: it.prompt || "",
       points: Number(it.points) || 1,
-      choices: options.map((o) => ({ text: String(o ?? "") })),
+      choices,
       answerIndex: answerIndex >= 0 ? answerIndex : 0,
+      randomize: it.randomize !== false, // default to true
       tags: [],
     };
   }
@@ -88,10 +107,29 @@ const toApiItem = (q = {}, idx = 0) => {
     points: Number(q.points) || 1,
   };
   if (q.type === "mcq") {
-    const options = (q.choices || []).map((c) => c?.text ?? "");
+    // Support both text-only and image choices
+    const options = (q.choices || []).map((c) => {
+      if (c?.image_url || (Array.isArray(c?.tags) && c.tags.length > 0)) {
+        return {
+          text: c?.text || "",
+          image_url: c?.image_url || "",
+          tags: Array.isArray(c?.tags) ? c.tags : []
+        };
+      }
+      return c?.text ?? "";
+    });
+    
     const i = Math.max(0, Math.min(options.length - 1, Number(q.answerIndex) || 0));
-    const answer = options[i] ?? "";
-    return { ...base, type: "multiple-choice", options, answer_key: [answer] };
+    const answerChoice = (q.choices || [])[i];
+    const answer = answerChoice?.text ?? "";
+    
+    return { 
+      ...base, 
+      type: "multiple-choice", 
+      options, 
+      answer_key: [answer],
+      randomize: q.randomize !== false // default to true
+    };
   }
   if (q.type === "true_false") {
     return { ...base, type: "true-false", options: ["true", "false"], answer_key: [q.answerBool ? "true" : "false"] };
@@ -454,13 +492,42 @@ export default function Quiz() {
       return (
         <div>
           <div className="font-medium mb-2" dangerouslySetInnerHTML={{ __html: q.prompt || "" }} />
-          <ol className="list-decimal pl-5">
+          {q.randomize && <div className="text-xs text-blue-600 mb-2">✓ Choices will be randomized</div>}
+          <div className="space-y-2">
             {(q.choices || []).map((c, i) => (
-              <li key={i} className={i === Number(q.answerIndex) ? "font-semibold" : ""}>
-                <SafeText value={c?.text} />
-              </li>
+              <div 
+                key={i} 
+                className={`p-2 border rounded ${i === Number(q.answerIndex) ? "font-semibold bg-green-50 border-green-300" : "bg-white"}`}
+              >
+                <div className="flex items-start gap-2">
+                  <span className="font-mono text-sm text-gray-500">{i + 1}.</span>
+                  <div className="flex-1">
+                    <SafeText value={c?.text} />
+                    {c?.tags && c.tags.length > 0 && (
+                      <div className="mt-1">
+                        <Space size="small" wrap>
+                          {c.tags.map((tag, ti) => (
+                            <Tag key={ti} size="small">{tag}</Tag>
+                          ))}
+                        </Space>
+                      </div>
+                    )}
+                    {c?.image_url && (
+                      <div className="mt-2">
+                        <Image
+                          src={c.image_url}
+                          alt={`Choice ${i + 1}`}
+                          width={150}
+                          height={150}
+                          style={{ objectFit: "cover", borderRadius: 4 }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             ))}
-          </ol>
+          </div>
         </div>
       );
     }
@@ -556,23 +623,88 @@ export default function Quiz() {
                           <>
                             <Form.List name={[name, "choices"]}>
                               {(choiceFields, choiceOps) => (
-                                <div className="space-y-2">
-                                  <div className="text-xs text-gray-500">Choices</div>
-                                  {choiceFields.map((cf) => (
-                                    <div key={cf.key} className="flex items-center gap-2">
-                                      <Form.Item
-                                        className="flex-1 !mb-0"
-                                        name={[cf.name, "text"]}
-                                        rules={[{ required: true, message: "Choice text required" }]}
-                                      >
-                                        <Input placeholder={`Choice ${cf.name + 1}`} />
-                                      </Form.Item>
-                                      <Button size="small" onClick={() => choiceOps.add({ text: "" }, cf.name + 1)}>+</Button>
-                                      <Button size="small" onClick={() => choiceOps.remove(cf.name)} danger>-</Button>
-                                    </div>
-                                  ))}
+                                <div className="space-y-3">
+                                  <div className="text-xs text-gray-500 font-medium">Choices</div>
+                                  {choiceFields.map((cf) => {
+                                    const choiceValue = editForm.getFieldValue(["items", name, "choices", cf.name]);
+                                    return (
+                                      <Card key={cf.key} size="small" className="bg-gray-50">
+                                        <div className="space-y-2">
+                                          <div className="flex items-start gap-2">
+                                            <Form.Item
+                                              className="flex-1 !mb-0"
+                                              name={[cf.name, "text"]}
+                                              rules={[{ required: true, message: "Choice text required" }]}
+                                            >
+                                              <Input placeholder={`Choice ${cf.name + 1}`} />
+                                            </Form.Item>
+                                            <Button size="small" onClick={() => choiceOps.add({ text: "", image_url: "", tags: [] }, cf.name + 1)}>+</Button>
+                                            <Button size="small" onClick={() => choiceOps.remove(cf.name)} danger>-</Button>
+                                          </div>
+                                          
+                                          <div className="flex gap-2 items-start">
+                                            <div className="flex-1">
+                                              <Form.Item
+                                                className="!mb-0"
+                                                name={[cf.name, "tags"]}
+                                                label={<span className="text-xs">Tags</span>}
+                                              >
+                                                <Select mode="tags" size="small" placeholder="Add tags for this choice" />
+                                              </Form.Item>
+                                            </div>
+                                            
+                                            <Upload
+                                              accept="image/*"
+                                              showUploadList={false}
+                                              beforeUpload={(file) => {
+                                                const reader = new FileReader();
+                                                reader.onload = (e) => {
+                                                  const currentChoices = editForm.getFieldValue(["items", name, "choices"]) || [];
+                                                  currentChoices[cf.name] = {
+                                                    ...currentChoices[cf.name],
+                                                    image_url: e.target.result
+                                                  };
+                                                  editForm.setFieldValue(["items", name, "choices"], [...currentChoices]);
+                                                };
+                                                reader.readAsDataURL(file);
+                                                return false;
+                                              }}
+                                            >
+                                              <Button size="small" icon={<UploadOutlined />}>Upload Image</Button>
+                                            </Upload>
+                                          </div>
+                                          
+                                          {choiceValue?.image_url && (
+                                            <div className="relative inline-block">
+                                              <Image
+                                                src={choiceValue.image_url}
+                                                alt={`Choice ${cf.name + 1}`}
+                                                width={120}
+                                                height={120}
+                                                style={{ objectFit: "cover", borderRadius: 4 }}
+                                              />
+                                              <Button
+                                                size="small"
+                                                danger
+                                                icon={<CloseCircleOutlined />}
+                                                style={{ position: "absolute", top: 4, right: 4 }}
+                                                onClick={() => {
+                                                  const currentChoices = editForm.getFieldValue(["items", name, "choices"]) || [];
+                                                  currentChoices[cf.name] = {
+                                                    ...currentChoices[cf.name],
+                                                    image_url: ""
+                                                  };
+                                                  editForm.setFieldValue(["items", name, "choices"], [...currentChoices]);
+                                                }}
+                                              />
+                                            </div>
+                                          )}
+                                        </div>
+                                      </Card>
+                                    );
+                                  })}
                                   {choiceFields.length === 0 && (
-                                    <Button onClick={() => choiceOps.add({ text: "" })} size="small">
+                                    <Button onClick={() => choiceOps.add({ text: "", image_url: "", tags: [] })} size="small">
                                       Add a choice
                                     </Button>
                                   )}
@@ -586,6 +718,14 @@ export default function Quiz() {
                               rules={[{ type: "number", transform: (v) => Number(v), required: true }]}
                             >
                               <InputNumber min={0} />
+                            </Form.Item>
+                            
+                            <Form.Item
+                              name={[name, "randomize"]}
+                              valuePropName="checked"
+                              initialValue={true}
+                            >
+                              <Checkbox>Randomize choice order when displaying to students</Checkbox>
                             </Form.Item>
                           </>
                         )}
@@ -817,13 +957,44 @@ export default function Quiz() {
                     <Card key={i} size="small" title={`Q${i + 1} • ${q.type}`}>
                       <div className="font-medium mb-2" dangerouslySetInnerHTML={{ __html: q.prompt || "" }} />
                       {q.type === "mcq" ? (
-                        <ol className="list-decimal pl-5">
-                          {(q.choices || []).map((c, idx) => (
-                            <li key={idx} className={idx === Number(q.answerIndex) ? "font-semibold" : ""}>
-                              <SafeText value={c?.text} />
-                            </li>
-                          ))}
-                        </ol>
+                        <div>
+                          {q.randomize && <div className="text-xs text-blue-600 mb-2">✓ Choices will be randomized</div>}
+                          <div className="space-y-2">
+                            {(q.choices || []).map((c, idx) => (
+                              <div 
+                                key={idx} 
+                                className={`p-2 border rounded ${idx === Number(q.answerIndex) ? "font-semibold bg-green-50 border-green-300" : "bg-white"}`}
+                              >
+                                <div className="flex items-start gap-2">
+                                  <span className="font-mono text-sm text-gray-500">{idx + 1}.</span>
+                                  <div className="flex-1">
+                                    <SafeText value={c?.text} />
+                                    {c?.tags && c.tags.length > 0 && (
+                                      <div className="mt-1">
+                                        <Space size="small" wrap>
+                                          {c.tags.map((tag, ti) => (
+                                            <Tag key={ti} size="small">{tag}</Tag>
+                                          ))}
+                                        </Space>
+                                      </div>
+                                    )}
+                                    {c?.image_url && (
+                                      <div className="mt-2">
+                                        <Image
+                                          src={c.image_url}
+                                          alt={`Choice ${idx + 1}`}
+                                          width={120}
+                                          height={120}
+                                          style={{ objectFit: "cover", borderRadius: 4 }}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       ) : q.type === "short" ? (
                         <div className="text-gray-500">Answer: <SafeText value={q.answerText || "—"} /></div>
                       ) : (

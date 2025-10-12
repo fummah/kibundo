@@ -49,9 +49,12 @@ export default function EditTeacherDrawer({ open, onClose, teacher, refresh }) {
     try {
       const values = await form.validateFields();
       const payload = {
-        ...values,
+        first_name: values.firstName?.trim(),
+        last_name: values.lastName?.trim(),
+        email: values.email?.trim(),
+        contact_number: values.phone?.replace(/\s/g, '') || null,
+        class_id: values.grade, // class ID
         subjects: values.subjects || [], // array of subject names
-        grade: values.grade, // class name
       };
       await api.put(`/allteachers/${teacher.id}`, payload);
       message.success("Teacher updated successfully");
@@ -88,8 +91,18 @@ export default function EditTeacherDrawer({ open, onClose, teacher, refresh }) {
             <Input />
           </Form.Item>
 
-          <Form.Item name="phone" label="Phone Number" rules={[{ required: true }]}>
-            <Input />
+          <Form.Item 
+            name="phone" 
+            label="Phone Number" 
+            rules={[
+              { required: true, message: "Phone number is required" },
+              { 
+                pattern: /^(\+49|0)[1-9]\d{1,14}$/, 
+                message: "Please enter a valid German phone number (e.g., +49 30 12345678)" 
+              }
+            ]}
+          >
+            <Input placeholder="+49 30 12345678" />
           </Form.Item>
 
           <Form.Item name="subjects" label="Subjects" rules={[{ required: true }]}>

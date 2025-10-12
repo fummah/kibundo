@@ -242,12 +242,15 @@ export default function SignUp() {
             label="Phone Number"
             rules={[
               { required: true, message: "Phone number is required" },
-              { pattern: /^[+]?[\d\s()\-]{7,20}$/, message: "Enter a valid phone number" },
+              { 
+                pattern: /^(\+49|0)[1-9]\d{1,14}$/, 
+                message: "Please enter a valid German phone number (e.g., +49 30 12345678 or 030 12345678)" 
+              },
             ]}
           >
             <Input
               prefix={<PhoneOutlined />}
-              placeholder="Phone number"
+              placeholder="+49 30 12345678"
               autoComplete="tel"
               disabled={loading}
             />

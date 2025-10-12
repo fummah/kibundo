@@ -1,5 +1,5 @@
 import React from "react";
-import { Button, Card, Descriptions, Drawer, Space, Tag } from "antd";
+import { Button, Card, Descriptions, Drawer, Space, Tag, Image } from "antd";
 import { SafeText, SafeTags } from "@/utils/safe";
 import { fromApiItem } from "@/utils/academics/transforms";
 
@@ -65,13 +65,44 @@ export default function QuizViewDrawer({ open, onClose, record, onEdit, onToggle
                 <Card key={i} size="small" title={`Q${i + 1} • ${q.type}`}>
                   <div className="font-medium mb-2" dangerouslySetInnerHTML={{ __html: q.prompt || "" }} />
                   {q.type === "mcq" ? (
-                    <ol className="list-decimal pl-5">
-                      {(q.choices || []).map((c, idx) => (
-                        <li key={idx} className={idx === Number(q.answerIndex) ? "font-semibold" : ""}>
-                          <SafeText value={c?.text} />
-                        </li>
-                      ))}
-                    </ol>
+                    <div>
+                      {q.randomize && <div className="text-xs text-blue-600 mb-2">✓ Choices will be randomized</div>}
+                      <div className="space-y-2">
+                        {(q.choices || []).map((c, idx) => (
+                          <div 
+                            key={idx} 
+                            className={`p-2 border rounded ${idx === Number(q.answerIndex) ? "font-semibold bg-green-50 border-green-300" : "bg-white"}`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <span className="font-mono text-sm text-gray-500">{idx + 1}.</span>
+                              <div className="flex-1">
+                                <SafeText value={c?.text} />
+                                {c?.tags && c.tags.length > 0 && (
+                                  <div className="mt-1">
+                                    <Space size="small" wrap>
+                                      {c.tags.map((tag, ti) => (
+                                        <Tag key={ti} size="small">{tag}</Tag>
+                                      ))}
+                                    </Space>
+                                  </div>
+                                )}
+                                {c?.image_url && (
+                                  <div className="mt-2">
+                                    <Image
+                                      src={c.image_url}
+                                      alt={`Choice ${idx + 1}`}
+                                      width={120}
+                                      height={120}
+                                      style={{ objectFit: "cover", borderRadius: 4 }}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   ) : q.type === "short" ? (
                     <div className="text-gray-500">Answer: <SafeText value={q.answerText || "—"} /></div>
                   ) : (

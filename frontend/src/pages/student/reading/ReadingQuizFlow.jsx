@@ -1,6 +1,6 @@
 // src/pages/student/reading/ReadingQuizFlow.jsx
-import { useEffect, useRef, useState } from "react";
-import { Card, Typography, Radio, Button, Space, Rate, message, Row, Col } from "antd";
+import { useEffect, useRef, useState, useMemo } from "react";
+import { Card, Typography, Radio, Button, Space, Rate, message, Row, Col, Image, Tag } from "antd";
 import { useNavigate } from "react-router-dom";
 
 import BackButton from "@/components/student/common/BackButton.jsx";
@@ -11,6 +11,19 @@ import { fetchReadingQuiz } from "@/api/reading.js";
 import { useTaskTimer } from "@/hooks/useTaskTimer.js";
 
 const { Title, Text } = Typography;
+
+// Utility to randomize choices while tracking original indices
+const randomizeChoices = (choices, randomize = true) => {
+  if (!randomize || !Array.isArray(choices)) return choices.map((c, i) => ({ choice: c, originalIndex: i }));
+  
+  const indexed = choices.map((c, i) => ({ choice: c, originalIndex: i }));
+  const shuffled = [...indexed];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
 
 export default function ReadingQuizFlow() {
   const navigate = useNavigate();
@@ -25,6 +38,27 @@ export default function ReadingQuizFlow() {
       setQ(data);
     })();
   }, []);
+
+  // Memoize randomized questions (only once on load)
+  const randomizedItems = useMemo(() => {
+    if (!q?.items) return [];
+    return q.items.map(item => {
+      // Check if item has options array with objects (new format) or strings (old format)
+      const hasObjectOptions = Array.isArray(item.options) && item.options.some(o => typeof o === "object" && o !== null);
+      
+      if (hasObjectOptions) {
+        // New format with image support
+        const shouldRandomize = item.randomize !== false;
+        const randomized = randomizeChoices(item.options, shouldRandomize);
+        return { ...item, randomizedOptions: randomized };
+      } else {
+        // Old format - simple strings
+        const options = Array.isArray(item.options) ? item.options : [];
+        const randomized = randomizeChoices(options, true);
+        return { ...item, randomizedOptions: randomized };
+      }
+    });
+  }, [q]);
 
   const { running, elapsedMs, start, pause, reset, flush } = useTaskTimer(
     "reading:quiz",
@@ -48,8 +82,13 @@ export default function ReadingQuizFlow() {
   const submit = () => {
     if (!q) return;
     let s = 0;
-    q.items.forEach((it, i) => {
-      if (ans[i] === it.correct) s++;
+    randomizedItems.forEach((it, i) => {
+      // Map user's answer back to original index to check correctness
+      const userAnswerIndex = ans[i];
+      if (userAnswerIndex !== undefined) {
+        const originalIndex = it.randomizedOptions[userAnswerIndex]?.originalIndex;
+        if (originalIndex === it.correct) s++;
+      }
     });
     setScore(s);
     message.success(`You got ${s}/${q.items.length}!`);
@@ -99,7 +138,7 @@ export default function ReadingQuizFlow() {
 
           {/* Questions — page itself scrolls; options wrap cleanly */}
           <Row gutter={[16, 16]}>
-            {q.items.map((it, idx) => (
+            {randomizedItems.map((it, idx) => (
               <Col key={idx} xs={24}>
                 <Card className="rounded-2xl">
                   <Text strong className="block mb-2">
@@ -110,15 +149,43 @@ export default function ReadingQuizFlow() {
                     value={ans[idx]}
                     className="flex flex-col gap-2"
                   >
-                    {it.options.map((op, i) => (
-                      <Radio
-                        key={i}
-                        value={i}
-                        className="rounded-xl px-2 py-2 bg-neutral-50 whitespace-normal break-words leading-6"
-                      >
-                        {op}
-                      </Radio>
-                    ))}
+                    {it.randomizedOptions.map((item, i) => {
+                      const choice = item.choice;
+                      const isObject = typeof choice === "object" && choice !== null;
+                      const text = isObject ? choice.text : String(choice);
+                      const imageUrl = isObject ? choice.image_url : null;
+                      const tags = isObject && Array.isArray(choice.tags) ? choice.tags : [];
+
+                      return (
+                        <Radio
+                          key={i}
+                          value={i}
+                          className="rounded-xl px-3 py-2 bg-neutral-50 whitespace-normal break-words leading-6"
+                        >
+                          <div className="flex flex-col gap-2">
+                            <span>{text}</span>
+                            {tags.length > 0 && (
+                              <Space size="small" wrap>
+                                {tags.map((tag, ti) => (
+                                  <Tag key={ti} size="small" color="blue">{tag}</Tag>
+                                ))}
+                              </Space>
+                            )}
+                            {imageUrl && (
+                              <div className="mt-1">
+                                <Image
+                                  src={imageUrl}
+                                  alt={text}
+                                  width={150}
+                                  height={150}
+                                  style={{ objectFit: "cover", borderRadius: 8 }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </Radio>
+                      );
+                    })}
                   </Radio.Group>
                 </Card>
               </Col>

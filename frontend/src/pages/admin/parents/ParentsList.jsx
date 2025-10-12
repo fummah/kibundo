@@ -20,8 +20,6 @@ export default function ParentsList() {
             const src = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
             const fb = (v) => (v === undefined || v === null || String(v).trim() === "" ? "-" : v);
 
-            console.log("Parents raw data:", src); // Debug log
-
             return src.map((p) => {
               const u = p.user || {};
               const name =
@@ -47,7 +45,6 @@ export default function ParentsList() {
                 raw: p,
               };
 
-              console.log("Parsed parent:", parsed); // Debug log
               return parsed;
             });
           },
@@ -78,7 +75,7 @@ export default function ParentsList() {
           },
 
           name: {
-            title: "Full name",
+            title: "Full Name",
             dataIndex: "name",
             key: "name",
             render: (v, row) => (

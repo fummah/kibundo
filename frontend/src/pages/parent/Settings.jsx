@@ -169,15 +169,15 @@ function SettingsContent({
                   {
                     validator: (_, v) => {
                       if (!v) return Promise.resolve();
-                      const ok = /^\+49\s?\d{5,}$/.test(v.replace(/\s+/g, " "));
-                      return ok ? Promise.resolve() : Promise.reject(new Error("Enter a German number starting with +49"));
+                      const ok = /^(\+49|0)[1-9]\d{1,14}$/.test(v.replace(/\s+/g, ""));
+                      return ok ? Promise.resolve() : Promise.reject(new Error("Please enter a valid German phone number (e.g., +49 30 12345678 or 030 12345678)"));
                     },
                   },
                 ]}
               >
                 <Input
                   className="rounded-xl"
-                  placeholder="+49 170 1234567"
+                  placeholder="+49 30 12345678"
                   onChange={(e) => {
                     const digits = e.target.value;
                     // optional: live-format outside of validation

@@ -6,62 +6,213 @@ export default function TeacherForm() {
       titleNew="Add Teacher"
       titleEdit="Edit Teacher"
       submitLabel="Save"
-      toListRelative=".."
-      toDetailRelative={(id) => `${id}`}
+      toDetailRelative={(id) => `/admin/teachers/${id}`}
       apiCfg={{
-        // detail route
+        // Detail path
         getPath: (id) => `/teacher/${id}`,
-        // we will create via /adduser so the backend also creates a Teacher (role_id=3)
+
+        // Create teacher with required email and de-dupe by email
         create: async (api, payload) => {
-          const body = {
-            role_id: 3,
-            first_name: payload.first_name,
-            last_name: payload.last_name,
-            email: payload.email,
-            // store readable state name
-            state: payload.state,
-            // teacher specific
-            class_id: payload.class_id,
-            // map phone from form to user's contact_number
-            contact_number: payload.contact_number ?? payload.phone ?? null,
-          };
-
-          const res = await api.post("/adduser", body);
-
-          // Resolve Teacher.id for redirect (backend returns user, not teacher)
           try {
-            const list = await api.get("/allteachers");
-            const rows = Array.isArray(list?.data) ? list.data : (Array.isArray(list?.data?.data) ? list.data.data : []);
-            const match = rows.find((t) => (t?.user?.email && payload?.email) && t.user.email === payload.email);
-            if (match?.id) return { data: { id: match.id } };
-          } catch {}
+            const email = String(payload.email).trim();
 
-          throw new Error("Teacher created, but could not resolve Teacher ID for redirect. Refresh Teachers list.");
+            // Build base user data for /adduser
+            const userData = {
+              first_name: payload.first_name,
+              last_name: payload.last_name,
+              contact_number: payload.contact_number || null,
+              state: payload.state || null,            // VARCHAR on users.state
+              status: "active",
+              role_id: 3,                              // Teacher role
+              password: "TemporaryPassword123!",       // backend can force reset later
+              isActive: true,
+              email,                                   // email is required
+              class_id: payload.class_id,
+            };
+
+            // Try to reuse existing user by email
+            try {
+              const checkUserRes = await api.get(`/users`);
+              const allUsers = Array.isArray(checkUserRes.data)
+                ? checkUserRes.data
+                : (checkUserRes.data?.data || []);
+              const existingUser = allUsers.find(
+                (u) => u?.email && u.email.toLowerCase() === email.toLowerCase()
+              );
+
+              if (existingUser?.id) {
+                // Is this user already a teacher?
+                try {
+                  const teacherCheckRes = await api.get(`/allteachers`);
+                  const maybeArr = Array.isArray(teacherCheckRes.data)
+                    ? teacherCheckRes.data
+                    : (teacherCheckRes.data?.data || []);
+                  const existingTeacher = maybeArr.find(
+                    (t) => t?.user_id === existingUser.id || t?.user?.id === existingUser.id
+                  );
+
+                  if (existingTeacher?.id) {
+                    // Short-circuit: return existing teacher
+                    return {
+                      data: {
+                        id: existingTeacher.id,
+                        message: "A teacher with this email already exists.",
+                      },
+                    };
+                  }
+                } catch (e) {
+                  // If this check fails, continue to create the teacher record
+                  console.warn("Teacher existence check failed, proceeding:", e);
+                }
+
+                // Create teacher record linked to the existing user
+                try {
+                  const teacherRes = await api.post(`/addteacher`, {
+                    user_id: existingUser.id,
+                    class_id: payload.class_id,
+                    created_by: 1,
+                  });
+
+                  const newTeacherId =
+                    teacherRes?.data?.id ||
+                    teacherRes?.data?.teacher?.id ||
+                    teacherRes?.data?.data?.id;
+
+                  if (!newTeacherId) {
+                    throw new Error("Teacher was created but no ID returned.");
+                  }
+
+                  return { data: { id: newTeacherId } };
+                } catch (teacherError) {
+                  // Handle 409 Conflict - teacher already exists
+                  if (teacherError?.response?.status === 409) {
+                    const existingTeacher = teacherError?.response?.data?.teacher;
+                    if (existingTeacher?.id) {
+                      return { data: { id: existingTeacher.id } };
+                    }
+                  }
+                  throw teacherError;
+                }
+              }
+            } catch (e) {
+              console.warn("User lookup failed, will create new user:", e);
+            }
+
+            // Create a new user
+            const userRes = await api.post(`/adduser`, userData);
+            const createdUser =
+              userRes?.data?.user || userRes?.data?.data || userRes?.data;
+
+            if (!createdUser?.id) {
+              throw new Error("Failed to create user account.");
+            }
+
+            // Check if teacher already exists before creating
+            try {
+              const teachersRes = await api.get(`/allteachers`);
+              const teachers = Array.isArray(teachersRes.data) ? teachersRes.data : (teachersRes.data?.data || []);
+              const existingTeacher = teachers.find(
+                t => t.user_id === createdUser.id || t?.user?.id === createdUser.id
+              );
+              
+              if (existingTeacher?.id) {
+                return { data: { id: existingTeacher.id } };
+              }
+            } catch (checkError) {
+              // Continue to create teacher
+            }
+
+            // Create the teacher linked to that user
+            try {
+              const teacherRes = await api.post(`/addteacher`, {
+                user_id: createdUser.id,
+                class_id: payload.class_id,
+                created_by: 1,
+              });
+
+              const teacherId =
+                teacherRes?.data?.id ||
+                teacherRes?.data?.teacher?.id ||
+                teacherRes?.data?.data?.id;
+
+              if (!teacherId) {
+                throw new Error("Failed to create teacher profile.");
+              }
+
+              return { data: { id: teacherId } };
+            } catch (teacherError) {
+              // Handle 409 Conflict - teacher already exists
+              if (teacherError?.response?.status === 409) {
+                const existingTeacher = teacherError?.response?.data?.teacher;
+                if (existingTeacher?.id) {
+                  return { data: { id: existingTeacher.id } };
+                }
+                
+                // Final fallback: search again
+                try {
+                  const teachersRes = await api.get(`/allteachers`);
+                  const teachers = Array.isArray(teachersRes.data) ? teachersRes.data : (teachersRes.data?.data || []);
+                  const existingTeacherFromSearch = teachers.find(
+                    t => t.user_id === createdUser.id || t?.user?.id === createdUser.id
+                  );
+                  
+                  if (existingTeacherFromSearch?.id) {
+                    return { data: { id: existingTeacherFromSearch.id } };
+                  }
+                } catch (searchError) {
+                  console.warn("Failed to search for existing teacher:", searchError);
+                }
+              }
+              throw teacherError;
+            }
+          } catch (error) {
+            console.error("Error in teacher creation:", error);
+
+            const msg =
+              error?.response?.data?.message ||
+              error?.message ||
+              "Failed to create teacher. Please try again.";
+
+            // Friendlier duplicate email message if applicable
+            if (typeof msg === "string" && msg.toLowerCase().includes("already exists")) {
+              throw new Error("This email is already registered. Please use a different email address.");
+            }
+            throw new Error(msg);
+          }
         },
+
+        // Email is now required
+        requiredKeys: ["first_name", "last_name", "email", "class_id"],
       }}
+
       fields={[
-        {
-          name: "first_name",
-          label: "First name",
-          placeholder: "e.g., Jane",
-          rules: [{ required: true, message: "First name is required" }],
-        },
-        {
-          name: "last_name",
-          label: "Last name",
-          placeholder: "e.g., Doe",
-          rules: [{ required: true, message: "Last name is required" }],
-        },
+        { name: "first_name", label: "First Name", rules: [{ required: true }] },
+        { name: "last_name", label: "Last Name", rules: [{ required: true }] },
+
+        // REQUIRED email
         {
           name: "email",
           label: "Email",
-          placeholder: "name@example.com",
-          rules: [{ required: true, message: "Email is required" }, { type: "email", message: "Invalid email" }],
+          rules: [
+            { required: true, message: "Email is required" },
+            { type: "email", message: "Please enter a valid email" }
+          ],
+          placeholder: "teacher@example.com",
         },
-        // In detail payload phone lives at user.contact_number
-        { name: ["user", "contact_number"], label: "Phone number", placeholder: "+27 82 123 4567" },
 
-        // Class assignment
+        { 
+          name: "contact_number", 
+          label: "Phone Number", 
+          placeholder: "+49 30 12345678",
+          rules: [
+            { 
+              pattern: /^(\+49|0)[1-9]\d{1,14}$/, 
+              message: "Please enter a valid German phone number (e.g., +49 30 12345678 or 030 12345678)" 
+            }
+          ]
+        },
+
+        // Class assignment (REQUIRED)
         {
           name: "class_id",
           label: "Class",
@@ -73,33 +224,39 @@ export default function TeacherForm() {
           searchParam: "q",
           transform: (it) => ({ value: it?.id ?? it, label: it?.class_name ?? String(it) }),
           rules: [{ required: true, message: "Class is required" }],
-          initialOptions: undefined,
         },
 
-        // State (use state name as the value)
+        // users.state is a string (state name)
         {
-          name: ["user", "state"],
+          name: "state",
           label: "State",
           input: "select",
-          placeholder: "Search Bundesland…",
+          placeholder: "Search state…",
           optionsUrl: "/states",
           serverSearch: true,
+          autoloadOptions: true,
           searchParam: "q",
-          transform: (it) => ({ value: it?.state_name ?? String(it), label: it?.state_name ?? String(it) }),
-          autoloadOptions: false,
+          transform: (it) => ({
+            value: it?.state_name ?? it?.name ?? String(it ?? ""),
+            label: it?.state_name ?? it?.name ?? String(it ?? ""),
+          }),
         },
       ]}
+
       transformSubmit={(vals) => {
-        return {
+        const out = {
           first_name: vals.first_name?.trim(),
           last_name: vals.last_name?.trim(),
-          email: vals.email?.trim(),
-          // read phone from nested user.contact_number or flat
-          contact_number: vals?.user?.contact_number ?? vals.contact_number ?? vals.phone ?? null,
+          email: vals.email?.trim(), // email is required
+          contact_number: vals.contact_number?.replace(/\s/g, '') || null, // remove spaces
+          state: vals.state || null,
           class_id: vals.class_id,
-          // read state from nested user.state or flat
-          state: vals?.user?.state ?? vals.state ?? null,
         };
+        // Strip nullish
+        Object.keys(out).forEach((k) => {
+          if (out[k] == null) delete out[k];
+        });
+        return out;
       }}
     />
   );

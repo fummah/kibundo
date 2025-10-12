@@ -158,11 +158,5 @@ export default function ParentDetail() {
     },
   }), [renderBillingTab]);
 
-  // Memoized wrapper prevents EntityDetail from re-rendering on URL/tab changes
-  const MemoEntityDetail = useMemo(
-    () => React.memo(({ cfg }) => <EntityDetail cfg={cfg} />),
-    []
-  );
-
-  return <MemoEntityDetail cfg={cfg} />;
+  return <EntityDetail cfg={cfg} />;
 }

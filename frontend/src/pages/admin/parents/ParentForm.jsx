@@ -11,11 +11,10 @@ export default function ParentForm() {
         // Detail path (you already have GET /parent/:id)
         getPath: (id) => `/parent/${id}`,
 
-        // Create parent with optional email and de-dupe by email if present
+        // Create parent with required email and de-dupe by email
         create: async (api, payload) => {
           try {
-            const hasEmail = !!(payload.email && String(payload.email).trim());
-            const email = hasEmail ? String(payload.email).trim() : null;
+            const email = String(payload.email).trim();
 
             // Build base user data for /adduser
             const userData = {
@@ -27,12 +26,11 @@ export default function ParentForm() {
               role_id: 2,                              // Parent role
               password: "TemporaryPassword123!",       // backend can force reset later
               isActive: true,
-              ...(email ? { email } : {}),             // include only if provided
+              email,                                   // email is required
             };
 
-            // If we have an email, try to reuse existing user
-            if (email) {
-              try {
+            // Try to reuse existing user by email
+            try {
                 const checkUserRes = await api.get(`/users`);
                 const allUsers = Array.isArray(checkUserRes.data)
                   ? checkUserRes.data
@@ -93,11 +91,10 @@ export default function ParentForm() {
                   }
                 }
               } catch (e) {
-           
+                console.warn("User lookup failed, will create new user:", e);
               }
-            }
 
-            // Create a new user (works for no-email too)
+            // Create a new user
             const userRes = await api.post(`/adduser`, userData);
             const createdUser =
               userRes?.data?.user || userRes?.data?.data || userRes?.data;
@@ -177,23 +174,36 @@ export default function ParentForm() {
           }
         },
 
-        // No email required
-        requiredKeys: ["first_name", "last_name"],
+        // Email is now required
+        requiredKeys: ["first_name", "last_name", "email"],
       }}
 
       fields={[
-        { name: "first_name", label: "First name", rules: [{ required: true }] },
-        { name: "last_name", label: "Last name", rules: [{ required: true }] },
+        { name: "first_name", label: "First Name", rules: [{ required: true }] },
+        { name: "last_name", label: "Last Name", rules: [{ required: true }] },
 
-        // OPTIONAL email
+        // REQUIRED email
         {
           name: "email",
           label: "Email",
-          rules: [{ type: "email" }],
-          placeholder: "Optional",
+          rules: [
+            { required: true, message: "Email is required" },
+            { type: "email", message: "Please enter a valid email" }
+          ],
+          placeholder: "parent@example.com",
         },
 
-        { name: "contact_number", label: "Phone number", placeholder: "+27 82 123 4567" },
+        { 
+          name: "contact_number", 
+          label: "Phone Number", 
+          placeholder: "+49 30 12345678",
+          rules: [
+            { 
+              pattern: /^(\+49|0)[1-9]\d{1,14}$/, 
+              message: "Please enter a valid German phone number (e.g., +49 30 12345678 or 030 12345678)" 
+            }
+          ]
+        },
 
         // users.state is a string (state name)
         {
@@ -213,12 +223,11 @@ export default function ParentForm() {
       ]}
 
       transformSubmit={(vals) => {
-        const trimmedEmail = vals.email && String(vals.email).trim();
         const out = {
           first_name: vals.first_name?.trim(),
           last_name: vals.last_name?.trim(),
-          ...(trimmedEmail ? { email: trimmedEmail } : {}), // omit empty email
-          contact_number: vals.contact_number || null,
+          email: vals.email?.trim(), // email is required
+          contact_number: vals.contact_number?.replace(/\s/g, '') || null, // remove spaces
           state: vals.state || null,
         };
         // Strip nullish

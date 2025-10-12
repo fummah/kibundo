@@ -118,7 +118,6 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
           responseType: 'blob',
         });
       } catch (firstError) {
-        console.log('First download attempt failed, trying alternative endpoint...', firstError);
         // Fall back to the generic endpoint
         response = await api.get(`/invoices/${invoice.id}/download`, {
           responseType: 'blob',

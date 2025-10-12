@@ -22,16 +22,6 @@ export default function StudentsList() {
             const fallback = (v) =>
               v === undefined || v === null || String(v).trim() === "" ? "-" : String(v).trim();
 
-            // Debug: Log the first student to see what data we're getting
-            if (src.length > 0) {
-              console.log("=== STUDENT LIST DEBUG ===");
-              console.log("First student raw data:", src[0]);
-              console.log("Has parent?", !!src[0].parent);
-              console.log("Parent data:", src[0].parent);
-              console.log("Parent user data:", src[0].parent?.user);
-              console.log("========================");
-            }
-
             return src.map((student) => {
               const user = student.user || {};
               const parent = student.parent || {};
@@ -85,45 +75,8 @@ export default function StudentsList() {
         columnsMap: () => ({
           status: F.status("status"),
           id: F.idLink("ID", "/admin/students", "id"),
-          name: F.text("Full name", "name"),
+          name: F.text("Full Name", "name"),
           grade: F.text("Grade", "grade"),
-
-          // Parent Name (always render a stable wrapper; use <Link> when we have an id)
-          parent_name: {
-            title: "Parent Name",
-            dataIndex: "parent_name",
-            key: "parent_name",
-            render: (_, row) => {
-              const hasText = row.parent_name && row.parent_name !== "-";
-              const text = hasText ? row.parent_name : "-";
-              const pid = row.parent_id;
-
-              return (
-                <span>
-                  {pid && hasText ? (
-                    <Link to={`/admin/parents/${pid}`}>{text}</Link>
-                  ) : (
-                    <span className="text-gray-400">{text}</span>
-                  )}
-                </span>
-              );
-            },
-          },
-
-          // Parent Email (mail-to when available; stable wrapper)
-          parent_email: {
-            title: "Parent Email",
-            dataIndex: "parent_email",
-            key: "parent_email",
-            render: (email) =>
-              email && email !== "-" ? (
-                <span><a href={`mailto:${email}`}>{email}</a></span>
-              ) : (
-                <span className="text-gray-400">-</span>
-              ),
-          },
-
-          school: F.text("School", "school"),
           state: F.text("State", "state"),
           created_at: F.date("Date added", "created_at"),
         }),
@@ -134,9 +87,6 @@ export default function StudentsList() {
           "id",
           "name",
           "grade",
-          "parent_name",
-          "parent_email",
-          "school",
           "state",
           "created_at",
         ],

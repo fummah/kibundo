@@ -117,9 +117,15 @@ export default function EditStudentDrawer({
         <Form.Item
           label="Phone"
           name="phone"
-          rules={[{ required: true, message: "Phone is required" }]}
+          rules={[
+            { required: true, message: "Phone is required" },
+            { 
+              pattern: /^(\+49|0)[1-9]\d{1,14}$/, 
+              message: "Please enter a valid German phone number (e.g., +49 30 12345678)" 
+            }
+          ]}
         >
-          <Input placeholder="Enter phone number" />
+          <Input placeholder="+49 30 12345678" />
         </Form.Item>
 
         <Form.Item

@@ -35,8 +35,11 @@ export default function AddTeacherDrawer({ open, onClose, onAdd }) {
     try {
       const values = await form.validateFields();
       const payload = {
-        ...values,
-        grade: values.grade, // class ID
+        first_name: values.firstName?.trim(),
+        last_name: values.lastName?.trim(),
+        email: values.email?.trim(),
+        contact_number: values.phone?.replace(/\s/g, '') || null,
+        class_id: values.grade, // class ID
         subjects: values.subjects || [], // subject IDs
       };
       onAdd(payload);
@@ -90,9 +93,15 @@ export default function AddTeacherDrawer({ open, onClose, onAdd }) {
           <Form.Item
             name="phone"
             label="Phone"
-            rules={[{ required: true, message: "Phone number is required" }]}
+            rules={[
+              { required: true, message: "Phone number is required" },
+              { 
+                pattern: /^(\+49|0)[1-9]\d{1,14}$/, 
+                message: "Please enter a valid German phone number (e.g., +49 30 12345678)" 
+              }
+            ]}
           >
-            <Input placeholder="Enter phone number" />
+            <Input placeholder="+49 30 12345678" />
           </Form.Item>
 
           <Form.Item

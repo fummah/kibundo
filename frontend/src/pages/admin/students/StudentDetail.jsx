@@ -1,5 +1,5 @@
 // src/pages/students/StudentDetail.jsx
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import EntityDetail from "@/components/EntityDetail.jsx";
 import { Button, Tag, message, Modal, Select } from "antd";
@@ -13,8 +13,9 @@ const euro = (cents) => {
 };
 
 export default function StudentDetail() {
+  // Read location once, but freeze the prefill so later URL/tab changes don't trigger work
   const location = useLocation();
-  const prefill = location.state?.prefill || null;
+  const prefillRef = useRef(location.state?.prefill || null);
 
   const [availableSubjects, setAvailableSubjects] = useState([]);
   const [assignSubjectModalVisible, setAssignSubjectModalVisible] = useState(false);
@@ -80,10 +81,15 @@ export default function StudentDetail() {
     [apiPaths]
   );
 
-  const cfg = {
+  // Stable config object (does not depend on location)
+  const cfg = useMemo(() => ({
     titleSingular: "Student",
     idField: "id",
     routeBase: "/admin/students",
+
+    // Optional: give EntityDetail a hint to keep tab panes mounted (if it supports it)
+    tabsProps: { destroyOnHidden: false, animated: false },
+
     api: {
       getPath: (id) => `/student/${id}`,
       updateStatusPath: (id) => `/student/${id}/status`,
@@ -191,8 +197,8 @@ export default function StudentDetail() {
       },
     },
 
-    // Pre-populate while GET /student/:id runs
-    initialEntity: prefill || undefined,
+    // Freeze the initial entity so routing/tab changes don't bounce the UI
+    initialEntity: prefillRef.current || undefined,
 
     infoFields: [
       { label: "Name", name: "name" },
@@ -216,7 +222,7 @@ export default function StudentDetail() {
       subjects: {
         enabled: true,
         label: "Subjects",
-        render: (student) => {
+        render: (student, { reload } = {}) => {
           const studentId = student?.id;
           const subjects = Array.isArray(student?.raw?.subjects) ? student.raw.subjects : [];
           const assignedIds = new Set(
@@ -235,7 +241,7 @@ export default function StudentDetail() {
               value: subj?.id ?? subj?.subject_id,
             }));
 
-          const onConfirmRemove = (subject) => {
+          const onConfirmRemove = async (subject) => {
             const subjectId = subject?.id ?? subject?.subject_id;
             Modal.confirm({
               title: "Remove Subject",
@@ -243,7 +249,10 @@ export default function StudentDetail() {
                 subject?.subject_name || subject?.name || `Subject #${subjectId}`
               } from this student?`,
               okButtonProps: { danger: true },
-              onOk: () => handleRemoveSubject(studentId, subjectId),
+              onOk: async () => {
+                await handleRemoveSubject(studentId, subjectId);
+                if (reload) await reload();
+              },
             });
           };
 
@@ -290,13 +299,17 @@ export default function StudentDetail() {
 
               {/* Assign Subject Modal */}
               <Modal
+                key={`assign-subject-modal-${studentId}`}
                 title="Assign Subject"
                 open={assignSubjectModalVisible}
                 onCancel={() => {
                   setAssignSubjectModalVisible(false);
                   setSelectedSubjectId(null);
                 }}
-                onOk={() => handleAssignSubject(studentId)}
+                onOk={async () => {
+                  await handleAssignSubject(studentId);
+                  if (reload) await reload();
+                }}
                 confirmLoading={assigning}
                 okText="Assign"
                 okButtonProps={{ disabled: !selectedSubjectId }}
@@ -322,6 +335,7 @@ export default function StudentDetail() {
       related: {
         enabled: true,
         label: "Parents / Guardians",
+        showAddButton: false,
         idField: "id",
         refetchPath: (studentId) => `/student/${studentId}?include=parent`,
         extractList: (student) => {
@@ -415,7 +429,7 @@ export default function StudentDetail() {
       tasks: { enabled: true, label: "Tasks" },
       documents: { enabled: true, label: "Documents" },
       communication: {
-        enabled: true,
+        enabled: false,
         label: "Comments",
         listPath: (id) => `/student/${id}/comments`,
         createPath: (id) => `/student/${id}/comments`,
@@ -439,7 +453,7 @@ export default function StudentDetail() {
         },
       },
     },
-  };
+  }), [availableSubjects, handleAssignSubject, handleRemoveSubject, assignSubjectModalVisible, selectedSubjectId, assigning]);
 
   return <EntityDetail cfg={cfg} />;
 }

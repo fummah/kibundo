@@ -227,7 +227,9 @@ export default function EntityForm({
 
         // afterUpdate hook
         let hook = apiCfg.afterUpdate?.(res);
-        messageApi.success("Saved");
+        if (!hook?.preventMessage) {
+          messageApi.success("Saved");
+        }
         if (hook?.preventRedirect) return;
 
         return goToDetail(updated.id ?? id);
@@ -244,7 +246,9 @@ export default function EntityForm({
 
       // afterCreate hook
       let hook = apiCfg.afterCreate?.(res);
-      messageApi.success("Created");
+      if (!hook?.preventMessage) {
+        messageApi.success("Created");
+      }
       if (hook?.preventRedirect) return;
 
       if (created?.id) return goToDetail(created.id);
@@ -282,7 +286,7 @@ export default function EntityForm({
     const inputType = f.input || "input";
     const labelNode = (
       <Space size={6}>
-        <span>{f.label}</span>
+        <span style={{ textTransform: "none" }}>{f.label}</span>
         {f.help ? (
           <Tooltip title={f.help}>
             <QuestionCircleOutlined />

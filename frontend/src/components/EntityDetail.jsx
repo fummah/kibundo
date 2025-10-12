@@ -193,6 +193,9 @@ export default function EntityDetail({ cfg }) {
   const [activeTab, setActiveTab] = useState("information");
   const [addCommentOpen, setAddCommentOpen] = useState(false);
   const [linkChildModalOpen, setLinkChildModalOpen] = useState(false);
+  
+  // Track if initial load is done to prevent flicker
+  const [initialLoadDone, setInitialLoadDone] = useState(!!parsedPrefill);
 
   const [relatedRows, setRelatedRows] = useState([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
@@ -219,6 +222,16 @@ export default function EntityDetail({ cfg }) {
   const [docUploadOpen, setDocUploadOpen] = useState(false);
   const [docEditOpen, setDocEditOpen] = useState(false);
   const [docEditing, setDocEditing] = useState(null);
+
+  // Store load and messageApi in refs to provide stable access to custom tabs
+  const loadRef = useRef(null);
+  const messageApiRef = useRef(null);
+  
+  // Create a stable context object for custom tabs
+  const tabContext = useMemo(() => ({
+    get reload() { return loadRef.current; },
+    get messageApi() { return messageApiRef.current; }
+  }), []);
 
   useEffect(() => {
     if (parsedPrefill && JSON.stringify(parsedPrefill) !== JSON.stringify(prevEntityRef.current)) {
@@ -255,6 +268,7 @@ export default function EntityDetail({ cfg }) {
         if (JSON.stringify(prev) !== JSON.stringify(obj)) return obj || {};
         return prev;
       });
+      setInitialLoadDone(true);
     } catch (err) {
       if (!entity) {
         const defaultEntity = { [idField]: id, name: "-", status: "active" };
@@ -267,10 +281,17 @@ export default function EntityDetail({ cfg }) {
       } else {
         messageApi.warning("Could not load details. Showing cached row.");
       }
+      setInitialLoadDone(true);
     } finally {
       setLoading(false);
     }
   }, [id, getPath, apiObj, messageApi, idField]); // <-- removed `entity` from deps
+
+  // Keep refs up to date
+  useEffect(() => {
+    loadRef.current = load;
+    messageApiRef.current = messageApi;
+  }, [load, messageApi]);
 
   /* -------- related -------- */
   const loadRelated = useCallback(async () => {
@@ -762,52 +783,58 @@ export default function EntityDetail({ cfg }) {
   }, [safeCfg?.tabs?.related?.enabled, relatedListPath, performancePath, commCfg?.enabled, tasksCfg.enabled, docsCfg?.enabled, loadRelated, loadPerformance, loadComments, loadTasks, loadDocuments]);
 
   /* ---------- Cards/Tab Panels ---------- */
-  const PerformanceCard = performancePath ? (
-    <Card
-      className="!rounded-xl"
-      title="Performance"
-      extra={
-        <Space>
-          <Select
-            size="small"
-            value={perfRange}
-            onChange={setPerfRange}
-            options={[
-              { value: "14d", label: "Last 14d" },
-              { value: "30d", label: "Last 30d" },
-              { value: "90d", label: "Last 90d" },
-            ]}
-            style={{ width: 120 }}
-          />
-          <Button size="small" icon={<ReloadOutlined />} onClick={loadPerformance} />
-        </Space>
-      }
-    >
-      <div style={{ width: "100%", height: 280 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={performance} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="perfGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#1677ff" stopOpacity={0.35} />
-                <stop offset="100%" stopColor="#1677ff" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-            <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} width={36} />
-            <RTooltip formatter={(v) => [v, "Score"]} labelStyle={{ fontWeight: 600 }} contentStyle={{ borderRadius: 8 }} />
-            <Area type="monotone" dataKey="value" stroke="#1677ff" fill="url(#perfGrad)" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }} isAnimationActive />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-      {(!performance || performance.length === 0) && !perfLoading ? (
-        <div className="p-3 text-gray-500">No performance data available.</div>
-      ) : null}
-    </Card>
-  ) : null;
+  const PerformanceCard = useMemo(() => {
+    if (!performancePath) return null;
+    
+    return (
+      <Card
+        className="!rounded-xl"
+        title="Performance"
+        extra={
+          <Space>
+            <Select
+              size="small"
+              value={perfRange}
+              onChange={setPerfRange}
+              options={[
+                { value: "14d", label: "Last 14d" },
+                { value: "30d", label: "Last 30d" },
+                { value: "90d", label: "Last 90d" },
+              ]}
+              style={{ width: 120 }}
+            />
+            <Button size="small" icon={<ReloadOutlined />} onClick={loadPerformance} />
+          </Space>
+        }
+      >
+        <div style={{ width: "100%", height: 280 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={performance} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="perfGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#1677ff" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#1677ff" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} width={36} />
+              <RTooltip formatter={(v) => [v, "Score"]} labelStyle={{ fontWeight: 600 }} contentStyle={{ borderRadius: 8 }} />
+              <Area type="monotone" dataKey="value" stroke="#1677ff" fill="url(#perfGrad)" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }} isAnimationActive />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+        {(!performance || performance.length === 0) && !perfLoading ? (
+          <div className="p-3 text-gray-500">No performance data available.</div>
+        ) : null}
+      </Card>
+    );
+  }, [performancePath, perfRange, performance, perfLoading, loadPerformance]);
 
-  const CommunicationPanel =
-    commCfg?.enabled && (
+  const CommunicationPanel = useMemo(() => {
+    if (!commCfg?.enabled) return null;
+    
+    return (
       <Card className="!rounded-xl" title="Comments / Notes" styles={{ body: { padding: 0 } }}>
         <div style={{ maxHeight: 420, overflowY: "auto" }}>
           <List
@@ -849,8 +876,9 @@ export default function EntityDetail({ cfg }) {
         </Modal>
       </Card>
     );
+  }, [commCfg?.enabled, comments, commentsLoading, addComment, addCommentOpen]);
 
-  const informationTab = (
+  const informationTab = useMemo(() => (
     <Card title="Main information">
       <Form form={infoForm} layout="vertical" initialValues={entity}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
@@ -868,297 +896,317 @@ export default function EntityDetail({ cfg }) {
         </div>
       </Form>
     </Card>
-  );
+  ), [entity, editableInfoFields, infoForm]);
 
-  const relatedTab =
-    safeCfg?.tabs?.related?.enabled &&
-    (function () {
-      return (
-        <Card className="!rounded-xl" styles={{ body: { padding: 0 } }}>
-          <div className="p-3 flex items-center justify-between">
-            <Text strong>{safeCfg.tabs.related.label || "Related"}</Text>
-            <Space>
-              <Button icon={<PlusOutlined />} onClick={() => setLinkChildModalOpen(true)} disabled={false}>
-                Add Student
-              </Button>
-              <Button icon={<ReloadOutlined />} onClick={loadRelated} />
-            </Space>
-          </div>
-          <div className="px-3 pb-3">
-            <Table
-              rowKey={safeCfg.tabs?.related?.rowKey || ((r) => r.id ?? r.name)}
-              loading={relatedLoading}
-              columns={relatedColumns}
-              dataSource={relatedRows}
-              pagination={{ pageSize: 10 }}
-              scroll={{ x: 800 }}
-              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nothing related." /> }}
-            />
-          </div>
-        </Card>
+  const relatedTab = useMemo(() => {
+    if (!safeCfg?.tabs?.related?.enabled) return null;
+    
+    const showAddBtn = safeCfg.tabs.related.showAddButton !== false;
+    const addButtonLabel = safeCfg.tabs.related.addButtonLabel || "Add Student";
+    const buttons = [];
+    
+    if (showAddBtn) {
+      buttons.push(
+        <Button key="add-related" icon={<PlusOutlined />} onClick={() => setLinkChildModalOpen(true)} disabled={false}>
+          {addButtonLabel}
+        </Button>
       );
-    })();
-
-  const TasksTab =
-    tasksCfg.enabled &&
-    (function () {
-      return (
-        <Card className="!rounded-xl" styles={{ body: { padding: 16 } }}>
-          <AddTaskForm onSubmit={createTask} />
-          <Divider />
+    }
+    
+    buttons.push(
+      <Button key="reload" icon={<ReloadOutlined />} onClick={loadRelated} />
+    );
+    
+    return (
+      <Card className="!rounded-xl" styles={{ body: { padding: 0 } }}>
+        <div className="p-3 flex items-center justify-between">
+          <Text strong>{safeCfg.tabs.related.label || "Related"}</Text>
+          <Space>
+            {buttons}
+          </Space>
+        </div>
+        <div className="px-3 pb-3">
           <Table
-            rowKey={(r) => r.id}
-            loading={tasksLoading}
-            dataSource={tasks}
-            pagination={{ pageSize: 8 }}
-            columns={[
-              { title: "ID", dataIndex: "id" },
-              { title: "Title", dataIndex: "title" },
-              { title: "Priority", dataIndex: "priority", render: (p) => <Tag>{p}</Tag> },
-              {
-                title: "Status",
-                dataIndex: "status",
-                render: (s) => (
-                  <Tag color={s === "open" ? "orange" : s === "in_progress" ? "blue" : "green"}>{s}</Tag>
-                ),
-              },
-              { title: "Due", dataIndex: "dueDate", render: (d) => fmtDate(d) },
-              {
-                title: "Actions",
-                render: (_, r) => (
-                  <Space>
-                    <Button size="small" onClick={() => updateTask(r.id, { status: "done" })}>
-                      Mark done
-                    </Button>
-                    <Button size="small" danger onClick={() => deleteTask(r.id)}>
-                      Delete
-                    </Button>
-                  </Space>
-                ),
-              },
-            ]}
-            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No tasks." /> }}
+            rowKey={safeCfg.tabs?.related?.rowKey || ((r) => r.id ?? r.name)}
+            loading={relatedLoading}
+            columns={relatedColumns}
+            dataSource={relatedRows}
+            pagination={{ pageSize: 10 }}
+            scroll={{ x: 800 }}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nothing related." /> }}
           />
-        </Card>
-      );
-    })();
+        </div>
+      </Card>
+    );
+  }, [safeCfg?.tabs?.related?.enabled, safeCfg?.tabs?.related?.showAddButton, safeCfg?.tabs?.related?.addButtonLabel, safeCfg?.tabs?.related?.label, safeCfg?.tabs?.related?.rowKey, relatedLoading, relatedColumns, relatedRows, loadRelated]);
 
-  const DocumentsTab =
-    docsCfg?.enabled &&
-    (function () {
-      const typeOptions = useMemo(() => {
-        const base = ["All"];
-        const provided = docsCfg?.typeOptions || [];
-        if (provided.length) return ["All", ...provided];
-        const set = new Set(documents.map((d) => d?.type || d?.status || "Uploaded"));
-        return ["All", ...Array.from(set)];
-      }, [documents, docsCfg?.typeOptions]);
+  const TasksTab = useMemo(() => {
+    if (!tasksCfg.enabled) return null;
+    
+    return (
+      <Card className="!rounded-xl" styles={{ body: { padding: 16 } }}>
+        <AddTaskForm onSubmit={createTask} />
+        <Divider />
+        <Table
+          rowKey={(r) => r.id}
+          loading={tasksLoading}
+          dataSource={tasks}
+          pagination={{ pageSize: 8 }}
+          columns={[
+            { title: "ID", dataIndex: "id" },
+            { title: "Title", dataIndex: "title" },
+            { title: "Priority", dataIndex: "priority", render: (p) => <Tag>{p}</Tag> },
+            {
+              title: "Status",
+              dataIndex: "status",
+              render: (s) => (
+                <Tag color={s === "open" ? "orange" : s === "in_progress" ? "blue" : "green"}>{s}</Tag>
+              ),
+            },
+            { title: "Due", dataIndex: "dueDate", render: (d) => fmtDate(d) },
+            {
+              title: "Actions",
+              render: (_, r) => (
+                <Space>
+                  <Button size="small" onClick={() => updateTask(r.id, { status: "done" })}>
+                    Mark done
+                  </Button>
+                  <Button size="small" danger onClick={() => deleteTask(r.id)}>
+                    Delete
+                  </Button>
+                </Space>
+              ),
+            },
+          ]}
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No tasks." /> }}
+        />
+      </Card>
+    );
+  }, [tasksCfg.enabled, createTask, tasksLoading, tasks, updateTask, deleteTask]);
 
-      const filteredDocs = useMemo(() => {
-        const q = docSearch.trim().toLowerCase();
-        return (documents || []).filter((d) => {
-          const matchesType = docType === "All" || (d?.type || d?.status || "Uploaded") === docType;
-          if (!q) return matchesType;
-          const hay = [
-            d?.id,
-            d?.title,
-            d?.description,
-            d?.status,
-            d?.type,
-            d?.source,
-            d?.added_by,
-            d?.updated_by,
-            d?.date,
-          ].map((x) => (x == null ? "" : String(x).toLowerCase()));
-          return matchesType && hay.some((t) => t.includes(q));
-        });
-      }, [documents, docSearch, docType]);
+  const docTypeOptions = useMemo(() => {
+    if (!docsCfg?.enabled) return [];
+    const base = ["All"];
+    const provided = docsCfg?.typeOptions || [];
+    if (provided.length) return ["All", ...provided];
+    const set = new Set(documents.map((d) => d?.type || d?.status || "Uploaded"));
+    return ["All", ...Array.from(set)];
+  }, [docsCfg?.enabled, documents, docsCfg?.typeOptions]);
 
-      const columns = [
-        {
-          title: "Added (updated) by",
-          dataIndex: "added_by",
-          render: (v, r) => r.updated_by || r.added_by || "Administrator",
-        },
-        {
-          title: "Status",
-          dataIndex: "status",
-          render: (v) => <Tag>{v || "Uploaded"}</Tag>,
-          filters: Array.from(new Set(documents.map((d) => d.status || "Uploaded"))).map((v) => ({
-            text: v,
-            value: v,
-          })),
-          onFilter: (val, rec) => (rec.status || "Uploaded") === val,
-        },
-        { title: "Source", dataIndex: "source", render: (v) => v || "Uploaded" },
-        { title: "Title", dataIndex: "title", ellipsis: true },
-        {
-          title: "Date",
-          dataIndex: "date",
-          sorter: (a, b) => new Date(a.date || 0) - new Date(b.date || 0),
-          render: (v) => (v ? new Date(v).toLocaleString() : "-"),
-        },
-        { title: "Description", dataIndex: "description", ellipsis: true },
-        {
-          title: "Actions",
-          fixed: "right",
-          width: 110,
-          render: (_, doc) => (
-            <Space>
-              <Button
-                size="small"
-                type="text"
-                icon={<EditOutlined />}
-                onClick={() => {
-                  setDocEditing(doc);
-                  setDocEditOpen(true);
-                }}
-                title="Edit"
-              />
-              <Button
-                size="small"
-                type="text"
-                icon={<DownloadOutlined />}
-                onClick={() => window.open(doc.url || "#", "_blank")}
-                title="Download"
-              />
-              <Button
-                size="small"
-                type="text"
-                danger
-                onClick={() => deleteDocument(doc.id)}
-                title="Delete"
-              />
-            </Space>
-          ),
-        },
-      ];
+  const filteredDocs = useMemo(() => {
+    if (!docsCfg?.enabled) return [];
+    const q = docSearch.trim().toLowerCase();
+    return (documents || []).filter((d) => {
+      const matchesType = docType === "All" || (d?.type || d?.status || "Uploaded") === docType;
+      if (!q) return matchesType;
+      const hay = [
+        d?.id,
+        d?.title,
+        d?.description,
+        d?.status,
+        d?.type,
+        d?.source,
+        d?.added_by,
+        d?.updated_by,
+        d?.date,
+      ].map((x) => (x == null ? "" : String(x).toLowerCase()));
+      return matchesType && hay.some((t) => t.includes(q));
+    });
+  }, [docsCfg?.enabled, documents, docSearch, docType]);
 
-      return (
-        <Card className="!rounded-xl" styles={{ body: { padding: 16 } }}>
-          {/* Toolbar */}
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <Space size={8} className="mr-2">
-              <span className="text-gray-500">Show</span>
-              <Select
-                value={String(docPageSize)}
-                onChange={(v) => setDocPageSize(Number(v))}
-                options={["10", "25", "50", "100"].map((n) => ({ value: n, label: n }))}
-                style={{ width: 160 }}
-                className="w-24"
-              />
-              <span className="text-gray-500">entries</span>
-            </Space>
-
-            <div className="ml-auto flex items-center gap-2">
-              <Select
-                value={docType}
-                onChange={setDocType}
-                options={typeOptions.map((t) => ({ value: t, label: t }))}
-                style={{ width: 160 }}
-                placeholder="Type"
-              />
-              <Button onClick={() => setDocUploadOpen(true)}>Upload</Button>
-              <Button icon={<ReloadOutlined />} onClick={loadDocuments} />
-              <Input
-                allowClear
-                placeholder="Table search"
-                prefix={<SearchOutlined />}
-                value={docSearch}
-                onChange={(e) => setDocSearch(e.target.value)}
-                style={{ width: 220 }}
-              />
-            </div>
-          </div>
-
-          {/* Table */}
-          <Table
-            rowKey={(r) => r.id}
-            loading={docsLoading}
-            columns={columns}
-            dataSource={filteredDocs}
-            pagination={{
-              pageSize: docPageSize,
-              showSizeChanger: false,
-              showTotal: (total, [start, end]) => `Showing ${start} to ${end} of ${total} entries`,
-            }}
-            scroll={{ x: 960 }}
-            locale={{
-              emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents." />,
-            }}
-          />
-
-          {/* Upload Modal */}
-          <Modal
-            title="Upload Document"
-            open={docUploadOpen}
-            onCancel={() => setDocUploadOpen(false)}
-            footer={null}
-            destroyOnHidden
-          >
-            <UploadDocumentForm
-              onUpload={async (file, meta) => {
-                await uploadDocument(file, meta);
-                setDocUploadOpen(false);
+  const docColumns = useMemo(() => {
+    if (!docsCfg?.enabled) return [];
+    return [
+      {
+        title: "Added (updated) by",
+        dataIndex: "added_by",
+        render: (v, r) => r.updated_by || r.added_by || "Administrator",
+      },
+      {
+        title: "Status",
+        dataIndex: "status",
+        render: (v) => <Tag>{v || "Uploaded"}</Tag>,
+        filters: Array.from(new Set(documents.map((d) => d.status || "Uploaded"))).map((v) => ({
+          text: v,
+          value: v,
+        })),
+        onFilter: (val, rec) => (rec.status || "Uploaded") === val,
+      },
+      { title: "Source", dataIndex: "source", render: (v) => v || "Uploaded" },
+      { title: "Title", dataIndex: "title", ellipsis: true },
+      {
+        title: "Date",
+        dataIndex: "date",
+        sorter: (a, b) => new Date(a.date || 0) - new Date(b.date || 0),
+        render: (v) => (v ? new Date(v).toLocaleString() : "-"),
+      },
+      { title: "Description", dataIndex: "description", ellipsis: true },
+      {
+        title: "Actions",
+        fixed: "right",
+        width: 110,
+        render: (_, doc) => (
+          <Space>
+            <Button
+              size="small"
+              type="text"
+              icon={<EditOutlined />}
+              onClick={() => {
+                setDocEditing(doc);
+                setDocEditOpen(true);
               }}
+              title="Edit"
             />
-          </Modal>
+            <Button
+              size="small"
+              type="text"
+              icon={<DownloadOutlined />}
+              onClick={() => window.open(doc.url || "#", "_blank")}
+              title="Download"
+            />
+            <Button
+              size="small"
+              type="text"
+              danger
+              onClick={() => deleteDocument(doc.id)}
+              title="Delete"
+            />
+          </Space>
+        ),
+      },
+    ];
+  }, [docsCfg?.enabled, documents, deleteDocument]);
 
-          {/* Edit Modal */}
-          <Modal
-            title={docEditing ? `Edit — ${docEditing.title || docEditing.id}` : "Edit Document"}
-            open={docEditOpen}
-            onCancel={() => {
+  const DocumentsTab = useMemo(() => {
+    if (!docsCfg?.enabled) return null;
+
+    return (
+      <Card className="!rounded-xl" styles={{ body: { padding: 16 } }}>
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <Space size={8} className="mr-2">
+            <span className="text-gray-500">Show</span>
+            <Select
+              value={String(docPageSize)}
+              onChange={(v) => setDocPageSize(Number(v))}
+              options={["10", "25", "50", "100"].map((n) => ({ value: n, label: n }))}
+              style={{ width: 160 }}
+              className="w-24"
+            />
+            <span className="text-gray-500">entries</span>
+          </Space>
+
+          <div className="ml-auto flex items-center gap-2">
+            <Select
+              value={docType}
+              onChange={setDocType}
+              options={docTypeOptions.map((t) => ({ value: t, label: t }))}
+              style={{ width: 160 }}
+              placeholder="Type"
+            />
+            <Button onClick={() => setDocUploadOpen(true)}>Upload</Button>
+            <Button icon={<ReloadOutlined />} onClick={loadDocuments} />
+            <Input
+              allowClear
+              placeholder="Table search"
+              prefix={<SearchOutlined />}
+              value={docSearch}
+              onChange={(e) => setDocSearch(e.target.value)}
+              style={{ width: 220 }}
+            />
+          </div>
+        </div>
+
+        {/* Table */}
+        <Table
+          rowKey={(r) => r.id}
+          loading={docsLoading}
+          columns={docColumns}
+          dataSource={filteredDocs}
+          pagination={{
+            pageSize: docPageSize,
+            showSizeChanger: false,
+            showTotal: (total, [start, end]) => `Showing ${start} to ${end} of ${total} entries`,
+          }}
+          scroll={{ x: 960 }}
+          locale={{
+            emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents." />,
+          }}
+        />
+
+        {/* Upload Modal */}
+        <Modal
+          title="Upload Document"
+          open={docUploadOpen}
+          onCancel={() => setDocUploadOpen(false)}
+          footer={null}
+          destroyOnHidden
+        >
+          <UploadDocumentForm
+            onUpload={async (file, meta) => {
+              await uploadDocument(file, meta);
+              setDocUploadOpen(false);
+            }}
+          />
+        </Modal>
+
+        {/* Edit Modal */}
+        <Modal
+          title={docEditing ? `Edit — ${docEditing.title || docEditing.id}` : "Edit Document"}
+          open={docEditOpen}
+          onCancel={() => {
+            setDocEditOpen(false);
+            setDocEditing(null);
+          }}
+          footer={null}
+          destroyOnHidden
+        >
+          <EditDocumentForm
+            doc={docEditing}
+            onSubmit={async (vals) => {
+              await updateDocument(docEditing.id, vals);
               setDocEditOpen(false);
               setDocEditing(null);
             }}
-            footer={null}
-            destroyOnHidden
-          >
-            <EditDocumentForm
-              doc={docEditing}
-              onSubmit={async (vals) => {
-                await updateDocument(docEditing.id, vals);
-                setDocEditOpen(false);
-                setDocEditing(null);
-              }}
-            />
-          </Modal>
-        </Card>
-      );
-    })();
+          />
+        </Modal>
+      </Card>
+    );
+  }, [docsCfg?.enabled, docPageSize, docType, docTypeOptions, docSearch, docsLoading, docColumns, filteredDocs, loadDocuments, docUploadOpen, uploadDocument, docEditOpen, docEditing, updateDocument]);
 
-  const billingTab =
-    safeCfg.tabs?.billing?.enabled &&
-    (typeof safeCfg.tabs.billing.render === "function" ? (
-      safeCfg.tabs.billing.render({ entity })
+  const billingTab = useMemo(() => {
+    if (!safeCfg.tabs?.billing?.enabled) return null;
+    
+    return typeof safeCfg.tabs.billing.render === "function" ? (
+      safeCfg.tabs.billing.render({ entity }, tabContext)
     ) : (
       <Card className="!rounded-xl">
         <Text type="secondary">Billing tab is enabled but no renderer was provided.</Text>
       </Card>
-    ));
+    );
+  }, [safeCfg.tabs?.billing?.enabled, safeCfg.tabs?.billing?.render, entity, tabContext]);
 
-  const auditTab =
-    safeCfg.tabs?.audit?.enabled &&
-    (function () {
-      return (
-        <Card className="!rounded-xl" styles={{ body: { padding: 0 } }}>
-          <div className="p-3 flex items-center justify-between">
-            <Text strong>{safeCfg.tabs.audit.label || "Audit Log"}</Text>
-            <Button icon={<ReloadOutlined />} />
-          </div>
-          <div className="px-3 pb-3">
-            <Table
-              columns={safeCfg.tabs.audit.columns || []}
-              dataSource={safeCfg.tabs.audit.data || []}
-              pagination={{ pageSize: 10 }}
-              scroll={{ x: 800 }}
-              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No audit events." /> }}
-            />
-          </div>
-        </Card>
-      );
-    })();
+  const auditTab = useMemo(() => {
+    if (!safeCfg.tabs?.audit?.enabled) return null;
+    
+    return (
+      <Card className="!rounded-xl" styles={{ body: { padding: 0 } }}>
+        <div className="p-3 flex items-center justify-between">
+          <Text strong>{safeCfg.tabs.audit.label || "Audit Log"}</Text>
+          <Button icon={<ReloadOutlined />} />
+        </div>
+        <div className="px-3 pb-3">
+          <Table
+            columns={safeCfg.tabs.audit.columns || []}
+            dataSource={safeCfg.tabs.audit.data || []}
+            pagination={{ pageSize: 10 }}
+            scroll={{ x: 800 }}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No audit events." /> }}
+          />
+        </div>
+      </Card>
+    );
+  }, [safeCfg.tabs?.audit?.enabled, safeCfg.tabs?.audit?.label, safeCfg.tabs?.audit?.columns, safeCfg.tabs?.audit?.data]);
 
   /* ---------- NEW: custom tab plumbing (subjects, etc.) ---------- */
   const BUILTIN_KEYS = ["information", "related", "billing", "audit", "tasks", "documents", "communication", "activity"];
@@ -1182,6 +1230,48 @@ export default function EntityDetail({ cfg }) {
     return ["information", "related", ...customTabKeys, "activity", "tasks", "documents", "communication", "billing", "audit"];
   }, [safeCfg.tabsOrder, safeCfg.tabs, customTabKeys]);
 
+  // Activity tab with stable reference
+  const ActivityTab = useMemo(() => {
+    if (!safeCfg.tabs?.activity?.enabled) return null;
+    
+    return (
+      <Card className="!rounded-xl" styles={{ body: { padding: 0 } }}>
+        <div className="p-3 flex items-center justify-between">
+          <Text strong>{safeCfg.tabs.activity.label || "Activity"}</Text>
+          <Space>
+            {typeof safeCfg.tabs.activity.toolbar === "function" ? safeCfg.tabs.activity.toolbar(entity) : null}
+            <Button icon={<ReloadOutlined />} onClick={() => {}} />
+          </Space>
+        </div>
+        <div className="px-3 pb-3">
+          <Table
+            columns={safeCfg.tabs.activity.columns || []}
+            dataSource={safeCfg.tabs.activity.data || []}
+            pagination={{ pageSize: 10 }}
+            scroll={{ x: 800 }}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={safeCfg.tabs.activity.empty || "No activity."} /> }}
+          />
+        </div>
+      </Card>
+    );
+  }, [safeCfg.tabs?.activity?.enabled, safeCfg.tabs?.activity?.label, safeCfg.tabs?.activity?.toolbar, safeCfg.tabs?.activity?.columns, safeCfg.tabs?.activity?.data, safeCfg.tabs?.activity?.empty, entity]);
+
+  // Custom tabs with stable references
+  const customTabPanels = useMemo(() => {
+    const panels = {};
+    (customTabKeys || []).forEach((key) => {
+      const cfgTab = safeCfg.tabs[key];
+      if (cfgTab?.render) {
+        panels[key] = (
+          <Card key={key} className="!rounded-xl" styles={{ body: { padding: 16 } }}>
+            {cfgTab.render(entity || {}, tabContext)}
+          </Card>
+        );
+      }
+    });
+    return panels;
+  }, [customTabKeys, safeCfg.tabs, entity, tabContext]);
+
   // build a map of all available panels
   const panelByKey = useMemo(() => {
     const map = {
@@ -1192,58 +1282,50 @@ export default function EntityDetail({ cfg }) {
       tasks: tasksCfg.enabled ? TasksTab : null,
       documents: docsCfg?.enabled ? DocumentsTab : null,
       communication: commCfg?.enabled ? CommunicationPanel : null,
-      activity:
-        safeCfg.tabs?.activity?.enabled
-          ? (
-            <Card className="!rounded-xl" styles={{ body: { padding: 0 } }}>
-              <div className="p-3 flex items-center justify-between">
-                <Text strong>{safeCfg.tabs.activity.label || "Activity"}</Text>
-                <Space>
-                  {typeof safeCfg.tabs.activity.toolbar === "function" ? safeCfg.tabs.activity.toolbar(entity) : null}
-                  <Button icon={<ReloadOutlined />} onClick={() => {}} />
-                </Space>
-              </div>
-              <div className="px-3 pb-3">
-                <Table
-                  columns={safeCfg.tabs.activity.columns || []}
-                  dataSource={safeCfg.tabs.activity.data || []}
-                  pagination={{ pageSize: 10 }}
-                  scroll={{ x: 800 }}
-                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={safeCfg.tabs.activity.empty || "No activity."} /> }}
-                />
-              </div>
-            </Card>
-          )
-          : null,
+      activity: ActivityTab,
     };
 
-    // add custom tabs (e.g., 'subjects')
-    (customTabKeys || []).forEach((key) => {
-      const cfgTab = safeCfg.tabs[key];
-      map[key] = (
-        <Card className="!rounded-xl" styles={{ body: { padding: 16 } }}>
-          {cfgTab.render(entity || {})}
-        </Card>
-      );
+    // add custom tab panels
+    Object.keys(customTabPanels).forEach((key) => {
+      map[key] = customTabPanels[key];
     });
 
     return map;
-  }, [informationTab, relatedTab, billingTab, auditTab, TasksTab, DocumentsTab, CommunicationPanel, safeCfg.tabs, entity, customTabKeys, tasksCfg.enabled, docsCfg?.enabled, commCfg?.enabled]);
+  }, [informationTab, relatedTab, billingTab, auditTab, TasksTab, DocumentsTab, CommunicationPanel, ActivityTab, customTabPanels, tasksCfg.enabled, docsCfg?.enabled, commCfg?.enabled]);
 
   // turn map + order into Tabs items
   const tabItems = useMemo(() => {
     const items = [];
+    const seenKeys = new Set();
+    
     explicitOrder.forEach((key) => {
       const panel = panelByKey[key];
-      if (!panel) return;
+      if (!panel || seenKeys.has(key)) return;
+      
+      seenKeys.add(key);
       const label =
         (safeCfg.tabs?.[key]?.label) ||
         (key.charAt(0).toUpperCase() + key.slice(1));
-      items.push({ key, label, children: panel });
+      
+      // Wrap each panel in a div with stable key to prevent DOM issues
+      items.push({ 
+        key, 
+        label, 
+        children: <div key={`tab-content-${key}`}>{panel}</div>,
+        forceRender: true
+      });
     });
-    if (!items.find((it) => it.key === "information")) {
-      items.unshift({ key: "information", label: "Information", children: informationTab });
+    
+    // Only add information tab if it's not already in the list
+    if (!seenKeys.has("information")) {
+      items.unshift({ 
+        key: "information", 
+        label: "Information", 
+        children: <div key="tab-content-information">{informationTab}</div>,
+        forceRender: true
+      });
     }
+    
     return items;
   }, [explicitOrder, panelByKey, safeCfg.tabs, informationTab]);
 
@@ -1311,44 +1393,64 @@ export default function EntityDetail({ cfg }) {
         )}
       </div>
 
-      <Card className="!rounded-2xl" loading={loading} styles={{ body: { padding: screens.md ? 24 : 16 } }}>
-        <Tabs
-          size={screens.md ? "large" : "small"}
-          tabBarGutter={screens.md ? 24 : 8}
-          activeKey={activeTab}
-          onChange={handleTabChange}
-          items={tabItems}
-          destroyOnHidden={false}
-          animated={false}
-          className="[&_.ant-tabs-tab-btn]:text-[13px] md:[&_.ant-tabs-tab-btn]:text-[14px]"
-        />
+      <Card 
+        className="!rounded-2xl" 
+        loading={loading && !initialLoadDone} 
+        styles={{ body: { padding: screens.md ? 24 : 16 } }}
+      >
+        {tabItems && tabItems.length > 0 && (
+          <Tabs
+            key={`tabs-${entityKey}-${id}`}
+            size={screens.md ? "large" : "small"}
+            tabBarGutter={screens.md ? 24 : 8}
+            activeKey={activeTab}
+            onChange={handleTabChange}
+            items={tabItems}
+            animated={false}
+            className="[&_.ant-tabs-tab-btn]:text-[13px] md:[&_.ant-tabs-tab-btn]:text-[14px]"
+          />
+        )}
       </Card>
 
-      {/* Modal to Add Child */}
+      {/* Modal to Add Related (Student/Class/etc) */}
       <Modal
         open={linkChildModalOpen}
         onCancel={() => setLinkChildModalOpen(false)}
         footer={null}
         width={800}
         destroyOnHidden
+        title={safeCfg.tabs?.related?.addModalTitle || "Add"}
       >
-        <StudentForm
-          isModal
-          initialValues={{ 
-            parent_id: id,
-            parent_name: entity?.name || `Parent #${id}`
-          }}
-          onSuccess={async () => {
-            try {
-              messageApi.success("Student created successfully!");
+        {safeCfg.tabs?.related?.renderAddModal ? (
+          safeCfg.tabs.related.renderAddModal({
+            entity,
+            id,
+            onClose: () => setLinkChildModalOpen(false),
+            onSuccess: async () => {
               setLinkChildModalOpen(false);
-              // Reload the related data
               await loadRelated();
-            } catch (err) {
-              messageApi.error(err?.response?.data?.message || "Failed to create student.");
-            }
-          }}
-        />
+            },
+            messageApi,
+          })
+        ) : (
+          <StudentForm
+            isModal
+            initialValues={{ 
+              parent_id: id,
+              parent_name: entity?.name || `Parent #${id}`
+            }}
+            onSuccess={async () => {
+              try {
+                messageApi.success("Student created successfully!");
+                setLinkChildModalOpen(false);
+                // Reload the related data
+                await loadRelated();
+              } catch (err) {
+                messageApi.error(err?.response?.data?.message || "Failed to create student.");
+              }
+            }}
+          />
+        )}
       </Modal>
     </div>
   );

@@ -61,12 +61,11 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
         afterCreate: (res) => {
           if (isModal) {
             onSuccess(res);
-            return { preventRedirect: true };
+            return { preventRedirect: true, preventMessage: true };
           }
         },
         // Create user (role_id=1) then student is created server-side in /adduser
         create: async (api, payload) => {
-          console.log(payload);
           // Robust temp password generator
           const genTempPassword = (len = 12) => {
             try {
@@ -105,8 +104,8 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
       }}
       fields={[
         // Basic
-        { name: "first_name", label: "First name", rules: [{ required: true }] },
-        { name: "last_name",  label: "Last name",  rules: [{ required: true }] },
+        { name: "first_name", label: "First Name", rules: [{ required: true }] },
+        { name: "last_name",  label: "Last Name",  rules: [{ required: true }] },
 
         // Class (IMPORTANT: backend wants class_id)
         {

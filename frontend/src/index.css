@@ -76,6 +76,20 @@ body {
 .ant-select .ant-select-selector { border-radius: .9rem !important; }
 .ant-modal-content { border-radius: 1rem; }
 
+/* ---------- Form labels - prevent text transform ---------- */
+.ant-form-item-label > label {
+  text-transform: none !important;
+}
+
+/* ---------- Smooth transitions to prevent flicker ---------- */
+.ant-card {
+  transition: opacity 0.15s ease-in-out;
+}
+
+.ant-tabs-content {
+  transition: opacity 0.1s ease-in-out;
+}
+
 /* ---------- Responsive helpers ---------- */
 .mobile-only { display: block; }
 .desktop-only { display: none; }
