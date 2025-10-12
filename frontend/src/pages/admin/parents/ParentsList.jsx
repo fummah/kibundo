@@ -20,6 +20,8 @@ export default function ParentsList() {
             const src = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
             const fb = (v) => (v === undefined || v === null || String(v).trim() === "" ? "-" : v);
 
+            console.log("Parents raw data:", src); // Debug log
+
             return src.map((p) => {
               const u = p.user || {};
               const name =
@@ -27,7 +29,7 @@ export default function ParentsList() {
                 [u.first_name, u.last_name].filter(Boolean).join(" ").trim() ||
                 p.name || "-";
 
-              return {
+              const parsed = {
                 // fields available for row + detail prefill
                 id: p.id,
                 name: fb(name),
@@ -44,6 +46,9 @@ export default function ParentsList() {
                 user_id: p.user_id,
                 raw: p,
               };
+
+              console.log("Parsed parent:", parsed); // Debug log
+              return parsed;
             });
           },
         },

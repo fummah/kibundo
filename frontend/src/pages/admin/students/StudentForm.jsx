@@ -6,32 +6,47 @@ import api from "@/api/axios";
 const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {} }) => {
   const location = useLocation();
   const prefill = location.state?.prefill || {};
-  const mergedInitials = { ...initialValues, ...prefill };
-  const [parentInitialOption, setParentInitialOption] = useState(() => {
-    if (mergedInitials.parent_id && mergedInitials.parent_name) {
-      return { value: mergedInitials.parent_id, label: mergedInitials.parent_name };
-    }
-    return null;
-  });
+  const baseInitials = { ...initialValues, ...prefill };
+  
+  // State to hold the parent display name
+  const [parentDisplayName, setParentDisplayName] = useState(
+    baseInitials.parent_name || "Loading parent..."
+  );
 
-  // If we have only parent_id, fetch the parent to display a human-friendly label in the disabled select
+  // Merge with parent display name for the form
+  // When parent is pre-filled, we show the name in the parent_id field as text
+  const mergedInitials = {
+    ...baseInitials,
+    // Override parent_id with parent name for display when it's a disabled text field
+    ...(baseInitials.parent_id ? { parent_id: parentDisplayName } : {}),
+  };
+
+  // Fetch parent data to display in the disabled text input
   useEffect(() => {
     let mounted = true;
     const load = async () => {
-      if (!mergedInitials.parent_id || mergedInitials.parent_name) return;
+      // If we already have parent_name, use it
+      if (baseInitials.parent_name) {
+        if (mounted) setParentDisplayName(baseInitials.parent_name);
+        return;
+      }
+      
+      // If we only have parent_id, fetch the parent details
+      if (!baseInitials.parent_id) return;
+      
       try {
-        const { data } = await api.get(`/parent/${mergedInitials.parent_id}`);
+        const { data } = await api.get(`/parent/${baseInitials.parent_id}`);
         const p = data?.data ?? data ?? {};
         const u = p?.user || {};
-        const label = [u.first_name, u.last_name].filter(Boolean).join(" ").trim() || u.name || u.email || `Parent #${mergedInitials.parent_id}`;
-        if (mounted) setParentInitialOption({ value: mergedInitials.parent_id, label });
+        const label = [u.first_name, u.last_name].filter(Boolean).join(" ").trim() || u.name || u.email || `Parent #${baseInitials.parent_id}`;
+        if (mounted) setParentDisplayName(label);
       } catch {
-        if (mounted) setParentInitialOption({ value: mergedInitials.parent_id, label: `Parent #${mergedInitials.parent_id}` });
+        if (mounted) setParentDisplayName(`Parent #${baseInitials.parent_id}`);
       }
     };
     load();
     return () => { mounted = false; };
-  }, [mergedInitials.parent_id, mergedInitials.parent_name]);
+  }, [baseInitials.parent_id, baseInitials.parent_name, initialValues.parent_id, initialValues.parent_name]);
 
   return (
     <EntityForm
@@ -68,11 +83,15 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
             return out;
           };
 
+          // Generate a temporary unique email for the student (backend requires it for now)
+          // Format: student_{timestamp}_{random}@temp.kibundo.local
+          const tempEmail = `student_${Date.now()}_${Math.random().toString(36).substring(2, 9)}@temp.kibundo.local`;
+
           const userBody = {
             role_id: 1, // Student role
             first_name: payload.first_name,
             last_name: payload.last_name,
-            // No email needed for students - will use parent's email
+            email: tempEmail, // Temporary email until backend supports optional email
             state: payload.state,
             class_id: payload.class_id,
             parent_id: payload.parent_id ?? null,
@@ -123,30 +142,36 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
           rules: [{ required: true }],
         },
 
-        // Parent (prefilled & disabled when coming from Parent detail)
+        // Parent - grayed out when pre-filled, otherwise show searchable select
         {
           name: "parent_id",
           label: "Parent",
-          input: "select",
-          optionsUrl: "/parents",
-          serverSearch: true,
-          autoloadOptions: false,
-          searchParam: "q",
-          allowClear: true,
-          transform: (it) => {
-            const fn = it?.user?.first_name || "";
-            const ln = it?.user?.last_name || "";
-            const nm = it?.user?.name || [fn, ln].filter(Boolean).join(" ");
-            return { value: it?.id ?? it, label: (nm || `Parent #${it?.id ?? ""}`).trim() };
-          },
+          ...(mergedInitials.parent_id
+            ? {
+                // When parent is pre-filled: show as disabled text input with parent name
+                input: "text",
+                placeholder: "Loading parent...",
+                props: {
+                  disabled: true,
+                  readOnly: true,
+                },
+              }
+            : {
+                // When no parent: show as searchable select
+                input: "select",
+                optionsUrl: "/parents",
+                serverSearch: true,
+                autoloadOptions: false,
+                searchParam: "q",
+                allowClear: true,
+                transform: (it) => {
+                  const fn = it?.user?.first_name || "";
+                  const ln = it?.user?.last_name || "";
+                  const nm = it?.user?.name || [fn, ln].filter(Boolean).join(" ");
+                  return { value: it?.id ?? it, label: (nm || `Parent #${it?.id ?? ""}`).trim() };
+                },
+              }),
           rules: [{ required: true }],
-          disabled: !!mergedInitials.parent_id,
-          initialOptions:
-            parentInitialOption
-              ? [parentInitialOption]
-              : (mergedInitials.parent_id && mergedInitials.parent_name
-                  ? [{ value: mergedInitials.parent_id, label: mergedInitials.parent_name }]
-                  : undefined),
         },
 
         // Optional extras
@@ -174,7 +199,8 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
           state: values.state || null,
           class_id: values.class_id,
           subjects: Array.isArray(values.subjects) ? values.subjects : [],
-          parent_id: values.parent_id ?? mergedInitials.parent_id ?? null,
+          // Use baseInitials.parent_id (the actual ID) if parent was pre-filled, otherwise use selected value
+          parent_id: baseInitials.parent_id || values.parent_id || null,
           school: values.school || null,
         };
         Object.keys(payload).forEach((k) => payload[k] == null && delete payload[k]);

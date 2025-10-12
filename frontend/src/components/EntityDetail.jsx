@@ -172,19 +172,19 @@ export default function EntityDetail({ cfg }) {
   const docsCfg = safeCfg?.tabs?.documents || {};
   const tasksCfg = safeCfg?.tabs?.tasks || {};
 
-  // Prefill support
-  const rawPrefill = useMemo(
-    () => safeCfg.initialEntity ?? location.state?.prefill ?? null,
-    [safeCfg.initialEntity, location.state]
-  );
+  // --- Prefill support (freeze once to avoid URL/tab-triggered recalculation) ---
+  const initialPrefillRef = useRef(safeCfg.initialEntity ?? location.state?.prefill ?? null);
+  const rawPrefill = initialPrefillRef.current;
+
   const parsedPrefill = useMemo(() => {
-    if (!rawPrefill) return null;
+    const p = rawPrefill;
+    if (!p) return null;
     try {
-      return typeof apiObj.parseEntity === "function" ? apiObj.parseEntity(rawPrefill) : rawPrefill;
+      return typeof apiObj.parseEntity === "function" ? apiObj.parseEntity(p) : p;
     } catch {
-      return rawPrefill;
+      return p;
     }
-  }, [rawPrefill, apiObj]);
+  }, [apiObj, rawPrefill]);
 
   // State
   const [loading, setLoading] = useState(!parsedPrefill);
@@ -249,15 +249,12 @@ export default function EntityDetail({ cfg }) {
         const raw = data?.data ?? data ?? {};
         obj = typeof apiObj.parseEntity === "function" ? apiObj.parseEntity(raw) : raw;
       }
-      
-      if (JSON.stringify(obj) !== JSON.stringify(entity)) {
-        setEntity(prev => {
-          if (JSON.stringify(prev) !== JSON.stringify(obj)) {
-            return obj || {};
-          }
-          return prev;
-        });
-      }
+
+      // Functional update avoids stale closures and unnecessary state churn
+      setEntity((prev) => {
+        if (JSON.stringify(prev) !== JSON.stringify(obj)) return obj || {};
+        return prev;
+      });
     } catch (err) {
       if (!entity) {
         const defaultEntity = { [idField]: id, name: "-", status: "active" };
@@ -273,7 +270,7 @@ export default function EntityDetail({ cfg }) {
     } finally {
       setLoading(false);
     }
-  }, [id, getPath, apiObj, messageApi, idField, entity]);
+  }, [id, getPath, apiObj, messageApi, idField]); // <-- removed `entity` from deps
 
   /* -------- related -------- */
   const loadRelated = useCallback(async () => {
@@ -641,16 +638,22 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  // Initial load
+  // --- Effects: separate initial load from per-tab data loaders ---
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
     if (activeTab === "information" && performancePath) {
       loadPerformance();
     }
+  }, [activeTab, performancePath, loadPerformance]);
+
+  useEffect(() => {
     if ((activeTab === "communication" || activeTab === "information") && commCfg?.enabled) {
       loadComments();
     }
-  }, [load, activeTab, performancePath, commCfg?.enabled, loadPerformance, loadComments]);
+  }, [activeTab, commCfg?.enabled, loadComments]);
 
   /* -------- actions -------- */
   const goBack = () => navigate(-1);
@@ -753,7 +756,6 @@ export default function EntityDetail({ cfg }) {
       case "documents":
         if (docsCfg?.enabled) loadDocuments();
         break;
-      // custom tabs (e.g., 'subjects') generally don't need loaders here unless you add one
       default:
         break;
     }
@@ -884,7 +886,7 @@ export default function EntityDetail({ cfg }) {
           </div>
           <div className="px-3 pb-3">
             <Table
-              rowKey={(r) => r.id ?? r.name}
+              rowKey={safeCfg.tabs?.related?.rowKey || ((r) => r.id ?? r.name)}
               loading={relatedLoading}
               columns={relatedColumns}
               dataSource={relatedRows}
@@ -1234,13 +1236,11 @@ export default function EntityDetail({ cfg }) {
     explicitOrder.forEach((key) => {
       const panel = panelByKey[key];
       if (!panel) return;
-      // label from cfg if available
       const label =
         (safeCfg.tabs?.[key]?.label) ||
         (key.charAt(0).toUpperCase() + key.slice(1));
       items.push({ key, label, children: panel });
     });
-    // ensure at least 'information' exists
     if (!items.find((it) => it.key === "information")) {
       items.unshift({ key: "information", label: "Information", children: informationTab });
     }
@@ -1318,6 +1318,8 @@ export default function EntityDetail({ cfg }) {
           activeKey={activeTab}
           onChange={handleTabChange}
           items={tabItems}
+          destroyOnHidden={false}
+          animated={false}
           className="[&_.ant-tabs-tab-btn]:text-[13px] md:[&_.ant-tabs-tab-btn]:text-[14px]"
         />
       </Card>
@@ -1332,12 +1334,16 @@ export default function EntityDetail({ cfg }) {
       >
         <StudentForm
           isModal
-          initialValues={{ parent_id: id }}
+          initialValues={{ 
+            parent_id: id,
+            parent_name: entity?.name || `Parent #${id}`
+          }}
           onSuccess={async () => {
             try {
               messageApi.success("Student created successfully!");
               setLinkChildModalOpen(false);
-              loadRelated();
+              // Reload the related data
+              await loadRelated();
             } catch (err) {
               messageApi.error(err?.response?.data?.message || "Failed to create student.");
             }

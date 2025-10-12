@@ -1,18 +1,26 @@
 // src/pages/admin/parents/ParentDetail.jsx
-import React from "react";
+import React, { useMemo, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { Tag } from "antd";
 import EntityDetail from "@/components/EntityDetail.jsx";
 import BillingTab from "./BillingTab";
 
 export default function ParentDetail() {
+  // Read location once, but freeze the prefill so later URL/tab changes don't trigger work
   const location = useLocation();
-  const prefill = location.state?.prefill || null;
+  const prefillRef = useRef(location.state?.prefill || null);
 
-  const cfg = {
+  // Stable render fn for the Billing tab
+  const renderBillingTab = useCallback((entity) => <BillingTab entity={entity} />, []);
+
+  // Stable config object (does not depend on location)
+  const cfg = useMemo(() => ({
     titleSingular: "Parent",
     idField: "id",
     routeBase: "/admin/parents",
+
+    // Optional: give EntityDetail a hint to keep tab panes mounted (if it supports it)
+    tabsProps: { destroyOnHidden: false, animated: false },
 
     api: {
       getPath: (id) => `/parent/${id}`,
@@ -25,12 +33,11 @@ export default function ParentDetail() {
       parseEntity: (payload) => {
         const p = payload?.data ?? payload ?? {};
         const u = p?.user ?? {};
-      
         const name = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
         const member_since = u.created_at
           ? new Date(u.created_at).toLocaleDateString()
           : "-";
-      
+
         return {
           id: p.id,
           user_id: u.id,
@@ -41,14 +48,15 @@ export default function ParentDetail() {
           member_since,
           contact_number: u.contact_number ?? null,
           bundesland: u.state ?? null,
-          students: Array.isArray(p.student) ? p.student : [],  
+          students: Array.isArray(p.student) ? p.student : [],
           subscriptions: p.subscriptions || [],
           raw: p,
         };
       },
     },
 
-    initialEntity: prefill || undefined,
+    // Freeze the initial entity so routing/tab changes don't bounce the UI
+    initialEntity: prefillRef.current || undefined,
 
     infoFields: [
       {
@@ -74,7 +82,7 @@ export default function ParentDetail() {
         enabled: true,
         label: "Children",
         idField: "id",
-        
+
         // Use already-fetched parent entity
         prefetchRowsFromEntity: (entity) =>
           Array.isArray(entity?.students)
@@ -82,16 +90,19 @@ export default function ParentDetail() {
             : Array.isArray(entity?.student)
             ? entity.student
             : [],
-    
-        // Enable refresh to re-hit /parent/:id and re-extract students
+
+        // Refetch path to get updated children list after adding a student
         refetchPath: (id) => `/parent/${id}`,
+
         extractList: (payload) => {
           const root = payload?.data ?? payload ?? {};
-          return Array.isArray(root.student) ? root.student : [];  
+          const students = Array.isArray(root.student) ? root.student : [];
+          // Ensure each student has a valid id for the rowKey
+          return students.filter(s => s && s.id);
         },
-    
-        rowKey: (row) => row?.id?.toString(),  // Ensure ID is a string for the key
-    
+
+        rowKey: (row) => `student-${row?.id}`,
+
         columns: [
           { title: "ID", dataIndex: "id", key: "id", width: 90 },
           {
@@ -99,8 +110,8 @@ export default function ParentDetail() {
             key: "name",
             render: (_, r) => {
               const user = r?.user || {};
-              const fn = user.first_name || '';
-              const ln = user.last_name || '';
+              const fn = user.first_name || "";
+              const ln = user.last_name || "";
               const full = `${fn} ${ln}`.trim();
               return full || `Student #${r?.id ?? "-"}`;
             },
@@ -109,7 +120,8 @@ export default function ParentDetail() {
             title: "Grade",
             dataIndex: "grade",
             key: "grade",
-            render: (_, r) => r?.class?.class_name ?? r?.class?.name ?? r?.class_name ?? r?.class_id ?? "N/A",
+            render: (_, r) =>
+              r?.class?.class_name ?? r?.class?.name ?? r?.class_name ?? r?.class_id ?? "N/A",
             width: 120,
           },
           {
@@ -138,12 +150,19 @@ export default function ParentDetail() {
       billing: {
         enabled: true,
         label: "Billing",
-        render: (entity) => <BillingTab entity={entity} />,
+        render: renderBillingTab,
       },
+
       audit: { enabled: true, label: "Audit Log" },
       documents: { enabled: true, label: "Documents" },
     },
-  };
+  }), [renderBillingTab]);
 
-  return <EntityDetail cfg={cfg} />;
+  // Memoized wrapper prevents EntityDetail from re-rendering on URL/tab changes
+  const MemoEntityDetail = useMemo(
+    () => React.memo(({ cfg }) => <EntityDetail cfg={cfg} />),
+    []
+  );
+
+  return <MemoEntityDetail cfg={cfg} />;
 }

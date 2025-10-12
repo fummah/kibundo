@@ -73,9 +73,16 @@ export default function EntityForm({
   const [saving, setSaving] = useState(false);
   const [showMore, setShowMore] = useState(false);
 
-  // sticky bar
-  const allValues = Form.useWatch([], form);
-  const isDirty = useMemo(() => form.isFieldsTouched(true), [allValues, form]);
+  // sticky bar - track dirty state without Form.useWatch to avoid warnings
+  const [isDirty, setIsDirty] = useState(false);
+
+  const handleFieldsChange = useCallback(() => {
+    try {
+      setIsDirty(form.isFieldsTouched(true));
+    } catch {
+      // Form not ready yet
+    }
+  }, [form]);
 
   // geo modal
   const [geoOpen, setGeoOpen] = useState(false);
@@ -284,7 +291,6 @@ export default function EntityForm({
       </Space>
     );
     const common = {
-      key,
       name: f.name,
       label: labelNode,
       rules: f.rules,
@@ -301,7 +307,7 @@ export default function EntityForm({
 
     if (inputType === "number") {
       return (
-        <Form.Item {...common}>
+        <Form.Item key={key} {...common}>
           <InputNumber style={{ width: "100%" }} {...sharedProps} />
         </Form.Item>
       );
@@ -309,7 +315,7 @@ export default function EntityForm({
 
     if (inputType === "date") {
       return (
-        <Form.Item {...common} getValueFromEvent={(v) => v}>
+        <Form.Item key={key} {...common} getValueFromEvent={(v) => v}>
           <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" {...sharedProps} />
         </Form.Item>
       );
@@ -317,9 +323,10 @@ export default function EntityForm({
 
     if (inputType === "geo") {
       const displayKey = f.mapTo?.label || f.name;
-      const displayValue = Form.useWatch(displayKey, form);
+      // Get value directly from form instead of using Form.useWatch to avoid warning
+      const displayValue = form.getFieldValue(displayKey);
       return (
-        <Form.Item {...common}>
+        <Form.Item key={key} {...common}>
           <Input
             readOnly
             value={displayValue}
@@ -346,7 +353,7 @@ export default function EntityForm({
       const loading = !!selectLoading[key];
       const isRemote = !!(f.optionsUrl || f.optionsLoader);
       return (
-        <Form.Item {...common}>
+        <Form.Item key={key} {...common}>
           <Select
             options={opts}
             loading={loading}
@@ -354,7 +361,7 @@ export default function EntityForm({
             optionFilterProp={f.search && !f.serverSearch ? "label" : undefined}
             filterOption={f.search && !f.serverSearch ? undefined : false}
             onSearch={f.serverSearch ? (val) => debouncedServerSearch(f, val) : undefined}
-            onDropdownVisibleChange={(open) => {
+            onOpenChange={(open) => {
               if (open && isRemote && (!opts || opts.length === 0)) {
                 loadFieldOptions(f);
               }
@@ -368,7 +375,7 @@ export default function EntityForm({
 
     if (inputType === "textarea") {
       return (
-        <Form.Item {...common}>
+        <Form.Item key={key} {...common}>
           <Input.TextArea rows={f.rows || 3} showCount={!!f.maxLength} maxLength={f.maxLength} {...sharedProps} />
         </Form.Item>
       );
@@ -376,14 +383,14 @@ export default function EntityForm({
 
     if (inputType === "password") {
       return (
-        <Form.Item {...common}>
+        <Form.Item key={key} {...common}>
           <Input.Password {...sharedProps} />
         </Form.Item>
       );
     }
 
     return (
-      <Form.Item {...common}>
+      <Form.Item key={key} {...common}>
         <Input {...sharedProps} />
       </Form.Item>
     );
@@ -418,6 +425,7 @@ export default function EntityForm({
           size="middle"
           onFinish={onFinish}
           onFinishFailed={onFinishFailed}
+          onFieldsChange={handleFieldsChange}
           initialValues={{ date_added: dayjs(), ...initialValues }}
           disabled={saving}
           requiredMark={false}

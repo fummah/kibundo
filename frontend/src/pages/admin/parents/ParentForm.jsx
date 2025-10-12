@@ -6,7 +6,7 @@ export default function ParentForm() {
       titleNew="Add Parent"
       titleEdit="Edit Parent"
       submitLabel="Save"
-      toDetailRelative={(id) => `${id}`}
+      toDetailRelative={(id) => `/admin/parents/${id}`}
       apiCfg={{
         // Detail path (you already have GET /parent/:id)
         getPath: (id) => `/parent/${id}`,
@@ -65,25 +65,35 @@ export default function ParentForm() {
                   }
 
                   // Create parent record linked to the existing user
-                  const parentRes = await api.post(`/addparent`, {
-                    user_id: existingUser.id,
-                    created_by: 1,
-                  });
+                  try {
+                    const parentRes = await api.post(`/addparent`, {
+                      user_id: existingUser.id,
+                      created_by: 1,
+                    });
 
-                  const newParentId =
-                    parentRes?.data?.id ||
-                    parentRes?.data?.parent?.id ||
-                    parentRes?.data?.data?.id;
+                    const newParentId =
+                      parentRes?.data?.id ||
+                      parentRes?.data?.parent?.id ||
+                      parentRes?.data?.data?.id;
 
-                  if (!newParentId) {
-                    throw new Error("Parent was created but no ID returned.");
+                    if (!newParentId) {
+                      throw new Error("Parent was created but no ID returned.");
+                    }
+
+                    return { data: { id: newParentId } };
+                  } catch (parentError) {
+                    // Handle 409 Conflict - parent already exists
+                    if (parentError?.response?.status === 409) {
+                      const existingParent = parentError?.response?.data?.parent;
+                      if (existingParent?.id) {
+                        return { data: { id: existingParent.id } };
+                      }
+                    }
+                    throw parentError;
                   }
-
-                  return { data: { id: newParentId } };
                 }
               } catch (e) {
-                // If user listing fails, fall through to create a new user
-                console.warn("User list check failed, creating new user:", e);
+           
               }
             }
 
@@ -96,22 +106,61 @@ export default function ParentForm() {
               throw new Error("Failed to create user account.");
             }
 
-            // Create the parent linked to that user
-            const parentRes = await api.post(`/addparent`, {
-              user_id: createdUser.id,
-              created_by: 1,
-            });
-
-            const parentId =
-              parentRes?.data?.id ||
-              parentRes?.data?.parent?.id ||
-              parentRes?.data?.data?.id;
-
-            if (!parentId) {
-              throw new Error("Failed to create parent profile.");
+            // Check if parent already exists before creating
+            try {
+              const parentsRes = await api.get(`/parents?user_id=${createdUser.id}`);
+              const parents = Array.isArray(parentsRes.data) ? parentsRes.data : (parentsRes.data?.data || []);
+              const existingParent = parents.find(p => p.user_id === createdUser.id);
+              
+              if (existingParent?.id) {
+              
+                return { data: { id: existingParent.id } };
+              }
+            } catch (checkError) {
+             
             }
 
-            return { data: { id: parentId } };
+            // Create the parent linked to that user
+            try {
+              const parentRes = await api.post(`/addparent`, {
+                user_id: createdUser.id,
+                created_by: 1,
+              });
+
+              const parentId =
+                parentRes?.data?.id ||
+                parentRes?.data?.parent?.id ||
+                parentRes?.data?.data?.id;
+
+              if (!parentId) {
+                throw new Error("Failed to create parent profile.");
+              }
+
+              return { data: { id: parentId } };
+            } catch (parentError) {
+              // Handle 409 Conflict - parent already exists (shouldn't happen with check above)
+              if (parentError?.response?.status === 409) {
+             
+                const existingParent = parentError?.response?.data?.parent;
+                if (existingParent?.id) {
+                  return { data: { id: existingParent.id } };
+                }
+                
+                // Final fallback: search again
+                try {
+                  const parentsRes = await api.get(`/parents?user_id=${createdUser.id}`);
+                  const parents = Array.isArray(parentsRes.data) ? parentsRes.data : (parentsRes.data?.data || []);
+                  const existingParentFromSearch = parents.find(p => p.user_id === createdUser.id);
+                  
+                  if (existingParentFromSearch?.id) {
+                    return { data: { id: existingParentFromSearch.id } };
+                  }
+                } catch (searchError) {
+                  console.warn("Failed to search for existing parent:", searchError);
+                }
+              }
+              throw parentError;
+            }
           } catch (error) {
             console.error("Error in parent creation:", error);
 
@@ -161,28 +210,6 @@ export default function ParentForm() {
             label: it?.state_name ?? it?.name ?? String(it ?? ""),
           }),
         },
-
-        // Optional: link students (kept UI-only; your /addparent doesn’t consume this)
-        {
-          name: "student_ids",
-          label: "Link Students (Optional)",
-          input: "select",
-          mode: "multiple",
-          placeholder: "Search for students…",
-          optionsUrl: "/allstudents",
-          serverSearch: true,
-          autoloadOptions: false,
-          searchParam: "q",
-          transform: (it) => {
-            const u = it?.user ?? {};
-            const nm = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
-            return {
-              value: it?.id ?? it,
-              label: nm ? `${nm} (ID: ${it?.id})` : `Student #${it?.id ?? ""}`,
-            };
-          },
-          coerce: "number",
-        },
       ]}
 
       transformSubmit={(vals) => {
@@ -193,7 +220,6 @@ export default function ParentForm() {
           ...(trimmedEmail ? { email: trimmedEmail } : {}), // omit empty email
           contact_number: vals.contact_number || null,
           state: vals.state || null,
-          student_ids: Array.isArray(vals.student_ids) ? vals.student_ids : [],
         };
         // Strip nullish
         Object.keys(out).forEach((k) => {
