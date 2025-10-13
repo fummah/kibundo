@@ -48,11 +48,13 @@ module.exports = (sequelize, DataTypes) => {
     raw_text: {
       type: DataTypes.TEXT,
       allowNull: true
-    },
-    status: {
-      type: DataTypes.ENUM('pending', 'completed', 'cancelled'),
-      defaultValue: 'pending'
     }
+    // NOTE: status column doesn't exist in database yet
+    // Uncomment this after your backend developer adds this column:
+    // status: {
+    //   type: DataTypes.ENUM('pending', 'completed', 'cancelled'),
+    //   defaultValue: 'pending'
+    // }
   }, {
     timestamps: false, // disable Sequelize's automatic createdAt/updatedAt
     tableName: "homework_scans"

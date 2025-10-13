@@ -63,15 +63,12 @@ const mergeById = (a = [], b = []) => {
 
 const messageKey = (m, i) => m?.id ?? `${msgSig(m)}|${i}`;
 
+
+
 export default function HomeworkChat({
   messages: controlledMessagesProp,
   onMessagesChange: onMessagesChangeProp,
-  initialMessages = [
-    formatMessage(
-      "Lade ein Foto deiner Hausaufgabe hoch, oder frag mich etwas darüber!",
-      "agent"
-    ),
-  ],
+  initialMessages,
   onSendText,
   onSendMedia,
   isTyping: externalTyping = false,
@@ -91,6 +88,9 @@ export default function HomeworkChat({
     clearChatMessages,
   } = useChatDock();
   const { user: authUser } = useAuthContext();
+  
+  // No initial greeting - start with empty chat
+  const defaultInitialMessages = [];
 
   // Conversation/task wiring, now SCOPED PER STUDENT
   const mode = "homework";
@@ -120,26 +120,60 @@ export default function HomeworkChat({
     }
   }, [scopedTaskKey]);
 
-  const scanId = dockState?.task?.scanId ?? null;
-
   // Persist conversationId PER (mode + task + student)
   const convKey = useMemo(
     () => `kibundo.convId.${mode}.${scopedTaskKey}`,
     [mode, scopedTaskKey]
   );
 
+  // ⬇️ Prioritize conversationId and scanId from task object (passed via openChat)
   const [conversationId, setConversationId] = useState(() => {
-    try {
-      return (
-        (typeof window !== "undefined" &&
-          window.localStorage.getItem(convKey)) ||
-        dockState?.task?.conversationId ||
-        null
-      );
-    } catch {
-      return dockState?.task?.conversationId || null;
+    // FIRST: try to get from task object (most reliable)
+    if (dockState?.task?.conversationId) {
+      return dockState.task.conversationId;
     }
+    // SECOND: try localStorage (may fail due to quota)
+    try {
+      const stored = typeof window !== "undefined" && window.localStorage.getItem(convKey);
+      if (stored) return stored;
+    } catch {
+      // localStorage may be full or unavailable
+    }
+    return null;
   });
+
+  const [scanId, setScanId] = useState(() => {
+    return dockState?.task?.scanId ?? null;
+  });
+
+  // ⬇️ Update conversationId and scanId when they become available from task or localStorage
+  useEffect(() => {
+    const taskConvId = dockState?.task?.conversationId;
+    const taskScanId = dockState?.task?.scanId;
+    
+    // Update conversationId if changed
+    if (taskConvId && taskConvId !== conversationId) {
+      console.log('✅ HomeworkChat: Updating conversationId from', conversationId, 'to', taskConvId);
+      setConversationId(taskConvId);
+    } else if (!taskConvId && !conversationId) {
+      // Try localStorage as fallback
+      try {
+        const storedConvId = typeof window !== "undefined" && window.localStorage.getItem(convKey);
+        if (storedConvId && storedConvId !== conversationId) {
+          console.log('✅ HomeworkChat: Loading conversationId from localStorage:', storedConvId);
+          setConversationId(storedConvId);
+        }
+      } catch {
+        // localStorage may be unavailable
+      }
+    }
+    
+    // Update scanId if changed
+    if (taskScanId && taskScanId !== scanId) {
+      console.log('✅ HomeworkChat: Updating scanId from', scanId, 'to', taskScanId);
+      setScanId(taskScanId);
+    }
+  }, [convKey, dockState?.task?.conversationId, dockState?.task?.scanId, conversationId, scanId]);
 
   useEffect(() => {
     try {
@@ -148,14 +182,18 @@ export default function HomeworkChat({
       } else {
         window.localStorage.removeItem(convKey);
       }
-    } catch {}
+    } catch (e) {
+      // Quota exceeded or localStorage unavailable - this is OK, we use task object as primary source
+      console.warn("Could not save conversationId to localStorage (quota exceeded or unavailable)");
+    }
   }, [conversationId, convKey]);
 
   // Local buffer (keeps transient previews even if not persisted)
   const [localMessages, setLocalMessages] = useState(
     controlledMessagesProp ??
       getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) ??
-      initialMessages
+      initialMessages ??
+      defaultInitialMessages
   );
 
   // Seed persistence once per thread
@@ -165,16 +203,17 @@ export default function HomeworkChat({
     if (!setChatMessages || !getChatMessages) return;
     const current =
       getChatMessages(stableModeRef.current, stableTaskIdRef.current) || [];
-    if (current.length === 0 && initialMessages?.length) {
+    const seedMessages = initialMessages || defaultInitialMessages;
+    if (current.length === 0 && seedMessages?.length) {
       setChatMessages(
         stableModeRef.current,
         stableTaskIdRef.current,
-        [...initialMessages]
+        [...seedMessages]
       );
     }
     didSeedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setChatMessages, getChatMessages, initialMessages, scopedTaskKey]);
+  }, [setChatMessages, getChatMessages, initialMessages, defaultInitialMessages, scopedTaskKey]);
 
   // Read view
   const msgs = useMemo(() => {
@@ -320,6 +359,8 @@ export default function HomeworkChat({
           ? `ai/conversations/${conversationId}/message`
           : `ai/conversations/message`;
 
+        console.log('📤 Sending message to:', firstUrl, '| conversationId:', conversationId, '| scanId:', scanId);
+
         let resp;
         try {
           // NOTE: do NOT send userId; the server must read the user from auth
@@ -422,33 +463,14 @@ export default function HomeworkChat({
             } catch {}
           }
 
-          const studentMsg = isImg
-            ? {
-                id: Date.now() + Math.random().toString(36).slice(2, 9),
-                from: "student",
-                sender: "student",
-                type: "image",
-                content: dataUrl,
-                fileName: file.name,
-                fileType: file.type,
-                fileSize: file.size,
-                timestamp: new Date().toISOString(),
-                transient: true, // don't persist previews
-              }
-            : formatMessage(
-                `Datei hochgeladen: ${file.name}`,
-                "student",
-                "text",
-                { transient: true }
-              );
-
+          // Don't show the image in chat, only show analysis loading message
           const loadingMessage = formatMessage(
-            "Ich analysiere dein Bild...",
+            isImg ? "Ich analysiere dein Bild..." : "Ich verarbeite deine Datei...",
             "agent",
             "status",
             { transient: true }
           );
-          updateMessages((m) => [...m, studentMsg, loadingMessage]);
+          updateMessages((m) => [...m, loadingMessage]);
 
           try {
             if (onSendMedia) {
@@ -488,6 +510,16 @@ export default function HomeworkChat({
                     )
                   );
                 }
+                
+                // Add greeting after analysis result
+                const userName = authUser?.name || authUser?.username || "there";
+                arr.push(
+                  formatMessage(
+                    `Hello ${userName}, I've analyzed your homework. How can I help you with what you've scanned?`,
+                    "agent"
+                  )
+                );
+                
                 return arr;
               });
 
@@ -518,13 +550,38 @@ export default function HomeworkChat({
                 const tasks = load();
                 const idx = tasks.findIndex((t) => t?.id === effectiveTaskId);
                 const base = idx >= 0 ? tasks[idx] : {};
+                
+                // Derive subject from extracted text (look for subject keywords)
+                const deriveSubject = (text) => {
+                  const lowerText = text.toLowerCase();
+                  if (lowerText.includes('mathe') || lowerText.includes('rechnen') || lowerText.includes('zahl')) return 'Mathe';
+                  if (lowerText.includes('deutsch') || lowerText.includes('text') || lowerText.includes('lesen')) return 'Deutsch';
+                  if (lowerText.includes('englisch') || lowerText.includes('english')) return 'Englisch';
+                  if (lowerText.includes('wissenschaft') || lowerText.includes('science')) return 'Science';
+                  return 'Sonstiges';
+                };
+                
+                // Derive "what" (task type) from analysis
+                const deriveWhat = (text, questionsCount) => {
+                  if (questionsCount > 0) return `${questionsCount} Frage${questionsCount > 1 ? 'n' : ''}`;
+                  if (text.length > 50) return 'Hausaufgabe';
+                  return 'Foto-Aufgabe';
+                };
+                
+                // Extract and use analysis data
+                const subjectFromAnalysis = extracted ? deriveSubject(extracted) : null;
+                const whatFromAnalysis = deriveWhat(extracted, qa.length);
+                const descriptionFromAnalysis = extracted 
+                  ? extracted.slice(0, 120).trim() + (extracted.length > 120 ? '...' : '')
+                  : null;
+                
                 const updated = {
                   id: effectiveTaskId,
                   createdAt: base.createdAt || nowIso,
                   updatedAt: nowIso,
-                  subject: base.subject || "Sonstiges",
-                  what: base.what || "Foto-Aufgabe",
-                  description: base.description || (files?.[0]?.name || ""),
+                  subject: subjectFromAnalysis || base.subject || "Sonstiges",
+                  what: whatFromAnalysis || base.what || "Foto-Aufgabe",
+                  description: descriptionFromAnalysis || base.description || (files?.[0]?.name || ""),
                   due: base.due || null,
                   done: base.done ?? false,
                   source: base.source || "image",
@@ -602,12 +659,7 @@ export default function HomeworkChat({
     const seed =
       Array.isArray(initialMessages) && initialMessages.length > 0
         ? [...initialMessages]
-        : [
-            formatMessage(
-              "Hallo! Ich bin dein KI-Lernhelfer. Wie kann ich dir bei deinen Hausaufgaben helfen?",
-              "agent"
-            ),
-          ];
+        : defaultInitialMessages;
     setChatMessages?.(modeKey, taskKey, seed);
     setLocalMessages(seed);
     setDraft("");
@@ -617,7 +669,7 @@ export default function HomeworkChat({
     requestAnimationFrame(() =>
       listRef.current?.scrollTo({ top: 999999, behavior: "smooth" })
     );
-  }, [clearChatMessages, setChatMessages, initialMessages]);
+  }, [clearChatMessages, setChatMessages, initialMessages, defaultInitialMessages]);
 
   const handleCameraChange = (e) => {
     const file = e.target.files?.[0];

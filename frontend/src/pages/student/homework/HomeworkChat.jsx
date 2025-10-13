@@ -1,10 +1,11 @@
 // src/pages/student/homework/HomeworkChat.jsx
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import ChatLayer from "@/components/student/mobile/ChatLayer.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
 import { message as antdMessage } from "antd";
 import api from "@/api/axios";
 import { useChatDock } from "@/context/ChatDockContext.jsx";
+import { useAuthContext } from "@/context/AuthContext.jsx";
 
 const PROGRESS_KEY = "kibundo.homework.progress.v1";
 
@@ -16,6 +17,35 @@ const formatMessage = (content, from = "agent", type = "text") => ({
   content,
   timestamp: new Date().toISOString(),
 });
+
+/** Build a stable signature independent of timestamp to avoid dupes */
+const msgSig = (m) => {
+  const type = m?.type ?? "text";
+  const from = (m?.from ?? m?.sender ?? "agent").toLowerCase();
+  const body =
+    typeof m?.content === "string"
+      ? m.content.trim().replace(/\s+/g, " ")
+      : JSON.stringify(m?.content ?? "");
+  return `${type}|${from}|${body.slice(0, 160)}`;
+};
+
+/** Merge two message arrays, removing duplicates by ID or signature */
+const mergeMessages = (existing = [], newMessages = []) => {
+  const seen = new Set();
+  const out = [];
+  
+  for (const arr of [existing, newMessages]) {
+    if (!Array.isArray(arr)) continue;
+    for (const m of arr) {
+      const key = m?.id ?? msgSig(m);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(m);
+    }
+  }
+  
+  return out;
+};
 
 // Build a nice Markdown table + extracted text
 const qaToMarkdown = (extractedText = "", qa = []) => {
@@ -77,14 +107,11 @@ export default function HomeworkChat() {
   const navigate = useNavigate();
   const location = useLocation();
   const { markHomeworkDone } = useChatDock() || {};
+  const { user: authUser } = useAuthContext();
 
   const [open, setOpen] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
-  const [chatHistory, setChatHistory] = useState([
-    formatMessage(
-      "Hallo! Ich bin dein KI-Lernhelfer. Wie kann ich dir bei deinen Hausaufgaben helfen?"
-    ),
-  ]);
+  const [chatHistory, setChatHistory] = useState([]);
 
   // Keep progress at step 2 while chatting
   useEffect(() => {
@@ -102,50 +129,43 @@ export default function HomeworkChat() {
     const files = Array.isArray(payload) ? payload : [payload];
     if (!files.length) return;
 
-    // Push student preview + kick off analyze for each
+    // Analyze images without showing them in chat
     (async () => {
       setIsTyping(true);
 
-      // Show each as student image bubble immediately (via dataURL for stability)
+      // Process each image - show only analysis result, not the image itself
       for (const file of files) {
-        const dataUrl = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target.result);
-          reader.readAsDataURL(file);
-        });
-
-        setChatHistory((prev) => [
-          ...prev,
-          {
-            id: Date.now() + Math.random().toString(36).slice(2, 9),
-            from: "student",
-            type: "image",
-            content: dataUrl,
-            fileName: file.name,
-            fileType: file.type,
-            fileSize: file.size,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
-
         // Add analyzing placeholder
         const analyzingMsg = formatMessage("Ich analysiere dein Bild …", "system");
-        setChatHistory((prev) => [...prev, analyzingMsg]);
+        setChatHistory((prev) => mergeMessages(prev, [analyzingMsg]));
 
         const res = await analyzeOneImage(file);
         setChatHistory((prev) => {
           const arr = [...prev];
           // Replace analyzing placeholder with result
           const idx = arr.findIndex((m) => m.id === analyzingMsg.id);
+          const newMessages = [];
+          
           if (idx !== -1) {
             arr[idx] = formatMessage(
               res.ok ? res.md : res.err,
               res.ok ? "agent" : "system"
             );
           } else {
-            arr.push(formatMessage(res.ok ? res.md : res.err, res.ok ? "agent" : "system"));
+            newMessages.push(formatMessage(res.ok ? res.md : res.err, res.ok ? "agent" : "system"));
           }
-          return arr;
+          
+          // Add greeting after analysis is complete
+          if (res.ok) {
+            const userName = authUser?.name || authUser?.username || "there";
+            const greetingMsg = formatMessage(
+              `Hello ${userName}, I've analyzed your homework. How can I help you with what you've scanned?`,
+              "agent"
+            );
+            newMessages.push(greetingMsg);
+          }
+          
+          return mergeMessages(arr, newMessages);
         });
       }
 
@@ -201,33 +221,39 @@ export default function HomeworkChat() {
     async (content, type = "text") => {
       if (!content) return;
 
-      // Student message bubble
-      const userMessage =
-        type === "image"
-          ? {
-              ...(typeof content === "object" ? content : { content }),
-              id: Date.now() + Math.random().toString(36).slice(2, 9),
-              from: "student",
-              type: "image",
-              timestamp: new Date().toISOString(),
-            }
-          : formatMessage(content, "student");
-
-      setChatHistory((prev) => [...prev, userMessage]);
+      // For images: don't show the image, only show the analysis result
+      // For text: show the student's message as normal
+      if (type !== "image") {
+        const userMessage = formatMessage(content, "student");
+        setChatHistory((prev) => mergeMessages(prev, [userMessage]));
+      }
 
       // AI response
       const { success, response, error } = await sendToAI(content, type);
+      const newMessages = [];
+      
       if (success) {
-        setChatHistory((prev) => [...prev, formatMessage(response, "agent")]);
+        newMessages.push(formatMessage(response, "agent"));
+        
+        // Add greeting after image analysis is complete
+        if (type === "image") {
+          const userName = authUser?.name || authUser?.username || "there";
+          const greetingMsg = formatMessage(
+            `Hello ${userName}, I've analyzed your homework. How can I help you with what you've scanned?`,
+            "agent"
+          );
+          newMessages.push(greetingMsg);
+        }
+        
+        setChatHistory((prev) => mergeMessages(prev, newMessages));
       } else {
         antdMessage.error(error);
-        setChatHistory((prev) => [
-          ...prev,
-          formatMessage(error || "Fehler bei der Analyse.", "system"),
-        ]);
+        setChatHistory((prev) => mergeMessages(prev, [
+          formatMessage(error || "Fehler bei der Analyse.", "system")
+        ]));
       }
     },
-    [sendToAI]
+    [sendToAI, authUser]
   );
 
   const handleDone = () => {

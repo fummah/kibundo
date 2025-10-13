@@ -57,6 +57,30 @@ export default function HomeworkDoing() {
 
   const [uploading, setUploading] = useState(false);   // controls centered overlay
 
+  // Clean up old localStorage data on mount to prevent quota issues
+  useEffect(() => {
+    try {
+      const keysToCheck = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('kibundo.convId.')) {
+          keysToCheck.push(key);
+        }
+      }
+      // Keep only the most recent 10 conversation IDs
+      if (keysToCheck.length > 10) {
+        keysToCheck.slice(0, -10).forEach(k => {
+          try {
+            localStorage.removeItem(k);
+          } catch {}
+        });
+        console.log(`🧹 Cleaned up ${keysToCheck.length - 10} old conversation IDs from localStorage`);
+      }
+    } catch (e) {
+      console.warn("Could not clean up localStorage:", e);
+    }
+  }, []); // Run once on mount
+
   const loadTasks = () => {
     try {
       return JSON.parse(localStorage.getItem(TASKS_KEY_USER) || "[]");
@@ -95,6 +119,7 @@ export default function HomeworkDoing() {
       headers: { "Content-Type": "multipart/form-data" },
       meta: { forceAuthHeader: true },
     });
+    console.log(data);
     return data;
   };
 
@@ -110,10 +135,10 @@ export default function HomeworkDoing() {
     setChatMessages?.(mode, scopedKey, next);
   };
 
-  const openAndFocusChat = (taskId) => {
+  const openAndFocusChat = (taskId, extraTaskData = {}) => {
     openChat?.({
       mode: "homework",
-      task: { id: taskId, userId: studentId },
+      task: { id: taskId, userId: studentId, ...extraTaskData },
       key: `homework:${taskId}::u:${studentId}`,
       restore: true,
       focus: "last",
@@ -132,38 +157,18 @@ export default function HomeworkDoing() {
     const mode = "homework";
     const scopedKey = `${id}::u:${studentId}`;
 
-    // Prepare preview + loader messages FIRST so the chat shows them immediately
-    let previewUrl = null;
-    let studentImageMsg = null;
+    // Prepare loader message FIRST so the chat shows it immediately (no image preview)
     let loadingMsg = null;
 
     if (file) {
-      try { previewUrl = URL.createObjectURL(file); } catch {}
-      if (previewUrl) {
-        studentImageMsg = {
-          id: Date.now() + Math.random().toString(36).slice(2, 9),
-          from: "student",
-          sender: "student",
-          type: "image",
-          content: previewUrl, // blob: URL (persisted; valid for current session)
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size,
-          timestamp: now,
-        };
-      }
-
       // status bubble with spinner (rendered by HomeworkChat for type="status")
       loadingMsg = fmt("Ich analysiere dein Bild…", "agent", "status", { transient: true });
 
-      // Push preview + loader, then open & expand the dock right away
-      appendToChat(mode, scopedKey, [studentImageMsg, loadingMsg].filter(Boolean));
+      // Push only loader message (no image preview), then open & expand the dock right away
+      appendToChat(mode, scopedKey, [loadingMsg]);
       openAndFocusChat(id);
     } else {
-      // No file: seed a friendly agent message and open chat
-      appendToChat(mode, scopedKey, [
-        fmt("Super! Lass uns mit der Aufgabe starten. Wie kann ich dir helfen?", "agent"),
-      ]);
+      // No file: open chat without any initial message
       openAndFocusChat(id);
     }
 
@@ -196,8 +201,41 @@ export default function HomeworkDoing() {
     }
 
     // Build/update the task object
-    const subjectGuess = existingTask?.subject || meta.subject || (file ? "Mathe" : "Sonstiges");
-    const whatGuess = existingTask?.what || meta.what || (file ? "Foto-Aufgabe" : "Neue Aufgabe");
+    // Extract information from scanData if available
+    const extractedText = scanData?.scan?.raw_text ?? scanData?.extractedText ?? "";
+    const questions = Array.isArray(scanData?.parsed?.questions) 
+      ? scanData.parsed.questions 
+      : Array.isArray(scanData?.qa) ? scanData.qa : [];
+    
+    // Derive subject from extracted text (look for subject keywords)
+    const deriveSubject = (text) => {
+      const lowerText = text.toLowerCase();
+      if (lowerText.includes('mathe') || lowerText.includes('rechnen') || lowerText.includes('zahl')) return 'Mathe';
+      if (lowerText.includes('deutsch') || lowerText.includes('text') || lowerText.includes('lesen')) return 'Deutsch';
+      if (lowerText.includes('englisch') || lowerText.includes('english')) return 'Englisch';
+      if (lowerText.includes('wissenschaft') || lowerText.includes('science')) return 'Science';
+      return 'Sonstiges';
+    };
+    
+    // Derive "what" (task type) from analysis
+    const deriveWhat = (text, questionsCount) => {
+      if (questionsCount > 0) return `${questionsCount} Frage${questionsCount > 1 ? 'n' : ''}`;
+      if (text.length > 50) return 'Hausaufgabe';
+      return 'Foto-Aufgabe';
+    };
+    
+    // Use extracted data or fallback to existing/meta
+    const subjectGuess = scanData 
+      ? deriveSubject(extractedText)
+      : (existingTask?.subject || meta.subject || "Sonstiges");
+      
+    const whatGuess = scanData
+      ? deriveWhat(extractedText, questions.length)
+      : (existingTask?.what || meta.what || "Neue Aufgabe");
+      
+    const descriptionGuess = scanData && extractedText
+      ? extractedText.slice(0, 120).trim() + (extractedText.length > 120 ? '...' : '')
+      : (existingTask?.description || meta.description || (file?.name ?? ""));
 
     const taskForStorage = {
       id,
@@ -205,7 +243,7 @@ export default function HomeworkDoing() {
       updatedAt: now,
       subject: subjectGuess,
       what: whatGuess,
-      description: existingTask?.description || meta.description || (file?.name ?? ""),
+      description: descriptionGuess,
       due: existingTask?.due || meta.due || null,
       done: existingTask?.done ?? false,
       source: existingTask?.source || meta.source || (file ? "image" : "manual"),
@@ -267,7 +305,7 @@ export default function HomeworkDoing() {
         JSON.stringify({
           step: 1,
           taskId: id,
-          task: { id, what: taskForStorage.what, hasImage: taskForStorage.hasImage },
+          task: { id, what: taskForStorage.what, hasImage: taskForStorage.hasImage, conversationId: taskForStorage.conversationId, scanId: taskForStorage.scanId },
         })
       );
     } catch {}
@@ -295,7 +333,53 @@ export default function HomeworkDoing() {
               "agent"
             );
 
-      appendToChat(mode, scopedKey, [resultMsg]);
+      // Add greeting after analysis result
+      const userName = authUser?.name || authUser?.username || "there";
+      const greetingMsg = fmt(
+        `Hello ${userName}, I've analyzed your homework. How can I help you with what you've scanned?`,
+        "agent"
+      );
+
+      appendToChat(mode, scopedKey, [resultMsg, greetingMsg]);
+
+      // ⬇️ Update the chat with conversationId and scanId from upload response
+      // Re-open the chat with updated task data (conversationId, scanId)
+      if (scanData.conversationId || scanData?.scan?.id) {
+        const updatedTaskData = {
+          conversationId: scanData.conversationId,
+          scanId: scanData?.scan?.id,
+        };
+        
+        // Re-open chat with updated conversationId and scanId
+        openAndFocusChat(id, updatedTaskData);
+        
+        console.log('✅ Updated chat with conversationId:', scanData.conversationId, 'scanId:', scanData?.scan?.id);
+        
+        // Try to store in localStorage (optional fallback, ignore quota errors)
+        const convKey = `kibundo.convId.${mode}.${scopedKey}`;
+        try {
+          localStorage.setItem(convKey, String(scanData.conversationId));
+        } catch (e) {
+          // Quota exceeded - clean up old conversation IDs
+          console.warn("localStorage quota exceeded, cleaning up old data...");
+          try {
+            // Remove old conversation IDs
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (key && key.startsWith('kibundo.convId.')) {
+                keysToRemove.push(key);
+              }
+            }
+            // Remove oldest entries (keep last 5)
+            keysToRemove.slice(0, -5).forEach(k => localStorage.removeItem(k));
+            // Try again
+            localStorage.setItem(convKey, String(scanData.conversationId));
+          } catch (cleanupErr) {
+            console.warn("Could not store conversationId even after cleanup:", cleanupErr);
+          }
+        }
+      }
     }
 
     antdMessage.success("Aufgabe erstellt – der Chat zeigt jetzt die Analyse.");

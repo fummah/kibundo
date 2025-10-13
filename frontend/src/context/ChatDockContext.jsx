@@ -327,6 +327,9 @@ export function ChatDockProvider({ children }) {
         // 4) Store scanId / conversationId on the current task (kept in state only)
         const scanId = data?.scan?.id ?? data?.scanId ?? null;
         const conversationId = data?.conversationId ?? null;
+        console.log("yryryryrdata");
+
+        console.log(scanId, conversationId);
 
         if (scanId || conversationId) {
           setState((s) => ({

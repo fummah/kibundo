@@ -18,6 +18,7 @@ import {
 } from "@ant-design/icons";
 import { useChatDock } from "@/context/ChatDockContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
+import api from "@/api/axios";
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Base (unscoped) localStorage keys — will be scoped per-student below
@@ -33,6 +34,37 @@ const SUBJECTS = {
   Deutsch: { color: "#e6f6c9", icon: "📗" },
   Sonstiges: { color: "#ffe2e0", icon: "🧩" },
 };
+
+// Transform API homework scan data to task format
+function transformHomeworkScanToTask(scan) {
+  // Derive "what" (task type) from raw_text
+  const deriveWhat = (text) => {
+    if (!text) return 'Foto-Aufgabe';
+    const questionMatch = text.match(/\d+\s*Frage/i);
+    if (questionMatch) return questionMatch[0];
+    if (text.length > 50) return 'Hausaufgabe';
+    return 'Foto-Aufgabe';
+  };
+  
+  return {
+    id: `scan_${scan.id}`,
+    scanId: scan.id,
+    createdAt: scan.created_at,
+    updatedAt: scan.created_at,
+    subject: scan.detected_subject || 'Sonstiges',
+    what: deriveWhat(scan.raw_text),
+    description: scan.raw_text ? scan.raw_text.slice(0, 120).trim() + (scan.raw_text.length > 120 ? '...' : '') : (scan.notes || '—'),
+    due: null,
+    done: false, // Default to false (status column doesn't exist in DB yet)
+    source: 'image',
+    hasImage: !!scan.file_url,
+    fileName: null,
+    fileType: null,
+    fileSize: null,
+    conversationId: null,
+    userId: scan.student_id,
+  };
+}
 
 // Load tasks from one or more keys and merge (sorted newest first)
 function loadTasksFromKeys(keys = []) {
@@ -227,30 +259,101 @@ export default function HomeworkList() {
     [TASKS_KEY_USER]
   );
 
-  // Maintain tasks in state so we can refresh when storage changes
-  const [tasks, setTasks] = useState(() => loadTasksFromKeys(FALLBACK_KEYS));
+  // Maintain tasks in state - will merge localStorage + API data
+  const [localStorageTasks, setLocalStorageTasks] = useState(() => loadTasksFromKeys(FALLBACK_KEYS));
+  const [apiTasks, setApiTasks] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  // Refresh helpers
-  const refreshTasks = useCallback(() => {
-    setTasks(loadTasksFromKeys(FALLBACK_KEYS));
+  // Merge and deduplicate tasks from both sources
+  const tasks = useMemo(() => {
+    const merged = [];
+    const seen = new Set();
+    
+    // Add API tasks first (they're the source of truth from database)
+    for (const task of apiTasks) {
+      const key = task.scanId ? `scan_${task.scanId}` : task.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(task);
+    }
+    
+    // Add localStorage tasks (local-only data)
+    for (const task of localStorageTasks) {
+      const key = task.scanId ? `scan_${task.scanId}` : task.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(task);
+    }
+    
+    // Sort by creation date (newest first)
+    return merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  }, [apiTasks, localStorageTasks]);
+
+  // Fetch homework scans from API
+  const fetchHomeworkScans = useCallback(async () => {
+    if (studentId === "anon") return; // Skip if not authenticated
+    
+    try {
+      setLoading(true);
+      console.log(`Fetching homework scans for student ID: ${studentId}`);
+      const { data } = await api.get('/homeworkscans', {
+        params: { student_id: studentId }
+      });
+      
+      const transformedTasks = Array.isArray(data) 
+        ? data.map(transformHomeworkScanToTask)
+        : [];
+      
+      setApiTasks(transformedTasks);
+      console.log(`Loaded ${transformedTasks.length} homework scans from database for student ${studentId}`);
+      if (transformedTasks.length === 0) {
+        console.log('💡 No homework scans found. Make sure the homework_scans table has entries with this student_id.');
+      }
+    } catch (error) {
+      console.warn('Could not fetch homework scans from database:', error.response?.data?.message || error.message);
+      console.log('Falling back to localStorage data only');
+      // Silently fail - localStorage data will still be available
+      setApiTasks([]); // Set empty array on error
+    } finally {
+      setLoading(false);
+    }
+  }, [studentId]);
+
+  // Fetch on mount and when studentId changes
+  useEffect(() => {
+    fetchHomeworkScans();
+  }, [fetchHomeworkScans]);
+
+  // Refresh localStorage tasks
+  const refreshLocalTasks = useCallback(() => {
+    setLocalStorageTasks(loadTasksFromKeys(FALLBACK_KEYS));
   }, [FALLBACK_KEYS]);
 
   useEffect(() => {
     // Update on storage changes (e.g., when HomeworkDoing saves)
     const onStorage = (e) => {
       if (!e?.key) return;
-      if (FALLBACK_KEYS.includes(e.key)) refreshTasks();
+      if (FALLBACK_KEYS.includes(e.key)) {
+        refreshLocalTasks();
+        fetchHomeworkScans(); // Also refresh API data
+      }
     };
     window.addEventListener("storage", onStorage);
 
     // Also refresh when user returns to tab
     const onVis = () => {
-      if (document.visibilityState === "visible") refreshTasks();
+      if (document.visibilityState === "visible") {
+        refreshLocalTasks();
+        fetchHomeworkScans();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
 
     // Immediate same-tab updates (storage event does not fire in same tab)
-    const onTasksUpdated = () => refreshTasks();
+    const onTasksUpdated = () => {
+      refreshLocalTasks();
+      fetchHomeworkScans(); // Refresh API data when tasks are updated
+    };
     window.addEventListener("kibundo:tasks-updated", onTasksUpdated);
 
     return () => {
@@ -258,7 +361,7 @@ export default function HomeworkList() {
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("kibundo:tasks-updated", onTasksUpdated);
     };
-  }, [FALLBACK_KEYS, refreshTasks]);
+  }, [FALLBACK_KEYS, refreshLocalTasks, fetchHomeworkScans]);
 
   // Enrich tasks with derived subject/description from latest analysis (if needed)
   const enhancedRows = useMemo(() => {
