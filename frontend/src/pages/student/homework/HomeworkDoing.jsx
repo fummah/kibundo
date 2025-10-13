@@ -333,14 +333,7 @@ export default function HomeworkDoing() {
               "agent"
             );
 
-      // Add greeting after analysis result
-      const userName = authUser?.name || authUser?.username || "there";
-      const greetingMsg = fmt(
-        `Hello ${userName}, I've analyzed your homework. How can I help you with what you've scanned?`,
-        "agent"
-      );
-
-      appendToChat(mode, scopedKey, [resultMsg, greetingMsg]);
+      appendToChat(mode, scopedKey, [resultMsg]);
 
       // ⬇️ Update the chat with conversationId and scanId from upload response
       // Re-open the chat with updated task data (conversationId, scanId)
