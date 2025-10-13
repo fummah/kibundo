@@ -1,7 +1,6 @@
 // src/api/academics/quizzes.js
 import api from "@/api/axios";
 
-/** ---------- Helpers ---------- */
 const errMsg = (err, fallback) =>
   err?.response?.data?.message ||
   err?.response?.data?.error ||
@@ -50,18 +49,15 @@ const unpackListPayload = (data) => {
   return { items: [], total: 0 };
 };
 
-/** ---------- Preferred REST paths + legacy fallbacks ---------- */
 const PATH = {
   list: "/quizzes",
   item: (id) => `/quizzes/${id}`,
-  // legacy (temporary fallback support)
   legacyGet: (id) => `/quiz/${id}`,
   legacyCreate: "/addquiz",
-  legacyUpdate: "/addquiz", // legacy upsert
+  legacyUpdate: "/addquiz",
   legacyDelete: (id) => `/quiz/${id}`,
 };
 
-/** ---------- CRUD ---------- */
 export async function listQuizzes(params = {}) {
   try {
     const { data } = await api.get(PATH.list, { params });
@@ -82,7 +78,6 @@ export async function getQuiz(id) {
     const { data } = await api.get(PATH.item(id));
     return normalizeQuiz(data);
   } catch (err) {
-    // fallback to legacy /quiz/:id
     try {
       const { data } = await api.get(PATH.legacyGet(id));
       return normalizeQuiz(data);
@@ -93,14 +88,20 @@ export async function getQuiz(id) {
 }
 
 export async function createQuiz(payload) {
+  const normalizedPayload = { ...payload };
+  if (payload.grade && typeof payload.grade === 'string') {
+    const match = payload.grade.match(/\d+/);
+    if (match) {
+      normalizedPayload.grade = parseInt(match[0], 10);
+    }
+  }
+  
   try {
-    // Preferred REST
-    const { data } = await api.post(PATH.list, payload);
+    const { data } = await api.post(PATH.list, normalizedPayload);
     return normalizeQuiz(data);
   } catch (err) {
-    // fallback to legacy /addquiz
     try {
-      const { data } = await api.post(PATH.legacyCreate, payload);
+      const { data } = await api.post(PATH.legacyCreate, normalizedPayload);
       return normalizeQuiz(data);
     } catch (err2) {
       throw new Error(errMsg(err2, "Failed to create quiz."));
@@ -110,14 +111,21 @@ export async function createQuiz(payload) {
 
 export async function updateQuiz(id, payload) {
   if (!id) throw new Error("Quiz id is required");
+  
+  const normalizedPayload = { ...payload };
+  if (payload.grade && typeof payload.grade === 'string') {
+    const match = payload.grade.match(/\d+/);
+    if (match) {
+      normalizedPayload.grade = parseInt(match[0], 10);
+    }
+  }
+  
   try {
-    // Preferred REST (PATCH; switch to PUT if your backend prefers)
-    const { data } = await api.patch(PATH.item(id), payload);
+    const { data } = await api.patch(PATH.item(id), normalizedPayload);
     return normalizeQuiz(data);
   } catch (err) {
-    // legacy fallback: /addquiz upsert style (requires { id, ...payload })
     try {
-      const { data } = await api.post(PATH.legacyUpdate, { id, ...payload });
+      const { data } = await api.post(PATH.legacyUpdate, { id, ...normalizedPayload });
       return normalizeQuiz(data);
     } catch (err2) {
       throw new Error(errMsg(err2, `Failed to update quiz #${id}.`));
@@ -125,7 +133,6 @@ export async function updateQuiz(id, payload) {
   }
 }
 
-// Convenience helper: choose create vs update based on presence of id
 export async function upsertQuiz(payload) {
   return payload?.id ? updateQuiz(payload.id, payload) : createQuiz(payload);
 }
@@ -136,7 +143,6 @@ export async function deleteQuiz(id) {
     await api.delete(PATH.item(id));
     return { ok: true };
   } catch (err) {
-    // fallback to legacy /quiz/:id
     try {
       const { data } = await api.delete(PATH.legacyDelete(id));
       return data ?? { ok: true };
@@ -146,15 +152,12 @@ export async function deleteQuiz(id) {
   }
 }
 
-/** ---------- Status / Publishing ---------- */
-// Dedicated helper for publish/unpublish so we never hit create by mistake
 export async function patchQuizStatus(id, status) {
   if (!id) throw new Error("Quiz id is required");
   try {
-    const { data } = await api.patch(PATH.item(id), { status });
+    const { data} = await api.patch(PATH.item(id), { status });
     return normalizeQuiz(data);
   } catch (err) {
-    // legacy upsert fallback
     try {
       const { data } = await api.post(PATH.legacyUpdate, { id, status });
       return normalizeQuiz(data);
@@ -164,7 +167,6 @@ export async function patchQuizStatus(id, status) {
   }
 }
 
-/** ---------- Linking to curricula ---------- */
 export async function searchQuizzes(params = {}) {
   try {
     const { data } = await api.get(PATH.list, { params });

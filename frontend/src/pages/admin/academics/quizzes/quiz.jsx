@@ -22,11 +22,8 @@ import {
   deleteQuiz,    // (id)
 } from "@/api/academics/quizzes.js";
 
-/* Rich text */
-import ReactQuill from "react-quill";
-import "react-quill/dist/quill.snow.css";
-
 const { useBreakpoint } = Grid;
+const { TextArea } = Input;
 
 /* ---------------- helpers ---------------- */
 const qTypes = [
@@ -136,68 +133,6 @@ const toApiItem = (q = {}, idx = 0) => {
   }
   return { ...base, type: "short-answer", options: [], answer_key: q.answerText ? [String(q.answerText)] : [""] };
 };
-
-/* ----------- Stable, controlled Quill (no debounce, no internal mirror) ----------- */
-function RichText({ value, onChange, placeholder }) {
-  const modules = useMemo(
-    () => ({
-      toolbar: [
-        [{ header: [1, 2, 3, false] }],
-        ["bold", "italic", "underline", "strike"],
-        [{ color: [] }, { background: [] }],
-        [{ list: "ordered" }, { list: "bullet" }],
-        ["link", "blockquote", "code-block"],
-        ["clean"],
-      ],
-      history: { delay: 500, maxStack: 200, userOnly: true },
-    }),
-    []
-  );
-
-  const formats = useMemo(
-    () => [
-      "header",
-      "bold", "italic", "underline", "strike",
-      "color", "background",
-      "list", "bullet",
-      "link", "blockquote", "code-block",
-    ],
-    []
-  );
-
-  const handleChange = (content, delta, source, editor) => {
-    // Always call onChange regardless of source to avoid losing content
-    if (onChange) {
-      onChange(content);
-    }
-  };
-
-  return (
-    <div className="richtext">
-      <ReactQuill
-        theme="snow"
-        value={value || ""}
-        onChange={handleChange}
-        modules={modules}
-        formats={formats}
-        placeholder={placeholder}
-        bounds=".richtext"
-      />
-      <style>{`
-        .richtext .ql-container {
-          min-height: 140px;
-          border-bottom-left-radius: 8px;
-          border-bottom-right-radius: 8px;
-        }
-        .richtext .ql-toolbar {
-          border-top-left-radius: 8px;
-          border-top-right-radius: 8px;
-        }
-        .richtext .ql-editor { word-break: break-word; overflow-wrap: anywhere; }
-      `}</style>
-    </div>
-  );
-}
 
 export default function Quiz() {
   const [form] = Form.useForm();
@@ -324,12 +259,25 @@ export default function Quiz() {
   const openEdit = (r) => {
     setEditId(r.id);
     const rawItems = Array.isArray(r.items) ? r.items : Array.isArray(r.questions) ? r.questions : [];
+    
+    // Convert numeric grade to class name if needed (e.g., 3 -> "Grade 3")
+    let gradeValue = r.grade;
+    if (typeof gradeValue === 'number') {
+      // Try to find matching class name from the classes list
+      const matchingClass = classes.find(c => {
+        const className = c.class_name || c.name || c.grade || String(c);
+        const match = className.match(/\d+/);
+        return match && parseInt(match[0], 10) === gradeValue;
+      });
+      gradeValue = matchingClass ? (matchingClass.class_name || matchingClass.name || matchingClass.grade || String(matchingClass)) : `Grade ${gradeValue}`;
+    }
+    
     editForm.setFieldsValue({
       title: r.title,
       description: r.description || "",
       tags: r.tags || [],
       subject: r.subject,
-      grade: r.grade,
+      grade: gradeValue,
       bundesland: r.bundesland,
       difficulty: r.difficulty || "medium",
       objectives: r.objectives || [],
@@ -343,11 +291,25 @@ export default function Quiz() {
   const onSubmit = async () => {
     const values = await editForm.validateFields();
     const editorItems = Array.isArray(values.items) ? values.items : [];
+    
+    // Extract numeric grade from class name (e.g., "Grade 3" -> 3)
+    let gradeValue = values.grade;
+    if (typeof gradeValue === 'string') {
+      const match = gradeValue.match(/\d+/);
+      gradeValue = match ? parseInt(match[0], 10) : gradeValue;
+    }
+    
+    // Remove grade from values to avoid conflicts, then add it back with the correct type
+    const { grade, items, ...restValues } = values;
+    
     const payload = {
-      ...values,
+      ...restValues,
+      grade: gradeValue,
       items: editorItems.map(toApiItem), // convert to API shape
       ...(editId ? { id: editId } : {}),
     };
+    
+    console.log('Quiz payload:', payload); // Debug log to verify grade is numeric
     saveMut.mutate(payload);
   };
 
@@ -372,7 +334,17 @@ export default function Quiz() {
       { title: "ID", dataIndex: "id", key: "id", width: 160, render: (v) => <SafeText value={v} /> },
       { title: "Title", dataIndex: "title", key: "title", render: (v) => <SafeText value={v} /> },
       { title: "Subject", dataIndex: "subject", key: "subject", width: 140, render: (v) => <SafeText value={v} /> },
-      { title: "Class", dataIndex: "grade", key: "grade", width: 90, render: (v) => <SafeText value={v} /> },
+      { 
+        title: "Class", 
+        dataIndex: "grade", 
+        key: "grade", 
+        width: 90, 
+        render: (v) => {
+          // Convert numeric grade to readable format (e.g., 3 -> "Grade 3")
+          const displayValue = typeof v === 'number' ? `Grade ${v}` : v;
+          return <SafeText value={displayValue} />;
+        }
+      },
       { title: "State", dataIndex: "bundesland", key: "bundesland", width: 180, render: (v) => <SafeText value={v} /> },
       {
         title: "Difficulty",
@@ -501,7 +473,7 @@ export default function Quiz() {
       id: safe(q.id),
       title: safe(q.title),
       subject: safe(q.subject),
-      grade: safe(q.grade),
+      grade: safe(typeof q.grade === 'number' ? `Grade ${q.grade}` : q.grade),
       bundesland: safe(q.bundesland),
       difficulty: safe(q.difficulty),
       status: safe(q.status),
@@ -535,7 +507,7 @@ export default function Quiz() {
     if (q.type === "mcq") {
       return (
         <div>
-          <div className="font-medium mb-2" dangerouslySetInnerHTML={{ __html: q.prompt || "" }} />
+          <div className="font-medium mb-2 whitespace-pre-wrap">{q.prompt || ""}</div>
           {q.randomize && <div className="text-xs text-blue-600 mb-2">✓ Choices will be randomized</div>}
           <div className="space-y-2">
             {(q.choices || []).map((c, i) => (
@@ -578,14 +550,14 @@ export default function Quiz() {
     if (q.type === "short") {
       return (
         <div>
-          <div className="font-medium mb-2" dangerouslySetInnerHTML={{ __html: q.prompt || "" }} />
+          <div className="font-medium mb-2 whitespace-pre-wrap">{q.prompt || ""}</div>
           <div className="text-gray-500">Answer: <SafeText value={q.answerText || "—"} /></div>
         </div>
       );
     }
     return (
       <div>
-        <div className="font-medium mb-2" dangerouslySetInnerHTML={{ __html: q.prompt || "" }} />
+        <div className="font-medium mb-2 whitespace-pre-wrap">{q.prompt || ""}</div>
         <div className="text-gray-500">Answer: {String(q.answerBool ?? true)}</div>
       </div>
     );
@@ -650,17 +622,18 @@ export default function Quiz() {
                   >
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-12">
                       <div className="sm:col-span-3">
-                        {/* Rich text prompt (stable controlled) */}
+                        {/* Question prompt */}
                         <Form.Item
                           {...rest}
                           name={[name, "prompt"]}
                           label="Prompt"
                           rules={[{ required: true, message: "Enter a question prompt" }]}
-                          valuePropName="value"
-                          getValueFromEvent={(v) => v}
-                          trigger="onChange"
                         >
-                          <RichText placeholder="Type the question… (supports headings, lists, code, etc.)" />
+                          <TextArea 
+                            placeholder="Type the question…" 
+                            rows={4}
+                            autoSize={{ minRows: 4, maxRows: 8 }}
+                          />
                         </Form.Item>
 
                         {t === "mcq" && (
@@ -814,7 +787,7 @@ export default function Quiz() {
     <div className="flex flex-col min-h-0">
       <PageHeader
         title="Quizzes"
-        subtitle="Create, edit and publish quizzes. Use the rich-text editor to build questions."
+        subtitle="Create, edit and publish quizzes."
         extra={
           <Space wrap>
             <Dropdown menu={{ items: columnMenuItems }} trigger={["click"]}>
@@ -935,11 +908,12 @@ export default function Quiz() {
                   <Form.Item
                     name="description"
                     label="Description"
-                    valuePropName="value"
-                    getValueFromEvent={(v) => v}
-                    trigger="onChange"
                   >
-                    <RichText placeholder="Describe the quiz (instructions, context, etc.)" />
+                    <TextArea 
+                      placeholder="Describe the quiz (instructions, context, etc.)" 
+                      rows={4}
+                      autoSize={{ minRows: 4, maxRows: 8 }}
+                    />
                   </Form.Item>
 
                   <Form.Item name="bundesland" label="Bundesland" rules={[{ required: true }]}>
@@ -1046,7 +1020,9 @@ export default function Quiz() {
             <Descriptions.Item label="Title"><SafeText value={viewRec.title} /></Descriptions.Item>
             <Descriptions.Item label="Bundesland"><SafeText value={viewRec.bundesland} /></Descriptions.Item>
             <Descriptions.Item label="Subject"><SafeText value={viewRec.subject} /></Descriptions.Item>
-            <Descriptions.Item label="Class"><SafeText value={viewRec.grade} /></Descriptions.Item>
+            <Descriptions.Item label="Class">
+              <SafeText value={typeof viewRec.grade === 'number' ? `Grade ${viewRec.grade}` : viewRec.grade} />
+            </Descriptions.Item>
             <Descriptions.Item label="Difficulty">
               <Tag color={viewRec.difficulty === "easy" ? "green" : viewRec.difficulty === "hard" ? "volcano" : "geekblue"}>
                 <SafeText value={viewRec.difficulty} />
@@ -1059,9 +1035,9 @@ export default function Quiz() {
             </Descriptions.Item>
             <Descriptions.Item label="Tags"><SafeTags value={viewRec.tags} /></Descriptions.Item>
 
-            {/* rich text description */}
+            {/* description */}
             <Descriptions.Item label="Description">
-              <div dangerouslySetInnerHTML={{ __html: viewRec.description || "" }} />
+              <div className="whitespace-pre-wrap">{viewRec.description || ""}</div>
             </Descriptions.Item>
 
             <Descriptions.Item label="Items">
@@ -1072,7 +1048,7 @@ export default function Quiz() {
                     : raw;
                   return (
                     <Card key={i} size="small" title={`Q${i + 1} • ${q.type}`}>
-                      <div className="font-medium mb-2" dangerouslySetInnerHTML={{ __html: q.prompt || "" }} />
+                      <div className="font-medium mb-2 whitespace-pre-wrap">{q.prompt || ""}</div>
                       {q.type === "mcq" ? (
                         <div>
                           {q.randomize && <div className="text-xs text-blue-600 mb-2">✓ Choices will be randomized</div>}
