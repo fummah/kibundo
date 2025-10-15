@@ -62,6 +62,20 @@ exports.adduser = async (req, res) => {
       created_by,
     });
 
+      // ✅ Generate username
+  const username =
+    (first_name.substring(0, 2) + last_name.substring(0, 1)).toLowerCase() +
+    newUser.id;
+
+  // ✅ Update the username field in users table
+  await User.update(
+    { username },
+    { where: { id: newUser.id } }
+  );
+
+  // Optionally, include username in response
+  newUser.username = username;
+
        if (subjects && Array.isArray(subjects) && subjects.length > 0) {
         const subjectMappings = subjects.map(subject_id => ({
           student_id: newStudent.id,
