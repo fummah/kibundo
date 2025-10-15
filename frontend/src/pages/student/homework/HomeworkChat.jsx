@@ -198,10 +198,21 @@ export default function HomeworkChat() {
         };
       }
 
+      // Get the global child default AI agent setting
+      let assignedAgent = "ChildAgent"; // default fallback
+      try {
+        const { data: aiSettings } = await api.get("/aisettings");
+        if (aiSettings?.child_default_ai) {
+          assignedAgent = aiSettings.child_default_ai;
+        }
+      } catch (err) {
+        console.warn("Could not fetch AI settings:", err);
+      }
+
       // Text → general chat
       const { data } = await api.post("/ai/chat", {
         question: content,
-        ai_agent: "ChildAgent",
+        ai_agent: assignedAgent,
       });
       return { success: true, response: data?.answer || "—" };
     } catch (error) {
@@ -215,7 +226,7 @@ export default function HomeworkChat() {
     } finally {
       setIsTyping(false);
     }
-  }, []);
+  }, [authUser]);
 
   const handleSendMessage = useCallback(
     async (content, type = "text") => {

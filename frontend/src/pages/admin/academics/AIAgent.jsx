@@ -20,9 +20,12 @@ import {
   Divider,
   List,
   Tag,
-  message,
   ColorPicker,
-  Avatar,              // ⬅️ added
+  Avatar,
+  Modal,
+  Form,
+  App,
+  Dropdown,
 } from "antd";
 import {
   SaveOutlined,
@@ -30,11 +33,15 @@ import {
   CloudUploadOutlined,
   PlusOutlined,
   SyncOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  MoreOutlined,
 } from "@ant-design/icons";
 
 const { Text } = Typography;
 const { TextArea } = Input;
 const { Dragger } = Upload;
+const { useApp } = App;
 
 const AgentForm = lazy(() => import("@/pages/admin/agents/AgentForm"));
 
@@ -109,10 +116,12 @@ function normalizeEntitiesPayload(raw) {
 
 export default function AIAgent() {
   const navigate = useNavigate();
+  const { message } = useApp();
 
   const [state, setState] = useState({
     playground: {
       selectedAgent: "default",
+      selectedStudentAgent: "default",
       systemPrompt: "",
       instructions: "",
       model: "gpt-4o",
@@ -157,6 +166,9 @@ export default function AIAgent() {
   const [selectedState, setSelectedState] = useState("");
   const [selectedGrade, setSelectedGrade] = useState("");
   const [previewKey, setPreviewKey] = useState(0);
+  const [editingAgent, setEditingAgent] = useState(null);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editFormData, setEditFormData] = useState({});
 
   const refreshPreview = useCallback(() => setPreviewKey((p) => p + 1), []);
 
@@ -212,17 +224,21 @@ export default function AIAgent() {
     setUsersLoading(true);
     try {
       const { data } = await api.get("/users");
+      console.log("Fetched users data:", data); // Debug log
       const map = {};
       (Array.isArray(data) ? data : []).forEach((u) => {
         const fullName = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
         map[String(u.id)] = {
-          name: fullName || "Unknown",
+          name: fullName || u.email || `User ${u.id}`,
           avatar: u.avatar || u.photo_url || u.image || u.picture || null,
         };
+        console.log(`Mapped user ${u.id}:`, map[String(u.id)]); // Debug log
       });
       setUsers(map);
+      console.log("Final users map:", map); // Debug log
     } catch (err) {
-      console.warn("Users endpoint missing or failed:", err?.message);
+      console.error("Users endpoint failed:", err?.message);
+      message.error("Failed to load user data");
     } finally {
       setUsersLoading(false);
     }
@@ -234,6 +250,7 @@ export default function AIAgent() {
       await api.post("/addagent", agentData);
       message.success("Agent created successfully");
       await fetchAgents();
+      await fetchUsers(); // Refresh users data to ensure creator info is available
       setState((s) => ({
         ...s,
         sources: {
@@ -274,44 +291,124 @@ export default function AIAgent() {
     }
   };
 
+  const fetchAiSettings = async () => {
+    try {
+      const { data } = await api.get("/aisettings");
+      if (data) {
+        setState((s) => ({
+          ...s,
+          playground: {
+            ...s.playground,
+            selectedAgent: data.parent_default_ai || "default",
+            selectedStudentAgent: data.child_default_ai || "default",
+            model: data.openai_model || "gpt-4o",
+            temperature: data.temperature || 0.7,
+          },
+        }));
+      }
+    } catch (err) {
+      console.warn("AI Settings endpoint missing or failed:", err?.message);
+    }
+  };
+
   const saveToChatbot = async () => {
     setSaving(true);
     try {
-      const currentAgent = state.playground.selectedAgent || "default";
-      const preset = AGENT_CONFIGS[currentAgent] || AGENT_CONFIGS.default;
-
-      const payload = {
-        agentType: currentAgent,
-        systemPrompt: state.playground.systemPrompt || preset.systemPrompt,
-        instructions: state.playground.instructions || preset.instructions,
-        displayName: state.settings.displayName || preset.name,
-        initialMessages:
-          state.settings.initialMessages?.length
-            ? state.settings.initialMessages
-            : preset.initialMessages || [],
-        suggestedMessages: state.settings.suggestedMessages || [],
-        placeholder: state.settings.placeholder,
-        userMessageColor: state.settings.userMessageColor,
-        model: state.playground.model || preset.model,
-        temperature:
-          typeof state.playground.temperature === "number"
-            ? state.playground.temperature
-            : preset.temperature,
-        theme: state.settings.theme,
-        collectFeedback: !!state.settings.collectFeedback,
-        regenerateMessages: !!state.settings.regenerateMessages,
-        footer: state.settings.footer,
+      // Save AI Agent Settings using the new endpoint
+      const aiSettingsPayload = {
+        parent_default_ai: state.playground.selectedAgent || "default",
+        child_default_ai: state.playground.selectedStudentAgent || "default",
+        openai_model: state.playground.model || "gpt-4o",
+        temperature: state.playground.temperature || 0.7,
       };
 
-      await api.post("/ai/save-config", payload);
-      message.success("Chatbot configuration saved successfully!");
+      await api.put("/updateaisettings", aiSettingsPayload);
+      message.success("AI Agent Settings saved successfully!");
       refreshPreview();
     } catch (error) {
-      console.error("Error saving chatbot configuration:", error);
-      message.error("Failed to save chatbot configuration. Please try again.");
+      console.error("Error saving AI agent settings:", error);
+      message.error("Failed to save AI agent settings. Please try again.");
     } finally {
       setSaving(false);
     }
+  };
+
+  const updateAgentSettings = async (agentId, agentData) => {
+    try {
+      const payload = {
+        id: agentId,
+        agent_name: agentData.name,
+        entities: agentData.entities,
+        grade: agentData.grade,
+        state: agentData.state,
+        file_name: agentData.file_name,
+        api: agentData.api,
+      };
+
+      await api.put("/updateaiagents", payload);
+      message.success("Agent updated successfully!");
+      await fetchAgents(); // Refresh the agents list
+      return true;
+    } catch (error) {
+      console.error("Error updating agent:", error);
+      message.error("Failed to update agent. Please try again.");
+      return false;
+    }
+  };
+
+  const openEditModal = (agent) => {
+    setEditingAgent(agent);
+    setEditFormData({
+      name: agent.name || "",
+      entities: agent.entities || agent.prompts?.entities || [],
+      grade: agent.grade || null,
+      state: agent.state || null,
+      file_name: agent.file_name || agent.prompts?.file_name || "",
+      api: agent.api || agent.prompts?.api || "",
+      url: agent.prompts?.url || "",
+    });
+    setEditModalVisible(true);
+  };
+
+  const closeEditModal = () => {
+    setEditModalVisible(false);
+    setEditingAgent(null);
+    setEditFormData({});
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editingAgent) return;
+
+    const success = await updateAgentSettings(editingAgent.id, editFormData);
+    if (success) {
+      closeEditModal();
+    }
+  };
+
+  const deleteAgent = async (agentId, agentName) => {
+    try {
+      await api.delete(`/deleteagent/${agentId}`);
+      message.success(`Agent "${agentName}" deleted successfully!`);
+      await fetchAgents(); // Refresh the agents list
+      return true;
+    } catch (error) {
+      console.error("Error deleting agent:", error);
+      message.error("Failed to delete agent. Please try again.");
+      return false;
+    }
+  };
+
+  const handleDeleteAgent = (agent) => {
+    Modal.confirm({
+      title: 'Delete Agent',
+      content: `Are you sure you want to delete the agent "${agent.name}"? This action cannot be undone.`,
+      okText: 'Yes, Delete',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk() {
+        return deleteAgent(agent.id, agent.name);
+      },
+    });
   };
 
   useEffect(() => {
@@ -320,6 +417,7 @@ export default function AIAgent() {
     fetchAgents();
     fetchUsers();
     fetchGrades();
+    fetchAiSettings();
   }, []);
 
   const initialMsgs = useMemo(
@@ -329,7 +427,7 @@ export default function AIAgent() {
 
   /* --------------------------- Tabs Content --------------------------- */
 
-  const Settings = (
+  const Settings = useMemo(() => (
     <Row gutter={[16, 16]}>
       <Col xs={24} lg={12}>
         <Card
@@ -341,33 +439,19 @@ export default function AIAgent() {
             </Space>
           }
           extra={
-            <Space>
-              <Button
-                onClick={() => {
-                  const currentAgent = state.playground.selectedAgent || "default";
-                  const preset = AGENT_CONFIGS[currentAgent] || AGENT_CONFIGS.default;
-                  setState((s) => ({
-                    ...s,
-                    settings: { ...s.settings, initialMessages: preset.initialMessages || [] },
-                  }));
-                }}
-              >
-                Reset starter messages
-              </Button>
-              <Button
-                type="primary"
-                icon={<SaveOutlined />}
-                onClick={saveToChatbot}
-                loading={saving}
-              >
-                Save to chatbot
-              </Button>
-            </Space>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              onClick={saveToChatbot}
+              loading={saving}
+            >
+              Save AI Settings
+            </Button>
           }
         >
           <div className="grid grid-cols-1 gap-4">
             <div>
-              <Text type="secondary">Select Agent</Text>
+              <Text type="secondary">Select Parent Agent</Text>
               <Select
                 className="w-full mt-1"
                 value={state.playground.selectedAgent}
@@ -401,6 +485,32 @@ export default function AIAgent() {
                     },
                   }));
                   refreshPreview();
+                }}
+                options={[
+                  { value: "ParentAgent", label: "Parent Assistant" },
+                  { value: "ChildAgent", label: "Student Helper" },
+                  { value: "TeacherAgent", label: "Teacher Support" },
+                  { value: "default", label: "Default" },
+                ]}
+              />
+            </div>
+
+            <div>
+              <Text type="secondary">Select Student Agent</Text>
+              <Select
+                className="w-full mt-1"
+                value={state.playground.selectedStudentAgent}
+                placeholder="Choose a student agent…"
+                allowClear={false}
+                optionFilterProp="label"
+                onChange={(value) => {
+                  setState((s) => ({
+                    ...s,
+                    playground: {
+                      ...s.playground,
+                      selectedStudentAgent: value,
+                    },
+                  }));
                 }}
                 options={[
                   { value: "ParentAgent", label: "Parent Assistant" },
@@ -595,6 +705,7 @@ export default function AIAgent() {
                 </div>
               </div>
             </div>
+
           </div>
         </Card>
       </Col>
@@ -604,11 +715,7 @@ export default function AIAgent() {
         <Card
           className="rounded-xl h-full"
           title={`${state.settings.displayName || "Assistant"} (Preview)`}
-          extra={
-            <Button icon={<SyncOutlined />} onClick={refreshPreview}>
-              Regenerate
-            </Button>
-          }
+          extra={null}
         >
           <ChatPreview
             key={`settings-${previewKey}`}
@@ -621,26 +728,37 @@ export default function AIAgent() {
         </Card>
       </Col>
     </Row>
-  );
+  ), [
+    state.playground.status,
+    state.settings.displayName,
+    state.playground.selectedAgent,
+    state.playground.selectedStudentAgent,
+    state.playground.systemPrompt,
+    state.playground.instructions,
+    state.playground.model,
+    state.playground.temperature,
+    state.settings.initialMessages,
+    state.settings.suggestedMessages,
+    state.settings.placeholder,
+    state.settings.userMessageColor,
+    state.settings.theme,
+    state.settings.footer,
+    state.settings.collectFeedback,
+    state.settings.regenerateMessages,
+    saving,
+    refreshPreview,
+    previewKey,
+    initialMsgs
+  ]);
 
-  const Sources = (
+  const Sources = useMemo(() => (
     <Row gutter={[16, 16]}>
       <Col xs={24} lg={16}>
         <Card
           className="rounded-xl"
           title="Agents"
           extra={
-            <Space>
-              <Tag color="blue">{(state.sources.agents?.length || 0)} total</Tag>
-              <Button
-                size="small"
-                icon={<ReloadOutlined />}
-                onClick={fetchAgents}
-                loading={agentsLoading}
-              >
-                Refresh
-              </Button>
-            </Space>
+            <Tag color="blue">{(state.sources.agents?.length || 0)} total</Tag>
           }
         >
           {agentsLoading ? (
@@ -663,18 +781,57 @@ export default function AIAgent() {
               dataSource={state.sources.agents}
               renderItem={(a) => {
                 const creator = users[String(a.created_by)] || {};
-                const creatorName = creator.name || a.created_by || "Unknown";
+                let creatorName = "Unknown";
+                
+                if (creator.name) {
+                  creatorName = creator.name;
+                } else if (a.created_by) {
+                  creatorName = `User ${a.created_by}`;
+                }
+                
                 const creatorAvatar = creator.avatar || null;
                 const initial = (creatorName?.charAt?.(0) || "U").toUpperCase();
+                
+                // Debug logging to help identify the issue
+                console.log("Agent:", a.name, "Created by:", a.created_by, "Users map keys:", Object.keys(users), "Creator data:", creator, "Final name:", creatorName);
 
                 return (
                   <List.Item key={a.id}>
                     <Space direction="vertical" className="w-full">
                       <Space className="w-full justify-between">
                         <Text strong>{a.name}</Text>
-                        <Text type="secondary" className="text-xs">
-                          {a.created_at ? new Date(a.created_at).toLocaleString() : "-"}
-                        </Text>
+                        <Space direction="vertical" align="end" size="small">
+                          <Dropdown
+                            menu={{
+                              items: [
+                                {
+                                  key: 'edit',
+                                  label: 'Edit',
+                                  icon: <EditOutlined />,
+                                  onClick: () => openEditModal(a),
+                                },
+                                {
+                                  key: 'delete',
+                                  label: 'Delete',
+                                  icon: <DeleteOutlined />,
+                                  danger: true,
+                                  onClick: () => handleDeleteAgent(a),
+                                },
+                              ],
+                            }}
+                            trigger={['click']}
+                            placement="bottomRight"
+                          >
+                            <Button
+                              size="small"
+                              icon={<MoreOutlined />}
+                              type="text"
+                            />
+                          </Dropdown>
+                          <Text type="secondary" className="text-xs">
+                            {a.created_at ? new Date(a.created_at).toLocaleString() : "-"}
+                          </Text>
+                        </Space>
                       </Space>
 
                       {a.description && (
@@ -899,17 +1056,13 @@ export default function AIAgent() {
                   }
 
                   const agentData = {
-                    name,
+                    agent_name: name,
                     description: `Agent for ${entities.join(", ")}`,
                     state: selectedState || null,
                     grade: selectedGrade || null,
                     entities,
-                    prompts: {
-                      system: state.playground.systemPrompt,
-                      instructions: state.playground.instructions,
-                      api: state.sources._tmpApi || "",
-                      url: state.sources._tmpUrl || "",
-                    },
+                    file_name: state.sources._tmpApi || "",
+                    api: state.sources._tmpUrl || "",
                     version: "v1",
                     stage: "staging",
                   };
@@ -924,12 +1077,39 @@ export default function AIAgent() {
         </Card>
       </Col>
     </Row>
-  );
+  ), [
+    state.sources.agents,
+    agentsLoading,
+    agentsError,
+    users,
+    states,
+    loadingStates,
+    entitiesOptions,
+    entitiesLoading,
+    grades,
+    loadingGrades,
+    selectedState,
+    selectedGrade,
+    state.sources._tmpAgentName,
+    state.sources._tmpEntities,
+    state.sources._tmpApi,
+    state.sources._tmpUrl,
+    state.sources.files,
+    state.sources.totalChars,
+    loading,
+    fetchAgents,
+    fetchStates,
+    fetchEntities,
+    fetchGrades,
+    createAgent,
+    openEditModal,
+    handleDeleteAgent
+  ]);
 
-  const items = [
+  const items = useMemo(() => [
     { key: "sources", label: "Sources", children: Sources },
     { key: "settings", label: "Settings", children: Settings },
-  ];
+  ], [Sources, Settings]);
 
   return (
     <div className="max-w-[1400px] mx-auto px-3 md:px-4">
@@ -937,14 +1117,6 @@ export default function AIAgent() {
         <Typography.Title level={3} className="!mb-0">
           Kibundo (Manage & Train)
         </Typography.Title>
-        <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => { fetchAgents(); fetchEntities(); }}>
-            Refresh lists
-          </Button>
-          <Button icon={<SyncOutlined />} onClick={refreshPreview}>
-            Refresh preview
-          </Button>
-        </Space>
       </div>
 
       <Card className="rounded-2xl">
@@ -954,6 +1126,97 @@ export default function AIAgent() {
       <Suspense fallback={null}>
         {/* <AgentForm /> */}
       </Suspense>
+
+      {/* Edit Agent Modal */}
+      <Modal
+        title="Edit Agent"
+        open={editModalVisible}
+        onOk={handleEditSubmit}
+        onCancel={closeEditModal}
+        width={600}
+        okText="Update Agent"
+        cancelText="Cancel"
+      >
+        <Form layout="vertical">
+          <Form.Item label="Agent Name">
+            <Input
+              value={editFormData.name || ""}
+              onChange={(e) =>
+                setEditFormData({ ...editFormData, name: e.target.value })
+              }
+              placeholder="Enter agent name"
+            />
+          </Form.Item>
+
+          <Form.Item label="State">
+            <Select
+              placeholder="Select State"
+              value={editFormData.state || undefined}
+              onChange={(value) =>
+                setEditFormData({ ...editFormData, state: value })
+              }
+              allowClear
+              optionFilterProp="label"
+              loading={loadingStates}
+              options={states.map((st) => ({ value: st.id, label: st.name }))}
+            />
+          </Form.Item>
+
+          <Form.Item label="Grade">
+            <Select
+              placeholder="Select Grade"
+              value={editFormData.grade || undefined}
+              onChange={(value) =>
+                setEditFormData({ ...editFormData, grade: value })
+              }
+              allowClear
+              optionFilterProp="label"
+              loading={loadingGrades}
+              options={grades}
+            />
+          </Form.Item>
+
+          <Form.Item label="Entities">
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              placeholder="Select Entities"
+              value={editFormData.entities || []}
+              onChange={(value) =>
+                setEditFormData({ ...editFormData, entities: value })
+              }
+              optionFilterProp="label"
+              loading={entitiesLoading}
+              options={entitiesOptions}
+              notFoundContent={entitiesLoading ? "Loading..." : "No entities found"}
+              filterOption={(input, option) =>
+                (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+              }
+            />
+          </Form.Item>
+
+          <Form.Item label="File Name">
+            <Input
+              value={editFormData.file_name || ""}
+              onChange={(e) =>
+                setEditFormData({ ...editFormData, file_name: e.target.value })
+              }
+              placeholder="Enter file name"
+            />
+          </Form.Item>
+
+          <Form.Item label="API">
+            <Input
+              value={editFormData.api || ""}
+              onChange={(e) =>
+                setEditFormData({ ...editFormData, api: e.target.value })
+              }
+              placeholder="Enter API endpoint"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }
