@@ -64,6 +64,7 @@ db.agentTest = require("./agenttest.model")(sequelize, DataTypes);
 //
 db.state = require("./state.model")(sequelize, DataTypes);
 db.student_subjects = require("./student_subjects.model")(sequelize, DataTypes);
+db.aiagentsettings = require("./aiagentsettings.model")(sequelize, DataTypes);
 
 // Load associations if present
 Object.keys(db).forEach(modelName => {

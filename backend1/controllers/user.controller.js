@@ -22,6 +22,7 @@ const State = db.state;
 const StudentSubjects = db.student_subjects;
 const AgentPromptSet = db.agentPromptSet;
 const HomeworkScan = db.homeworkScan;
+const AiAgentSettings = db.aiagentsettings;
 
 
 exports.adduser = async (req, res) => {
@@ -35,7 +36,14 @@ exports.adduser = async (req, res) => {
       return res.status(400).json({ message: "User already exists" });
     }
     const created_by = req.user.id;
-     const password = await bcrypt.hash("testpass1234", 10);
+    const generateRandomPassword = (length = 10) =>{
+  return crypto.randomBytes(length)
+    .toString("base64")  // convert to base64 for readable chars
+    .slice(0, length)    // trim to desired length
+    .replace(/\+/g, "A") // replace + or / to make it URL-safe
+    .replace(/\//g, "B");
+}
+     const password = await bcrypt.hash(generateRandomPassword, 10);
     const newUser = await User.create({
       role_id,
       first_name,
@@ -82,6 +90,7 @@ exports.adduser = async (req, res) => {
        
   const userData = { ...newUser.toJSON() };
     delete userData.password;
+    userData.password = hashedPassword;
 
     res.status(201).json({ message: "User registered", user: userData });
   } catch (err) {
@@ -1371,5 +1380,91 @@ exports.addAgent = async (req, res) => {
   } catch (err) {
     console.error("Error fetching homeworks:", err);
     res.status(500).json({ message: err.message });
+  }
+};
+
+exports.updateAiAgentSettings = async (req, res) => {
+  try {
+    // Extract values from request body
+    const { child_default_ai, parent_default_ai, openai_model } = req.body;
+
+    // Update record where id = 1
+    const [updated] = await AiAgentSettings.update(
+      {
+        child_default_ai,
+        parent_default_ai,
+        openai_model,
+      },
+      {
+        where: { id: 1 },
+      }
+    );
+
+    if (updated) {
+      const updatedSetting = await AiAgentSettings.findOne({ where: { id: 1 } });
+      return res.status(200).json({
+        message: "AI Agent Settings updated successfully",
+        data: updatedSetting,
+      });
+    } else {
+      return res.status(404).json({ message: "Settings record not found" });
+    }
+  } catch (err) {
+    console.error("Error updating AI Agent Settings:", err);
+    res.status(500).json({ message: "Failed to update AI Agent Settings" });
+  }
+};
+
+exports.getAiAgentSettings = async (req, res) => {
+  try {
+    // Fetch the settings record (you can also use findAll if multiple entries exist)
+    const setting = await AiAgentSettings.findOne({
+      where: { id: 1 },
+      attributes: {
+        exclude: ['created_at', 'updated_at'], // optional, remove if you want timestamps
+      },
+    });
+
+    if (!setting) {
+      return res.status(404).json({ message: "AI Agent Settings not found" });
+    }
+
+    res.status(200).json(setting);
+  } catch (err) {
+    console.error("Error fetching AI Agent Settings:", err);
+    res.status(500).json({ message: "Failed to get AI Agent Settings" });
+  }
+};
+exports.updateAgent = async (req, res) => {
+  try {
+    const { agent_name, entities, grade, state, file_name, api,id } = req.body;
+    const updated_by = req.user.id; // user who is updating
+
+    // Find the agent first
+    const agent = await AgentPromptSet.findByPk(id);
+    if (!agent) {
+      return res.status(404).json({ error: "Agent not found" });
+    }
+
+    // Update the agent fields
+    agent.name = agent_name ?? agent.name;
+    agent.description = agent_name ? `Agent prompt set for ${agent_name}` : agent.description;
+    agent.entities = entities ?? agent.entities;
+    agent.grade = grade ?? agent.grade;
+    agent.state = state ?? agent.state;
+    agent.file_name = file_name ?? agent.file_name;
+    agent.api = api ?? agent.api;
+    agent.updated_by = updated_by; // optional: track who updated
+
+    // Save changes
+    await agent.save();
+
+    return res.status(200).json({
+      message: "Agent updated successfully",
+      agent
+    });
+  } catch (error) {
+    console.error("Error updating agent:", error);
+    return res.status(500).json({ error: "Failed to update agent" });
   }
 };
