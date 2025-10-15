@@ -26,6 +26,7 @@ import {
   Form,
   App,
   Dropdown,
+  Pagination,
 } from "antd";
 import {
   SaveOutlined,
@@ -169,8 +170,16 @@ export default function AIAgent() {
   const [editingAgent, setEditingAgent] = useState(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editFormData, setEditFormData] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(5);
 
   const refreshPreview = useCallback(() => setPreviewKey((p) => p + 1), []);
+
+  // Pagination logic
+  const totalAgents = state.sources.agents?.length || 0;
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedAgents = state.sources.agents?.slice(startIndex, endIndex) || [];
 
   // ——————————————— API calls ———————————————
   const fetchStates = async () => {
@@ -224,7 +233,6 @@ export default function AIAgent() {
     setUsersLoading(true);
     try {
       const { data } = await api.get("/users");
-      console.log("Fetched users data:", data); // Debug log
       const map = {};
       (Array.isArray(data) ? data : []).forEach((u) => {
         const fullName = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
@@ -232,10 +240,8 @@ export default function AIAgent() {
           name: fullName || u.email || `User ${u.id}`,
           avatar: u.avatar || u.photo_url || u.image || u.picture || null,
         };
-        console.log(`Mapped user ${u.id}:`, map[String(u.id)]); // Debug log
       });
       setUsers(map);
-      console.log("Final users map:", map); // Debug log
     } catch (err) {
       console.error("Users endpoint failed:", err?.message);
       message.error("Failed to load user data");
@@ -251,6 +257,7 @@ export default function AIAgent() {
       message.success("Agent created successfully");
       await fetchAgents();
       await fetchUsers(); // Refresh users data to ensure creator info is available
+      setCurrentPage(1); // Reset to first page after creating agent
       setState((s) => ({
         ...s,
         sources: {
@@ -390,6 +397,14 @@ export default function AIAgent() {
       await api.delete(`/deleteagent/${agentId}`);
       message.success(`Agent "${agentName}" deleted successfully!`);
       await fetchAgents(); // Refresh the agents list
+      
+      // Adjust current page if needed after deletion
+      const newTotal = (state.sources.agents?.length || 0) - 1;
+      const maxPage = Math.ceil(newTotal / pageSize);
+      if (currentPage > maxPage && maxPage > 0) {
+        setCurrentPage(maxPage);
+      }
+      
       return true;
     } catch (error) {
       console.error("Error deleting agent:", error);
@@ -427,7 +442,7 @@ export default function AIAgent() {
 
   /* --------------------------- Tabs Content --------------------------- */
 
-  const Settings = useMemo(() => (
+  const Settings = (
     <Row gutter={[16, 16]}>
       <Col xs={24} lg={12}>
         <Card
@@ -728,30 +743,9 @@ export default function AIAgent() {
         </Card>
       </Col>
     </Row>
-  ), [
-    state.playground.status,
-    state.settings.displayName,
-    state.playground.selectedAgent,
-    state.playground.selectedStudentAgent,
-    state.playground.systemPrompt,
-    state.playground.instructions,
-    state.playground.model,
-    state.playground.temperature,
-    state.settings.initialMessages,
-    state.settings.suggestedMessages,
-    state.settings.placeholder,
-    state.settings.userMessageColor,
-    state.settings.theme,
-    state.settings.footer,
-    state.settings.collectFeedback,
-    state.settings.regenerateMessages,
-    saving,
-    refreshPreview,
-    previewKey,
-    initialMsgs
-  ]);
+  );
 
-  const Sources = useMemo(() => (
+  const Sources = (
     <Row gutter={[16, 16]}>
       <Col xs={24} lg={16}>
         <Card
@@ -776,9 +770,10 @@ export default function AIAgent() {
           ) : (state.sources.agents?.length || 0) === 0 ? (
             <Text type="secondary">No agents yet. Create one on the right.</Text>
           ) : (
-            <List
-              itemLayout="vertical"
-              dataSource={state.sources.agents}
+            <>
+              <List
+                itemLayout="vertical"
+                dataSource={paginatedAgents}
               renderItem={(a) => {
                 const creator = users[String(a.created_by)] || {};
                 let creatorName = "Unknown";
@@ -791,9 +786,6 @@ export default function AIAgent() {
                 
                 const creatorAvatar = creator.avatar || null;
                 const initial = (creatorName?.charAt?.(0) || "U").toUpperCase();
-                
-                // Debug logging to help identify the issue
-                console.log("Agent:", a.name, "Created by:", a.created_by, "Users map keys:", Object.keys(users), "Creator data:", creator, "Final name:", creatorName);
 
                 return (
                   <List.Item key={a.id}>
@@ -879,6 +871,24 @@ export default function AIAgent() {
                 );
               }}
             />
+            
+            {/* Pagination Controls */}
+            {totalAgents > pageSize && (
+              <div className="mt-4 flex justify-center">
+                <Pagination
+                  current={currentPage}
+                  total={totalAgents}
+                  pageSize={pageSize}
+                  onChange={(page) => setCurrentPage(page)}
+                  showSizeChanger={false}
+                  showQuickJumper={false}
+                  showTotal={(total, range) => 
+                    `${range[0]}-${range[1]} of ${total} agents`
+                  }
+                />
+              </div>
+            )}
+            </>
           )}
         </Card>
       </Col>
@@ -1077,39 +1087,12 @@ export default function AIAgent() {
         </Card>
       </Col>
     </Row>
-  ), [
-    state.sources.agents,
-    agentsLoading,
-    agentsError,
-    users,
-    states,
-    loadingStates,
-    entitiesOptions,
-    entitiesLoading,
-    grades,
-    loadingGrades,
-    selectedState,
-    selectedGrade,
-    state.sources._tmpAgentName,
-    state.sources._tmpEntities,
-    state.sources._tmpApi,
-    state.sources._tmpUrl,
-    state.sources.files,
-    state.sources.totalChars,
-    loading,
-    fetchAgents,
-    fetchStates,
-    fetchEntities,
-    fetchGrades,
-    createAgent,
-    openEditModal,
-    handleDeleteAgent
-  ]);
+  );
 
-  const items = useMemo(() => [
+  const items = [
     { key: "sources", label: "Sources", children: Sources },
     { key: "settings", label: "Settings", children: Settings },
-  ], [Sources, Settings]);
+  ];
 
   return (
     <div className="max-w-[1400px] mx-auto px-3 md:px-4">
@@ -1120,7 +1103,13 @@ export default function AIAgent() {
       </div>
 
       <Card className="rounded-2xl">
-        <Tabs activeKey={activeTab} onChange={setActiveTab} items={items} tabBarGutter={8} />
+        <Tabs 
+          key={`ai-agent-tabs-${activeTab}`}
+          activeKey={activeTab} 
+          onChange={setActiveTab} 
+          items={items} 
+          tabBarGutter={8}
+        />
       </Card>
 
       <Suspense fallback={null}>
