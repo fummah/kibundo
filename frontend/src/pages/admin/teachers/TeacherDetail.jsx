@@ -124,7 +124,7 @@ export default function TeacherDetail() {
           user_id: u.id,
           name: name || "-",
           email: u.email || "-",
-          status: u.status || "-",
+          status: u.status || "active",
           created_at: u.created_at,
           member_since,
           contact_number: u.contact_number ?? null,

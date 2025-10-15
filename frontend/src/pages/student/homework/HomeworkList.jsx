@@ -319,15 +319,30 @@ export default function HomeworkList() {
     }
   }, [studentId]);
 
+  // Refresh localStorage tasks
+  const refreshLocalTasks = useCallback(() => {
+    setLocalStorageTasks(loadTasksFromKeys(FALLBACK_KEYS));
+  }, [FALLBACK_KEYS]);
+
   // Fetch on mount and when studentId changes
   useEffect(() => {
     fetchHomeworkScans();
   }, [fetchHomeworkScans]);
 
-  // Refresh localStorage tasks
-  const refreshLocalTasks = useCallback(() => {
-    setLocalStorageTasks(loadTasksFromKeys(FALLBACK_KEYS));
-  }, [FALLBACK_KEYS]);
+  // Refresh when window regains focus (user returns from another screen)
+  useEffect(() => {
+    const onFocus = () => {
+      console.log('📋 Window focused, refreshing homework list...');
+      refreshLocalTasks();
+      fetchHomeworkScans();
+    };
+    
+    window.addEventListener('focus', onFocus);
+    
+    return () => {
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refreshLocalTasks, fetchHomeworkScans]);
 
   useEffect(() => {
     // Update on storage changes (e.g., when HomeworkDoing saves)
@@ -340,6 +355,14 @@ export default function HomeworkList() {
     };
     window.addEventListener("storage", onStorage);
 
+    // Listen for custom task update events (fired from HomeworkDoing in same tab)
+    const onTaskUpdate = () => {
+      console.log('📋 Tasks updated event received, refreshing homework list...');
+      refreshLocalTasks();
+      fetchHomeworkScans();
+    };
+    window.addEventListener("kibundo:tasks-updated", onTaskUpdate);
+
     // Also refresh when user returns to tab
     const onVis = () => {
       if (document.visibilityState === "visible") {
@@ -349,17 +372,10 @@ export default function HomeworkList() {
     };
     document.addEventListener("visibilitychange", onVis);
 
-    // Immediate same-tab updates (storage event does not fire in same tab)
-    const onTasksUpdated = () => {
-      refreshLocalTasks();
-      fetchHomeworkScans(); // Refresh API data when tasks are updated
-    };
-    window.addEventListener("kibundo:tasks-updated", onTasksUpdated);
-
     return () => {
       window.removeEventListener("storage", onStorage);
       document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("kibundo:tasks-updated", onTasksUpdated);
+      window.removeEventListener("kibundo:tasks-updated", onTaskUpdate);
     };
   }, [FALLBACK_KEYS, refreshLocalTasks, fetchHomeworkScans]);
 

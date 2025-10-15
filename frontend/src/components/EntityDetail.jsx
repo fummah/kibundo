@@ -153,6 +153,17 @@ export default function EntityDetail({ cfg }) {
 
   const safeCfg = cfg || {};
   const entityKey = safeCfg.entityKey;
+  
+  // Determine entity type from URL if not provided in config
+  const getEntityTypeFromUrl = () => {
+    const pathname = window.location.pathname;
+    if (pathname.includes('/admin/students/')) return 'students';
+    if (pathname.includes('/admin/parents/')) return 'parents';
+    if (pathname.includes('/admin/teachers/')) return 'teachers';
+    return entityKey || 'customers';
+  };
+  
+  const currentEntityType = getEntityTypeFromUrl();
   const idField = safeCfg.idField || "id";
   const routeBase = safeCfg.routeBase || "";
   const apiObj = safeCfg.api || {};
@@ -357,6 +368,77 @@ export default function EntityDetail({ cfg }) {
   const [savingField, setSavingField] = useState(false);
   const [infoForm] = Form.useForm();
   const isEditingInfo = true;
+  const [passwordVisible, setPasswordVisible] = useState({});
+
+  /* --- Auto-generate portal credentials --- */
+  const generatePassword = useCallback(() => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+    let password = '';
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+  }, []);
+
+  // Set form values when entity loads - with proper timing
+  useEffect(() => {
+    if (entity && infoForm && id) {
+      // Prepare all form values including email and other fields
+      const formValues = {
+        ...entity,
+        // Auto-generate portal_login if not already set
+        portal_login: entity.portal_login || (() => {
+          const firstName = entity.first_name || entity.user?.first_name || "";
+          const lastName = entity.last_name || entity.user?.last_name || "";
+          const entityId = entity.id || entity[idField];
+          
+          if (firstName && lastName && entityId) {
+            const firstTwo = firstName.substring(0, 2).toLowerCase();
+            const firstLetter = lastName.substring(0, 1).toLowerCase();
+            return `${firstTwo}${firstLetter}${entityId}`;
+          }
+          return '';
+        })(),
+        // Use default password for portal_password
+        portal_password: entity.portal_password || "testpass1234",
+      };
+      
+      // Use setTimeout to ensure form is fully mounted
+      setTimeout(() => {
+        try {
+          infoForm.setFieldsValue(formValues);
+        } catch (error) {
+          console.error("Error setting form values:", error);
+        }
+      }, 100);
+      
+      // Update entity state with portal credentials if they were auto-generated
+      const updates = {};
+      if (!entity.portal_login && formValues.portal_login) {
+        updates.portal_login = formValues.portal_login;
+      }
+      if (!entity.portal_password) {
+        updates.portal_password = formValues.portal_password;
+      }
+      
+      if (Object.keys(updates).length > 0) {
+        setEntity(prev => ({ ...prev, ...updates }));
+        
+        // Save to database automatically
+        const saveToDb = async () => {
+          try {
+            if (typeof apiObj.updatePath === "function") {
+              await api.patch(apiObj.updatePath(id), updates, { withCredentials: true });
+            }
+          } catch (error) {
+            console.error("Failed to auto-save portal credentials:", error);
+          }
+        };
+        
+        saveToDb();
+      }
+    }
+  }, [entity, infoForm, id, apiObj, idField]);
 
   const handleFieldUpdate = useCallback(async (field) => {
     if (!field.editable || savingField) return;
@@ -390,7 +472,11 @@ export default function EntityDetail({ cfg }) {
     const configuredFields = (safeCfg.infoFields || [])
       .filter(field => {
         const name = Array.isArray(field.name) ? field.name.join(".") : field.name;
-        return name !== "parent_id" && !name.includes("parent.id");
+        // Filter out portal fields from configured fields since we'll add them explicitly
+        return name !== "parent_id" && 
+               !name.includes("parent.id") && 
+               name !== "portal_login" && 
+               name !== "portal_password";
       })
       .map(field => {
         const name = Array.isArray(field.name) ? field.name.join(".") : field.name;
@@ -409,11 +495,20 @@ export default function EntityDetail({ cfg }) {
         };
       });
 
-    return [
+    // Build base fields starting with ID
+    const baseFields = [
       { name: idField, label: "ID", editable: false, type: "text" },
+      // Always add portal login below ID for students/parents
+      { name: "portal_login", label: "Portal login", editable: true, type: "text" },
+      // Always add portal password below portal login
+      { name: "portal_password", label: "Portal password", editable: true, type: "password" },
+    ];
+
+    return [
+      ...baseFields,
       ...configuredFields,
     ];
-  }, [safeCfg.infoFields, idField]);
+  }, [safeCfg.infoFields, idField, entity, entityKey]);
 
   const saveInfo = async () => {
     try {
@@ -878,25 +973,248 @@ export default function EntityDetail({ cfg }) {
     );
   }, [commCfg?.enabled, comments, commentsLoading, addComment, addCommentOpen]);
 
-  const informationTab = useMemo(() => (
-    <Card title="Main information">
-      <Form form={infoForm} layout="vertical" initialValues={entity}>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-          {editableInfoFields.map((field) => (
-            <Form.Item label={field.label} key={field.name} name={field.name}>
-              {field.type === "select" ? (
-                <Select placeholder={`Select ${field.label}`} options={field.options || []} disabled={!field.editable} />
+  const informationTab = useMemo(() => {
+    // Prepare initial values with auto-populated portal credentials
+    let portalLogin = entity?.portal_login;
+    
+    if (!portalLogin) {
+      // Auto-generate username: first 2 letters of first name + first letter of surname + ID
+      const firstName = entity?.first_name || entity?.user?.first_name || "";
+      const lastName = entity?.last_name || entity?.user?.last_name || "";
+      const entityId = entity?.id || entity?.[idField];
+      
+      if (firstName && lastName && entityId) {
+        const firstTwo = firstName.substring(0, 2).toLowerCase();
+        const firstLetter = lastName.substring(0, 1).toLowerCase();
+        portalLogin = `${firstTwo}${firstLetter}${entityId}`;
+      }
+    }
+    
+    const formInitialValues = {
+      ...entity,
+      portal_login: portalLogin || '',
+      portal_password: entity?.portal_password || "testpass1234",
+    };
+    
+
+    return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Left Column - Main Information */}
+      <div className="lg:col-span-2">
+        <Card title="Main information" className="!rounded-xl">
+          <Form 
+            form={infoForm} 
+            layout="horizontal" 
+            initialValues={formInitialValues}
+            id={`entity-form-${id}`}
+            preserve={false}
+            key={`form-${id}-${entity?.id || 'loading'}`}
+          >
+            <div className="space-y-3">
+              {editableInfoFields.map((field) => {
+                const isPassword = field.name?.toLowerCase().includes('password');
+                const isEmail = field.name?.toLowerCase().includes('email');
+                const isPhone = field.name?.toLowerCase().includes('phone');
+                const isStatus = field.name?.toLowerCase() === 'status';
+                
+                
+                return (
+                  <div key={field.name} className="flex items-center py-3 border-b border-gray-100 last:border-0">
+                    <div className="w-40 text-right pr-6 shrink-0">
+                      <Text strong className="text-gray-700 text-sm">{field.label}</Text>
+                    </div>
+                    <div className="flex-1">
+                      <Form.Item 
+                        name={field.name} 
+                        className="!mb-0"
+                        rules={field.required ? [{ required: true, message: `${field.label} is required` }] : []}
+                        id={`${field.name}-${id}`}
+                      >
+                        {isPassword ? (
+                          <div className="flex items-center gap-2">
+                            <Input.Password 
+                              placeholder={field.label} 
+                              disabled={!field.editable}
+                              iconRender={() => null}
+                              className="max-w-md flex-1"
+                              visibilityToggle={false}
+                              type={passwordVisible[field.name] ? 'text' : 'password'}
+                              id={`input-${field.name}-${id}`}
+                            />
+                            <Button 
+                              type="primary" 
+                              size="small"
+                              onClick={() => setPasswordVisible(prev => ({ ...prev, [field.name]: !prev[field.name] }))}
+                            >
+                              {passwordVisible[field.name] ? 'Hide' : 'Show'}
+                            </Button>
+                          </div>
+                        ) : isEmail ? (
+                          <div className="flex items-center gap-2">
+                            <Input 
+                              placeholder={field.label} 
+                              disabled={!field.editable}
+                              className="flex-1"
+                              id={`input-${field.name}-${id}`}
+                              value={entity?.[field.name] || ''}
+                              onChange={(e) => {
+                                const newValue = e.target.value;
+                                setEntity(prev => ({ ...prev, [field.name]: newValue }));
+                                infoForm.setFieldValue(field.name, newValue);
+                              }}
+                            />
+                            <Button 
+                              type="text" 
+                              icon={<span className="text-lg">✉</span>}
+                              className="!p-2 !h-8 !w-8 border border-gray-300 rounded"
+                            />
+                          </div>
+                        ) : isPhone ? (
+                          <div className="flex items-center gap-2">
+                            <Input 
+                              placeholder={field.label} 
+                              disabled={!field.editable}
+                              className="flex-1"
+                              id={`input-${field.name}-${id}`}
+                            />
+                            <Button 
+                              type="text" 
+                              icon={<span className="text-lg">📞</span>}
+                              className="!p-2 !h-8 !w-8 border border-gray-300 rounded"
+                            />
+                          </div>
+                        ) : isStatus ? (
+                          <div className="flex items-center gap-2">
+                            <Select 
+                              placeholder="Active" 
+                              defaultValue="active"
+                              options={field.options || [
+                                { value: 'active', label: 'Active' },
+                                { value: 'inactive', label: 'Inactive' },
+                                { value: 'suspended', label: 'Suspended' },
+                              ]} 
+                              disabled={!field.editable}
+                              className="flex-1"
+                              id={`select-${field.name}-${id}`}
+                            />
+                            <Button 
+                              type="text" 
+                              icon={<span className="text-lg">📅</span>}
+                              className="!p-2 !h-8 !w-8 border border-gray-300 rounded"
+                            />
+                          </div>
+                        ) : field.type === "select" ? (
+                          <Select 
+                            placeholder={`Select ${field.label}`} 
+                            options={field.options || []} 
+                            disabled={!field.editable}
+                            className="w-full"
+                            id={`select-${field.name}-${id}`}
+                          />
               ) : field.type === "date" ? (
-                <DatePicker className="w-full" disabled={!field.editable} />
-              ) : (
-                <Input placeholder={field.label} disabled={!field.editable} />
+                          <DatePicker 
+                            className="w-full" 
+                            disabled={!field.editable}
+                            id={`date-${field.name}-${id}`}
+                          />
+                        ) : (
+                          <Input 
+                            placeholder={field.label} 
+                            disabled={!field.editable}
+                            className="w-full"
+                            id={`input-${field.name}-${id}`}
+                          />
               )}
             </Form.Item>
-          ))}
+                    </div>
+                  </div>
+                );
+              })}
         </div>
       </Form>
     </Card>
-  ), [entity, editableInfoFields, infoForm]);
+      </div>
+
+      {/* Right Column - Comments and Additional Info */}
+      <div className="space-y-4">
+        {/* Comments / To-Dos Section */}
+        <Card 
+          title="Comments / To-Dos" 
+          className="!rounded-xl"
+          extra={
+            <Button 
+              type="text" 
+              icon={<PlusOutlined />} 
+              onClick={() => setAddCommentOpen(true)}
+              className="!p-1"
+            />
+          }
+          styles={{ body: { padding: 0 } }}
+        >
+          <div style={{ maxHeight: 400, overflowY: "auto" }}>
+            {commCfg?.enabled && comments && comments.length > 0 ? (
+              <List
+                dataSource={comments}
+                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No comments yet." /> }}
+                renderItem={(item, idx) => (
+                  <div key={item.id || idx}>
+                    <div className="px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-gray-800">{dash(item.author)}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {relativeTime(item.created_at)} ({fmtDate(item.created_at)} {item.created_at ? new Date(item.created_at).toTimeString().slice(0, 5) : ""})
+                          </div>
+                          {item.text ? <div className="mt-2 text-sm text-gray-700">{typeof item.text === "string" ? item.text : dash(item.text)}</div> : null}
+                        </div>
+                        <Button 
+                          type="text" 
+                          icon={<PushpinOutlined className="text-gray-400" />}
+                          size="small"
+                        />
+                      </div>
+                    </div>
+                    {idx < comments.length - 1 && <Divider className="!my-0" />}
+                  </div>
+                )}
+              />
+            ) : (
+              <div className="p-4 text-center text-gray-400">
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No comments yet" />
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* Additional Information Section */}
+        <Card 
+          title="Additional information" 
+          className="!rounded-xl"
+          styles={{ body: { padding: 16 } }}
+        >
+          <div className="space-y-3">
+            <div>
+              <Text type="secondary" className="text-xs">Labels</Text>
+              <Input placeholder="Start typing label name" className="mt-1" />
+            </div>
+            <div>
+              <Text type="secondary" className="text-xs">Category</Text>
+              <Select 
+                placeholder="Select category"
+                options={[
+                  { value: 'individual', label: 'Individual' },
+                  { value: 'business', label: 'Business' },
+                  { value: 'enterprise', label: 'Enterprise' },
+                ]}
+                className="w-full mt-1"
+              />
+            </div>
+          </div>
+        </Card>
+      </div>
+    </div>
+    );
+  }, [entity, editableInfoFields, infoForm, commCfg?.enabled, comments, addCommentOpen, passwordVisible, generatePassword]);
 
   const relatedTab = useMemo(() => {
     if (!safeCfg?.tabs?.related?.enabled) return null;
@@ -1329,9 +1647,99 @@ export default function EntityDetail({ cfg }) {
     return items;
   }, [explicitOrder, panelByKey, safeCfg.tabs, informationTab]);
 
+  /* ---------- Login as customer handler ---------- */
+  const handleLoginAsCustomer = useCallback(async () => {
+    try {
+      setSaving(true);
+      // Use the auto-generated username for login authentication
+      let username = entity?.portal_login;
+      
+      if (!username) {
+        // Auto-generate username: first 2 letters of first name + first letter of surname + ID
+        const firstName = entity?.first_name || entity?.user?.first_name || "";
+        const lastName = entity?.last_name || entity?.user?.last_name || "";
+        const entityId = entity?.id || entity?.[idField];
+        
+        const firstTwo = firstName.substring(0, 2).toLowerCase();
+        const firstLetter = lastName.substring(0, 1).toLowerCase();
+        username = `${firstTwo}${firstLetter}${entityId}`;
+      }
+      
+      const password = entity?.portal_password || entity?.password || "testpass1234";
+      
+      if (!username) {
+        messageApi.error("No username found for this user");
+        return;
+      }
+
+      if (!password) {
+        messageApi.error("No password found for this user");
+        return;
+      }
+
+      // Attempt to login via API
+      const loginPayload = { 
+        email: username, // Use the auto-generated username as email for login
+        password
+      };
+
+      const { data } = await api.post('/auth/login', loginPayload, { withCredentials: true });
+      
+      if (data?.token) {
+        // Store the token
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user || data));
+        
+        // Show appropriate success message based on entity type
+        const getSuccessMessage = () => {
+          if (currentEntityType === 'students') return `Logged in as student (${username})`;
+          if (currentEntityType === 'parents') return `Logged in as parent (${username})`;
+          if (currentEntityType === 'teachers') return `Logged in as teacher (${username})`;
+          return `Logged in as customer (${username})`;
+        };
+        
+        messageApi.success(getSuccessMessage());
+        
+        // Redirect to the customer portal
+        const redirectPath = currentEntityType === 'students' 
+          ? '/student/home' 
+          : currentEntityType === 'parents'
+          ? '/parent/home'
+          : currentEntityType === 'teachers'
+          ? '/teacher/home'
+          : '/dashboard';
+        
+        setTimeout(() => {
+          navigate(redirectPath);
+        }, 500);
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      messageApi.error(error?.response?.data?.message || "Failed to login as customer");
+    } finally {
+      setSaving(false);
+    }
+  }, [entity, messageApi, navigate, currentEntityType, idField]);
+
   /* ---------- Render ---------- */
-  const actionsMenu = {
+  const actionsMenu = useMemo(() => {
+    // Determine the login label based on entity type
+    const getLoginLabel = () => {
+      if (currentEntityType === 'students') return "Login as student";
+      if (currentEntityType === 'parents') return "Login as parent";
+      if (currentEntityType === 'teachers') return "Login as teacher";
+      return "Login as customer";
+    };
+
+    return {
     items: [
+        // Login as customer option
+        { 
+          key: "login-as-customer", 
+          label: getLoginLabel(),
+          icon: <UserOutlined />
+        },
+        ...(updateStatusPath || removePath ? [{ type: "divider" }] : []),
       ...(updateStatusPath
         ? [
             { key: "activate", label: "Activate" },
@@ -1342,11 +1750,13 @@ export default function EntityDetail({ cfg }) {
       ...(removePath ? [{ key: "delete", label: "Delete", danger: true }] : []),
     ],
     onClick: async ({ key }) => {
+        if (key === "login-as-customer") return handleLoginAsCustomer();
       if (key === "activate") return setStatus("active");
       if (key === "block") return setStatus("disabled");
       if (key === "delete" && removePath) return onDelete();
     },
   };
+  }, [handleLoginAsCustomer, updateStatusPath, removePath, setStatus, onDelete, currentEntityType]);
 
   if (loading && !entity) {
     return (
@@ -1357,60 +1767,108 @@ export default function EntityDetail({ cfg }) {
   }
 
   return (
-    <div className="max-w-[1400px] mx-auto px-3 md:px-4">
+    <div className="max-w-[1600px] mx-auto px-3 md:px-4 py-4">
       {ctx}
 
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <Space wrap className="min-w-0">
+      {/* Breadcrumb & Header */}
+      <div className="mb-4">
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+          <span className="hover:text-blue-600 cursor-pointer">{safeCfg.titlePlural || "Items"}</span>
+          <span>/</span>
+          <span className="hover:text-blue-600 cursor-pointer" onClick={goBack}>List</span>
+          <span>/</span>
+        </div>
+        <div className="flex items-center gap-3">
           {safeCfg?.ui?.showAvatar !== false ? (
-            <Avatar size={screens.md ? "large" : "default"} style={{ backgroundColor: "#1677ff", fontWeight: 600 }}>
+            <Avatar size={screens.md ? 56 : 48} style={{ backgroundColor: "#1677ff", fontWeight: 600 }}>
               {getInitials(entity) || "•"}
             </Avatar>
           ) : null}
-
-          <div className="min-w-0">
-            <div className="truncate font-semibold text-xl leading-6 md:text-2xl md:leading-7">
-              {safeCfg.titleSingular || "Detail"} — <span className="font-normal">{titleName}</span>
+          <div>
+            <h1 className="text-2xl font-semibold m-0">
+              {titleName} ({entity?.login || entity?.portal_login || `${safeCfg.entityKey || 'ID'} - ${entity?.[idField]}`})
+            </h1>
             </div>
-            <div className="mt-0.5">{statusTag(entity?.status)}</div>
+          <div className="ml-auto flex items-center gap-2">
+            <Button icon={<ArrowLeftOutlined />} onClick={goBack} />
+            <Button icon={<span>→</span>} />
           </div>
-        </Space>
-
-        {screens.md ? (
-          <Space wrap>
-            <Button type="primary" icon={<SaveOutlined />} onClick={saveInfo} disabled={!isEditingInfo} size="middle">
-              Save
-            </Button>
-            <Dropdown menu={actionsMenu} trigger={["click"]}>
-              <Button icon={<MoreOutlined />} />
-            </Dropdown>
-          </Space>
-        ) : (
-          <Dropdown menu={actionsMenu} trigger={["click"]} placement="bottomRight">
-            <Button shape="circle" aria-label="More actions" className="!flex !items-center !justify-center" icon={<MoreOutlined className="transform rotate-90" />} />
-          </Dropdown>
-        )}
+        </div>
       </div>
 
-      <Card 
-        className="!rounded-2xl" 
-        loading={loading && !initialLoadDone} 
-        styles={{ body: { padding: screens.md ? 24 : 16 } }}
-      >
+      {/* Entity Summary Bar */}
+      <Card className="!rounded-xl mb-4" styles={{ body: { padding: '16px 24px' } }}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-4">
+            <Text strong className="text-base">
+              {currentEntityType === 'students' ? 'Student' : 
+               currentEntityType === 'parents' ? 'Parent' : 
+               currentEntityType === 'teachers' ? 'Teacher' : 
+               'Entity'}
+            </Text>
+            {entity?.balance !== undefined && (
+              <Text type="secondary">
+                Account balance: <Text strong className={entity.balance < 0 ? 'text-red-600' : ''}>{entity.balance}</Text>
+              </Text>
+            )}
+          </div>
+          <Space wrap>
+            <Dropdown
+              menu={actionsMenu}
+              trigger={["click"]}
+            >
+              <Button>
+                Actions <span className="ml-1">▼</span>
+            </Button>
+            </Dropdown>
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'create-task', label: 'Create new task' },
+                  { key: 'list-tasks', label: 'List of tasks' },
+                ]
+              }}
+              trigger={["click"]}
+            >
+              <Button>
+                Tasks <span className="ml-1">▼</span>
+              </Button>
+          </Dropdown>
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'create-ticket', label: 'Create ticket' },
+                  { key: 'list-tickets', label: 'List of tickets' },
+                ]
+              }}
+              trigger={["click"]}
+            >
+              <Button>
+                Tickets <span className="ml-1">▼</span>
+              </Button>
+            </Dropdown>
+            <Button type="primary" icon={<SaveOutlined />} onClick={saveInfo}>
+              Save
+            </Button>
+          </Space>
+      </div>
+      </Card>
+
+      {/* Tabs */}
+      <div className="bg-white rounded-xl border border-gray-200">
         {tabItems && tabItems.length > 0 && (
           <Tabs
             key={`tabs-${entityKey}-${id}`}
-            size={screens.md ? "large" : "small"}
-            tabBarGutter={screens.md ? 24 : 8}
+            size="large"
+            tabBarGutter={32}
             activeKey={activeTab}
             onChange={handleTabChange}
             items={tabItems}
             animated={false}
-            className="[&_.ant-tabs-tab-btn]:text-[13px] md:[&_.ant-tabs-tab-btn]:text-[14px]"
+            className="[&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-nav]:px-6 [&_.ant-tabs-nav]:pt-4 [&_.ant-tabs-content-holder]:p-6 [&_.ant-tabs-tab]:!text-base [&_.ant-tabs-tab]:!font-normal [&_.ant-tabs-tab-active]:!font-semibold"
           />
         )}
-      </Card>
+      </div>
 
       {/* Modal to Add Related (Student/Class/etc) */}
       <Modal

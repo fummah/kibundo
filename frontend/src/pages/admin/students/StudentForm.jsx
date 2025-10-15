@@ -63,6 +63,8 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
             onSuccess(res);
             return { preventRedirect: true, preventMessage: true };
           }
+          // For non-modal forms, redirect to the created student's detail page
+          return { redirectTo: `/admin/students/${res.data.id}` };
         },
         // Create user (role_id=1) then student is created server-side in /adduser
         create: async (api, payload) => {
@@ -104,8 +106,8 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
       }}
       fields={[
         // Basic
-        { name: "first_name", label: "First Name", rules: [{ required: true }] },
-        { name: "last_name",  label: "Last Name",  rules: [{ required: true }] },
+        { name: "first_name", label: "First Name", placeholder: "Enter student's first name", rules: [{ required: true }] },
+        { name: "last_name",  label: "Last Name", placeholder: "Enter student's last name", rules: [{ required: true }] },
 
         // Class (IMPORTANT: backend wants class_id)
         {
@@ -132,6 +134,7 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
           label: "Subjects",
           input: "select",
           mode: "multiple",
+          placeholder: "Select subjects for this student",
           optionsUrl: "/allsubjects",
           serverSearch: true,
           autoloadOptions: false,
@@ -158,6 +161,7 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
             : {
                 // When no parent: show as searchable select
                 input: "select",
+                placeholder: "Search and select parent",
                 optionsUrl: "/parents",
                 serverSearch: true,
                 autoloadOptions: false,
@@ -174,7 +178,7 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
         },
 
         // Optional extras
-        { name: "school", label: "School (Optional)" },
+        { name: "school", label: "School (Optional)", placeholder: "Enter school name (optional)" },
         {
           name: "state", // <-- your users table shows "state"
           label: "State",

@@ -120,6 +120,7 @@ export default function StudentDetail() {
           : Array.isArray(s.subject)
           ? s.subject
           : [];
+        
         const subjectsArray = rawSubjects.map((it) => {
           if (it?.subject) return it.subject; // link { subject: {...} }
           return it; // already subject
@@ -165,7 +166,7 @@ export default function StudentDetail() {
             }
           : null;
 
-        const status = fb(user.status || s.status);
+        const status = fb(user.status || s.status || "active");
         const createdAt = user.created_at || s.created_at || null;
 
         return {

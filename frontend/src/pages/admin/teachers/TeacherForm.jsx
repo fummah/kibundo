@@ -10,6 +10,11 @@ export default function TeacherForm() {
       apiCfg={{
         // Detail path
         getPath: (id) => `/teacher/${id}`,
+        
+        afterCreate: (res) => {
+          // Redirect to the created teacher's detail page
+          return { redirectTo: `/admin/teachers/${res.data.id}` };
+        },
 
         // Create teacher with required email and de-dupe by email
         create: async (api, payload) => {
@@ -186,8 +191,8 @@ export default function TeacherForm() {
       }}
 
       fields={[
-        { name: "first_name", label: "First Name", rules: [{ required: true }] },
-        { name: "last_name", label: "Last Name", rules: [{ required: true }] },
+        { name: "first_name", label: "First Name", placeholder: "Enter teacher's first name", rules: [{ required: true }] },
+        { name: "last_name", label: "Last Name", placeholder: "Enter teacher's last name", rules: [{ required: true }] },
 
         // REQUIRED email
         {

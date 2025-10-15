@@ -82,6 +82,13 @@ export default function ChatLayer({
     // dockState?.student?.id ?? dockState?.task?.userId ??
     "anon";
 
+  // State for assigned AI agent
+  const [assignedAgent, setAssignedAgent] = useState({
+    type: "ChildAgent", // default
+    id: null,
+    name: null,
+  });
+
   // IMPORTANT: scoped key so storage/history is per-student
   const scopedTaskKey = useMemo(
     () => `${baseTaskId}::u:${studentId}`,
@@ -99,6 +106,31 @@ export default function ChatLayer({
       didSeedRef.current = false;
     }
   }, [scopedTaskKey]);
+
+  // Fetch student's assigned AI agent on mount
+  useEffect(() => {
+    const fetchAssignedAgent = async () => {
+      if (!studentId || studentId === "anon") return;
+      
+      try {
+        // Get student with their assigned agent
+        const { data } = await api.get(`/student/${studentId}/assigned-agent`);
+        if (data?.assigned_agent_type) {
+          setAssignedAgent({
+            type: data.assigned_agent_type,
+            id: data.assigned_agent_id || null,
+            name: data.assigned_agent?.name || data.assigned_agent_type,
+          });
+          console.log("📌 Loaded assigned agent for student:", data.assigned_agent_type, data.assigned_agent?.name);
+        }
+      } catch (err) {
+        // If endpoint doesn't exist or fails, keep default ChildAgent
+        console.warn("Could not fetch assigned agent, using default ChildAgent:", err.message);
+      }
+    };
+
+    fetchAssignedAgent();
+  }, [studentId]);
 
   // Local UI buffer
   const [localMessages, setLocalMessages] = useState(
@@ -213,9 +245,11 @@ export default function ChatLayer({
         if (onSendText) {
           await onSendText(t);
         } else {
+          // Use the assigned agent for this student
           const { data } = await api.post("ai/chat", {
             question: t,
-            ai_agent: "ChildAgent",
+            ai_agent: assignedAgent.type,
+            agent_id: assignedAgent.id, // Include agent ID for custom agents
             mode: "general",
           });
           const aiMessage = formatMessage(
@@ -241,7 +275,7 @@ export default function ChatLayer({
         setSending(false);
       }
     },
-    [sending, onSendText, updateMessages, antdMessage]
+    [sending, onSendText, updateMessages, antdMessage, assignedAgent]
   );
 
   const sendText = useCallback(() => {

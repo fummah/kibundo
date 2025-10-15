@@ -39,8 +39,9 @@ function computeHomeworkEntryRoute() {
 export default function HomeMobile() {
   const navigate = useNavigate();
 
-  const HomeContent = () => (
-    <div className="flex flex-col min-h-[100dvh] md:min-h-0 md:h-full bg-[#f7f2ec]">
+  // Desktop Layout - Only shows on large screens (lg and above)
+  const DesktopLayout = () => (
+    <div className="hidden lg:flex flex-col min-h-[100dvh] md:min-h-0 md:h-full bg-[#f7f2ec]">
       {/* Sticky settings (safe-area aware) */}
       <div className="sticky top-0 z-50 flex justify-end px-4 pt-[env(safe-area-inset-top)] pointer-events-none">
         <div className="pointer-events-auto">
@@ -86,7 +87,7 @@ export default function HomeMobile() {
                 title="Hausaufgaben"
                 bg={TILE_BG.blue}
                 illustration={IMGS.homework}
-                onClick={() => navigate("/student/homework")} // <— always list
+                onClick={() => navigate("/student/homework")}
                 ariaLabel="Zu Hausaufgaben"
                 data-testid="tile-homework"
               />
@@ -130,5 +131,90 @@ export default function HomeMobile() {
     </div>
   );
 
-  return <HomeContent />;
+  // Mobile/Responsive Layout - Only shows on smaller screens
+  const MobileLayout = () => (
+    <div className="lg:hidden flex flex-col min-h-[100dvh] bg-[#f7f2ec]">
+      {/* Sticky settings */}
+      <div className="sticky top-0 z-50 flex justify-end px-4 pt-[env(safe-area-inset-top)] pointer-events-none">
+        <div className="pointer-events-auto">
+          <SettingsRibbon />
+        </div>
+      </div>
+
+      {/* Simple Mobile Header */}
+      <header className="relative w-full py-8 flex flex-col items-center justify-center bg-gradient-to-b from-[#a8d5ba] to-[#f7f2ec]">
+        <img
+          src={buddyMascot}
+          alt="Buddy"
+          loading="lazy"
+          className="w-[100px] h-auto select-none mb-4"
+        />
+        <h1 className="text-2xl font-bold text-[#2b6a5b]">Willkommen!</h1>
+      </header>
+
+      {/* Simple Cards List */}
+      <main className="relative flex-1 px-4 py-6 bg-[#f7f2ec]" aria-label="Schnellzugriffe">
+        <div className="max-w-md mx-auto space-y-4">
+          <button
+            onClick={() => navigate("/student/homework")}
+            className="w-full p-4 rounded-2xl shadow-md transition-transform active:scale-95"
+            style={{ backgroundColor: TILE_BG.blue }}
+            aria-label="Zu Hausaufgaben"
+            data-testid="tile-homework-mobile"
+          >
+            <div className="flex items-center gap-4">
+              <img src={IMGS.homework} alt="" className="w-16 h-16 object-contain" />
+              <span className="text-xl font-bold text-[#2b6a5b]">Hausaufgaben</span>
+            </div>
+          </button>
+
+          <button
+            onClick={() => navigate("/student/learning")}
+            className="w-full p-4 rounded-2xl shadow-md transition-transform active:scale-95"
+            style={{ backgroundColor: TILE_BG.yellow }}
+            aria-label="Zu Lernen"
+            data-testid="tile-learning-mobile"
+          >
+            <div className="flex items-center gap-4">
+              <img src={IMGS.learning} alt="" className="w-16 h-16 object-contain" />
+              <span className="text-xl font-bold text-[#2b6a5b]">Lernen</span>
+            </div>
+          </button>
+
+          <button
+            onClick={() => navigate("/student/reading")}
+            className="w-full p-4 rounded-2xl shadow-md transition-transform active:scale-95"
+            style={{ backgroundColor: TILE_BG.pink }}
+            aria-label="Zu Lesen"
+            data-testid="tile-reading-mobile"
+          >
+            <div className="flex items-center gap-4">
+              <img src={IMGS.reading} alt="" className="w-16 h-16 object-contain" />
+              <span className="text-xl font-bold text-[#2b6a5b]">Lesen</span>
+            </div>
+          </button>
+
+          <button
+            onClick={() => navigate("/student/map")}
+            className="w-full p-4 rounded-2xl shadow-md transition-transform active:scale-95"
+            style={{ backgroundColor: TILE_BG.green }}
+            aria-label="Zur Schatzkarte"
+            data-testid="tile-map-mobile"
+          >
+            <div className="flex items-center gap-4">
+              <img src={IMGS.map} alt="" className="w-16 h-16 object-contain" />
+              <span className="text-xl font-bold text-[#2b6a5b]">Schatzkarte</span>
+            </div>
+          </button>
+        </div>
+      </main>
+    </div>
+  );
+
+  return (
+    <>
+      <DesktopLayout />
+      <MobileLayout />
+    </>
+  );
 }

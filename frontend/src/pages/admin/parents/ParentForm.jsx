@@ -10,6 +10,11 @@ export default function ParentForm() {
       apiCfg={{
         // Detail path (you already have GET /parent/:id)
         getPath: (id) => `/parent/${id}`,
+        
+        afterCreate: (res) => {
+          // Redirect to the created parent's detail page
+          return { redirectTo: `/admin/parents/${res.data.id}` };
+        },
 
         // Create parent with required email and de-dupe by email
         create: async (api, payload) => {
@@ -179,8 +184,8 @@ export default function ParentForm() {
       }}
 
       fields={[
-        { name: "first_name", label: "First Name", rules: [{ required: true }] },
-        { name: "last_name", label: "Last Name", rules: [{ required: true }] },
+        { name: "first_name", label: "First Name", placeholder: "Enter parent's first name", rules: [{ required: true }] },
+        { name: "last_name", label: "Last Name", placeholder: "Enter parent's last name", rules: [{ required: true }] },
 
         // REQUIRED email
         {
