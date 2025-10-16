@@ -175,6 +175,23 @@ export default function AIAgent() {
 
   const refreshPreview = useCallback(() => setPreviewKey((p) => p + 1), []);
 
+  // Helper function to get agent details by name
+  const getAgentDetails = useCallback((agentName) => {
+    return state.sources.agents?.find(agent => agent.agent_name === agentName);
+  }, [state.sources.agents]);
+
+  // Helper function to get default agent for a specific role
+  const getDefaultAgent = useCallback((role) => {
+    switch (role) {
+      case 'parent':
+        return state.playground.selectedAgent;
+      case 'child':
+        return state.playground.selectedStudentAgent;
+      default:
+        return 'default';
+    }
+  }, [state.playground.selectedAgent, state.playground.selectedStudentAgent]);
+
   // Pagination logic
   const totalAgents = state.sources.agents?.length || 0;
   const startIndex = (currentPage - 1) * pageSize;
@@ -220,7 +237,9 @@ export default function AIAgent() {
     setAgentsError(null);
     try {
       const { data } = await api.get("/agents");
-      setState((s) => ({ ...s, sources: { ...s.sources, agents: Array.isArray(data) ? data : [] } }));
+      const agents = Array.isArray(data) ? data : [];
+      setState((s) => ({ ...s, sources: { ...s.sources, agents } }));
+      
     } catch (err) {
       console.error("Error fetching agents:", err);
       setAgentsError(err.message);
@@ -449,8 +468,8 @@ export default function AIAgent() {
           className="rounded-xl"
           title={
             <Space>
-              <span>Status:</span>
-              <Tag color="green">{state.playground.status || "-"}</Tag>
+              <span>AI Agent Settings</span>
+              <Tag color="green">{state.playground.status || "idle"}</Tag>
             </Space>
           }
           extra={
@@ -501,12 +520,34 @@ export default function AIAgent() {
                   }));
                   refreshPreview();
                 }}
-                options={[
-                  { value: "ParentAgent", label: "Parent Assistant" },
-                  { value: "ChildAgent", label: "Student Helper" },
-                  { value: "TeacherAgent", label: "Teacher Support" },
-                  { value: "default", label: "Default" },
-                ]}
+                options={(() => {
+                  // Get all agents from API - try different property names
+                  const apiAgents = (state.sources.agents || [])
+                    .filter(agent => {
+                      const hasName = agent && (agent.agent_name || agent.name || agent.agentName) && 
+                                     (agent.agent_name || agent.name || agent.agentName).trim();
+                      return hasName;
+                    })
+                    .map(agent => {
+                      const agentName = agent.agent_name || agent.name || agent.agentName;
+                      const entities = agent.entities || agent.entities_list || agent.entity_list;
+                      return {
+                        value: agentName,
+                        label: agentName,
+                        description: entities ? `Entities: ${entities}` : undefined
+                      };
+                    });
+                  
+                  // Always show API agents first, then add default options as fallback
+                  const defaultOptions = [
+                    { value: "ParentAgent", label: "Parent Assistant (Default)" },
+                    { value: "ChildAgent", label: "Student Helper (Default)" },
+                    { value: "TeacherAgent", label: "Teacher Support (Default)" },
+                    { value: "default", label: "Default (Fallback)" },
+                  ];
+                  
+                  return [...apiAgents, ...defaultOptions];
+                })()}
               />
             </div>
 
@@ -527,14 +568,37 @@ export default function AIAgent() {
                     },
                   }));
                 }}
-                options={[
-                  { value: "ParentAgent", label: "Parent Assistant" },
-                  { value: "ChildAgent", label: "Student Helper" },
-                  { value: "TeacherAgent", label: "Teacher Support" },
-                  { value: "default", label: "Default" },
-                ]}
+                options={(() => {
+                  // Get all agents from API - try different property names
+                  const apiAgents = (state.sources.agents || [])
+                    .filter(agent => {
+                      const hasName = agent && (agent.agent_name || agent.name || agent.agentName) && 
+                                     (agent.agent_name || agent.name || agent.agentName).trim();
+                      return hasName;
+                    })
+                    .map(agent => {
+                      const agentName = agent.agent_name || agent.name || agent.agentName;
+                      const entities = agent.entities || agent.entities_list || agent.entity_list;
+                      return {
+                        value: agentName,
+                        label: agentName,
+                        description: entities ? `Entities: ${entities}` : undefined
+                      };
+                    });
+                  
+                  // Always show API agents first, then add default options as fallback
+                  const defaultOptions = [
+                    { value: "ParentAgent", label: "Parent Assistant (Default)" },
+                    { value: "ChildAgent", label: "Student Helper (Default)" },
+                    { value: "TeacherAgent", label: "Teacher Support (Default)" },
+                    { value: "default", label: "Default (Fallback)" },
+                  ];
+                  
+                  return [...apiAgents, ...defaultOptions];
+                })()}
               />
             </div>
+
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -837,6 +901,8 @@ export default function AIAgent() {
                         {a.stage && (
                           <Tag color={a.stage === "prod" ? "green" : "orange"}>{a.stage}</Tag>
                         )}
+                        {a.grade && <Tag color="purple">Grade: {a.grade}</Tag>}
+                        {a.state && <Tag color="cyan">State: {a.state}</Tag>}
                         {(a.prompts?.entities || a.entities || []).map((entity) => (
                           <Tag key={entity} color="geekblue">
                             {entity}
