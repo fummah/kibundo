@@ -216,7 +216,6 @@ export default function AIAgent() {
         }))
       );
     } catch (err) {
-      console.error("Error fetching states:", err);
     } finally {
       setLoadingStates(false);
     }
@@ -230,7 +229,6 @@ export default function AIAgent() {
       setEntitiesOptions(opts);
       if (opts.length === 0) message.warning("Entities endpoint returned no items.");
     } catch (err) {
-      console.error("Failed to fetch entities:", err);
       message.error("Failed to load entities.");
     } finally {
       setEntitiesLoading(false);
@@ -246,7 +244,6 @@ export default function AIAgent() {
       setState((s) => ({ ...s, sources: { ...s.sources, agents } }));
       
     } catch (err) {
-      console.error("Error fetching agents:", err);
       setAgentsError(err.message);
       message.error("Failed to fetch agents");
     } finally {
@@ -267,7 +264,6 @@ export default function AIAgent() {
       });
       setUsers(map);
     } catch (err) {
-      console.error("Users endpoint failed:", err?.message);
       message.error("Failed to load user data");
     } finally {
       setUsersLoading(false);
@@ -296,7 +292,6 @@ export default function AIAgent() {
       }));
       return true;
     } catch (err) {
-      console.error("Error creating agent:", err);
       message.error("Failed to create agent");
       return false;
     } finally {
@@ -316,7 +311,6 @@ export default function AIAgent() {
         }))
       );
     } catch (e) {
-      console.warn("Grades endpoint missing or failed:", e?.message);
     } finally {
       setLoadingGrades(false);
     }
@@ -343,7 +337,6 @@ export default function AIAgent() {
         }));
       }
     } catch (err) {
-      console.warn("AI Settings endpoint missing or failed:", err?.message);
     }
   };
 
@@ -364,7 +357,6 @@ export default function AIAgent() {
       // localStorage removed to prevent quota exceeded errors
       refreshPreview();
     } catch (error) {
-      console.error("Error saving AI agent settings:", error);
       message.error("Failed to save AI agent settings. Please try again.");
     } finally {
       setSaving(false);
@@ -388,7 +380,6 @@ export default function AIAgent() {
       await fetchAgents(); // Refresh the agents list
       return true;
     } catch (error) {
-      console.error("Error updating agent:", error);
       message.error("Failed to update agent. Please try again.");
       return false;
     }
@@ -438,7 +429,6 @@ export default function AIAgent() {
       
       return true;
     } catch (error) {
-      console.error("Error deleting agent:", error);
       message.error("Failed to delete agent. Please try again.");
       return false;
     }

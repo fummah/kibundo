@@ -76,8 +76,6 @@ export default function SignIn() {
       // Always use username field for backend
       const loginPayload = { username: emailOrUsername, password };
 
-      console.log("🔍 SignIn - Form values:", values);
-      console.log("🔍 SignIn - Login payload being sent:", loginPayload);
 
       const resp = await api.post("/auth/login", loginPayload);
       const user = resp?.data?.user ?? resp?.data?.data?.user ?? null;

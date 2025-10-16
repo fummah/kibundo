@@ -270,17 +270,8 @@ export default function EntityDetail({ cfg }) {
         obj = await apiObj.loader(id);
       } else {
         const { data } = await api.get(getPath(id), { withCredentials: true });
-        console.log("🔍 Raw data received from backend:", data);
         const raw = data?.data ?? data ?? {};
-        console.log("🔍 Extracted raw entity data:", raw);
         obj = typeof apiObj.parseEntity === "function" ? apiObj.parseEntity(raw) : raw;
-        console.log("🔍 Processed entity data:", obj);
-        console.log("🔍 Portal credentials:", { 
-          username: obj?.username, 
-          plain_pass: obj?.plain_pass,
-          portal_login: obj?.portal_login,
-          portal_password: obj?.portal_password 
-        });
       }
 
       // Functional update avoids stale closures and unnecessary state churn
@@ -417,7 +408,6 @@ export default function EntityDetail({ cfg }) {
         try {
           infoForm.setFieldsValue(formValues);
         } catch (error) {
-          console.error("Error setting form values:", error);
         }
       }, 100);
       
@@ -440,7 +430,6 @@ export default function EntityDetail({ cfg }) {
               await api.patch(apiObj.updatePath(id), updates, { withCredentials: true });
             }
           } catch (error) {
-            console.error("Failed to auto-save portal credentials:", error);
           }
         };
         
@@ -461,7 +450,6 @@ export default function EntityDetail({ cfg }) {
       messageApi.success(`${field.label} updated successfully`);
       setEditingField(null);
     } catch (error) {
-      console.error("Error updating field:", error);
       messageApi.error(`Failed to update ${field.label}`);
     } finally {
       setSavingField(false);
@@ -737,7 +725,6 @@ export default function EntityDetail({ cfg }) {
         });
       }
     } catch (error) {
-      console.error("Failed to load document comments:", error);
       const fallbackComments = [];
       if (docCommentLoadingId.current === currentDocId) {
         setDocCommentMap(prev => ({ ...prev, [currentDocId]: fallbackComments }));
@@ -1665,10 +1652,6 @@ export default function EntityDetail({ cfg }) {
       
       const password = entity?.plain_pass || entity?.portal_password || entity?.password || "testpass1234";
 
-      console.log("🔍 Login as Customer - Entity data:", entity);
-      console.log("🔍 Login as Customer - Username:", username);
-      console.log("🔍 Login as Customer - Password:", password);
-      console.log("🔍 Login as Customer - Login payload:", { username, password });
       
       if (!username) {
         messageApi.error("No username found for this user");
@@ -1695,7 +1678,6 @@ export default function EntityDetail({ cfg }) {
           localStorage.setItem('user', JSON.stringify(data.user || data));
         } catch (error) {
           if (error.name === 'QuotaExceededError') {
-            console.warn('🔍 localStorage quota exceeded, clearing old data...');
             // Clear old localStorage data
             localStorage.clear();
             // Try again
@@ -1729,7 +1711,6 @@ export default function EntityDetail({ cfg }) {
         }, 1000);
       }
     } catch (error) {
-      console.error("Login error:", error);
       messageApi.error(error?.response?.data?.message || "Failed to login as customer");
     } finally {
       setSaving(false);

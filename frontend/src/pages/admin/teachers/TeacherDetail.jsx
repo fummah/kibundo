@@ -20,7 +20,6 @@ function AddClassModal({ id, onSuccess, onClose, messageApi }) {
         const classList = Array.isArray(data) ? data : (data?.data || []);
         setClasses(classList);
       } catch (error) {
-        console.error("Failed to fetch classes:", error);
         messageApi.error("Failed to load classes");
       } finally {
         setLoading(false);
@@ -42,7 +41,6 @@ function AddClassModal({ id, onSuccess, onClose, messageApi }) {
       messageApi.success("Class assigned successfully!");
       onSuccess();
     } catch (error) {
-      console.error("Failed to assign class:", error);
       if (error?.errorFields) {
         messageApi.error("Please select a class");
       } else {

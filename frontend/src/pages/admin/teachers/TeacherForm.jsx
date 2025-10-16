@@ -66,7 +66,6 @@ export default function TeacherForm() {
                   }
                 } catch (e) {
                   // If this check fails, continue to create the teacher record
-                  console.warn("Teacher existence check failed, proceeding:", e);
                 }
 
                 // Create teacher record linked to the existing user
@@ -99,7 +98,6 @@ export default function TeacherForm() {
                 }
               }
             } catch (e) {
-              console.warn("User lookup failed, will create new user:", e);
             }
 
             // Create a new user
@@ -164,13 +162,11 @@ export default function TeacherForm() {
                     return { data: { id: existingTeacherFromSearch.id } };
                   }
                 } catch (searchError) {
-                  console.warn("Failed to search for existing teacher:", searchError);
                 }
               }
               throw teacherError;
             }
           } catch (error) {
-            console.error("Error in teacher creation:", error);
 
             const msg =
               error?.response?.data?.message ||

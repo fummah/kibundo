@@ -29,7 +29,6 @@ export default function StudentDetail() {
         const { data } = await api.get("/allsubjects");
         setAvailableSubjects(Array.isArray(data) ? data : []);
       } catch (err) {
-        console.error("Error fetching subjects:", err);
         message.error("Failed to load available subjects");
       }
     })();
@@ -57,7 +56,6 @@ export default function StudentDetail() {
         setSelectedSubjectId(null);
         // Let EntityDetail re-fetch by using its built-in Reload button; or you can signal via events if supported.
       } catch (err) {
-        console.error("Error assigning subject:", err);
         message.error(err?.response?.data?.message || "Failed to assign subject");
       } finally {
         setAssigning(false);
@@ -74,7 +72,6 @@ export default function StudentDetail() {
         message.success("Subject removed successfully");
         // Again, rely on the tab's reload action if available.
       } catch (err) {
-        console.error("Error removing subject:", err);
         message.error(err?.response?.data?.message || "Failed to remove subject");
       }
     },

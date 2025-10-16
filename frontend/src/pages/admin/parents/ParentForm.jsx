@@ -63,7 +63,6 @@ export default function ParentForm() {
                     }
                   } catch (e) {
                     // If this check fails, continue to create the parent record
-                    console.warn("Parent existence check failed, proceeding:", e);
                   }
 
                   // Create parent record linked to the existing user
@@ -95,7 +94,6 @@ export default function ParentForm() {
                   }
                 }
               } catch (e) {
-                console.warn("User lookup failed, will create new user:", e);
               }
 
             // Create a new user
@@ -157,13 +155,11 @@ export default function ParentForm() {
                     return { data: { id: existingParentFromSearch.id } };
                   }
                 } catch (searchError) {
-                  console.warn("Failed to search for existing parent:", searchError);
                 }
               }
               throw parentError;
             }
           } catch (error) {
-            console.error("Error in parent creation:", error);
 
             const msg =
               error?.response?.data?.message ||
