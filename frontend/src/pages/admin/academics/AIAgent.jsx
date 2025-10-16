@@ -121,8 +121,8 @@ export default function AIAgent() {
 
   const [state, setState] = useState({
     playground: {
-      selectedAgent: "default",
-      selectedStudentAgent: "default",
+      selectedAgent: "",
+      selectedStudentAgent: "",
       systemPrompt: "",
       instructions: "",
       model: "gpt-4o",
@@ -172,6 +172,11 @@ export default function AIAgent() {
   const [editFormData, setEditFormData] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(5);
+  const [hasUserModifiedSettings, setHasUserModifiedSettings] = useState(() => {
+    // Check if user has unsaved changes in localStorage
+    const savedState = localStorage.getItem('aiAgent-unsaved-changes');
+    return savedState === 'true';
+  });
 
   const refreshPreview = useCallback(() => setPreviewKey((p) => p + 1), []);
 
@@ -318,6 +323,11 @@ export default function AIAgent() {
   };
 
   const fetchAiSettings = async () => {
+    // Only fetch settings if user hasn't modified them
+    if (hasUserModifiedSettings) {
+      return;
+    }
+    
     try {
       const { data } = await api.get("/aisettings");
       if (data) {
@@ -325,8 +335,8 @@ export default function AIAgent() {
           ...s,
           playground: {
             ...s.playground,
-            selectedAgent: data.parent_default_ai || "default",
-            selectedStudentAgent: data.child_default_ai || "default",
+            selectedAgent: data.parent_default_ai || "",
+            selectedStudentAgent: data.child_default_ai || "",
             model: data.openai_model || "gpt-4o",
             temperature: data.temperature || 0.7,
           },
@@ -342,14 +352,16 @@ export default function AIAgent() {
     try {
       // Save AI Agent Settings using the new endpoint
       const aiSettingsPayload = {
-        parent_default_ai: state.playground.selectedAgent || "default",
-        child_default_ai: state.playground.selectedStudentAgent || "default",
+        parent_default_ai: state.playground.selectedAgent || "",
+        child_default_ai: state.playground.selectedStudentAgent || "",
         openai_model: state.playground.model || "gpt-4o",
         temperature: state.playground.temperature || 0.7,
       };
 
       await api.put("/updateaisettings", aiSettingsPayload);
       message.success("AI Agent Settings saved successfully!");
+      setHasUserModifiedSettings(false); // Reset flag after successful save
+      // localStorage removed to prevent quota exceeded errors
       refreshPreview();
     } catch (error) {
       console.error("Error saving AI agent settings:", error);
@@ -445,6 +457,9 @@ export default function AIAgent() {
     });
   };
 
+  // Save state to localStorage whenever it changes
+  // Removed localStorage usage to prevent quota exceeded errors
+
   useEffect(() => {
     fetchStates();
     fetchEntities();
@@ -490,9 +505,10 @@ export default function AIAgent() {
                 className="w-full mt-1"
                 value={state.playground.selectedAgent}
                 placeholder="Choose an agent…"
-                allowClear={false}
+                allowClear={true}
                 optionFilterProp="label"
                 onChange={(value) => {
+                  setHasUserModifiedSettings(true);
                   const preset = AGENT_CONFIGS[value] || AGENT_CONFIGS.default;
                   setState((s) => ({
                     ...s,
@@ -538,15 +554,8 @@ export default function AIAgent() {
                       };
                     });
                   
-                  // Always show API agents first, then add default options as fallback
-                  const defaultOptions = [
-                    { value: "ParentAgent", label: "Parent Assistant (Default)" },
-                    { value: "ChildAgent", label: "Student Helper (Default)" },
-                    { value: "TeacherAgent", label: "Teacher Support (Default)" },
-                    { value: "default", label: "Default (Fallback)" },
-                  ];
-                  
-                  return [...apiAgents, ...defaultOptions];
+                  // Return only API agents, no default options
+                  return apiAgents;
                 })()}
               />
             </div>
@@ -557,9 +566,10 @@ export default function AIAgent() {
                 className="w-full mt-1"
                 value={state.playground.selectedStudentAgent}
                 placeholder="Choose a student agent…"
-                allowClear={false}
+                allowClear={true}
                 optionFilterProp="label"
                 onChange={(value) => {
+                  setHasUserModifiedSettings(true);
                   setState((s) => ({
                     ...s,
                     playground: {
@@ -586,15 +596,8 @@ export default function AIAgent() {
                       };
                     });
                   
-                  // Always show API agents first, then add default options as fallback
-                  const defaultOptions = [
-                    { value: "ParentAgent", label: "Parent Assistant (Default)" },
-                    { value: "ChildAgent", label: "Student Helper (Default)" },
-                    { value: "TeacherAgent", label: "Teacher Support (Default)" },
-                    { value: "default", label: "Default (Fallback)" },
-                  ];
-                  
-                  return [...apiAgents, ...defaultOptions];
+                  // Return only API agents, no default options
+                  return apiAgents;
                 })()}
               />
             </div>
@@ -609,12 +612,13 @@ export default function AIAgent() {
                   placeholder="Select a model…"
                   allowClear
                   optionFilterProp="label"
-                  onChange={(v) =>
+                  onChange={(v) => {
+                    setHasUserModifiedSettings(true);
                     setState((s) => ({
                       ...s,
                       playground: { ...s.playground, model: v },
-                    }))
-                  }
+                    }));
+                  }}
                   options={[
                     { value: "gpt-4o", label: "GPT-4o" },
                     { value: "gpt-4o-mini", label: "GPT-4o Mini" },
@@ -635,12 +639,13 @@ export default function AIAgent() {
                   max={1}
                   step={0.1}
                   value={state.playground.temperature}
-                  onChange={(v) =>
+                  onChange={(v) => {
+                    setHasUserModifiedSettings(true);
                     setState((s) => ({
                       ...s,
                       playground: { ...s.playground, temperature: v },
-                    }))
-                  }
+                    }));
+                  }}
                 />
               </div>
             </div>

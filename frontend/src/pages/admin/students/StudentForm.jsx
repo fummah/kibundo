@@ -68,22 +68,6 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
         },
         // Create user (role_id=1) then student is created server-side in /adduser
         create: async (api, payload) => {
-          // Robust temp password generator
-          const genTempPassword = (len = 12) => {
-            try {
-              const bytes = new Uint32Array(len);
-              if (window?.crypto?.getRandomValues) {
-                window.crypto.getRandomValues(bytes);
-                return Array.from(bytes).map((x) => (x % 36).toString(36)).join("");
-              }
-            } catch {}
-            // Fallback
-            const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-            let out = "";
-            for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
-            return out;
-          };
-
           // Generate a temporary unique email for the student (backend requires it for now)
           // Format: student_{timestamp}_{random}@temp.kibundo.local
           const tempEmail = `student_${Date.now()}_${Math.random().toString(36).substring(2, 9)}@temp.kibundo.local`;
@@ -97,7 +81,6 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
             class_id: payload.class_id,
             parent_id: payload.parent_id ?? null,
             subjects: Array.isArray(payload.subjects) ? payload.subjects : [],
-            password: genTempPassword(14), // Generate temp password for the student
           };
 
           // POST /adduser; backend will create associated Student when role_id===1

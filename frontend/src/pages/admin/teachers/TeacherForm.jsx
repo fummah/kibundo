@@ -29,7 +29,6 @@ export default function TeacherForm() {
               state: payload.state || null,            // VARCHAR on users.state
               status: "active",
               role_id: 3,                              // Teacher role
-              password: "TemporaryPassword123!",       // backend can force reset later
               isActive: true,
               email,                                   // email is required
               class_id: payload.class_id,

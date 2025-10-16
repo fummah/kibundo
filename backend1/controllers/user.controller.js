@@ -36,14 +36,17 @@ exports.adduser = async (req, res) => {
       return res.status(400).json({ message: "User already exists" });
     }
     const created_by = req.user.id;
-    const generateRandomPassword = (length = 10) =>{
-  return crypto.randomBytes(length)
-    .toString("base64")  // convert to base64 for readable chars
-    .slice(0, length)    // trim to desired length
-    .replace(/\+/g, "A") // replace + or / to make it URL-safe
-    .replace(/\//g, "B");
-}
-     const password = await bcrypt.hash(generateRandomPassword, 10);
+    const generateRandomPassword = (length = 10) => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@#$!';
+      let password = '';
+      for (let i = 0; i < length; i++) {
+        const randomIndex = Math.floor(Math.random() * chars.length);
+        password += chars[randomIndex];
+      }
+      return password;
+    };
+const temppass = generateRandomPassword();
+     const password = await bcrypt.hash(temppass, 10);
     const newUser = await User.create({
       role_id,
       first_name,
@@ -51,7 +54,8 @@ exports.adduser = async (req, res) => {
       email,
       contact_number,
       state,
-      password
+      password,
+      
     });
     if(role_id == 1)
     {
@@ -69,7 +73,7 @@ exports.adduser = async (req, res) => {
 
   // ✅ Update the username field in users table
   await User.update(
-    { username },
+    { username,plain_pass: temppass },
     { where: { id: newUser.id } }
   );
 
@@ -104,7 +108,7 @@ exports.adduser = async (req, res) => {
        
   const userData = { ...newUser.toJSON() };
     delete userData.password;
-    userData.password = hashedPassword;
+    userData.password = generateRandomPassword();
 
     res.status(201).json({ message: "User registered", user: userData });
   } catch (err) {

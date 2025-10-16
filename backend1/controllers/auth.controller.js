@@ -1,5 +1,6 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { Op } = require("sequelize");
 const db = require("../models");
 const User = db.user;
 const Student = db.student;
@@ -70,13 +71,24 @@ exports.signup = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
-
+    const { username, password } = req.body;
+console.log("username",req.body);
+    if (!username || !password) {
+      return res.status(400).json({ message: "Email/Username and password are required." });
+    }
     // 1. Find user
-    const user = await User.findOne({ where: { email } });
+    // 2️⃣ Find user by email OR username
+    const user = await User.findOne({
+      where: {
+        [Op.or]: [{ email: username }, { username: username }]
+      }
+    });
     if (!user) return res.status(404).json({ message: "User not found" });
 
     // 2. Check password
+    console.log("pASSWORD IS ",password);
+    console.log(req.body);
+    console.log("user",user);
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
 

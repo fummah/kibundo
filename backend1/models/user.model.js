@@ -30,6 +30,14 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true
     },
+    username: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    plain_pass: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
      state: {
       type: DataTypes.STRING,
       allowNull: true

@@ -19,7 +19,7 @@ export default function ParentDetail() {
       ? new Date(u.created_at).toLocaleDateString()
       : "-";
 
-    return {
+    const result = {
       id: p.id,
       user_id: u.id ?? p.user_id ?? null,
       name,
@@ -31,8 +31,23 @@ export default function ParentDetail() {
       bundesland: u.state ?? p.state ?? null,
       students: Array.isArray(p.student) ? p.student : [],
       subscriptions: p.subscriptions || [],
+      // Include portal credentials from backend, generate username if not provided
+      username: u.username || p.username || (() => {
+        const firstName = u.first_name || "";
+        const lastName = u.last_name || "";
+        const userId = u.id || p.user_id || p.id;
+        if (firstName && lastName && userId) {
+          const firstTwo = firstName.substring(0, 2).toLowerCase();
+          const firstLetter = lastName.substring(0, 1).toLowerCase();
+          return `${firstTwo}${firstLetter}${userId}`;
+        }
+        return undefined;
+      })(),
+      plain_pass: u.plain_pass || p.plain_pass,
       raw: p,
     };
+    
+    return result;
   }, []);
 
   // Normalize any prefill so infoFields can read `email` immediately

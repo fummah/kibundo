@@ -131,6 +131,9 @@ export default function TeacherDetail() {
           bundesland: u.state ?? null,
           className: t.class?.class_name || t.department || "-",
           class_id: t.class_id,
+          // Include portal credentials from backend
+          username: u.username || t.username,
+          plain_pass: u.plain_pass || t.plain_pass,
           raw: t,
         };
       },

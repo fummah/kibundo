@@ -29,7 +29,6 @@ export default function ParentForm() {
               state: payload.state || null,            // VARCHAR on users.state
               status: "active",
               role_id: 2,                              // Parent role
-              password: "TemporaryPassword123!",       // backend can force reset later
               isActive: true,
               email,                                   // email is required
             };

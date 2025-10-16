@@ -94,7 +94,6 @@ export default function StudentDetail() {
       getPath: (id) => `/student/${id}`,
       updateStatusPath: (id) => `/student/${id}/status`,
       removePath: (id) => `/student/${id}`,
-      updatePath: (id) => `/student/${id}`,
       getSubjectsPath: "/allsubjects",
       getSubjectPath: (id) => `/subject/${id}`,
       assignSubjectPath: (studentId, subjectId) => `/student/${studentId}/subject/${subjectId}`,
@@ -183,6 +182,9 @@ export default function StudentDetail() {
           state,
           status,
           createdAt,
+          // Include portal credentials from backend
+          username: user.username || s.username,
+          plain_pass: user.plain_pass || s.plain_pass,
           raw: {
             ...s,
             subjects: subjectsArray, // normalized for tabs

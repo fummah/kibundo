@@ -5,6 +5,7 @@ import { toast, Toaster } from "react-hot-toast";
 import { Form, Input, Button, Typography } from "antd";
 import {
   MailOutlined,
+  UserOutlined,
   LockOutlined,
   ArrowLeftOutlined,
 } from "@ant-design/icons";
@@ -69,7 +70,16 @@ export default function SignIn() {
     try {
       setLoading(true);
 
-      const resp = await api.post("/auth/login", values);
+      // Always send as username field, whether it's email or username
+      const { email: emailOrUsername, password } = values;
+      
+      // Always use username field for backend
+      const loginPayload = { username: emailOrUsername, password };
+
+      console.log("🔍 SignIn - Form values:", values);
+      console.log("🔍 SignIn - Login payload being sent:", loginPayload);
+
+      const resp = await api.post("/auth/login", loginPayload);
       const user = resp?.data?.user ?? resp?.data?.data?.user ?? null;
       const token = extractToken(resp);
 
@@ -160,19 +170,37 @@ export default function SignIn() {
 
           <Form layout="vertical" form={form} onFinish={handleFinish}>
             <Form.Item
-              label="Email"
+              label="Email or Username"
               name="email"
               rules={[
-                { required: true, message: "Please enter your email" },
-                { type: "email", message: "Invalid email format" },
+                { required: true, message: "Please enter your email or username" },
+                {
+                  validator: (_, value) => {
+                    if (!value) return Promise.resolve();
+                    
+                    // Check if it looks like an email
+                    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+                    
+                    if (isEmail) {
+                      // It's an email, validate email format
+                      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+                        ? Promise.resolve()
+                        : Promise.reject(new Error("Invalid email format"));
+                    } else {
+                      // It's a username, validate username format (alphanumeric + some special chars)
+                      return /^[a-zA-Z0-9_]+$/.test(value)
+                        ? Promise.resolve()
+                        : Promise.reject(new Error("Username can only contain letters, numbers, and underscores"));
+                    }
+                  },
+                },
               ]}
             >
               <Input
-                prefix={<MailOutlined />}
-                placeholder="Enter your email"
+                prefix={<UserOutlined />}
+                placeholder="Enter your email or username"
                 className="rounded-md"
-                autoComplete="email"
-                inputMode="email"
+                autoComplete="username"
                 autoCapitalize="none"
                 autoCorrect="off"
               />

@@ -270,8 +270,17 @@ export default function EntityDetail({ cfg }) {
         obj = await apiObj.loader(id);
       } else {
         const { data } = await api.get(getPath(id), { withCredentials: true });
+        console.log("🔍 Raw data received from backend:", data);
         const raw = data?.data ?? data ?? {};
+        console.log("🔍 Extracted raw entity data:", raw);
         obj = typeof apiObj.parseEntity === "function" ? apiObj.parseEntity(raw) : raw;
+        console.log("🔍 Processed entity data:", obj);
+        console.log("🔍 Portal credentials:", { 
+          username: obj?.username, 
+          plain_pass: obj?.plain_pass,
+          portal_login: obj?.portal_login,
+          portal_password: obj?.portal_password 
+        });
       }
 
       // Functional update avoids stale closures and unnecessary state churn
@@ -386,8 +395,8 @@ export default function EntityDetail({ cfg }) {
       // Prepare all form values including email and other fields
       const formValues = {
         ...entity,
-        // Auto-generate portal_login if not already set
-        portal_login: entity.portal_login || (() => {
+        // Use backend username field for portal_login
+        portal_login: entity.username || entity.portal_login || (() => {
           const firstName = entity.first_name || entity.user?.first_name || "";
           const lastName = entity.last_name || entity.user?.last_name || "";
           const entityId = entity.id || entity[idField];
@@ -399,8 +408,8 @@ export default function EntityDetail({ cfg }) {
           }
           return '';
         })(),
-        // Use default password for portal_password
-        portal_password: entity.portal_password || "testpass1234",
+        // Use backend plain_pass field for portal_password
+        portal_password: entity.plain_pass || entity.portal_password || "testpass1234",
       };
       
       // Use setTimeout to ensure form is fully mounted
@@ -975,7 +984,7 @@ export default function EntityDetail({ cfg }) {
 
   const informationTab = useMemo(() => {
     // Prepare initial values with auto-populated portal credentials
-    let portalLogin = entity?.portal_login;
+    let portalLogin = entity?.username || entity?.portal_login;
     
     if (!portalLogin) {
       // Auto-generate username: first 2 letters of first name + first letter of surname + ID
@@ -993,7 +1002,7 @@ export default function EntityDetail({ cfg }) {
     const formInitialValues = {
       ...entity,
       portal_login: portalLogin || '',
-      portal_password: entity?.portal_password || "testpass1234",
+      portal_password: entity?.plain_pass || entity?.portal_password || "testpass1234",
     };
     
 
@@ -1006,7 +1015,7 @@ export default function EntityDetail({ cfg }) {
             form={infoForm} 
             layout="horizontal" 
             initialValues={formInitialValues}
-            id={`entity-form-${id}`}
+            id={`entity-form-${id}-${Math.random().toString(36).substr(2, 9)}`}
             preserve={false}
             key={`form-${id}-${entity?.id || 'loading'}`}
           >
@@ -1028,34 +1037,23 @@ export default function EntityDetail({ cfg }) {
                         name={field.name} 
                         className="!mb-0"
                         rules={field.required ? [{ required: true, message: `${field.label} is required` }] : []}
-                        id={`${field.name}-${id}`}
+                        id={`${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
                       >
                         {isPassword ? (
-                          <div className="flex items-center gap-2">
-                            <Input.Password 
-                              placeholder={field.label} 
-                              disabled={!field.editable}
-                              iconRender={() => null}
-                              className="max-w-md flex-1"
-                              visibilityToggle={false}
-                              type={passwordVisible[field.name] ? 'text' : 'password'}
-                              id={`input-${field.name}-${id}`}
-                            />
-                            <Button 
-                              type="primary" 
-                              size="small"
-                              onClick={() => setPasswordVisible(prev => ({ ...prev, [field.name]: !prev[field.name] }))}
-                            >
-                              {passwordVisible[field.name] ? 'Hide' : 'Show'}
-                            </Button>
-                          </div>
+                          <Input.Password 
+                            placeholder={field.label} 
+                            disabled={!field.editable}
+                            className="max-w-md flex-1"
+                            id={`input-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
+                            value={entity?.[field.name] || ''}
+                          />
                         ) : isEmail ? (
                           <div className="flex items-center gap-2">
                             <Input 
                               placeholder={field.label} 
                               disabled={!field.editable}
                               className="flex-1"
-                              id={`input-${field.name}-${id}`}
+                              id={`input-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
                               value={entity?.[field.name] || ''}
                               onChange={(e) => {
                                 const newValue = e.target.value;
@@ -1075,7 +1073,7 @@ export default function EntityDetail({ cfg }) {
                               placeholder={field.label} 
                               disabled={!field.editable}
                               className="flex-1"
-                              id={`input-${field.name}-${id}`}
+                              id={`input-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
                             />
                             <Button 
                               type="text" 
@@ -1095,7 +1093,7 @@ export default function EntityDetail({ cfg }) {
                               ]} 
                               disabled={!field.editable}
                               className="flex-1"
-                              id={`select-${field.name}-${id}`}
+                              id={`select-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
                             />
                             <Button 
                               type="text" 
@@ -1109,20 +1107,20 @@ export default function EntityDetail({ cfg }) {
                             options={field.options || []} 
                             disabled={!field.editable}
                             className="w-full"
-                            id={`select-${field.name}-${id}`}
+                            id={`select-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
                           />
               ) : field.type === "date" ? (
                           <DatePicker 
                             className="w-full" 
                             disabled={!field.editable}
-                            id={`date-${field.name}-${id}`}
+                            id={`date-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
                           />
                         ) : (
                           <Input 
                             placeholder={field.label} 
                             disabled={!field.editable}
                             className="w-full"
-                            id={`input-${field.name}-${id}`}
+                            id={`input-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
                           />
               )}
             </Form.Item>
@@ -1263,7 +1261,7 @@ export default function EntityDetail({ cfg }) {
     
     return (
       <Card className="!rounded-xl" styles={{ body: { padding: 16 } }}>
-        <AddTaskForm onSubmit={createTask} />
+        <AddTaskForm onSubmit={createTask} id={id} />
         <Divider />
         <Table
           rowKey={(r) => r.id}
@@ -1652,7 +1650,7 @@ export default function EntityDetail({ cfg }) {
     try {
       setSaving(true);
       // Use the auto-generated username for login authentication
-      let username = entity?.portal_login;
+      let username = entity?.username || entity?.portal_login;
       
       if (!username) {
         // Auto-generate username: first 2 letters of first name + first letter of surname + ID
@@ -1665,7 +1663,12 @@ export default function EntityDetail({ cfg }) {
         username = `${firstTwo}${firstLetter}${entityId}`;
       }
       
-      const password = entity?.portal_password || entity?.password || "testpass1234";
+      const password = entity?.plain_pass || entity?.portal_password || entity?.password || "testpass1234";
+
+      console.log("🔍 Login as Customer - Entity data:", entity);
+      console.log("🔍 Login as Customer - Username:", username);
+      console.log("🔍 Login as Customer - Password:", password);
+      console.log("🔍 Login as Customer - Login payload:", { username, password });
       
       if (!username) {
         messageApi.error("No username found for this user");
@@ -1679,16 +1682,29 @@ export default function EntityDetail({ cfg }) {
 
       // Attempt to login via API
       const loginPayload = { 
-        email: username, // Use the auto-generated username as email for login
+        username: username, // Use the auto-generated username as email for login
         password
       };
 
       const { data } = await api.post('/auth/login', loginPayload, { withCredentials: true });
       
       if (data?.token) {
-        // Store the token
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user || data));
+        // Store the token with quota error handling
+        try {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user', JSON.stringify(data.user || data));
+        } catch (error) {
+          if (error.name === 'QuotaExceededError') {
+            console.warn('🔍 localStorage quota exceeded, clearing old data...');
+            // Clear old localStorage data
+            localStorage.clear();
+            // Try again
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data.user || data));
+          } else {
+            throw error;
+          }
+        }
         
         // Show appropriate success message based on entity type
         const getSuccessMessage = () => {
@@ -1701,17 +1717,16 @@ export default function EntityDetail({ cfg }) {
         messageApi.success(getSuccessMessage());
         
         // Redirect to the customer portal
-        const redirectPath = currentEntityType === 'students' 
-          ? '/student/home' 
-          : currentEntityType === 'parents'
-          ? '/parent/home'
-          : currentEntityType === 'teachers'
-          ? '/teacher/home'
-          : '/dashboard';
-        
+        // Force page reload to properly switch authentication context
         setTimeout(() => {
-          navigate(redirectPath);
-        }, 500);
+          window.location.href = currentEntityType === 'students' 
+            ? '/student/home' 
+            : currentEntityType === 'parents'
+            ? '/parent/home'
+            : currentEntityType === 'teachers'
+            ? '/teacher/home'
+            : '/dashboard';
+        }, 1000);
       }
     } catch (error) {
       console.error("Login error:", error);
@@ -1786,7 +1801,7 @@ export default function EntityDetail({ cfg }) {
           ) : null}
           <div>
             <h1 className="text-2xl font-semibold m-0">
-              {titleName} ({entity?.login || entity?.portal_login || `${safeCfg.entityKey || 'ID'} - ${entity?.[idField]}`})
+              {titleName} ({entity?.login || entity?.username || entity?.portal_login || `${safeCfg.entityKey || 'ID'} - ${entity?.[idField]}`})
             </h1>
             </div>
           <div className="ml-auto flex items-center gap-2">
@@ -1916,7 +1931,7 @@ export default function EntityDetail({ cfg }) {
 
 /* ---------- Small Forms (tasks / Comments / Document Upload) ---------- */
 
-function AddTaskForm({ onSubmit }) {
+function AddTaskForm({ onSubmit, id }) {
   const [form] = Form.useForm();
   return (
     <Form
@@ -1939,11 +1954,12 @@ function AddTaskForm({ onSubmit }) {
       }}
     >
       <Form.Item name="title" rules={[{ required: true, message: "Enter task title" }]} style={{ minWidth: 220 }}>
-        <Input placeholder="Task title" />
+        <Input placeholder="Task title" id={`title-${id}-${Math.random().toString(36).substr(2, 9)}`} />
       </Form.Item>
       <Form.Item name="priority" initialValue="medium">
         <Select
           style={{ width: 120 }}
+          id={`priority-${id}-${Math.random().toString(36).substr(2, 9)}`}
           options={[
             { value: "low", label: "Low" },
             { value: "medium", label: "Medium" },
@@ -1952,7 +1968,7 @@ function AddTaskForm({ onSubmit }) {
         />
       </Form.Item>
       <Form.Item name="dueDate">
-        <DatePicker placeholder="Due date" />
+        <DatePicker placeholder="Due date" id={`dueDate-${id}-${Math.random().toString(36).substr(2, 9)}`} />
       </Form.Item>
       <Form.Item>
         <Button type="primary" htmlType="submit" icon={<PlusOutlined />}>
