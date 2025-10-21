@@ -168,8 +168,9 @@ export default function HomeworkList() {
     try {
       setLoading(true);
       console.log(`Fetching homework scans for student ID: ${studentId}`);
-      const { data } = await api.get('/homeworkscans', {
-        params: { student_id: studentId }
+      const { data } = await api.get('/user/homeworkscans', {
+        params: { student_id: studentId },
+        withCredentials: true, // Include auth headers
       });
       
       const transformedTasks = Array.isArray(data) 
@@ -337,33 +338,50 @@ export default function HomeworkList() {
     });
   };
 
+  // Handle edit task
+  const handleEditTask = (task) => {
+    console.log('Edit task:', task);
+    // Add edit functionality here
+  };
+
+  // Handle delete task
+  const handleDeleteTask = (task) => {
+    console.log('Delete task:', task);
+    // Add delete functionality here
+  };
+
+  // Handle mark task as done/undone
+  const handleMarkTaskDone = (task) => {
+    console.log('Mark task done:', task);
+    // Add mark done functionality here
+  };
+
   return (
     <>
       <section className="w-full">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-[#2b6a5b] mb-2">Hausaufgaben</h1>
-          <p className="text-[#51625e]">Verwalte deine gescannten und hinzugefügten Aufgaben</p>
-        </div>
+       
 
         {/* Cards Grid */}
         {rows.length ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
             {rows.map((r) => (
               <HomeworkCard
                 key={r.id || `${r.subject}-${r.what}`}
                 {...r}
                 onOpen={() => openTask(r)}
+                onEdit={() => handleEditTask(r)}
+                onDelete={() => handleDeleteTask(r)}
+                onMarkDone={() => handleMarkTaskDone(r)}
               />
             ))}
           </div>
         ) : (
-          <div className="text-center py-12">
-            <div className="bg-white rounded-xl border-2 border-dashed border-gray-300 p-8">
-              <div className="text-[#51625e] mb-4">
-                <div className="text-4xl mb-2">📚</div>
-                <div className="text-lg font-medium mb-2">Noch keine Aufgaben</div>
-                <div className="text-sm">Noch keine Aufgaben gescannt oder hinzugefügt.</div>
+          <div className="text-center py-16">
+            <div className="bg-white rounded-xl border-2 border-dashed border-gray-300 p-12 max-w-md mx-auto">
+              <div className="text-[#51625e] mb-6">
+                <div className="text-6xl mb-4">📚</div>
+                <div className="text-xl font-semibold mb-2">Noch keine Aufgaben</div>
+                <div className="text-sm text-gray-500">Noch keine Aufgaben gescannt oder hinzugefügt.</div>
               </div>
               <button
                 type="button"
@@ -372,10 +390,10 @@ export default function HomeworkList() {
                     state: { openHomeworkChat: true },
                   })
                 }
-                className="px-6 py-3 rounded-full bg-[#2b6a5b] text-white hover:bg-[#1f4d3f] transition-colors duration-200 font-medium"
+                className="px-8 py-4 rounded-full bg-[#2b6a5b] text-white hover:bg-[#1f4d3f] transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
                 <PlusOutlined className="mr-2" />
-                Aufgabe hinzufügen
+                Erste Aufgabe hinzufügen
               </button>
             </div>
           </div>
@@ -383,21 +401,21 @@ export default function HomeworkList() {
 
         {/* Pagination */}
         {rows.length > 0 && (
-          <div className="flex items-center justify-between bg-white rounded-xl border-2 border-gray-200 px-6 py-4">
+          <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 px-6 py-4 shadow-sm">
             <button
-              className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#e7ecea] text-[#51625e] hover:bg-[#d4ddd9] disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#e7ecea] text-[#51625e] hover:bg-[#d4ddd9] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:shadow-md"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
               <LeftOutlined /> <span>Zurück</span>
             </button>
 
-            <div className="text-sm text-[#51625e]">
-              Seite <strong className="text-[#2b6a5b]">{Math.min(page, pageCount)}</strong> von {pageCount}
+            <div className="text-sm text-[#51625e] font-medium">
+              Seite <strong className="text-[#2b6a5b] text-lg">{Math.min(page, pageCount)}</strong> von {pageCount}
             </div>
 
             <button
-              className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#e7ecea] text-[#51625e] hover:bg-[#d4ddd9] disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#e7ecea] text-[#51625e] hover:bg-[#d4ddd9] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 hover:shadow-md"
               disabled={page >= pageCount}
               onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
             >
@@ -413,12 +431,13 @@ export default function HomeworkList() {
               state: { openHomeworkChat: true },
             })
           }
-          className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-[#2b6a5b] text-white shadow-lg
-                 flex items-center justify-center hover:bg-[#1f4f43] transition-colors duration-200
-                 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2b6a5b] z-50"
+          className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-[#2b6a5b] text-white shadow-xl
+                 flex items-center justify-center hover:bg-[#1f4f43] transition-all duration-200
+                 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2b6a5b] z-50
+                 hover:shadow-2xl hover:scale-105 transform"
           aria-label="Neue Aufgabe scannen"
         >
-          <PlusOutlined className="text-xl" />
+          <PlusOutlined className="text-2xl" />
         </button>
       </section>
 

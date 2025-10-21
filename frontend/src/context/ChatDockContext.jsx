@@ -342,17 +342,18 @@ export function ChatDockProvider({ children }) {
       try {
         const fd = new FormData();
         fd.append("file", snapshot.file, snapshot.fileName || "upload");
-        if (snapshot.userId) fd.append("userId", snapshot.userId);
+        // Backend gets userId from auth token, not form data
 
         const { data } = await api.post("ai/upload", fd, {
           headers: { "Content-Type": "multipart/form-data" },
+          withCredentials: true, // Include auth headers
         });
 
         const extracted =
           data?.scan?.raw_text ??
           data?.parsed?.raw_text ??
           data?.extractedText ??
-          "";
+          (data?.aiText || ""); // Fallback to raw AI response
         const qa =
           (Array.isArray(data?.parsed?.questions) && data.parsed.questions) ||
           (Array.isArray(data?.qa) && data.qa) ||
@@ -370,13 +371,14 @@ export function ChatDockProvider({ children }) {
             newMessages[loadingIndex] = fmt("✅ Analyse abgeschlossen!", "agent");
           }
           
-          // Add analysis results
+          // Add analysis results - be more flexible about what we show
           if (extracted || qa.length > 0) {
             newMessages.push(fmt({ extractedText: extracted, qa }, "agent", "table"));
             // Add follow-up message to encourage interaction
             newMessages.push(fmt("Wie kann ich dir bei deiner Aufgabe helfen? Du kannst mir Fragen stellen oder um Erklärungen bitten!", "agent"));
           } else {
-            newMessages.push(fmt("Ich habe das Dokument erhalten, konnte aber nichts Brauchbares extrahieren. Bitte versuche es mit einem anderen Bild oder beschreibe mir, womit ich dir helfen kann.", "agent"));
+            // Even if no structured data, show that we got the image and offer help
+            newMessages.push(fmt("Ich habe dein Bild erhalten! Du kannst mir trotzdem Fragen stellen. Beschreibe mir einfach, womit ich dir helfen kann.", "agent"));
           }
           
           return newMessages;
@@ -394,13 +396,50 @@ export function ChatDockProvider({ children }) {
               conversationId: conversationId ?? s.task?.conversationId,
             },
           }));
+          
+          // Store conversation ID in localStorage for persistence
+          if (conversationId) {
+            try {
+              const convKey = `kibundo.convId.${snapshot.mode}.${snapshot.taskId}::u:${snapshot.userId}`;
+              localStorage.setItem(convKey, conversationId);
+              console.log("💾 Stored conversation ID:", conversationId, "for task:", snapshot.taskId);
+            } catch (e) {
+              console.warn("Failed to store conversation ID:", e);
+            }
+          }
         }
       } catch (err) {
-        console.error(err);
-        setChatMessages(snapshot.mode, snapshot.taskId, (prev) => [
-          ...prev,
-          fmt("Sorry, die Bildanalyse ist fehlgeschlagen. Bitte versuche es erneut.", "system"),
-        ]);
+        console.error("Upload/Analyse failed:", err);
+        
+        // Handle specific backend errors
+        const errorMessage = err?.response?.data?.message || err?.message || "Unbekannter Fehler";
+        const isImageUrlError = errorMessage.includes("image_url") || errorMessage.includes("Invalid type");
+        
+        let userMessage;
+        if (isImageUrlError) {
+          userMessage = "Das Bild konnte nicht automatisch analysiert werden. Du kannst mir trotzdem Fragen stellen! Beschreibe mir einfach, was du für Hilfe brauchst.";
+        } else {
+          userMessage = `Die Bildanalyse ist fehlgeschlagen: ${errorMessage}. Bitte versuche es erneut.`;
+        }
+        
+        setChatMessages(snapshot.mode, snapshot.taskId, (prev) => {
+          const newMessages = [...prev];
+          
+          // Replace the loading message with error message
+          const loadingIndex = newMessages.findIndex(msg => 
+            msg.content === "Ich analysiere dein Bild …" && msg.from === "system"
+          );
+          if (loadingIndex !== -1) {
+            newMessages[loadingIndex] = fmt(userMessage, "agent");
+          } else {
+            newMessages.push(fmt(userMessage, "agent"));
+          }
+          
+          // Add helpful suggestion
+          newMessages.push(fmt("Du kannst mir Fragen zu deiner Aufgabe stellen, auch ohne Bildanalyse. Was möchtest du wissen?", "agent"));
+          
+          return newMessages;
+        });
       } finally {
         setState((s) => ({ ...s, analyzeOnOpen: false }));
         analyzingRef.current = false;

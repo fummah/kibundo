@@ -36,6 +36,22 @@ export const handleUpload = async (req, res) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
+    // Validate file
+    console.log("📁 File info:", {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path
+    });
+
+    // Check file size (additional validation)
+    const maxSize = 25 * 1024 * 1024; // 25MB
+    if (req.file.size > maxSize) {
+      return res.status(400).json({ 
+        error: `File too large. Maximum size is ${Math.round(maxSize / (1024 * 1024))}MB` 
+      });
+    }
+
     const filePath = req.file.path;
     const fileUrl = `/uploads/${req.file.filename}`; // relative URL for your frontend
     const mimeType = req.file.mimetype;
@@ -76,21 +92,39 @@ export const handleUpload = async (req, res) => {
     // ✅ AI instructions
     const systemPrompt = `
       You are a kind and patient homework helper for Grade 1 students.
+      
+      IMPORTANT: You must ALWAYS extract something from the image, even if it's just a description of what you see.
+      
       You must:
-      - Look at the uploaded homework (it may be a photo or PDF).
-      - Understand what the child was asked to do.
+      - Look carefully at the uploaded homework (it may be a photo or PDF).
+      - Extract ALL text you can see, even if it's handwritten or unclear.
+      - Identify any math problems, questions, or tasks.
       - Give very simple, clear answers a 6-year-old can understand.
       - Encourage and motivate the child with kindness.
+      
+      If you see ANY text, numbers, or problems, extract them. Even if you can't solve them perfectly, describe what you see.
 
-      Return JSON in this format:
+      IMPORTANT: Return ONLY valid JSON, no markdown formatting, no code blocks.
+      
+      Return JSON in this EXACT format:
       {
+        "raw_text": "All text you can see in the image",
         "questions": [
           { "text": "Question text", "answer": "Simple, happy answer." }
         ]
       }
+      
+      If you cannot see any text at all, return:
+      {
+        "raw_text": "I can see an image but the text is not clear enough to read. Please try taking a clearer photo or describe what you need help with.",
+        "questions": []
+      }
+      
+      Do NOT wrap the JSON in code blocks. Return pure JSON only.
     `;
 
     // ✅ Send image/PDF to ChatGPT (gpt-4o supports both)
+    console.log("🤖 Sending to OpenAI for analysis...");
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
@@ -99,7 +133,7 @@ export const handleUpload = async (req, res) => {
           role: "user",
           content: [
             { type: "text", text: "Please scan and answer this homework in Grade 1 language." },
-            { type: "image_url", image_url: `data:${mimeType};base64,${fileBase64}` },
+            { type: "image_url", image_url: { url: `data:${mimeType};base64,${fileBase64}` } },
           ],
         },
       ],
@@ -107,13 +141,34 @@ export const handleUpload = async (req, res) => {
     });
 
     const aiText = completion.choices[0].message.content;
+    console.log("✅ OpenAI response received:", aiText?.substring(0, 200) + "...");
 
     // ✅ Try parsing AI response
     let parsed = null;
     try {
-      parsed = JSON.parse(aiText);
-    } catch {
-      console.warn("⚠️ AI output not valid JSON. Storing raw text instead.");
+      // Handle markdown-wrapped JSON (```json ... ```)
+      let jsonText = aiText.trim();
+      if (jsonText.startsWith('```json')) {
+        jsonText = jsonText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (jsonText.startsWith('```')) {
+        jsonText = jsonText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      parsed = JSON.parse(jsonText);
+      console.log("✅ Successfully parsed AI JSON response");
+    } catch (parseError) {
+      console.warn("⚠️ AI output not valid JSON. Storing raw text instead.", parseError.message);
+      console.log("Raw AI response:", aiText);
+    }
+
+    // ✅ Update scan record with extracted text
+    const extractedText = parsed?.raw_text || aiText || "";
+    if (extractedText) {
+      await pool.query(
+        `UPDATE homework_scans SET raw_text = $1 WHERE id = $2`,
+        [extractedText, scan.id]
+      );
+      console.log("✅ Updated scan record with extracted text:", extractedText.substring(0, 100) + "...");
     }
 
     // ✅ Store generated answers
@@ -140,6 +195,35 @@ export const handleUpload = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Upload error:", err);
-    res.status(500).json({ error: err.message });
+    
+    // Handle specific error types
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ 
+        error: "File too large. Maximum size is 25MB." 
+      });
+    }
+    
+    if (err.message?.includes('not supported')) {
+      return res.status(400).json({ 
+        error: err.message 
+      });
+    }
+    
+    if (err.status === 400 && err.message?.includes('image_url')) {
+      return res.status(500).json({ 
+        error: "Image processing failed. Please try with a different image format (JPEG, PNG, or PDF)." 
+      });
+    }
+    
+    if (err.status === 429) {
+      return res.status(503).json({ 
+        error: "Service temporarily unavailable. Please try again in a few moments." 
+      });
+    }
+    
+    // Generic error response
+    res.status(500).json({ 
+      error: err.message || "An unexpected error occurred while processing your image. Please try again." 
+    });
   }
 };

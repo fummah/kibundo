@@ -1,6 +1,5 @@
 // src/api/axios.js
 import axios from "axios";
-import { message } from "antd";
 
 /* ----------------------------- base URL ----------------------------- */
 /**
@@ -60,7 +59,7 @@ const AUTH_DEBUG = String(import.meta?.env?.VITE_AUTH_DEBUG || "on").toLowerCase
 /* ---------------------------- axios instance ------------------------ */
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 20000,
+  timeout: 60000, // Increased to 60 seconds for uploads
   withCredentials: AUTH_MODE === "cookie",
   headers: {
     Accept: "application/json",
@@ -111,8 +110,8 @@ const normalizePath = (u = "") => {
 };
 
 const toastOnce = (status, url, content) => {
-  const key = `err:${status}:${normalizePath(url)}`;
-  message.open({ key, type: "error", content, duration: 3 });
+  // Toast functionality removed - let components handle their own messages
+  console.warn(`API Error ${status}: ${content}`);
 };
 
 const readAdminToken = () => {
@@ -273,7 +272,7 @@ api.interceptors.response.use(
 
     if (!error.response) {
       if (meta.toastNetwork !== false) {
-        message.error("Network error. Please check your connection.");
+        console.warn("Network error. Please check your connection.");
       }
       return Promise.reject(error);
     }

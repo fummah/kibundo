@@ -70,6 +70,16 @@ const mergeById = (serverMessages = [], localMessages = []) => {
     // Key 3: Simplified content key for exact matches
     keys.push(`simple:${from}|${content}`);
     
+    // Key 4: Student-specific key for better matching
+    if (from === "student") {
+      keys.push(`student:${content}`);
+    }
+    
+    // Key 5: Timestamp-based key for very recent messages
+    if (m?.timestamp) {
+      keys.push(`time:${from}|${content}|${new Date(m.timestamp).getTime()}`);
+    }
+    
     // Return the first available key
     return keys[0];
   };
@@ -78,11 +88,19 @@ const mergeById = (serverMessages = [], localMessages = []) => {
     const content = String(m?.content || "").trim().toLowerCase();
     const from = (m?.from ?? m?.sender ?? "agent").toLowerCase();
     
+    // For student messages, be more aggressive about matching by content
+    // since they often don't have IDs from the server initially
+    const isStudentMessage = from === "student";
+    
     // Check against all possible keys
     const keys = [
       m?.id ? `id:${m.id}` : null,
       `content:text|${from}|${content}`,
-      `simple:${from}|${content}`
+      `simple:${from}|${content}`,
+      // For student messages, also check without type prefix for better matching
+      isStudentMessage ? `student:${content}` : null,
+      // Add timestamp-based key for very recent messages
+      m?.timestamp ? `time:${from}|${content}|${new Date(m.timestamp).getTime()}` : null
     ].filter(Boolean);
     
     return keys.some(key => seen.has(key));
@@ -98,7 +116,8 @@ const mergeById = (serverMessages = [], localMessages = []) => {
           content: typeof m.content === 'string' ? m.content.substring(0, 50) + "..." : String(m.content || ""),
           from: m.from,
           id: m.id,
-          timestamp: m.timestamp
+          timestamp: m.timestamp,
+          pending: m.pending
         });
         continue;
       }
@@ -109,11 +128,28 @@ const mergeById = (serverMessages = [], localMessages = []) => {
     }
   };
 
-  // priority: server then local
+  // priority: server messages first (they have real IDs and timestamps)
+  // then local messages (optimistic messages should be filtered out if server equivalent exists)
   pushUnique(serverMessages);
   pushUnique(localMessages);
-
-  return out.sort(
+  
+  // Final cleanup: remove any remaining duplicates by content for student messages
+  const finalDedup = [];
+  const studentContentSeen = new Set();
+  
+  for (const msg of out) {
+    if (msg.from === "student") {
+      const contentKey = typeof msg.content === 'string' ? msg.content.trim().toLowerCase() : String(msg.content || "").trim().toLowerCase();
+      if (contentKey && studentContentSeen.has(contentKey)) {
+        console.log("🔍 [mergeById] Final cleanup - removing duplicate student message:", contentKey.substring(0, 30));
+        continue;
+      }
+      if (contentKey) studentContentSeen.add(contentKey);
+    }
+    finalDedup.push(msg);
+  }
+  
+  return finalDedup.sort(
     (a, b) => new Date(a?.timestamp || 0) - new Date(b?.timestamp || 0)
   );
 };
@@ -175,8 +211,23 @@ export default function HomeworkChat({
       return null;
     }
   });
+  
+  // Update conversationId when dockState changes
+  useEffect(() => {
+    if (dockState?.task?.conversationId) {
+      setConversationId(dockState.task.conversationId);
+    }
+  }, [dockState?.task?.conversationId]);
 
   const [scanId, setScanId] = useState(() => dockState?.task?.scanId ?? null);
+  
+  // Update scanId when dockState changes
+  useEffect(() => {
+    if (dockState?.task?.scanId) {
+      setScanId(dockState.task.scanId);
+    }
+  }, [dockState?.task?.scanId]);
+  
   const [backendMessages, setBackendMessages] = useState([]);
   const [loadingBackendMessages, setLoadingBackendMessages] = useState(false);
 
@@ -186,7 +237,9 @@ export default function HomeworkChat({
     
     setLoadingBackendMessages(true);
     try {
-      const response = await api.get(`/conversations/${convId}/messages`);
+      const response = await api.get(`ai/conversations/${convId}/messages`, {
+        withCredentials: true,
+      });
       if (response?.data && Array.isArray(response.data)) {
         const formattedMessages = response.data.map(msg => formatMessage(
           msg.content || "",
@@ -206,6 +259,13 @@ export default function HomeworkChat({
       setLoadingBackendMessages(false);
     }
   }, [loadingBackendMessages]);
+
+  // Fetch backend messages when conversationId is available
+  useEffect(() => {
+    if (conversationId) {
+      fetchBackendMessages(conversationId);
+    }
+  }, [conversationId, fetchBackendMessages]);
 
   useEffect(() => {
     if (scopedTaskKey !== stableTaskIdRef.current) {
@@ -408,7 +468,11 @@ export default function HomeworkChat({
       formatMessage(
         m?.content ?? "",
         (m?.sender || "agent").toLowerCase() === "student" ? "student" : "agent",
-        "text"
+        "text",
+        { 
+          id: m.id,
+          timestamp: m.created_at || m.timestamp 
+        }
       )
     );
     const seen = new Set();
@@ -471,7 +535,9 @@ export default function HomeworkChat({
 
         let resp;
         try {
-          resp = await api.post(firstUrl, { message: t, scanId });
+          resp = await api.post(firstUrl, { message: t, scanId }, {
+            withCredentials: true,
+          });
         } catch (err) {
           const code = err?.response?.status;
           if (code === 404) {
@@ -481,6 +547,8 @@ export default function HomeworkChat({
               mode: "homework",
               scanId,
               conversationId,
+            }, {
+              withCredentials: true,
             });
             updateMessages((m) => [
               ...m.filter((x) => !x?.pending),
@@ -489,7 +557,9 @@ export default function HomeworkChat({
             return;
           }
           if (conversationId && (code === 400 || code === 404)) {
-            resp = await api.post(`ai/conversations/message`, { message: t, scanId });
+            resp = await api.post(`ai/conversations/message`, { message: t, scanId }, {
+              withCredentials: true,
+            });
           } else {
             throw err;
           }
@@ -506,7 +576,14 @@ export default function HomeworkChat({
           const serverMessages = mapServerToInternal(r2.data);
           updateMessages((current) => {
             const withoutPending = current.filter((m) => !m?.pending);
-            return serverMessages.length > 0 ? serverMessages : withoutPending;
+            console.log("🔍 [HomeworkChat] Before merge - Local:", withoutPending.length, "Server:", serverMessages.length);
+            console.log("🔍 [HomeworkChat] Local messages:", withoutPending.map(m => ({ from: m.from, content: typeof m.content === 'string' ? m.content.substring(0, 30) : String(m.content || ""), pending: m.pending })));
+            console.log("🔍 [HomeworkChat] Server messages:", serverMessages.map(m => ({ from: m.from, content: typeof m.content === 'string' ? m.content.substring(0, 30) : String(m.content || ""), id: m.id })));
+            
+            // Merge server messages with local messages to avoid duplicates
+            const merged = mergeById(serverMessages, withoutPending);
+            console.log("🔍 [HomeworkChat] Merged result:", merged.length, "messages");
+            return merged;
           });
         } else if (j?.answer) {
           updateMessages((current) => [

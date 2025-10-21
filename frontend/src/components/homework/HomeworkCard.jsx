@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   CheckOutlined,
   CalculatorOutlined,
@@ -7,13 +7,14 @@ import {
   ScissorOutlined,
   ExperimentOutlined,
   QuestionCircleOutlined,
+  DeleteOutlined,
 } from "@ant-design/icons";
 
 // Subject visual meta
 const SUBJECTS = {
-  Mathe: { color: "#bfe3ff", icon: "🔢" },
-  Deutsch: { color: "#e6f6c9", icon: "📗" },
-  Sonstiges: { color: "#ffe2e0", icon: "🧩" },
+  Mathe: { color: "#ff8a3d", icon: "🔢" }, // Orange
+  Deutsch: { color: "#3b82f6", icon: "📗" }, // Blue
+  Sonstiges: { color: "#10b981", icon: "🧩" }, // Green
 };
 
 // Choose icon by what/subject text
@@ -74,96 +75,96 @@ const HomeworkCard = ({
   done,
   createdAt,
   onOpen,
+  onEdit,
+  onDelete,
+  onMarkDone,
 }) => {
-  const meta = SUBJECTS[subject] || { color: "#eef0f3", icon: "📚" };
+  const [showActions, setShowActions] = useState(false);
+  const meta = SUBJECTS[subject] || { color: "#ff8a3d", icon: "📚" };
   const scanDate = formatScanDate(createdAt);
+
+  const handleCardClick = () => {
+    setShowActions(!showActions);
+  };
+
+  const handleActionClick = (e, action) => {
+    e.stopPropagation();
+    if (action === 'edit') onEdit?.();
+    if (action === 'delete') onDelete?.();
+    if (action === 'mark') onMarkDone?.();
+  };
+
+  // Format due date to match the style (Mi. 10.08.)
+  const formatDueDate = (dateStr) => {
+    if (!dateStr) return null;
+    try {
+      const date = new Date(dateStr);
+      const days = ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'];
+      const dayName = days[date.getDay()];
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      return `${dayName} ${day}.${month}.`;
+    } catch {
+      return null;
+    }
+  };
 
   return (
     <div
-      className="group bg-white rounded-xl border-2 border-gray-200 hover:border-[#2b6a5b] hover:shadow-lg transition-all duration-300 cursor-pointer overflow-hidden"
-      onClick={onOpen}
-      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onOpen?.()}
+      className="relative w-full max-w-xs mx-auto rounded-xl p-6 cursor-pointer transition-all duration-300 hover:shadow-lg"
+      style={{ backgroundColor: meta.color }}
+      onClick={handleCardClick}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleCardClick()}
       role="button"
       tabIndex={0}
-      aria-label={`Aufgabe öffnen: ${subject || "Sonstiges"} – ${what || ""}`}
+      aria-label={`Aufgabe: ${subject || "Sonstiges"} – ${what || ""}`}
     >
-      {/* Header with subject and status */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-100">
-        <div className="flex items-center gap-3">
-          <div
-            className="flex items-center gap-2 px-3 py-2 rounded-lg"
-            style={{ backgroundColor: meta.color }}
+      {/* Top Section - Icon */}
+      <div className="flex justify-center mb-4">
+        <div className="w-12 h-12 bg-white rounded-full border border-gray-300 flex items-center justify-center">
+          <div className="flex flex-wrap justify-center items-center w-8 h-8 text-xs font-bold">
+            <span className="text-green-600">1</span>
+            <span className="text-blue-600">2</span>
+            <span className="text-red-600">3</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Middle Section - Content */}
+      <div className="text-center text-white mb-6">
+        <h3 className="text-xl font-bold mb-2">{subject || "Sonstiges"}</h3>
+        <p className="text-sm mb-2">{what || "Aufgabe"}</p>
+        {due && (
+          <p className="text-sm">{formatDueDate(due)}</p>
+        )}
+      </div>
+
+      {/* Bottom Section - Action Buttons */}
+      {showActions && (
+        <div className="flex justify-center gap-4">
+          <button
+            onClick={(e) => handleActionClick(e, 'edit')}
+            className="w-10 h-10 bg-white rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50 transition-colors"
+            aria-label="Bearbeiten"
           >
-            <span className="text-[16px]" aria-hidden>
-              {meta.icon}
-            </span>
-            <span className="font-semibold text-[#2b2b2b] text-sm">
-              {subject || "Sonstiges"}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <WhatIcon what={what} subject={subject} />
-            <span className="text-sm text-gray-600 font-medium">{what}</span>
-          </div>
+            <EditOutlined style={{ color: meta.color }} className="text-lg" />
+          </button>
+          <button
+            onClick={(e) => handleActionClick(e, 'delete')}
+            className="w-10 h-10 bg-white rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50 transition-colors"
+            aria-label="Löschen"
+          >
+            <DeleteOutlined style={{ color: meta.color }} className="text-lg" />
+          </button>
+          <button
+            onClick={(e) => handleActionClick(e, 'mark')}
+            className="w-10 h-10 bg-white rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-50 transition-colors"
+            aria-label={done ? "Als offen markieren" : "Als erledigt markieren"}
+          >
+            <CheckOutlined style={{ color: meta.color }} className="text-lg" />
+          </button>
         </div>
-        
-        {/* Status indicator */}
-        <div className="flex items-center gap-2">
-          {done ? (
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-grid place-items-center w-6 h-6 rounded-full"
-                style={{ backgroundColor: "#ff8a3d", color: "#fff" }}
-                aria-label="fertig"
-                title="fertig"
-              >
-                <CheckOutlined style={{ fontSize: 12 }} />
-              </span>
-              <span className="text-xs text-green-600 font-medium">Fertig</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-grid place-items-center w-6 h-6 rounded-full bg-[#e8efe9]"
-                title="offen"
-                aria-label="offen"
-              />
-              <span className="text-xs text-orange-600 font-medium">Offen</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="p-4">
-        <div className="mb-3">
-          <h3 className="text-sm font-medium text-gray-700 mb-1">Beschreibung</h3>
-          <p className="text-sm text-[#5c6b6a] line-clamp-2">
-            {description || "—"}
-          </p>
-        </div>
-
-        {/* Footer with dates */}
-        <div className="flex items-center justify-between text-xs text-gray-500">
-          <div className="flex items-center gap-4">
-            {due && (
-              <div className="flex items-center gap-1">
-                <span className="font-medium">Fällig:</span>
-                <span className="inline-block bg-[#e9f2ef] text-[#2b6a5b] px-2 py-1 rounded-full font-semibold">
-                  {due}
-                </span>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="font-medium">Gescannt:</span>
-            <span className="text-[#667b76]">{scanDate}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Hover overlay effect */}
-      <div className="absolute inset-0 bg-gradient-to-r from-[#2b6a5b]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+      )}
     </div>
   );
 };

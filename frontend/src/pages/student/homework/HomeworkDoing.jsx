@@ -114,12 +114,22 @@ export default function HomeworkDoing() {
   const uploadWithApi = async (file) => {
     const fd = new FormData();
     fd.append("file", file, file.name);
-    // Do NOT send userId; server infers from auth (bearer token)
+    // Backend expects auth token in header, not userId in form data
     const { data } = await api.post("ai/upload", fd, {
-      headers: { "Content-Type": "multipart/form-data" },
-      meta: { forceAuthHeader: true },
+      headers: { 
+        "Content-Type": "multipart/form-data",
+        // Auth token will be automatically added by axios interceptor
+      },
+      withCredentials: true, // Include cookies/auth headers
     });
-    console.log(data);
+    
+    console.log("📤 Upload response:", data);
+    
+    // Backend returns: { success, message, fileUrl, scan, parsed, aiText, conversationId }
+    if (!data.success) {
+      throw new Error(data.message || "Upload failed");
+    }
+    
     return data;
   };
 
@@ -185,16 +195,53 @@ export default function HomeworkDoing() {
           e?.response?.data?.error ||
           e?.message ||
           "Unbekannter Fehler";
+        
+        // Handle specific error types
+        const isImageUrlError = serverMsg.includes("image_url") || serverMsg.includes("Invalid type");
+        const isTimeoutError = serverMsg.includes("timeout") || e?.code === "ECONNABORTED";
+        const isNetworkError = !e?.response || e?.message?.includes("Network Error");
+        
+        let userMessage;
+        if (isTimeoutError) {
+          userMessage = "Das Bild ist zu groß oder die Verbindung ist langsam. Bitte versuche es mit einem kleineren Bild oder warte einen Moment und versuche es erneut.";
+        } else if (isNetworkError) {
+          userMessage = "Netzwerkfehler. Bitte überprüfe deine Internetverbindung und versuche es erneut.";
+        } else if (isImageUrlError) {
+          userMessage = "Das Bild konnte nicht automatisch analysiert werden. Du kannst mir trotzdem Fragen stellen! Beschreibe mir einfach, was du für Hilfe brauchst.";
+        } else {
+          userMessage = `Analyse fehlgeschlagen (${status ?? "?"}). ${serverMsg}`;
+        }
+        
         if (loadingMsg) {
           replaceMessageInChat(mode, scopedKey, loadingMsg.id, () =>
-            fmt(
-              `Analyse fehlgeschlagen (${status ?? "?"}). ${serverMsg}`,
-              "agent"
-            )
+            fmt(userMessage, "agent")
           );
         }
+        
+        // Add helpful follow-up message for image errors
+        if (isImageUrlError) {
+          setTimeout(() => {
+            setChatMessages(mode, scopedKey, (prev) => [
+              ...prev,
+              fmt("Du kannst mir Fragen zu deiner Aufgabe stellen, auch ohne Bildanalyse. Was möchtest du wissen?", "agent")
+            ]);
+          }, 1000);
+        }
+        
         console.error("Upload/Analyse failed (HomeworkDoing)", status, serverMsg, e?.response?.data);
-        antdMessage.error(`Upload/Analyse fehlgeschlagen: ${serverMsg}`);
+        
+        let errorDisplayMsg;
+        if (isTimeoutError) {
+          errorDisplayMsg = "Upload-Timeout - versuche ein kleineres Bild";
+        } else if (isNetworkError) {
+          errorDisplayMsg = "Netzwerkfehler - überprüfe deine Verbindung";
+        } else if (isImageUrlError) {
+          errorDisplayMsg = "Bildformat-Problem - aber Chat funktioniert trotzdem!";
+        } else {
+          errorDisplayMsg = serverMsg;
+        }
+        
+        antdMessage.error(`Upload/Analyse fehlgeschlagen: ${errorDisplayMsg}`);
       } finally {
         setUploading(false); // hide overlay; chat keeps status bubble until result
       }
@@ -202,7 +249,7 @@ export default function HomeworkDoing() {
 
     // Build/update the task object
     // Extract information from scanData if available
-    const extractedText = scanData?.scan?.raw_text ?? scanData?.extractedText ?? "";
+    const extractedText = scanData?.scan?.raw_text ?? scanData?.extractedText ?? (scanData?.aiText || "");
     const questions = Array.isArray(scanData?.parsed?.questions) 
       ? scanData.parsed.questions 
       : Array.isArray(scanData?.qa) ? scanData.qa : [];

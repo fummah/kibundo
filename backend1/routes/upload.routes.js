@@ -10,7 +10,25 @@ const router = express.Router();
 const upload = multer({
   dest: "uploads/",
   limits: {
-    fileSize: 25 * 1024 * 1024 // 25 MB
+    fileSize: 25 * 1024 * 1024, // 25 MB
+    files: 1
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept common image formats and PDFs
+    const allowedTypes = [
+      'image/jpeg',
+      'image/jpg', 
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/pdf'
+    ];
+    
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type ${file.mimetype} not supported. Please upload JPEG, PNG, GIF, WebP, or PDF files only.`), false);
+    }
   }
 });
 

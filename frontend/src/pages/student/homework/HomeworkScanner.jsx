@@ -38,10 +38,11 @@ export default function HomeworkScanner({ userId }) {
       // ---- 1) upload via Axios to your API base (no leading slash) ----
       const formData = new FormData();
       formData.append("file", file);
-      if (userId) formData.append("userId", userId);
+      // Backend gets userId from auth token, not form data
 
       const res = await api.post("ai/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" },
+        withCredentials: true, // Include auth headers
       });
 
       const data = res?.data || {};
@@ -138,7 +139,18 @@ export default function HomeworkScanner({ userId }) {
         e?.response?.data?.error ||
         e?.message ||
         "Upload/Analyse fehlgeschlagen.";
-      antdMessage?.error?.(status ? `${msg} (${status})` : msg);
+      
+      // Handle specific image_url error from backend
+      const isImageUrlError = msg.includes("image_url") || msg.includes("Invalid type");
+      
+      let userMessage;
+      if (isImageUrlError) {
+        userMessage = "Das Bild konnte nicht automatisch analysiert werden. Du kannst trotzdem mit dem Chat fortfahren und mir Fragen stellen!";
+      } else {
+        userMessage = status ? `${msg} (${status})` : msg;
+      }
+      
+      antdMessage?.error?.(userMessage);
     } finally {
       setLoading(false);
     }

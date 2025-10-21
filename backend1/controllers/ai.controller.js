@@ -7,7 +7,7 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 exports.chatWithAgent = async (req, res) => {
   try {
-    const { question,ai_agent,entities, class: classFilter, state } = req.body;
+    const { question,ai_agent,entities, class: classFilter, state, scanId, mode, conversationId } = req.body;
 
     // Build structured context
     let contextObj = {};
@@ -21,6 +21,25 @@ exports.chatWithAgent = async (req, res) => {
       {
         contextObj = await childBuildContext(req)
         trimmedContext = summarizeContextChild(contextObj);
+        
+        // Add specific homework context if scanId is provided
+        if (scanId && mode === "homework") {
+          console.log("🔍 AI Chat: Fetching homework context for scanId:", scanId, "mode:", mode);
+          try {
+            const { pool } = require('../config/db.js');
+            const scanResult = await pool.query(`SELECT raw_text FROM homework_scans WHERE id=$1`, [scanId]);
+            if (scanResult.rows[0]) {
+              trimmedContext.homework_context = `CURRENT HOMEWORK: ${scanResult.rows[0].raw_text}`;
+              console.log("✅ AI Chat: Homework context found:", scanResult.rows[0].raw_text?.substring(0, 100) + "...");
+            } else {
+              console.log("❌ AI Chat: No homework context found for scanId:", scanId);
+            }
+          } catch (error) {
+            console.warn('❌ AI Chat: Failed to fetch homework context for scanId:', scanId, error);
+          }
+        } else {
+          console.log("❌ AI Chat: No scanId or mode mismatch. scanId:", scanId, "mode:", mode);
+        }
       }
       else if(ai_agent == "TeacherAgent")
       {
@@ -44,8 +63,24 @@ exports.chatWithAgent = async (req, res) => {
     //console.log(contextObj);
    // return;
      
-    const systemContent = `You are an AI assistant for Kibundo Education System.
+    // Build system content with homework-specific instructions
+    let systemContent = `You are an AI assistant for Kibundo Education System.
 Context: ${JSON.stringify(trimmedContext)}`;
+
+    // Add homework-specific instructions if we have homework context
+    if (trimmedContext.homework_context) {
+      systemContent += `
+
+CRITICAL HOMEWORK INSTRUCTIONS:
+- You are helping a Grade 1 student with their homework
+- The homework content is provided in the context above
+- ALWAYS answer questions based on the specific homework content
+- Never say "I don't have homework context" or "no specific homework provided"
+- Always relate your answers to the scanned homework content
+- Provide step-by-step help for the specific problems shown in the homework
+- Use simple, encouraging language appropriate for a 6-year-old
+- If the student asks about something not in the homework, guide them back to the homework tasks`;
+    }
 
     const resp = await client.chat.completions.create({
       model: 'gpt-4o-mini',
