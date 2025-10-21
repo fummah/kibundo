@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { 
-  Card, 
-  Typography, 
-  Space, 
-  Button, 
-  Tabs, 
-  Table, 
-  Tag, 
-  List, 
-  Avatar, 
-  Dropdown, 
-  Grid, 
+import {
+  Card,
+  Typography,
+  Space,
+  Button,
+  Tabs,
+  Table,
+  Tag,
+  List,
+  Avatar,
+  Dropdown,
+  Grid,
   Spin,
   Tooltip,
   Upload,
@@ -23,35 +23,35 @@ import {
   Image,
   message,
   Divider,
-  Select
+  Select,
 } from "antd";
-import { 
-  ArrowLeftOutlined, 
-  EditOutlined, 
-  DeleteOutlined, 
-  ReloadOutlined, 
-  CheckCircleOutlined, 
-  StopOutlined, 
-  CloseCircleOutlined, 
-  PlusOutlined, 
-  UploadOutlined, 
-  InboxOutlined, 
-  MoreOutlined, 
-  PushpinOutlined, 
-  DownloadOutlined, 
-  SearchOutlined, 
-  FileOutlined, 
-  FilePdfOutlined, 
-  FileWordOutlined, 
-  FileExcelOutlined, 
-  FilePptOutlined, 
-  FileImageOutlined, 
-  FileTextOutlined, 
-  EyeOutlined, 
-  CommentOutlined, 
+import {
+  ArrowLeftOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  ReloadOutlined,
+  CheckCircleOutlined,
+  StopOutlined,
+  CloseCircleOutlined,
+  PlusOutlined,
+  UploadOutlined,
+  InboxOutlined,
+  MoreOutlined,
+  PushpinOutlined,
+  DownloadOutlined,
+  SearchOutlined,
+  FileOutlined,
+  FilePdfOutlined,
+  FileWordOutlined,
+  FileExcelOutlined,
+  FilePptOutlined,
+  FileImageOutlined,
+  FileTextOutlined,
+  EyeOutlined,
+  CommentOutlined,
   UserOutlined,
   SaveOutlined,
-  PaperClipOutlined
+  PaperClipOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import {
@@ -71,9 +71,12 @@ const { Text } = Typography;
 const { Dragger } = Upload;
 
 /* ---------------- helpers ---------------- */
-const dash = (v) => (v === undefined || v === null || String(v).trim() === "" ? "-" : v);
+const dash = (v) =>
+  v === undefined || v === null || String(v).trim() === "" ? "-" : v;
 const statusTag = (s) => (
-  <Tag color={s === "active" ? "green" : s === "suspended" ? "orange" : "red"}>{s || "-"}</Tag>
+  <Tag color={s === "active" ? "green" : s === "suspended" ? "orange" : "red"}>
+    {s || "-"}
+  </Tag>
 );
 const readPath = (obj, path) => {
   if (!obj) return undefined;
@@ -104,7 +107,9 @@ const getInitials = (e) => {
     e?.last_name ||
     (e?.name ? String(e.name).trim().split(/\s+/)[1] : "") ||
     "";
-  return `${first.charAt(0).toUpperCase() || ""}${last.charAt(0).toUpperCase() || ""}`;
+  return `${first.charAt(0).toUpperCase() || ""}${
+    last.charAt(0).toUpperCase() || ""
+  }`;
 };
 const relativeTime = (input) => {
   const d = input ? new Date(input) : null;
@@ -151,18 +156,25 @@ export default function EntityDetail({ cfg }) {
   const [messageApi, ctx] = message.useMessage();
   const screens = Grid.useBreakpoint();
 
+  // Create a unique ID generator that ensures uniqueness across renders
+  const uniqueIdGenerator = useRef(0);
+  const getUniqueId = (fieldName) => {
+    uniqueIdGenerator.current += 1;
+    return `${fieldName}-${id}-${uniqueIdGenerator.current}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  };
+
   const safeCfg = cfg || {};
   const entityKey = safeCfg.entityKey;
-  
+
   // Determine entity type from URL if not provided in config
   const getEntityTypeFromUrl = () => {
     const pathname = window.location.pathname;
-    if (pathname.includes('/admin/students/')) return 'students';
-    if (pathname.includes('/admin/parents/')) return 'parents';
-    if (pathname.includes('/admin/teachers/')) return 'teachers';
-    return entityKey || 'customers';
+    if (pathname.includes("/admin/students/")) return "students";
+    if (pathname.includes("/admin/parents/")) return "parents";
+    if (pathname.includes("/admin/teachers/")) return "teachers";
+    return entityKey || "customers";
   };
-  
+
   const currentEntityType = getEntityTypeFromUrl();
   const idField = safeCfg.idField || "id";
   const routeBase = safeCfg.routeBase || "";
@@ -176,7 +188,8 @@ export default function EntityDetail({ cfg }) {
   } = apiObj;
 
   const getPath = getPathFromCfg || (entityKey && REQUIRED_GET_PATH[entityKey]);
-  const removePath = removePathFromCfg || (entityKey && REQUIRED_REMOVE_PATH[entityKey]);
+  const removePath =
+    removePathFromCfg || (entityKey && REQUIRED_REMOVE_PATH[entityKey]);
 
   // Tab configs (hoisted)
   const commCfg = safeCfg?.tabs?.communication || {};
@@ -184,7 +197,9 @@ export default function EntityDetail({ cfg }) {
   const tasksCfg = safeCfg?.tabs?.tasks || {};
 
   // --- Prefill support (freeze once to avoid URL/tab-triggered recalculation) ---
-  const initialPrefillRef = useRef(safeCfg.initialEntity ?? location.state?.prefill ?? null);
+  const initialPrefillRef = useRef(
+    safeCfg.initialEntity ?? location.state?.prefill ?? null
+  );
   const rawPrefill = initialPrefillRef.current;
 
   const parsedPrefill = useMemo(() => {
@@ -204,7 +219,7 @@ export default function EntityDetail({ cfg }) {
   const [activeTab, setActiveTab] = useState("information");
   const [addCommentOpen, setAddCommentOpen] = useState(false);
   const [linkChildModalOpen, setLinkChildModalOpen] = useState(false);
-  
+
   // Track if initial load is done to prevent flicker
   const [initialLoadDone, setInitialLoadDone] = useState(!!parsedPrefill);
 
@@ -225,7 +240,10 @@ export default function EntityDetail({ cfg }) {
   const [docsLoading, setDocsLoading] = useState(false);
   const [docCommentMap, setDocCommentMap] = useState({});
   const docCommentLoadingId = useRef(null);
-  const [docCommentModal, setDocCommentModal] = useState({ open: false, doc: null });
+  const [docCommentModal, setDocCommentModal] = useState({
+    open: false,
+    doc: null,
+  });
   const prevEntityRef = useRef();
   const [docSearch, setDocSearch] = useState("");
   const [docType, setDocType] = useState("All");
@@ -237,15 +255,25 @@ export default function EntityDetail({ cfg }) {
   // Store load and messageApi in refs to provide stable access to custom tabs
   const loadRef = useRef(null);
   const messageApiRef = useRef(null);
-  
+
   // Create a stable context object for custom tabs
-  const tabContext = useMemo(() => ({
-    get reload() { return loadRef.current; },
-    get messageApi() { return messageApiRef.current; }
-  }), []);
+  const tabContext = useMemo(
+    () => ({
+      get reload() {
+        return loadRef.current;
+      },
+      get messageApi() {
+        return messageApiRef.current;
+      },
+    }),
+    []
+  );
 
   useEffect(() => {
-    if (parsedPrefill && JSON.stringify(parsedPrefill) !== JSON.stringify(prevEntityRef.current)) {
+    if (
+      parsedPrefill &&
+      JSON.stringify(parsedPrefill) !== JSON.stringify(prevEntityRef.current)
+    ) {
       setEntity(parsedPrefill);
       prevEntityRef.current = parsedPrefill;
     }
@@ -262,7 +290,7 @@ export default function EntityDetail({ cfg }) {
       setLoading(false);
       return;
     }
-    
+
     setLoading(true);
     try {
       let obj;
@@ -271,10 +299,10 @@ export default function EntityDetail({ cfg }) {
       } else {
         const { data } = await api.get(getPath(id), { withCredentials: true });
         const raw = data?.data ?? data ?? {};
-        obj = typeof apiObj.parseEntity === "function" ? apiObj.parseEntity(raw) : raw;
+        obj =
+          typeof apiObj.parseEntity === "function" ? apiObj.parseEntity(raw) : raw;
       }
 
-      // Functional update avoids stale closures and unnecessary state churn
       setEntity((prev) => {
         if (JSON.stringify(prev) !== JSON.stringify(obj)) return obj || {};
         return prev;
@@ -296,7 +324,7 @@ export default function EntityDetail({ cfg }) {
     } finally {
       setLoading(false);
     }
-  }, [id, getPath, apiObj, messageApi, idField]); // <-- removed `entity` from deps
+  }, [id, getPath, apiObj, messageApi, idField]);
 
   // Keep refs up to date
   useEffect(() => {
@@ -314,15 +342,17 @@ export default function EntityDetail({ cfg }) {
 
     setRelatedLoading(true);
     try {
-      // 1) Preferred: explicit listPath returning an array
       if (typeof listFn === "function") {
         const { data } = await api.get(listFn(id), { withCredentials: true });
-        const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        const list = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+          ? data
+          : [];
         setRelatedRows(list);
         return;
       }
 
-      // 2) Fallback: refetchPath + extractList to derive array from payload
       if (typeof refetchFn === "function") {
         const path = refetchFn(id);
         const { data } = await api.get(path, { withCredentials: true });
@@ -330,20 +360,22 @@ export default function EntityDetail({ cfg }) {
           const list = extract(data);
           setRelatedRows(Array.isArray(list) ? list : []);
         } else {
-          const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+          const list = Array.isArray(data?.data)
+            ? data.data
+            : Array.isArray(data)
+            ? data
+            : [];
           setRelatedRows(list);
         }
         return;
       }
 
-      // 3) Last resort: prefetch from current entity
       if (typeof rel.prefetchRowsFromEntity === "function" && entity) {
         const list = rel.prefetchRowsFromEntity(entity);
         setRelatedRows(Array.isArray(list) ? list : []);
         return;
       }
 
-      // If nothing configured, clear
       setRelatedRows([]);
     } catch {
       setRelatedRows([]);
@@ -352,7 +384,6 @@ export default function EntityDetail({ cfg }) {
     }
   }, [safeCfg?.tabs?.related, id, relatedListPath, entity]);
 
-  // Prefill related rows from entity when available
   useEffect(() => {
     const rel = safeCfg?.tabs?.related || {};
     if (!rel.enabled) return;
@@ -372,46 +403,45 @@ export default function EntityDetail({ cfg }) {
 
   /* --- Auto-generate portal credentials --- */
   const generatePassword = useCallback(() => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let password = '';
+    const chars =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+    let password = "";
     for (let i = 0; i < 12; i++) {
       password += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return password;
   }, []);
 
-  // Set form values when entity loads - with proper timing
   useEffect(() => {
     if (entity && infoForm && id) {
-      // Prepare all form values including email and other fields
       const formValues = {
         ...entity,
-        // Use backend username field for portal_login
-        portal_login: entity.username || entity.portal_login || (() => {
-          const firstName = entity.first_name || entity.user?.first_name || "";
-          const lastName = entity.last_name || entity.user?.last_name || "";
-          const entityId = entity.id || entity[idField];
-          
-          if (firstName && lastName && entityId) {
-            const firstTwo = firstName.substring(0, 2).toLowerCase();
-            const firstLetter = lastName.substring(0, 1).toLowerCase();
-            return `${firstTwo}${firstLetter}${entityId}`;
-          }
-          return '';
-        })(),
-        // Use backend plain_pass field for portal_password
-        portal_password: entity.plain_pass || entity.portal_password || "testpass1234",
+        portal_login:
+          entity.username ||
+          entity.portal_login ||
+          (() => {
+            const firstName =
+              entity.first_name || entity.user?.first_name || "";
+            const lastName = entity.last_name || entity.user?.last_name || "";
+            const entityId = entity.id || entity[idField];
+
+            if (firstName && lastName && entityId) {
+              const firstTwo = firstName.substring(0, 2).toLowerCase();
+              const firstLetter = lastName.substring(0, 1).toLowerCase();
+              return `${firstTwo}${firstLetter}${entityId}`;
+            }
+            return "";
+          })(),
+        portal_password:
+          entity.plain_pass || entity.portal_password || "testpass1234",
       };
-      
-      // Use setTimeout to ensure form is fully mounted
+
       setTimeout(() => {
         try {
           infoForm.setFieldsValue(formValues);
-        } catch (error) {
-        }
+        } catch (error) {}
       }, 100);
-      
-      // Update entity state with portal credentials if they were auto-generated
+
       const updates = {};
       if (!entity.portal_login && formValues.portal_login) {
         updates.portal_login = formValues.portal_login;
@@ -419,92 +449,111 @@ export default function EntityDetail({ cfg }) {
       if (!entity.portal_password) {
         updates.portal_password = formValues.portal_password;
       }
-      
+
       if (Object.keys(updates).length > 0) {
-        setEntity(prev => ({ ...prev, ...updates }));
-        
-        // Save to database automatically
+        setEntity((prev) => ({ ...prev, ...updates }));
         const saveToDb = async () => {
           try {
             if (typeof apiObj.updatePath === "function") {
-              await api.patch(apiObj.updatePath(id), updates, { withCredentials: true });
+              await api.patch(apiObj.updatePath(id), updates, {
+                withCredentials: true,
+              });
             }
-          } catch (error) {
-          }
+          } catch (error) {}
         };
-        
         saveToDb();
       }
     }
   }, [entity, infoForm, id, apiObj, idField]);
 
-  const handleFieldUpdate = useCallback(async (field) => {
-    if (!field.editable || savingField) return;
+  const handleFieldUpdate = useCallback(
+    async (field) => {
+      if (!field.editable || savingField) return;
 
-    setSavingField(true);
-    try {
-      const updateData = { [field.name]: fieldValue };
-      const updatePath = safeCfg.api?.updatePath || ((id) => `/${safeCfg.routeBase || "entities"}/${id}`);
-      await api.patch(updatePath(id), updateData, { withCredentials: true });
-      setEntity(prev => ({ ...prev, ...updateData }));
-      messageApi.success(`${field.label} updated successfully`);
-      setEditingField(null);
-    } catch (error) {
-      messageApi.error(`Failed to update ${field.label}`);
-    } finally {
-      setSavingField(false);
-    }
-  }, [fieldValue, id, messageApi, safeCfg.api?.updatePath, safeCfg.routeBase, savingField]);
+      setSavingField(true);
+      try {
+        const updateData = { [field.name]: fieldValue };
+        const updatePath =
+          safeCfg.api?.updatePath ||
+          ((id) => `/${safeCfg.routeBase || "entities"}/${id}`);
+        await api.patch(updatePath(id), updateData, { withCredentials: true });
+        setEntity((prev) => ({ ...prev, ...updateData }));
+        messageApi.success(`${field.label} updated successfully`);
+        setEditingField(null);
+      } catch (error) {
+        messageApi.error(`Failed to update ${field.label}`);
+      } finally {
+        setSavingField(false);
+      }
+    },
+    [
+      fieldValue,
+      id,
+      messageApi,
+      safeCfg.api?.updatePath,
+      safeCfg.routeBase,
+      savingField,
+    ]
+  );
 
-  const handleKeyPress = useCallback((e, field) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleFieldUpdate(field);
-    } else if (e.key === "Escape") {
-      setEditingField(null);
-    }
-  }, [handleFieldUpdate]);
+  const handleKeyPress = useCallback(
+    (e, field) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleFieldUpdate(field);
+      } else if (e.key === "Escape") {
+        setEditingField(null);
+      }
+    },
+    [handleFieldUpdate]
+  );
 
   const editableInfoFields = useMemo(() => {
     const configuredFields = (safeCfg.infoFields || [])
-      .filter(field => {
-        const name = Array.isArray(field.name) ? field.name.join(".") : field.name;
-        // Filter out portal fields from configured fields since we'll add them explicitly
-        return name !== "parent_id" && 
-               !name.includes("parent.id") && 
-               name !== "portal_login" && 
-               name !== "portal_password";
+      .filter((field) => {
+        const name = Array.isArray(field.name)
+          ? field.name.join(".")
+          : field.name;
+        return (
+          name !== "parent_id" &&
+          !name.includes("parent.id") &&
+          name !== "portal_login" &&
+          name !== "portal_password"
+        );
       })
-      .map(field => {
-        const name = Array.isArray(field.name) ? field.name.join(".") : field.name;
-        const isIp = ["ip", "ip_address", "ipAddress"].some(ip => 
+      .map((field) => {
+        const name = Array.isArray(field.name)
+          ? field.name.join(".")
+          : field.name;
+        const isIp = ["ip", "ip_address", "ipAddress"].some((ip) =>
           name.toLowerCase().includes(ip.toLowerCase())
         );
-        const isDateAdded = ["date_added", "created_at", "createdAt", "member_since"]
-          .some(dateField => name.toLowerCase().includes(dateField.toLowerCase()));
-        const isReadOnly = isIp || isDateAdded || name.toLowerCase().includes("id");
+        const isDateAdded = ["date_added", "created_at", "createdAt", "member_since"].some(
+          (dateField) => name.toLowerCase().includes(dateField.toLowerCase())
+        );
+        const isReadOnly =
+          isIp || isDateAdded || name.toLowerCase().includes("id");
 
         return {
           ...field,
           name,
           editable: !isReadOnly,
-          type: field.type || field.input || "text"
+          type: field.type || field.input || "text",
         };
       });
 
-    // Build base fields starting with ID
     const baseFields = [
       { name: idField, label: "ID", editable: false, type: "text" },
-      // Always add portal login below ID for students/parents
       { name: "portal_login", label: "Portal login", editable: true, type: "text" },
-      // Always add portal password below portal login
-      { name: "portal_password", label: "Portal password", editable: true, type: "password" },
+      {
+        name: "portal_password",
+        label: "Portal password",
+        editable: true,
+        type: "password",
+      },
     ];
 
-    return [
-      ...baseFields,
-      ...configuredFields,
-    ];
+    return [...baseFields, ...configuredFields];
   }, [safeCfg.infoFields, idField, entity, entityKey]);
 
   const saveInfo = async () => {
@@ -540,9 +589,17 @@ export default function EntityDetail({ cfg }) {
     if (!performancePath) return;
     setPerfLoading(true);
     try {
-      const path = typeof performancePath === "function" ? performancePath(id) : performancePath;
-      const { data } = await api.get(path, { params: { range: perfRange }, withCredentials: true });
-      const arr = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      const path =
+        typeof performancePath === "function" ? performancePath(id) : performancePath;
+      const { data } = await api.get(path, {
+        params: { range: perfRange },
+        withCredentials: true,
+      });
+      const arr = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data)
+        ? data
+        : [];
       const norm = arr.map((it, i) => ({
         label: it.label ?? it.date ?? it.month ?? `P${i + 1}`,
         value: Number(it.value ?? it.score ?? it.progress ?? 0),
@@ -562,7 +619,11 @@ export default function EntityDetail({ cfg }) {
     try {
       if (typeof tasksCfg.listPath === "function") {
         const { data } = await api.get(tasksCfg.listPath(id), { withCredentials: true });
-        const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        const list = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+          ? data
+          : [];
         setTasks(list);
       } else {
         setTasks([]);
@@ -577,7 +638,9 @@ export default function EntityDetail({ cfg }) {
   const createTask = async (payload) => {
     try {
       if (typeof tasksCfg.createPath === "function") {
-        const { data } = await api.post(tasksCfg.createPath(id), payload, { withCredentials: true });
+        const { data } = await api.post(tasksCfg.createPath(id), payload, {
+          withCredentials: true,
+        });
         const created = data?.data ?? data ?? payload;
         setTasks((prev) => [created, ...prev]);
       }
@@ -589,9 +652,13 @@ export default function EntityDetail({ cfg }) {
   const updateTask = async (taskId, patch) => {
     try {
       if (typeof tasksCfg.updatePath === "function") {
-        await api.patch(tasksCfg.updatePath(id, taskId), patch, { withCredentials: true });
+        await api.patch(tasksCfg.updatePath(id, taskId), patch, {
+          withCredentials: true,
+        });
       }
-      setTasks((prev) => prev.map((t) => (String(t.id) === String(taskId) ? { ...t, ...patch } : t)));
+      setTasks((prev) =>
+        prev.map((t) => (String(t.id) === String(taskId) ? { ...t, ...patch } : t))
+      );
     } catch {
       messageApi.error("Failed to update task");
     }
@@ -615,7 +682,11 @@ export default function EntityDetail({ cfg }) {
     try {
       if (typeof commCfg.listPath === "function") {
         const { data } = await api.get(commCfg.listPath(id), { withCredentials: true });
-        const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        const list = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+          ? data
+          : [];
         setComments(list);
       } else {
         setComments([]);
@@ -630,7 +701,9 @@ export default function EntityDetail({ cfg }) {
   const addComment = async (payload) => {
     try {
       if (typeof commCfg?.createPath === "function") {
-        const { data } = await api.post(commCfg.createPath(id), payload, { withCredentials: true });
+        const { data } = await api.post(commCfg.createPath(id), payload, {
+          withCredentials: true,
+        });
         const created = data?.data ?? data ?? payload;
         setComments((prev) => [created, ...prev]);
       }
@@ -647,7 +720,11 @@ export default function EntityDetail({ cfg }) {
     try {
       if (typeof docsCfg.listPath === "function") {
         const { data } = await api.get(docsCfg.listPath(id), { withCredentials: true });
-        const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        const list = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+          ? data
+          : [];
         setDocuments(list);
       } else {
         setDocuments([]);
@@ -669,7 +746,10 @@ export default function EntityDetail({ cfg }) {
           headers: { "Content-Type": "multipart/form-data" },
           withCredentials: true,
         });
-        const created = data?.data ?? data ?? { ...meta, title: meta?.title || fileObj?.name, id: `d${id}-${Date.now()}` };
+        const created =
+          data?.data ??
+          data ??
+          { ...meta, title: meta?.title || fileObj?.name, id: `d${id}-${Date.now()}` };
         setDocuments((prev) => [created, ...prev]);
       }
       messageApi.success("Document uploaded");
@@ -693,7 +773,9 @@ export default function EntityDetail({ cfg }) {
   const updateDocument = async (docId, payload) => {
     try {
       if (typeof docsCfg?.updatePath === "function") {
-        await api.patch(docsCfg.updatePath(id, docId), payload, { withCredentials: true });
+        await api.patch(docsCfg.updatePath(id, docId), payload, {
+          withCredentials: true,
+        });
       }
       setDocuments((prev) =>
         prev.map((d) => (String(d.id) === String(docId) ? { ...d, ...payload } : d))
@@ -704,44 +786,62 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  const loadDocComments = useCallback(async (doc) => {
-    if (!doc) return;
-    const currentDocId = doc.id;
-    docCommentLoadingId.current = currentDocId;
-    try {
-      let commentsList;
-      if (typeof docsCfg?.commentListPath === "function") {
-        const { data } = await api.get(docsCfg.commentListPath(id, currentDocId), { withCredentials: true });
-        commentsList = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-      } else {
-        commentsList = [];
+  const loadDocComments = useCallback(
+    async (doc) => {
+      if (!doc) return;
+      const currentDocId = doc.id;
+      docCommentLoadingId.current = currentDocId;
+      try {
+        let commentsList;
+        if (typeof docsCfg?.commentListPath === "function") {
+          const { data } = await api.get(docsCfg.commentListPath(id, currentDocId), {
+            withCredentials: true,
+          });
+          commentsList = Array.isArray(data?.data)
+            ? data.data
+            : Array.isArray(data)
+            ? data
+            : [];
+        } else {
+          commentsList = [];
+        }
+        if (docCommentLoadingId.current === currentDocId) {
+          setDocCommentMap((prev) => {
+            if (JSON.stringify(prev[currentDocId]) !== JSON.stringify(commentsList)) {
+              return { ...prev, [currentDocId]: commentsList };
+            }
+            return prev;
+          });
+        }
+      } catch (error) {
+        const fallbackComments = [];
+        if (docCommentLoadingId.current === currentDocId) {
+          setDocCommentMap((prev) => ({ ...prev, [currentDocId]: fallbackComments }));
+        }
+      } finally {
+        if (docCommentLoadingId.current === currentDocId) {
+          docCommentLoadingId.current = null;
+        }
       }
-      if (docCommentLoadingId.current === currentDocId) {
-        setDocCommentMap(prev => {
-          if (JSON.stringify(prev[currentDocId]) !== JSON.stringify(commentsList)) {
-            return { ...prev, [currentDocId]: commentsList };
-          }
-          return prev;
-        });
-      }
-    } catch (error) {
-      const fallbackComments = [];
-      if (docCommentLoadingId.current === currentDocId) {
-        setDocCommentMap(prev => ({ ...prev, [currentDocId]: fallbackComments }));
-      }
-    } finally {
-      if (docCommentLoadingId.current === currentDocId) {
-        docCommentLoadingId.current = null;
-      }
-    }
-  }, [id, docsCfg?.commentListPath]);
+    },
+    [id, docsCfg?.commentListPath]
+  );
 
   const addDocComment = async (doc, payload) => {
     if (!doc) return;
     try {
       if (typeof docsCfg?.commentCreatePath === "function") {
-        const { data } = await api.post(docsCfg.commentCreatePath(id, doc.id), payload, { withCredentials: true });
-        const created = data?.data ?? data ?? { ...payload, id: `dc-${doc.id}-${Date.now()}`, created_at: new Date().toISOString() };
+        const { data } = await api.post(docsCfg.commentCreatePath(id, doc.id), payload, {
+          withCredentials: true,
+        });
+        const created =
+          data?.data ??
+          data ??
+          {
+            ...payload,
+            id: `dc-${doc.id}-${Date.now()}`,
+            created_at: new Date().toISOString(),
+          };
         setDocCommentMap((m) => ({ ...m, [doc.id]: [created, ...(m[doc.id] || [])] }));
       }
       messageApi.success("Comment added");
@@ -750,7 +850,7 @@ export default function EntityDetail({ cfg }) {
     }
   };
 
-  // --- Effects: separate initial load from per-tab data loaders ---
+  // --- Effects: initial load + per-tab loaders ---
   useEffect(() => {
     load();
   }, [load]);
@@ -762,7 +862,10 @@ export default function EntityDetail({ cfg }) {
   }, [activeTab, performancePath, loadPerformance]);
 
   useEffect(() => {
-    if ((activeTab === "communication" || activeTab === "information") && commCfg?.enabled) {
+    if (
+      (activeTab === "communication" || activeTab === "information") &&
+      commCfg?.enabled
+    ) {
       loadComments();
     }
   }, [activeTab, commCfg?.enabled, loadComments]);
@@ -770,7 +873,9 @@ export default function EntityDetail({ cfg }) {
   /* -------- actions -------- */
   const goBack = () => navigate(-1);
   const goEdit = () =>
-    navigate(`${routeBase || location.pathname.replace(/\/[^/]+$/, "")}/${id}/edit`);
+    navigate(
+      `${routeBase || location.pathname.replace(/\/[^/]+$/, "")}/${id}/edit`
+    );
   const onDelete = () => {
     if (!removePath) return;
     Modal.confirm({
@@ -806,7 +911,11 @@ export default function EntityDetail({ cfg }) {
     if (!updateStatusPath) return;
     setSaving(true);
     try {
-      await api.patch(updateStatusPath(id), { status: next }, { withCredentials: true });
+      await api.patch(
+        updateStatusPath(id),
+        { status: next },
+        { withCredentials: true }
+      );
       messageApi.success(`Status → ${next}`);
       await load();
     } catch {
@@ -850,33 +959,55 @@ export default function EntityDetail({ cfg }) {
     }
 
     return cols;
-  }, [safeCfg.tabs, apiObj.unlinkStudentPath, id, loadRelated, messageApi, navigate]);
+  }, [
+    safeCfg.tabs,
+    apiObj.unlinkStudentPath,
+    id,
+    loadRelated,
+    messageApi,
+    navigate,
+  ]);
 
-  const handleTabChange = useCallback((key) => {
-    setActiveTab(key);
-    switch (key) {
-      case "related":
-        if (safeCfg?.tabs?.related?.enabled || relatedListPath) loadRelated();
-        break;
-      case "information":
-        if (performancePath) loadPerformance();
-        if (commCfg?.enabled) loadComments();
-        break;
-      case "tasks":
-        if (tasksCfg.enabled) loadTasks();
-        break;
-      case "documents":
-        if (docsCfg?.enabled) loadDocuments();
-        break;
-      default:
-        break;
-    }
-  }, [safeCfg?.tabs?.related?.enabled, relatedListPath, performancePath, commCfg?.enabled, tasksCfg.enabled, docsCfg?.enabled, loadRelated, loadPerformance, loadComments, loadTasks, loadDocuments]);
+  const handleTabChange = useCallback(
+    (key) => {
+      setActiveTab(key);
+      switch (key) {
+        case "related":
+          if (safeCfg?.tabs?.related?.enabled || relatedListPath) loadRelated();
+          break;
+        case "information":
+          if (performancePath) loadPerformance();
+          if (commCfg?.enabled) loadComments();
+          break;
+        case "tasks":
+          if (tasksCfg.enabled) loadTasks();
+          break;
+        case "documents":
+          if (docsCfg?.enabled) loadDocuments();
+          break;
+        default:
+          break;
+      }
+    },
+    [
+      safeCfg?.tabs?.related?.enabled,
+      relatedListPath,
+      performancePath,
+      commCfg?.enabled,
+      tasksCfg.enabled,
+      docsCfg?.enabled,
+      loadRelated,
+      loadPerformance,
+      loadComments,
+      loadTasks,
+      loadDocuments,
+    ]
+  );
 
   /* ---------- Cards/Tab Panels ---------- */
   const PerformanceCard = useMemo(() => {
     if (!performancePath) return null;
-    
+
     return (
       <Card
         className="!rounded-xl"
@@ -900,7 +1031,10 @@ export default function EntityDetail({ cfg }) {
       >
         <div style={{ width: "100%", height: 280 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={performance} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <AreaChart
+              data={performance}
+              margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+            >
               <defs>
                 <linearGradient id="perfGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#1677ff" stopOpacity={0.35} />
@@ -910,8 +1044,21 @@ export default function EntityDetail({ cfg }) {
               <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
               <XAxis dataKey="label" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} width={36} />
-              <RTooltip formatter={(v) => [v, "Score"]} labelStyle={{ fontWeight: 600 }} contentStyle={{ borderRadius: 8 }} />
-              <Area type="monotone" dataKey="value" stroke="#1677ff" fill="url(#perfGrad)" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }} isAnimationActive />
+              <RTooltip
+                formatter={(v) => [v, "Score"]}
+                labelStyle={{ fontWeight: 600 }}
+                contentStyle={{ borderRadius: 8 }}
+              />
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke="#1677ff"
+                fill="url(#perfGrad)"
+                strokeWidth={2}
+                dot={{ r: 2 }}
+                activeDot={{ r: 4 }}
+                isAnimationActive
+              />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -924,25 +1071,44 @@ export default function EntityDetail({ cfg }) {
 
   const CommunicationPanel = useMemo(() => {
     if (!commCfg?.enabled) return null;
-    
+
     return (
-      <Card className="!rounded-xl" title="Comments / Notes" styles={{ body: { padding: 0 } }}>
+      <Card
+        className="!rounded-xl"
+        title="Comments / Notes"
+        styles={{ body: { padding: 0 } }}
+      >
         <div style={{ maxHeight: 420, overflowY: "auto" }}>
           <List
             dataSource={comments}
             loading={commentsLoading}
-            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No notes yet." /> }}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="No notes yet."
+                />
+              ),
+            }}
             footer={<AddCommentForm onSubmit={addComment} />}
             renderItem={(item, idx) => (
               <div key={item.id || idx}>
                 <div className="px-4 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-[14px] font-medium">{dash(item.author)}</div>
+                      <div className="text-[14px] font-medium">
+                        {dash(item.author)}
+                      </div>
                       <div className="text-xs text-gray-500">
                         {relativeTime(item.created_at)}{" "}
                         <span className="opacity-70">
-                          ({fmtDate(item.created_at)} {item.created_at ? new Date(item.created_at).toTimeString().slice(0, 8) : ""})
+                          ({fmtDate(item.created_at)}{" "}
+                          {item.created_at
+                            ? new Date(item.created_at)
+                                .toTimeString()
+                                .slice(0, 8)
+                            : ""}
+                          )
                         </span>
                       </div>
                     </div>
@@ -950,14 +1116,24 @@ export default function EntityDetail({ cfg }) {
                       <PushpinOutlined />
                     </div>
                   </div>
-                  {item.text ? <div className="mt-1 text-[14px]">{typeof item.text === "string" ? item.text : dash(item.text)}</div> : null}
+                  {item.text ? (
+                    <div className="mt-1 text-[14px]">
+                      {typeof item.text === "string" ? item.text : dash(item.text)}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="border-t border-gray-200" />
               </div>
             )}
           />
         </div>
-        <Modal title="Add Comment" open={addCommentOpen} onCancel={() => setAddCommentOpen(false)} footer={null} destroyOnHidden>
+        <Modal
+          title="Add Comment"
+          open={addCommentOpen}
+          onCancel={() => setAddCommentOpen(false)}
+          footer={null}
+          destroyOnHidden
+        >
           <AddCommentForm
             onSubmit={async (vals) => {
               await addComment({ author: vals.author || "You", text: vals.text });
@@ -970,263 +1146,322 @@ export default function EntityDetail({ cfg }) {
   }, [commCfg?.enabled, comments, commentsLoading, addComment, addCommentOpen]);
 
   const informationTab = useMemo(() => {
-    // Prepare initial values with auto-populated portal credentials
     let portalLogin = entity?.username || entity?.portal_login;
-    
+
     if (!portalLogin) {
-      // Auto-generate username: first 2 letters of first name + first letter of surname + ID
       const firstName = entity?.first_name || entity?.user?.first_name || "";
       const lastName = entity?.last_name || entity?.user?.last_name || "";
       const entityId = entity?.id || entity?.[idField];
-      
+
       if (firstName && lastName && entityId) {
         const firstTwo = firstName.substring(0, 2).toLowerCase();
         const firstLetter = lastName.substring(0, 1).toLowerCase();
         portalLogin = `${firstTwo}${firstLetter}${entityId}`;
       }
     }
-    
+
     const formInitialValues = {
       ...entity,
-      portal_login: portalLogin || '',
-      portal_password: entity?.plain_pass || entity?.portal_password || "testpass1234",
+      portal_login: portalLogin || "",
+      portal_password:
+        entity?.plain_pass || entity?.portal_password || "testpass1234",
     };
-    
 
     return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Left Column - Main Information */}
-      <div className="lg:col-span-2">
-        <Card title="Main information" className="!rounded-xl">
-          <Form 
-            form={infoForm} 
-            layout="horizontal" 
-            initialValues={formInitialValues}
-            id={`entity-form-${id}-${Math.random().toString(36).substr(2, 9)}`}
-            preserve={false}
-            key={`form-${id}-${entity?.id || 'loading'}`}
-          >
-            <div className="space-y-3">
-              {editableInfoFields.map((field) => {
-                const isPassword = field.name?.toLowerCase().includes('password');
-                const isEmail = field.name?.toLowerCase().includes('email');
-                const isPhone = field.name?.toLowerCase().includes('phone');
-                const isStatus = field.name?.toLowerCase() === 'status';
-                
-                
-                return (
-                  <div key={field.name} className="flex items-center py-3 border-b border-gray-100 last:border-0">
-                    <div className="w-40 text-right pr-6 shrink-0">
-                      <Text strong className="text-gray-700 text-sm">{field.label}</Text>
-                    </div>
-                    <div className="flex-1">
-                      <Form.Item 
-                        name={field.name} 
-                        className="!mb-0"
-                        rules={field.required ? [{ required: true, message: `${field.label} is required` }] : []}
-                        id={`${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
-                      >
-                        {isPassword ? (
-                          <Input.Password 
-                            placeholder={field.label} 
-                            disabled={!field.editable}
-                            className="max-w-md flex-1"
-                            id={`input-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
-                            value={entity?.[field.name] || ''}
-                          />
-                        ) : isEmail ? (
-                          <div className="flex items-center gap-2">
-                            <Input 
-                              placeholder={field.label} 
-                              disabled={!field.editable}
-                              className="flex-1"
-                              id={`input-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
-                              value={entity?.[field.name] || ''}
-                              onChange={(e) => {
-                                const newValue = e.target.value;
-                                setEntity(prev => ({ ...prev, [field.name]: newValue }));
-                                infoForm.setFieldValue(field.name, newValue);
-                              }}
-                            />
-                            <Button 
-                              type="text" 
-                              icon={<span className="text-lg">✉</span>}
-                              className="!p-2 !h-8 !w-8 border border-gray-300 rounded"
-                            />
-                          </div>
-                        ) : isPhone ? (
-                          <div className="flex items-center gap-2">
-                            <Input 
-                              placeholder={field.label} 
-                              disabled={!field.editable}
-                              className="flex-1"
-                              id={`input-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
-                            />
-                            <Button 
-                              type="text" 
-                              icon={<span className="text-lg">📞</span>}
-                              className="!p-2 !h-8 !w-8 border border-gray-300 rounded"
-                            />
-                          </div>
-                        ) : isStatus ? (
-                          <div className="flex items-center gap-2">
-                            <Select 
-                              placeholder="Active" 
-                              defaultValue="active"
-                              options={field.options || [
-                                { value: 'active', label: 'Active' },
-                                { value: 'inactive', label: 'Inactive' },
-                                { value: 'suspended', label: 'Suspended' },
-                              ]} 
-                              disabled={!field.editable}
-                              className="flex-1"
-                              id={`select-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
-                            />
-                            <Button 
-                              type="text" 
-                              icon={<span className="text-lg">📅</span>}
-                              className="!p-2 !h-8 !w-8 border border-gray-300 rounded"
-                            />
-                          </div>
-                        ) : field.type === "select" ? (
-                          <Select 
-                            placeholder={`Select ${field.label}`} 
-                            options={field.options || []} 
-                            disabled={!field.editable}
-                            className="w-full"
-                            id={`select-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
-                          />
-              ) : field.type === "date" ? (
-                          <DatePicker 
-                            className="w-full" 
-                            disabled={!field.editable}
-                            id={`date-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
-                          />
-                        ) : (
-                          <Input 
-                            placeholder={field.label} 
-                            disabled={!field.editable}
-                            className="w-full"
-                            id={`input-${field.name}-${id}-${Math.random().toString(36).substr(2, 9)}`}
-                          />
-              )}
-            </Form.Item>
-                    </div>
-                  </div>
-                );
-              })}
-        </div>
-      </Form>
-    </Card>
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column - Main Information */}
+        <div className="lg:col-span-2">
+          <Card title="Main information" className="!rounded-xl">
+            <Form
+              form={infoForm}
+              layout="horizontal"
+              initialValues={formInitialValues}
+              id={`entity-form-${id}-${Math.random().toString(36).substr(2, 9)}`}
+              preserve={false}
+              key={`form-${id}-${entity?.id || "loading"}`}
+            >
+              <div className="space-y-3">
+                {editableInfoFields.map((field, index) => {
+                  const isPassword = field.name?.toLowerCase().includes("password");
+                  const isEmail = field.name?.toLowerCase().includes("email");
+                  const isPhone = field.name?.toLowerCase().includes("phone");
+                  const isStatus = field.name?.toLowerCase() === "status";
+                  
+                  // Create a more unique ID using the generator
+                  const uniqueId = getUniqueId(field.name);
 
-      {/* Right Column - Comments and Additional Info */}
-      <div className="space-y-4">
-        {/* Comments / To-Dos Section */}
-        <Card 
-          title="Comments / To-Dos" 
-          className="!rounded-xl"
-          extra={
-            <Button 
-              type="text" 
-              icon={<PlusOutlined />} 
-              onClick={() => setAddCommentOpen(true)}
-              className="!p-1"
-            />
-          }
-          styles={{ body: { padding: 0 } }}
-        >
-          <div style={{ maxHeight: 400, overflowY: "auto" }}>
-            {commCfg?.enabled && comments && comments.length > 0 ? (
-              <List
-                dataSource={comments}
-                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No comments yet." /> }}
-                renderItem={(item, idx) => (
-                  <div key={item.id || idx}>
-                    <div className="px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-semibold text-gray-800">{dash(item.author)}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {relativeTime(item.created_at)} ({fmtDate(item.created_at)} {item.created_at ? new Date(item.created_at).toTimeString().slice(0, 5) : ""})
-                          </div>
-                          {item.text ? <div className="mt-2 text-sm text-gray-700">{typeof item.text === "string" ? item.text : dash(item.text)}</div> : null}
-                        </div>
-                        <Button 
-                          type="text" 
-                          icon={<PushpinOutlined className="text-gray-400" />}
-                          size="small"
-                        />
+                  return (
+                    <div
+                      key={`${field.name}-${index}`}
+                      className="flex items-center py-3 border-b border-gray-100 last:border-0"
+                    >
+                      <div className="w-40 text-right pr-6 shrink-0">
+                        <Text strong className="text-gray-700 text-sm">
+                          {field.label}
+                        </Text>
+                      </div>
+                      <div className="flex-1">
+                        <Form.Item
+                          name={field.name}
+                          className="!mb-0"
+                          rules={
+                            field.required
+                              ? [
+                                  {
+                                    required: true,
+                                    message: `${field.label} is required`,
+                                  },
+                                ]
+                              : []
+                          }
+                        >
+                          {isPassword ? (
+                            <Input.Password
+                              placeholder={field.label}
+                              disabled={!field.editable}
+                              className="max-w-md flex-1"
+                              id={uniqueId}
+                            />
+                          ) : isEmail ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                placeholder={field.label}
+                                disabled={!field.editable}
+                                className="flex-1"
+                                id={`input-${uniqueId}`}
+                                value={entity?.[field.name] || ""}
+                                onChange={(e) => {
+                                  const newValue = e.target.value;
+                                  setEntity((prev) => ({
+                                    ...prev,
+                                    [field.name]: newValue,
+                                  }));
+                                  infoForm.setFieldValue(field.name, newValue);
+                                }}
+                              />
+                              <Button
+                                type="text"
+                                icon={<span className="text-lg">✉</span>}
+                                className="!p-2 !h-8 !w-8 border border-gray-300 rounded"
+                              />
+                            </div>
+                          ) : isPhone ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                placeholder={field.label}
+                                disabled={!field.editable}
+                                className="flex-1"
+                                id={`input-${uniqueId}`}
+                              />
+                              <Button
+                                type="text"
+                                icon={<span className="text-lg">📞</span>}
+                                className="!p-2 !h-8 !w-8 border border-gray-300 rounded"
+                              />
+                            </div>
+                          ) : isStatus ? (
+                            <div className="flex items-center gap-2">
+                              <Select
+                                placeholder="Active"
+                                defaultValue="active"
+                                options={
+                                  field.options || [
+                                    { value: "active", label: "Active" },
+                                    { value: "inactive", label: "Inactive" },
+                                    { value: "suspended", label: "Suspended" },
+                                  ]
+                                }
+                                disabled={!field.editable}
+                                className="flex-1"
+                                id={`select-${uniqueId}`}
+                              />
+                              <Button
+                                type="text"
+                                icon={<span className="text-lg">📅</span>}
+                                className="!p-2 !h-8 !w-8 border border-gray-300 rounded"
+                              />
+                            </div>
+                          ) : field.type === "select" ? (
+                            <Select
+                              placeholder={`Select ${field.label}`}
+                              options={field.options || []}
+                              disabled={!field.editable}
+                              className="w-full"
+                              id={`select-${uniqueId}`}
+                            />
+                          ) : field.type === "date" ? (
+                            <DatePicker
+                              className="w-full"
+                              disabled={!field.editable}
+                              id={`date-${uniqueId}`}
+                            />
+                          ) : (
+                            <Input
+                              placeholder={field.label}
+                              disabled={!field.editable}
+                              className="w-full"
+                              id={`input-${field.name}-${id}-${Math.random()
+                                .toString(36)
+                                .substr(2, 9)}`}
+                            />
+                          )}
+                        </Form.Item>
                       </div>
                     </div>
-                    {idx < comments.length - 1 && <Divider className="!my-0" />}
-                  </div>
-                )}
-              />
-            ) : (
-              <div className="p-4 text-center text-gray-400">
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No comments yet" />
+                  );
+                })}
               </div>
-            )}
-          </div>
-        </Card>
+            </Form>
+          </Card>
+        </div>
 
-        {/* Additional Information Section */}
-        <Card 
-          title="Additional information" 
-          className="!rounded-xl"
-          styles={{ body: { padding: 16 } }}
-        >
-          <div className="space-y-3">
-            <div>
-              <Text type="secondary" className="text-xs">Labels</Text>
-              <Input placeholder="Start typing label name" className="mt-1" />
-            </div>
-            <div>
-              <Text type="secondary" className="text-xs">Category</Text>
-              <Select 
-                placeholder="Select category"
-                options={[
-                  { value: 'individual', label: 'Individual' },
-                  { value: 'business', label: 'Business' },
-                  { value: 'enterprise', label: 'Enterprise' },
-                ]}
-                className="w-full mt-1"
+        {/* Right Column - Comments and Additional Info */}
+        <div className="space-y-4">
+          {/* Comments / To-Dos Section */}
+          <Card
+            title="Comments / To-Dos"
+            className="!rounded-xl"
+            extra={
+              <Button
+                type="text"
+                icon={<PlusOutlined />}
+                onClick={() => setAddCommentOpen(true)}
+                className="!p-1"
               />
+            }
+            styles={{ body: { padding: 0 } }}
+          >
+            <div style={{ maxHeight: 400, overflowY: "auto" }}>
+              {commCfg?.enabled && comments && comments.length > 0 ? (
+                <List
+                  dataSource={comments}
+                  locale={{
+                    emptyText: (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="No comments yet."
+                      />
+                    ),
+                  }}
+                  renderItem={(item, idx) => (
+                    <div key={item.id || idx}>
+                      <div className="px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold text-gray-800">
+                              {dash(item.author)}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {relativeTime(item.created_at)} ({fmtDate(item.created_at)}{" "}
+                              {item.created_at
+                                ? new Date(item.created_at)
+                                    .toTimeString()
+                                    .slice(0, 5)
+                                : ""}
+                              )
+                            </div>
+                            {item.text ? (
+                              <div className="mt-2 text-sm text-gray-700">
+                                {typeof item.text === "string"
+                                  ? item.text
+                                  : dash(item.text)}
+                              </div>
+                            ) : null}
+                          </div>
+                          <Button
+                            type="text"
+                            icon={<PushpinOutlined className="text-gray-400" />}
+                            size="small"
+                          />
+                        </div>
+                      </div>
+                      {idx < comments.length - 1 && (
+                        <Divider className="!my-0" />
+                      )}
+                    </div>
+                  )}
+                />
+              ) : (
+                <div className="p-4 text-center text-gray-400">
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="No comments yet"
+                  />
+                </div>
+              )}
             </div>
-          </div>
-        </Card>
+          </Card>
+
+          {/* Additional Information Section */}
+          <Card
+            title="Additional information"
+            className="!rounded-xl"
+            styles={{ body: { padding: 16 } }}
+          >
+            <div className="space-y-3">
+              <div>
+                <Text type="secondary" className="text-xs">
+                  Labels
+                </Text>
+                <Input placeholder="Start typing label name" className="mt-1" />
+              </div>
+              <div>
+                <Text type="secondary" className="text-xs">
+                  Category
+                </Text>
+                <Select
+                  placeholder="Select category"
+                  options={[
+                    { value: "individual", label: "Individual" },
+                    { value: "business", label: "Business" },
+                    { value: "enterprise", label: "Enterprise" },
+                  ]}
+                  className="w-full mt-1"
+                />
+              </div>
+            </div>
+          </Card>
+        </div>
       </div>
-    </div>
     );
-  }, [entity, editableInfoFields, infoForm, commCfg?.enabled, comments, addCommentOpen, passwordVisible, generatePassword]);
+  }, [
+    entity,
+    editableInfoFields,
+    infoForm,
+    commCfg?.enabled,
+    comments,
+    addCommentOpen,
+    passwordVisible,
+    generatePassword,
+  ]);
 
   const relatedTab = useMemo(() => {
     if (!safeCfg?.tabs?.related?.enabled) return null;
-    
+
     const showAddBtn = safeCfg.tabs.related.showAddButton !== false;
     const addButtonLabel = safeCfg.tabs.related.addButtonLabel || "Add Student";
     const buttons = [];
-    
+
     if (showAddBtn) {
       buttons.push(
-        <Button key="add-related" icon={<PlusOutlined />} onClick={() => setLinkChildModalOpen(true)} disabled={false}>
+        <Button
+          key="add-related"
+          icon={<PlusOutlined />}
+          onClick={() => setLinkChildModalOpen(true)}
+          disabled={false}
+        >
           {addButtonLabel}
         </Button>
       );
     }
-    
-    buttons.push(
-      <Button key="reload" icon={<ReloadOutlined />} onClick={loadRelated} />
-    );
-    
+
+    buttons.push(<Button key="reload" icon={<ReloadOutlined />} onClick={loadRelated} />);
+
     return (
       <Card className="!rounded-xl" styles={{ body: { padding: 0 } }}>
         <div className="p-3 flex items-center justify-between">
           <Text strong>{safeCfg.tabs.related.label || "Related"}</Text>
-          <Space>
-            {buttons}
-          </Space>
+          <Space>{buttons}</Space>
         </div>
         <div className="px-3 pb-3">
           <Table
@@ -1236,16 +1471,33 @@ export default function EntityDetail({ cfg }) {
             dataSource={relatedRows}
             pagination={{ pageSize: 10 }}
             scroll={{ x: 800 }}
-            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nothing related." /> }}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="Nothing related."
+                />
+              ),
+            }}
           />
         </div>
       </Card>
     );
-  }, [safeCfg?.tabs?.related?.enabled, safeCfg?.tabs?.related?.showAddButton, safeCfg?.tabs?.related?.addButtonLabel, safeCfg?.tabs?.related?.label, safeCfg?.tabs?.related?.rowKey, relatedLoading, relatedColumns, relatedRows, loadRelated]);
+  }, [
+    safeCfg?.tabs?.related?.enabled,
+    safeCfg?.tabs?.related?.showAddButton,
+    safeCfg?.tabs?.related?.addButtonLabel,
+    safeCfg?.tabs?.related?.label,
+    safeCfg?.tabs?.related?.rowKey,
+    relatedLoading,
+    relatedColumns,
+    relatedRows,
+    loadRelated,
+  ]);
 
   const TasksTab = useMemo(() => {
     if (!tasksCfg.enabled) return null;
-    
+
     return (
       <Card className="!rounded-xl" styles={{ body: { padding: 16 } }}>
         <AddTaskForm onSubmit={createTask} id={id} />
@@ -1263,7 +1515,9 @@ export default function EntityDetail({ cfg }) {
               title: "Status",
               dataIndex: "status",
               render: (s) => (
-                <Tag color={s === "open" ? "orange" : s === "in_progress" ? "blue" : "green"}>{s}</Tag>
+                <Tag color={s === "open" ? "orange" : s === "in_progress" ? "blue" : "green"}>
+                  {s}
+                </Tag>
               ),
             },
             { title: "Due", dataIndex: "dueDate", render: (d) => fmtDate(d) },
@@ -1281,7 +1535,11 @@ export default function EntityDetail({ cfg }) {
               ),
             },
           ]}
-          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No tasks." /> }}
+          locale={{
+            emptyText: (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No tasks." />
+            ),
+          }}
         />
       </Card>
     );
@@ -1300,7 +1558,8 @@ export default function EntityDetail({ cfg }) {
     if (!docsCfg?.enabled) return [];
     const q = docSearch.trim().toLowerCase();
     return (documents || []).filter((d) => {
-      const matchesType = docType === "All" || (d?.type || d?.status || "Uploaded") === docType;
+      const matchesType =
+        docType === "All" || (d?.type || d?.status || "Uploaded") === docType;
       if (!q) return matchesType;
       const hay = [
         d?.id,
@@ -1329,7 +1588,9 @@ export default function EntityDetail({ cfg }) {
         title: "Status",
         dataIndex: "status",
         render: (v) => <Tag>{v || "Uploaded"}</Tag>,
-        filters: Array.from(new Set(documents.map((d) => d.status || "Uploaded"))).map((v) => ({
+        filters: Array.from(
+          new Set(documents.map((d) => d.status || "Uploaded"))
+        ).map((v) => ({
           text: v,
           value: v,
         })),
@@ -1392,7 +1653,10 @@ export default function EntityDetail({ cfg }) {
             <Select
               value={String(docPageSize)}
               onChange={(v) => setDocPageSize(Number(v))}
-              options={["10", "25", "50", "100"].map((n) => ({ value: n, label: n }))}
+              options={["10", "25", "50", "100"].map((n) => ({
+                value: n,
+                label: n,
+              }))}
               style={{ width: 160 }}
               className="w-24"
             />
@@ -1429,11 +1693,17 @@ export default function EntityDetail({ cfg }) {
           pagination={{
             pageSize: docPageSize,
             showSizeChanger: false,
-            showTotal: (total, [start, end]) => `Showing ${start} to ${end} of ${total} entries`,
+            showTotal: (total, [start, end]) =>
+              `Showing ${start} to ${end} of ${total} entries`,
           }}
           scroll={{ x: 960 }}
           locale={{
-            emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents." />,
+            emptyText: (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="No documents."
+              />
+            ),
           }}
         />
 
@@ -1455,7 +1725,11 @@ export default function EntityDetail({ cfg }) {
 
         {/* Edit Modal */}
         <Modal
-          title={docEditing ? `Edit — ${docEditing.title || docEditing.id}` : "Edit Document"}
+          title={
+            docEditing
+              ? `Edit — ${docEditing.title || docEditing.id}`
+              : "Edit Document"
+          }
           open={docEditOpen}
           onCancel={() => {
             setDocEditOpen(false);
@@ -1475,23 +1749,40 @@ export default function EntityDetail({ cfg }) {
         </Modal>
       </Card>
     );
-  }, [docsCfg?.enabled, docPageSize, docType, docTypeOptions, docSearch, docsLoading, docColumns, filteredDocs, loadDocuments, docUploadOpen, uploadDocument, docEditOpen, docEditing, updateDocument]);
+  }, [
+    docsCfg?.enabled,
+    docPageSize,
+    docType,
+    docTypeOptions,
+    docSearch,
+    docsLoading,
+    docColumns,
+    filteredDocs,
+    loadDocuments,
+    docUploadOpen,
+    uploadDocument,
+    docEditOpen,
+    docEditing,
+    updateDocument,
+  ]);
 
   const billingTab = useMemo(() => {
     if (!safeCfg.tabs?.billing?.enabled) return null;
-    
+
     return typeof safeCfg.tabs.billing.render === "function" ? (
       safeCfg.tabs.billing.render({ entity }, tabContext)
     ) : (
       <Card className="!rounded-xl">
-        <Text type="secondary">Billing tab is enabled but no renderer was provided.</Text>
+        <Text type="secondary">
+          Billing tab is enabled but no renderer was provided.
+        </Text>
       </Card>
     );
   }, [safeCfg.tabs?.billing?.enabled, safeCfg.tabs?.billing?.render, entity, tabContext]);
 
   const auditTab = useMemo(() => {
     if (!safeCfg.tabs?.audit?.enabled) return null;
-    
+
     return (
       <Card className="!rounded-xl" styles={{ body: { padding: 0 } }}>
         <div className="p-3 flex items-center justify-between">
@@ -1504,17 +1795,37 @@ export default function EntityDetail({ cfg }) {
             dataSource={safeCfg.tabs.audit.data || []}
             pagination={{ pageSize: 10 }}
             scroll={{ x: 800 }}
-            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No audit events." /> }}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="No audit events."
+                />
+              ),
+            }}
           />
         </div>
       </Card>
     );
-  }, [safeCfg.tabs?.audit?.enabled, safeCfg.tabs?.audit?.label, safeCfg.tabs?.audit?.columns, safeCfg.tabs?.audit?.data]);
+  }, [
+    safeCfg.tabs?.audit?.enabled,
+    safeCfg.tabs?.audit?.label,
+    safeCfg.tabs?.audit?.columns,
+    safeCfg.tabs?.audit?.data,
+  ]);
 
   /* ---------- NEW: custom tab plumbing (subjects, etc.) ---------- */
-  const BUILTIN_KEYS = ["information", "related", "billing", "audit", "tasks", "documents", "communication", "activity"];
+  const BUILTIN_KEYS = [
+    "information",
+    "related",
+    "billing",
+    "audit",
+    "tasks",
+    "documents",
+    "communication",
+    "activity",
+  ];
 
-  // discover custom tabs present in cfg.tabs (enabled + has render function)
   const customTabKeys = useMemo(() => {
     const t = safeCfg.tabs || {};
     return Object.keys(t)
@@ -1522,27 +1833,35 @@ export default function EntityDetail({ cfg }) {
       .filter((k) => t[k]?.enabled && typeof t[k]?.render === "function");
   }, [safeCfg.tabs]);
 
-  // compute the final order
   const explicitOrder = useMemo(() => {
     const order1 = Array.isArray(safeCfg.tabsOrder) ? safeCfg.tabsOrder : null;
     const order2 = Array.isArray(safeCfg.tabs?.order) ? safeCfg.tabs.order : null;
     const base = order1 || order2;
     if (base && base.length) return base;
-
-    // default order: builtins then customs (append)
-    return ["information", "related", ...customTabKeys, "activity", "tasks", "documents", "communication", "billing", "audit"];
+    return [
+      "information",
+      "related",
+      ...customTabKeys,
+      "activity",
+      "tasks",
+      "documents",
+      "communication",
+      "billing",
+      "audit",
+    ];
   }, [safeCfg.tabsOrder, safeCfg.tabs, customTabKeys]);
 
-  // Activity tab with stable reference
   const ActivityTab = useMemo(() => {
     if (!safeCfg.tabs?.activity?.enabled) return null;
-    
+
     return (
       <Card className="!rounded-xl" styles={{ body: { padding: 0 } }}>
         <div className="p-3 flex items-center justify-between">
           <Text strong>{safeCfg.tabs.activity.label || "Activity"}</Text>
           <Space>
-            {typeof safeCfg.tabs.activity.toolbar === "function" ? safeCfg.tabs.activity.toolbar(entity) : null}
+            {typeof safeCfg.tabs.activity.toolbar === "function"
+              ? safeCfg.tabs.activity.toolbar(entity)
+              : null}
             <Button icon={<ReloadOutlined />} onClick={() => {}} />
           </Space>
         </div>
@@ -1552,14 +1871,28 @@ export default function EntityDetail({ cfg }) {
             dataSource={safeCfg.tabs.activity.data || []}
             pagination={{ pageSize: 10 }}
             scroll={{ x: 800 }}
-            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={safeCfg.tabs.activity.empty || "No activity."} /> }}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={safeCfg.tabs.activity.empty || "No activity."}
+                />
+              ),
+            }}
           />
         </div>
       </Card>
     );
-  }, [safeCfg.tabs?.activity?.enabled, safeCfg.tabs?.activity?.label, safeCfg.tabs?.activity?.toolbar, safeCfg.tabs?.activity?.columns, safeCfg.tabs?.activity?.data, safeCfg.tabs?.activity?.empty, entity]);
+  }, [
+    safeCfg.tabs?.activity?.enabled,
+    safeCfg.tabs?.activity?.label,
+    safeCfg.tabs?.activity?.toolbar,
+    safeCfg.tabs?.activity?.columns,
+    safeCfg.tabs?.activity?.data,
+    safeCfg.tabs?.activity?.empty,
+    entity,
+  ]);
 
-  // Custom tabs with stable references
   const customTabPanels = useMemo(() => {
     const panels = {};
     (customTabKeys || []).forEach((key) => {
@@ -1575,7 +1908,6 @@ export default function EntityDetail({ cfg }) {
     return panels;
   }, [customTabKeys, safeCfg.tabs, entity, tabContext]);
 
-  // build a map of all available panels
   const panelByKey = useMemo(() => {
     const map = {
       information: informationTab,
@@ -1587,172 +1919,206 @@ export default function EntityDetail({ cfg }) {
       communication: commCfg?.enabled ? CommunicationPanel : null,
       activity: ActivityTab,
     };
-
-    // add custom tab panels
     Object.keys(customTabPanels).forEach((key) => {
       map[key] = customTabPanels[key];
     });
-
     return map;
-  }, [informationTab, relatedTab, billingTab, auditTab, TasksTab, DocumentsTab, CommunicationPanel, ActivityTab, customTabPanels, tasksCfg.enabled, docsCfg?.enabled, commCfg?.enabled]);
+  }, [
+    informationTab,
+    relatedTab,
+    billingTab,
+    auditTab,
+    TasksTab,
+    DocumentsTab,
+    CommunicationPanel,
+    ActivityTab,
+    customTabPanels,
+    tasksCfg.enabled,
+    docsCfg?.enabled,
+    commCfg?.enabled,
+  ]);
 
-  // turn map + order into Tabs items
   const tabItems = useMemo(() => {
     const items = [];
     const seenKeys = new Set();
-    
+
     explicitOrder.forEach((key) => {
       const panel = panelByKey[key];
       if (!panel || seenKeys.has(key)) return;
-      
+
       seenKeys.add(key);
       const label =
-        (safeCfg.tabs?.[key]?.label) ||
+        safeCfg.tabs?.[key]?.label ||
         (key.charAt(0).toUpperCase() + key.slice(1));
-      
-      // Wrap each panel in a div with stable key to prevent DOM issues
-      items.push({ 
-        key, 
-        label, 
+
+      items.push({
+        key,
+        label,
         children: <div key={`tab-content-${key}`}>{panel}</div>,
-        forceRender: true
+        forceRender: true,
       });
     });
-    
-    // Only add information tab if it's not already in the list
+
     if (!seenKeys.has("information")) {
-      items.unshift({ 
-        key: "information", 
-        label: "Information", 
+      items.unshift({
+        key: "information",
+        label: "Information",
         children: <div key="tab-content-information">{informationTab}</div>,
-        forceRender: true
+        forceRender: true,
       });
     }
-    
+
     return items;
   }, [explicitOrder, panelByKey, safeCfg.tabs, informationTab]);
 
-  /* ---------- Login as customer handler ---------- */
+  /* ---------- Login as customer handler (SSO; Student/Parent/Teacher) ---------- */
   const handleLoginAsCustomer = useCallback(async () => {
+    const portalUrl =
+      currentEntityType === "students"
+        ? "/student/home"
+        : currentEntityType === "parents"
+        ? "/parent/home"
+        : currentEntityType === "teachers"
+        ? "/teacher/home"
+        : "/dashboard";
+
+    const ssoUrl = "/sso";
+    const ssoWin = window.open(ssoUrl, "_blank");
+    if (!ssoWin) {
+      messageApi.error("Popup blocked. Please allow popups for this site.");
+      return;
+    }
+
     try {
       setSaving(true);
-      // Use the auto-generated username for login authentication
+
       let username = entity?.username || entity?.portal_login;
-      
       if (!username) {
-        // Auto-generate username: first 2 letters of first name + first letter of surname + ID
         const firstName = entity?.first_name || entity?.user?.first_name || "";
         const lastName = entity?.last_name || entity?.user?.last_name || "";
         const entityId = entity?.id || entity?.[idField];
-        
         const firstTwo = firstName.substring(0, 2).toLowerCase();
-        const firstLetter = lastName.substring(0, 1).toLowerCase();
-        username = `${firstTwo}${firstLetter}${entityId}`;
+        const firstOne = lastName.substring(0, 1).toLowerCase();
+        username = `${firstTwo}${firstOne}${entityId}`;
       }
-      
-      const password = entity?.plain_pass || entity?.portal_password || entity?.password || "testpass1234";
+      const password =
+        entity?.plain_pass || entity?.portal_password || entity?.password || "testpass1234";
 
-      
-      if (!username) {
-        messageApi.error("No username found for this user");
+      if (!username || !password) {
+        try {
+          ssoWin.close();
+        } catch {}
+        messageApi.error("Missing portal credentials for this user.");
         return;
       }
 
-      if (!password) {
-        messageApi.error("No password found for this user");
+      const { data } = await api.post(
+        "/auth/login",
+        { username, password },
+        { withCredentials: true }
+      );
+      const token = data?.token;
+      if (!token) {
+        try {
+          ssoWin.close();
+        } catch {}
+        messageApi.error("Login failed: no token returned.");
         return;
       }
 
-      // Attempt to login via API
-      const loginPayload = { 
-        username: username, // Use the auto-generated username as email for login
-        password
+      const ORIGIN = window.location.origin;
+      const payload = {
+        type: "KIBUNDO_SSO",
+        token,
+        user: data?.user || null,
+        storageKey: "kibundo.portal.token",
+        redirect: portalUrl,
       };
 
-      const { data } = await api.post('/auth/login', loginPayload, { withCredentials: true });
-      
-      if (data?.token) {
-        // Store the token with quota error handling
-        try {
-          localStorage.setItem('token', data.token);
-          localStorage.setItem('user', JSON.stringify(data.user || data));
-        } catch (error) {
-          if (error.name === 'QuotaExceededError') {
-            // Clear old localStorage data
-            localStorage.clear();
-            // Try again
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data.user || data));
-          } else {
-            throw error;
-          }
+      // Try to postMessage a few times while the new tab loads
+      let tries = 0;
+      const maxTries = 20;
+      const iv = setInterval(() => {
+        if (ssoWin.closed) {
+          clearInterval(iv);
+          return;
         }
-        
-        // Show appropriate success message based on entity type
-        const getSuccessMessage = () => {
-          if (currentEntityType === 'students') return `Logged in as student (${username})`;
-          if (currentEntityType === 'parents') return `Logged in as parent (${username})`;
-          if (currentEntityType === 'teachers') return `Logged in as teacher (${username})`;
-          return `Logged in as customer (${username})`;
-        };
-        
-        messageApi.success(getSuccessMessage());
-        
-        // Redirect to the customer portal
-        // Force page reload to properly switch authentication context
-        setTimeout(() => {
-          window.location.href = currentEntityType === 'students' 
-            ? '/student/home' 
-            : currentEntityType === 'parents'
-            ? '/parent/home'
-            : currentEntityType === 'teachers'
-            ? '/teacher/home'
-            : '/dashboard';
-        }, 1000);
-      }
+        try {
+          ssoWin.postMessage(payload, ORIGIN);
+          tries++;
+          if (tries >= maxTries) clearInterval(iv);
+        } catch {
+          tries++;
+          if (tries >= maxTries) clearInterval(iv);
+        }
+      }, 200);
+
+      // Hash fallback: /sso reads token & redirects
+      const encodedToken = encodeURIComponent(token);
+      const encodedRedir = encodeURIComponent(portalUrl);
+      ssoWin.location.replace(`${ssoUrl}#token=${encodedToken}&redirect=${encodedRedir}`);
+
+      const who =
+        currentEntityType === "students"
+          ? "student"
+          : currentEntityType === "parents"
+          ? "parent"
+          : currentEntityType === "teachers"
+          ? "teacher"
+          : "user";
+      messageApi.success(`Opened ${who} portal for (${username})`);
     } catch (error) {
-      messageApi.error(error?.response?.data?.message || "Failed to login as customer");
+      console.error("SSO error:", error);
+      try {
+        ssoWin.close();
+      } catch {}
+      messageApi.error(error?.response?.data?.message || "Failed to open portal");
     } finally {
       setSaving(false);
     }
-  }, [entity, messageApi, navigate, currentEntityType, idField]);
+  }, [entity, idField, messageApi, currentEntityType]);
 
   /* ---------- Render ---------- */
   const actionsMenu = useMemo(() => {
-    // Determine the login label based on entity type
     const getLoginLabel = () => {
-      if (currentEntityType === 'students') return "Login as student";
-      if (currentEntityType === 'parents') return "Login as parent";
-      if (currentEntityType === 'teachers') return "Login as teacher";
+      if (currentEntityType === "students") return "Login as student";
+      if (currentEntityType === "parents") return "Login as parent";
+      if (currentEntityType === "teachers") return "Login as teacher";
       return "Login as customer";
     };
 
     return {
-    items: [
-        // Login as customer option
-        { 
-          key: "login-as-customer", 
+      items: [
+        {
+          key: "login-as-customer",
           label: getLoginLabel(),
-          icon: <UserOutlined />
+          icon: <UserOutlined />,
         },
         ...(updateStatusPath || removePath ? [{ type: "divider" }] : []),
-      ...(updateStatusPath
-        ? [
-            { key: "activate", label: "Activate" },
-            { key: "block", label: "Block", danger: true },
-          ]
-        : []),
-      ...(updateStatusPath && removePath ? [{ type: "divider" }] : []),
-      ...(removePath ? [{ key: "delete", label: "Delete", danger: true }] : []),
-    ],
-    onClick: async ({ key }) => {
+        ...(updateStatusPath
+          ? [
+              { key: "activate", label: "Activate" },
+              { key: "block", label: "Block", danger: true },
+            ]
+          : []),
+        ...(updateStatusPath && removePath ? [{ type: "divider" }] : []),
+        ...(removePath ? [{ key: "delete", label: "Delete", danger: true }] : []),
+      ],
+      onClick: async ({ key }) => {
         if (key === "login-as-customer") return handleLoginAsCustomer();
-      if (key === "activate") return setStatus("active");
-      if (key === "block") return setStatus("disabled");
-      if (key === "delete" && removePath) return onDelete();
-    },
-  };
-  }, [handleLoginAsCustomer, updateStatusPath, removePath, setStatus, onDelete, currentEntityType]);
+        if (key === "activate") return setStatus("active");
+        if (key === "block") return setStatus("disabled");
+        if (key === "delete" && removePath) return onDelete();
+      },
+    };
+  }, [
+    handleLoginAsCustomer,
+    updateStatusPath,
+    removePath,
+    setStatus,
+    onDelete,
+    currentEntityType,
+  ]);
 
   if (loading && !entity) {
     return (
@@ -1769,22 +2135,34 @@ export default function EntityDetail({ cfg }) {
       {/* Breadcrumb & Header */}
       <div className="mb-4">
         <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-          <span className="hover:text-blue-600 cursor-pointer">{safeCfg.titlePlural || "Items"}</span>
+          <span className="hover:text-blue-600 cursor-pointer">
+            {safeCfg.titlePlural || "Items"}
+          </span>
           <span>/</span>
-          <span className="hover:text-blue-600 cursor-pointer" onClick={goBack}>List</span>
+          <span className="hover:text-blue-600 cursor-pointer" onClick={goBack}>
+            List
+          </span>
           <span>/</span>
         </div>
         <div className="flex items-center gap-3">
           {safeCfg?.ui?.showAvatar !== false ? (
-            <Avatar size={screens.md ? 56 : 48} style={{ backgroundColor: "#1677ff", fontWeight: 600 }}>
+            <Avatar
+              size={screens.md ? 56 : 48}
+              style={{ backgroundColor: "#1677ff", fontWeight: 600 }}
+            >
               {getInitials(entity) || "•"}
             </Avatar>
           ) : null}
           <div>
             <h1 className="text-2xl font-semibold m-0">
-              {titleName} ({entity?.login || entity?.username || entity?.portal_login || `${safeCfg.entityKey || 'ID'} - ${entity?.[idField]}`})
+              {titleName} (
+              {entity?.login ||
+                entity?.username ||
+                entity?.portal_login ||
+                `${safeCfg.entityKey || "ID"} - ${entity?.[idField]}`}
+              )
             </h1>
-            </div>
+          </div>
           <div className="ml-auto flex items-center gap-2">
             <Button icon={<ArrowLeftOutlined />} onClick={goBack} />
             <Button icon={<span>→</span>} />
@@ -1793,49 +2171,55 @@ export default function EntityDetail({ cfg }) {
       </div>
 
       {/* Entity Summary Bar */}
-      <Card className="!rounded-xl mb-4" styles={{ body: { padding: '16px 24px' } }}>
+      <Card className="!rounded-xl mb-4" styles={{ body: { padding: "16px 24px" } }}>
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-4">
             <Text strong className="text-base">
-              {currentEntityType === 'students' ? 'Student' : 
-               currentEntityType === 'parents' ? 'Parent' : 
-               currentEntityType === 'teachers' ? 'Teacher' : 
-               'Entity'}
+              {currentEntityType === "students"
+                ? "Student"
+                : currentEntityType === "parents"
+                ? "Parent"
+                : currentEntityType === "teachers"
+                ? "Teacher"
+                : "Entity"}
             </Text>
             {entity?.balance !== undefined && (
               <Text type="secondary">
-                Account balance: <Text strong className={entity.balance < 0 ? 'text-red-600' : ''}>{entity.balance}</Text>
+                Account balance:{" "}
+                <Text
+                  strong
+                  className={entity.balance < 0 ? "text-red-600" : ""}
+                >
+                  {entity.balance}
+                </Text>
               </Text>
             )}
           </div>
           <Space wrap>
-            <Dropdown
-              menu={actionsMenu}
-              trigger={["click"]}
-            >
+            <Dropdown menu={actionsMenu} trigger={["click"]}>
               <Button>
                 Actions <span className="ml-1">▼</span>
-            </Button>
+              </Button>
             </Dropdown>
             <Dropdown
               menu={{
                 items: [
-                  { key: 'create-task', label: 'Create new task' },
-                  { key: 'list-tasks', label: 'List of tasks' },
-                ]
+                  { key: "create-task", label: "Create new task" },
+                  { key: "list-tasks", label: "List of tasks" },
+                ],
               }}
               trigger={["click"]}
             >
               <Button>
                 Tasks <span className="ml-1">▼</span>
               </Button>
-          </Dropdown>
+            </Dropdown>
             <Dropdown
               menu={{
                 items: [
-                  { key: 'create-ticket', label: 'Create ticket' },
-                  { key: 'list-tickets', label: 'List of tickets' },
-                ]
+                  { key: "create-ticket", label: "Create ticket" },
+                  { key: "list-tickets", label: "List of tickets" },
+                ],
               }}
               trigger={["click"]}
             >
@@ -1847,7 +2231,7 @@ export default function EntityDetail({ cfg }) {
               Save
             </Button>
           </Space>
-      </div>
+        </div>
       </Card>
 
       {/* Tabs */}
@@ -1889,9 +2273,9 @@ export default function EntityDetail({ cfg }) {
         ) : (
           <StudentForm
             isModal
-            initialValues={{ 
+            initialValues={{
               parent_id: id,
-              parent_name: entity?.name || `Parent #${id}`
+              parent_name: entity?.name || `Parent #${id}`,
             }}
             onSuccess={async () => {
               try {
@@ -1900,7 +2284,9 @@ export default function EntityDetail({ cfg }) {
                 // Reload the related data
                 await loadRelated();
               } catch (err) {
-                messageApi.error(err?.response?.data?.message || "Failed to create student.");
+                messageApi.error(
+                  err?.response?.data?.message || "Failed to create student."
+                );
               }
             }}
           />
@@ -1934,8 +2320,15 @@ function AddTaskForm({ onSubmit, id }) {
         form.resetFields();
       }}
     >
-      <Form.Item name="title" rules={[{ required: true, message: "Enter task title" }]} style={{ minWidth: 220 }}>
-        <Input placeholder="Task title" id={`title-${id}-${Math.random().toString(36).substr(2, 9)}`} />
+      <Form.Item
+        name="title"
+        rules={[{ required: true, message: "Enter task title" }]}
+        style={{ minWidth: 220 }}
+      >
+        <Input
+          placeholder="Task title"
+          id={`title-${id}-${Math.random().toString(36).substr(2, 9)}`}
+        />
       </Form.Item>
       <Form.Item name="priority" initialValue="medium">
         <Select
@@ -1949,7 +2342,10 @@ function AddTaskForm({ onSubmit, id }) {
         />
       </Form.Item>
       <Form.Item name="dueDate">
-        <DatePicker placeholder="Due date" id={`dueDate-${id}-${Math.random().toString(36).substr(2, 9)}`} />
+        <DatePicker
+          placeholder="Due date"
+          id={`dueDate-${id}-${Math.random().toString(36).substr(2, 9)}`}
+        />
       </Form.Item>
       <Form.Item>
         <Button type="primary" htmlType="submit" icon={<PlusOutlined />}>
@@ -1995,7 +2391,10 @@ function UploadDocumentForm({ onUpload }) {
           />
         </Form.Item>
         <Form.Item label="Description" name="description" className="md:col-span-2">
-          <Input.TextArea placeholder="Description (optional)" autoSize={{ minRows: 2, maxRows: 6 }} />
+          <Input.TextArea
+            placeholder="Description (optional)"
+            autoSize={{ minRows: 2, maxRows: 6 }}
+          />
         </Form.Item>
         <Form.Item label="Date" name="date">
           <DatePicker className="w-full" />
@@ -2011,8 +2410,12 @@ function UploadDocumentForm({ onUpload }) {
             <p className="ant-upload-drag-icon">
               <InboxOutlined />
             </p>
-            <p className="ant-upload-text">Click or drag file to this area to upload</p>
-            <p className="ant-upload-hint">Files are kept in-memory unless you provide an API path.</p>
+            <p className="ant-upload-text">
+              Click or drag file to this area to upload
+            </p>
+            <p className="ant-upload-hint">
+              Files are kept in-memory unless you provide an API path.
+            </p>
           </Dragger>
         </div>
       </div>
@@ -2054,7 +2457,11 @@ function EditDocumentForm({ doc, onSubmit }) {
         onSubmit(payload);
       }}
     >
-      <Form.Item label="Title" name="title" rules={[{ required: true, message: "Title is required" }]}>
+      <Form.Item
+        label="Title"
+        name="title"
+        rules={[{ required: true, message: "Title is required" }]}
+      >
         <Input />
       </Form.Item>
       <Form.Item label="Status" name="status">

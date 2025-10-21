@@ -56,6 +56,21 @@ function loadInitialAuth() {
     if (raw) user = JSON.parse(raw);
   } catch {}
 
+  // Check for SSO token in sessionStorage (for portal tabs)
+  if (!token) {
+    try {
+      const ssoToken = sessionStorage.getItem("portal.token");
+      const ssoUser = sessionStorage.getItem("portal.user");
+      if (ssoToken) {
+        token = ssoToken;
+        if (ssoUser) {
+          user = JSON.parse(ssoUser);
+        }
+        console.log("🔍 [AuthContext] Found SSO token in sessionStorage");
+      }
+    } catch {}
+  }
+
   return { token, user };
 }
 
@@ -85,15 +100,108 @@ export const AuthProvider = ({ children }) => {
     if (token) setAxiosToken(token);
   }, [token]);
 
+  // Check for SSO token on mount (for portal tabs) - but don't override regular logins
+  useEffect(() => {
+    try {
+      const ssoToken = sessionStorage.getItem("portal.token");
+      const ssoUser = sessionStorage.getItem("portal.user");
+      const regularToken = localStorage.getItem("kibundo_token");
+      
+      // Only use SSO token if no regular login token exists
+      if (ssoToken && !regularToken) {
+        console.log("🔍 [AuthContext] Detected SSO token on mount (no regular login detected)");
+        setAxiosToken(ssoToken);
+        if (ssoUser) {
+          const userData = JSON.parse(ssoUser);
+          console.log("🔍 [AuthContext] Switching to SSO user:", userData);
+          setAuth({ token: ssoToken, user: userData });
+        } else {
+          console.log("🔍 [AuthContext] SSO token found but no user data");
+        }
+      }
+    } catch (error) {
+      console.error("🔍 [AuthContext] Error handling SSO token:", error);
+    }
+  }, []);
+
+  // Listen for SSO token events and periodically check for SSO tokens
+  useEffect(() => {
+    const handleSSOToken = (event) => {
+      const { token: ssoToken, user: ssoUser } = event.detail || {};
+      const regularToken = localStorage.getItem("kibundo_token");
+      
+      // Only use SSO token if no regular login token exists
+      if (ssoToken && !regularToken) {
+        console.log("🔍 [AuthContext] Received SSO token event (no regular login detected)");
+        setAxiosToken(ssoToken);
+        if (ssoUser) {
+          console.log("🔍 [AuthContext] Switching to SSO user via event:", ssoUser);
+          setAuth({ token: ssoToken, user: ssoUser });
+        }
+      }
+    };
+
+    // Periodic check for SSO tokens (fallback) - but don't override regular logins
+    const checkSSOToken = () => {
+      try {
+        const ssoToken = sessionStorage.getItem("portal.token");
+        const ssoUser = sessionStorage.getItem("portal.user");
+        const regularToken = localStorage.getItem("kibundo_token");
+        
+        // Only use SSO token if:
+        // 1. There's an SSO token and user data
+        // 2. Either no current token OR current token matches SSO token
+        // 3. No regular login token exists (to avoid overriding admin login)
+        if (ssoToken && ssoUser && (!token || token !== ssoToken) && !regularToken) {
+          console.log("🔍 [AuthContext] Periodic check found SSO token (no regular login detected)");
+          setAxiosToken(ssoToken);
+          const userData = JSON.parse(ssoUser);
+          setAuth({ token: ssoToken, user: userData });
+        }
+      } catch (error) {
+        console.error("🔍 [AuthContext] Error in periodic SSO check:", error);
+      }
+    };
+
+    window.addEventListener('sso-token-received', handleSSOToken);
+    
+    // Check every 500ms for the first 10 seconds
+    const interval = setInterval(checkSSOToken, 500);
+    const timeout = setTimeout(() => clearInterval(interval), 10000);
+    
+    return () => {
+      window.removeEventListener('sso-token-received', handleSSOToken);
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [token]);
+
   const login = (userObj, jwt) => {
-    // 1) Token in axios + persist token (via axios helper)
+    // 1) Clear old auth first
+    clearAxiosAuth();
+    
+    // 2) Clear SSO tokens to prevent override of regular login
+    try {
+      sessionStorage.removeItem("portal.token");
+      sessionStorage.removeItem("portal.user");
+      console.log("🔍 [AuthContext] Cleared SSO tokens for regular login");
+    } catch {}
+    
+    // 3) Token in axios + persist token (via axios helper)
     setAxiosToken(jwt);
 
-    // 2) Tiny summary only (no giant objects)
+    // 4) Tiny summary only (no giant objects)
     const summary = pickUserSummary(userObj);
+    
+    // Debug: Log the user data being stored
+    console.log("🔍 [AuthContext] Original user data:", userObj);
+    console.log("🔍 [AuthContext] Picked user summary:", summary);
+    console.log("🔍 [AuthContext] First name:", summary.first_name);
+    console.log("🔍 [AuthContext] Last name:", summary.last_name);
+    
     safePersistSummary(summary);
 
-    // 3) Update state
+    // 5) Update state
     setAuth({ token: jwt, user: summary });
   };
 

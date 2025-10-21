@@ -46,36 +46,32 @@ export default function GradeForm() {
     }
   }, []);
 
-  // ---------- Load Grade when editing ----------
-  const loadGrade = useCallback(async () => {
+  // ---------- Load Class when editing ----------
+  const loadClass = useCallback(async () => {
     if (!isEdit) return;
     try {
       setLoading(true);
-      const { data } = await api.get(`/grades/${id}`);
+      const { data } = await api.get(`/class/${id}`);
 
       // Normalize & set form fields
       form.setFieldsValue({
-        name: data?.name ?? "",
-        code: data?.code ?? "",
-        description: data?.description ?? "",
-        class_id: data?.class_id ?? undefined,
-        is_active: typeof data?.is_active === "boolean" ? data.is_active : true,
+        class_name: data?.class_name ?? "",
       });
 
       if (topbar?.update) {
         topbar.update({
-          title: `Edit Grade: ${data?.name || ""}`,
+          title: `Edit Class: ${data?.class_name || data?.name || ""}`,
           breadcrumbs: [
             { title: "Admin", path: "/admin" },
             { title: "Academics", path: "/admin/academics" },
-            { title: "Grades", path: "/admin/academics/grades" },
-            { title: `Edit: ${data?.name || ""}` },
+            { title: "Classes", path: "/admin/academics/grades" },
+            { title: `Edit: ${data?.class_name || data?.name || ""}` },
           ],
         });
       }
     } catch (err) {
-      console.error("Failed to load grade:", err);
-      message.error("Failed to load grade details.");
+      console.error("Failed to load class:", err);
+      message.error("Failed to load class details.");
       navigate("/admin/academics/grades");
     } finally {
       setLoading(false);
@@ -86,11 +82,11 @@ export default function GradeForm() {
   useEffect(() => {
     if (!isEdit && topbar?.update) {
       topbar.update({
-        title: "Add New Grade",
+        title: "Add New Class",
         breadcrumbs: [
           { title: "Admin", path: "/admin" },
           { title: "Academics", path: "/admin/academics" },
-          { title: "Grades", path: "/admin/academics/grades" },
+          { title: "Classes", path: "/admin/academics/grades" },
           { title: "Add New" },
         ],
       });
@@ -100,35 +96,33 @@ export default function GradeForm() {
   // ---------- Bootstrapping ----------
   useEffect(() => {
     loadClasses();
-    loadGrade();
-  }, [loadClasses, loadGrade]);
+    loadClass();
+  }, [loadClasses, loadClass]);
 
   // ---------- Submit ----------
   const onFinish = async (values) => {
     const payload = {
-      name: values.name?.trim(),
-      class_id: values.class_id ?? null,
-      is_active: !!values.is_active,
+      class_name: values.class_name?.trim(),
     };
 
     try {
       setSubmitting(true);
 
       if (isEdit) {
-        await api.put(`/grades/${id}`, payload);
-        message.success("Grade updated successfully.");
+        await api.put(`/class/${id}`, payload);
+        message.success("Class updated successfully.");
       } else {
-        await api.post("/grades", payload);
-        message.success("Grade created successfully.");
+        await api.post("/addclass", payload);
+        message.success("Class created successfully.");
       }
 
       navigate("/admin/academics/grades");
     } catch (error) {
-      console.error("Error saving grade:", error);
+      console.error("Error saving class:", error);
       const apiMsg =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
-        "Failed to save grade. Please try again.";
+        "Failed to save class. Please try again.";
       message.error(apiMsg);
       setSubmitting(false);
     }
@@ -140,7 +134,7 @@ export default function GradeForm() {
         title={
           <div className="flex items-center gap-2">
             <StarOutlined />
-            {isEdit ? "Edit Grade" : "Add New Grade"}
+            {isEdit ? "Edit Class" : "Add New Class"}
           </div>
         }
         extra={
@@ -158,58 +152,21 @@ export default function GradeForm() {
           layout="vertical"
           onFinish={onFinish}
           initialValues={{
-            name: "",
-            class_id: undefined,
-            is_active: true,
+            class_name: "",
           }}
           autoComplete="off"
-          className="grade-form"
+          className="class-form"
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6">
             <Form.Item
-              name="name"
-              label="Grade Name"
+              name="class_name"
+              label="Class Name"
               rules={[
-                { required: true, message: "Please enter grade name" },
+                { required: true, message: "Please enter class name" },
                 { max: 100, message: "Name cannot exceed 100 characters" },
               ]}
             >
-              <Input placeholder="e.g. Grade 1, Grade 2, etc." />
-            </Form.Item>
-
-            <Form.Item
-              name="class_id"
-              label="Class"
-              rules={[
-                { required: true, message: "Please select a class" },
-              ]}
-            >
-              <Select
-                showSearch
-                placeholder="Select a class"
-                optionFilterProp="label"
-                loading={fetchingClasses}
-                notFoundContent={fetchingClasses ? <Spin size="small" /> : null}
-                suffixIcon={<TeamOutlined />}
-                filterOption={(input, option) =>
-                  (option?.label ?? "")
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-                options={(classes || []).map((cls) => ({
-                  value: cls.id,
-                  label: classLabel(cls),
-                }))}
-              />
-            </Form.Item>
-
-            <Form.Item
-              name="is_active"
-              label="Status"
-              valuePropName="checked"
-              initialValue={true}
-            >
-              <Switch checkedChildren="Active" unCheckedChildren="Inactive" />
+              <Input placeholder="e.g. Class 1, Class 2, etc." />
             </Form.Item>
           </div>
 
@@ -227,7 +184,7 @@ export default function GradeForm() {
                 icon={<SaveOutlined />}
                 loading={submitting}
               >
-                {isEdit ? "Update" : "Create"} Grade
+                {isEdit ? "Update" : "Create"} Class
               </Button>
             </div>
           </Form.Item>

@@ -99,7 +99,7 @@ export default function SignUp() {
     } = values;
 
     // UI role -> backend role_id
-    const roleMap = { student: ROLES.STUDENT, parent: ROLES.PARENT, teacher: ROLES.TEACHER };
+    const roleMap = { parent: ROLES.PARENT, teacher: ROLES.TEACHER };
     const role_id = roleMap[String(role)];
     if (!role_id) {
       toast.error("Invalid role selected.");
@@ -277,7 +277,6 @@ export default function SignUp() {
             rules={[{ required: true, message: "Please select a role" }]}
           >
             <Select placeholder="Select Role" disabled={loading}>
-              <Option value="student">Student</Option>
               <Option value="parent">Parent</Option>
               <Option value="teacher">Teacher</Option>
             </Select>

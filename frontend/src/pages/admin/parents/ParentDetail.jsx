@@ -81,7 +81,7 @@ export default function ParentDetail() {
         updateStatusPath: (id, entity) =>
           `/users/${entity?.raw?.user?.id ?? entity?.user_id}/status`,
 
-        removePath: (id) => `/parents/${id}`,
+        removePath: (id) => `/parent/${id}`,
         linkStudentByIdPath: (id) => `/parents/${id}/children`,
         linkStudentByEmailPath: (id) => `/parents/${id}/children/link-by-email`,
         unlinkStudentPath: (id, studentId) => `/parents/${id}/children/${studentId}`,

@@ -19,6 +19,10 @@ export const ROLE_PATHS = {
   [ROLES.SCHOOL]: "/school",
   [ROLES.PARTNER]: "/partner",
   [ROLES.ADMIN]: "/admin",
+  // Legacy role mappings for backward compatibility
+  2: "/teacher", // Legacy teacher role
+  3: "/student", // Legacy student role
+  4: "/parent",  // Legacy parent role
 };
 
 // Helper for guards

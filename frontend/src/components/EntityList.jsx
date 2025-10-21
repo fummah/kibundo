@@ -6,7 +6,7 @@ import {
 } from "antd";
 import {
   PlusOutlined, SearchOutlined,
-  SettingOutlined, MoreOutlined, TeamOutlined, DownOutlined
+  SettingOutlined, MoreOutlined, TeamOutlined, DownOutlined, UserOutlined
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -50,6 +50,131 @@ const getByPath = (obj, path) => {
   return typeof path === "string" ? obj[path] : undefined;
 };
 
+/* ---------- Portal credentials helpers ---------- */
+const getPortalCredentials = (entity) => {
+  let username = entity?.username || entity?.portal_login;
+  if (!username) {
+    const firstName = entity?.first_name || entity?.user?.first_name || "";
+    const lastName = entity?.last_name || entity?.user?.last_name || "";
+    const entityId = entity?.id;
+    if (firstName && lastName && entityId) {
+      const firstTwo = firstName.substring(0, 2).toLowerCase();
+      const firstOne = lastName.substring(0, 1).toLowerCase();
+      username = `${firstTwo}${firstOne}${entityId}`;
+    }
+  }
+  const password = entity?.plain_pass || entity?.portal_password || "testpass1234";
+  return { username, password };
+};
+
+const formatPortalLogin = (entity) => {
+  const { username } = getPortalCredentials(entity);
+  return username || "-";
+};
+
+/* ---------- SSO Login helper ---------- */
+const handleSSOLogin = async (entity, entityType, messageApi) => {
+  const portalUrl =
+    entityType === "students"
+      ? "/student/home"
+      : entityType === "parents"
+      ? "/parent/home"
+      : entityType === "teachers"
+      ? "/teacher/home"
+      : "/dashboard";
+
+  const ssoUrl = "/sso";
+  const ssoWin = window.open(ssoUrl, "_blank");
+  if (!ssoWin) {
+    messageApi.error("Popup blocked. Please allow popups for this site.");
+    return;
+  }
+
+  try {
+    let username = entity?.username || entity?.portal_login;
+    if (!username) {
+      const firstName = entity?.first_name || entity?.user?.first_name || "";
+      const lastName = entity?.last_name || entity?.user?.last_name || "";
+      const entityId = entity?.id;
+      const firstTwo = firstName.substring(0, 2).toLowerCase();
+      const firstOne = lastName.substring(0, 1).toLowerCase();
+      username = `${firstTwo}${firstOne}${entityId}`;
+    }
+    const password =
+      entity?.plain_pass || entity?.portal_password || entity?.password || "testpass1234";
+
+    if (!username || !password) {
+      try {
+        ssoWin.close();
+      } catch {}
+      messageApi.error("Missing portal credentials for this user.");
+      return;
+    }
+
+    const { data } = await api.post(
+      "/auth/login",
+      { username, password },
+      { withCredentials: true }
+    );
+    const token = data?.token;
+    if (!token) {
+      try {
+        ssoWin.close();
+      } catch {}
+      messageApi.error("Login failed: no token returned.");
+      return;
+    }
+
+    const ORIGIN = window.location.origin;
+    const payload = {
+      type: "KIBUNDO_SSO",
+      token,
+      user: data?.user || null,
+      storageKey: "kibundo.portal.token",
+      redirect: portalUrl,
+    };
+
+    // Try to postMessage a few times while the new tab loads
+    let tries = 0;
+    const maxTries = 20;
+    const iv = setInterval(() => {
+      if (ssoWin.closed) {
+        clearInterval(iv);
+        return;
+      }
+      try {
+        ssoWin.postMessage(payload, ORIGIN);
+        tries++;
+        if (tries >= maxTries) clearInterval(iv);
+      } catch {
+        tries++;
+        if (tries >= maxTries) clearInterval(iv);
+      }
+    }, 200);
+
+    // Hash fallback: /sso reads token & redirects
+    const encodedToken = encodeURIComponent(token);
+    const encodedRedir = encodeURIComponent(portalUrl);
+    ssoWin.location.replace(`${ssoUrl}#token=${encodedToken}&redirect=${encodedRedir}`);
+
+    const who =
+      entityType === "students"
+        ? "student"
+        : entityType === "parents"
+        ? "parent"
+        : entityType === "teachers"
+        ? "teacher"
+        : "user";
+    messageApi.success(`Opened ${who} portal for (${username})`);
+  } catch (error) {
+    console.error("SSO error:", error);
+    try {
+      ssoWin.close();
+    } catch {}
+    messageApi.error(error?.response?.data?.message || "Failed to open portal");
+  }
+};
+
 /* ---------- Required routes map (matches your Express file) ---------- */
 const REQUIRED_LIST_PATHS = {
   students: "/allstudents",
@@ -61,6 +186,7 @@ const REQUIRED_LIST_PATHS = {
   blogposts: "/blogposts",
   invoices: "/invoices",
   classes: "/allclasses",
+  grades: "/allclasses", // grades use the classes endpoint
 };
 
 // Only resources that HAVE delete endpoints in your router:
@@ -82,6 +208,7 @@ const REQUIRED_REMOVE_PATH = {
  *  statusFilter?: boolean,
  *  billingFilter?: boolean,
  *  columnsMap: (navigate, helpers)=> ({ key -> antd column (optional: csv(row)) }),
+ *    // helpers: { dash, fmtDate, statusChip, getByPath, getPortalCredentials, formatPortalLogin, handleSSOLogin }
  *  defaultVisible: string[],
  *  rowClassName?: (row)=>string,
  *  rowActions?: { extraItems?: [], onClick?: (key,row,ctx)=>void },
@@ -90,6 +217,7 @@ const REQUIRED_REMOVE_PATH = {
  */
 export default function EntityList({ cfg }) {
   const { t } = useTranslation();
+  const [messageApi, contextHolder] = message.useMessage();
   const {
     entityKey,
     titlePlural,
@@ -301,7 +429,15 @@ export default function EntityList({ cfg }) {
   /* columns */
   let ALL_COLUMNS_MAP = {};
   try {
-    ALL_COLUMNS_MAP = columnsMap(navigate, { dash, fmtDate, statusChip, getByPath }) || {};
+    ALL_COLUMNS_MAP = columnsMap(navigate, { 
+      dash, 
+      fmtDate, 
+      statusChip, 
+      getByPath,
+      getPortalCredentials,
+      formatPortalLogin,
+      handleSSOLogin: (entity) => handleSSOLogin(entity, entityKey, messageApi)
+    }) || {};
   } catch {
     ALL_COLUMNS_MAP = {};
   }
@@ -343,6 +479,11 @@ export default function EntityList({ cfg }) {
             { key: "view", label: t("actions.view", "View") },
             { key: "edit", label: t("actions.edit") },
             ...(canDelete ? [{ key: "delete", label: t("actions.delete"), danger: true }] : []),
+            ...(["students", "parents", "teachers"].includes(entityKey) ? [{
+              key: "login-as-user", 
+              label: `Login as ${entityKey.slice(0, -1)}`, 
+              icon: <UserOutlined />
+            }] : []),
             ...(cfg.rowActions?.extraItems || []),
           ],
           onClick: async ({ key, domEvent }) => {
@@ -368,6 +509,17 @@ export default function EntityList({ cfg }) {
                   } catch {  }
                 },
               });
+            }
+
+            // Handle SSO login for supported entity types
+            if (key === "login-as-user" && ["students", "parents", "teachers"].includes(entityKey)) {
+              const getLoginLabel = () => {
+                if (entityKey === "students") return "student";
+                if (entityKey === "parents") return "parent";
+                if (entityKey === "teachers") return "teacher";
+                return "user";
+              };
+              return handleSSOLogin(r, entityKey, messageApi);
             }
 
             if (typeof cfg.rowActions?.onClick === "function") {
@@ -577,14 +729,16 @@ export default function EntityList({ cfg }) {
   );
 
   return (
-    <div className={`entitylist-container w-full h-[calc(100vh-6.5rem)] px-2 md:px-3 ${density === 'compact' ? 'density-compact' : ''} ${hasSorted ? '' : 'no-initial-sort'}`}>
-      <div className="mb-3 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-[#7C4DFF] text-white flex items-center justify-center">
-          {iconNode || <TeamOutlined />}
+    <>
+      {contextHolder}
+      <div className={`entitylist-container w-full h-[calc(100vh-6.5rem)] px-2 md:px-3 ${density === 'compact' ? 'density-compact' : ''} ${hasSorted ? '' : 'no-initial-sort'}`}>
+      <div className="mb-4 flex items-center gap-3">
+        <div className="w-12 h-12 rounded-xl bg-[#7C4DFF] text-white flex items-center justify-center shadow-lg">
+          {iconNode || <TeamOutlined className="text-lg" />}
         </div>
         <div className="leading-tight">
-          <div className="text-gray-500 text-sm">{titlePlural} /</div>
-          <Title level={3} className="!m-0">{t("entityList.header.list")}</Title>
+          <div className="text-gray-500 text-sm font-medium">{titlePlural} /</div>
+          <Title level={3} className="!m-0 !text-gray-800">{t("entityList.header.list")}</Title>
         </div>
       </div>
 
@@ -645,14 +799,19 @@ export default function EntityList({ cfg }) {
         </div>
 
         {/* Table */}
-        <div className="flex-1 overflow-hidden rounded-lg">
+        <div className="flex-1 overflow-hidden rounded-xl">
           <Table
             columns={columns}
             dataSource={effectiveRows || []}
             loading={loading}
             rowKey={idField}
             rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys, preserveSelectedRowKeys: true }}
-            pagination={{ pageSize, showSizeChanger: false }}
+            pagination={{ 
+              pageSize, 
+              showSizeChanger: false,
+              showQuickJumper: true,
+              showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} items`
+            }}
             size={density === 'compact' ? 'small' : 'middle'}
             scroll={{ x: 1200, y: "calc(100vh - 310px)" }}
             sticky
@@ -810,5 +969,6 @@ export default function EntityList({ cfg }) {
       `}</style>
 
     </div>
+    </>
   );
 }

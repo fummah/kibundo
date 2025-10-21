@@ -3,30 +3,19 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChatStripSpacer } from "@/components/student/mobile/FooterChat.jsx";
 import {
-  CheckOutlined,
   LeftOutlined,
   RightOutlined,
   PlusOutlined,
 } from "@ant-design/icons";
-import {
-  CalculatorOutlined,
-  ReadOutlined,
-  EditOutlined,
-  ScissorOutlined,
-  ExperimentOutlined,
-  QuestionCircleOutlined,
-} from "@ant-design/icons";
 import { useChatDock } from "@/context/ChatDockContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import api from "@/api/axios";
+import HomeworkCard from "@/components/homework/HomeworkCard.jsx";
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Base (unscoped) localStorage keys — will be scoped per-student below
 const TASKS_KEY = "kibundo.homework.tasks.v1";
 const PROGRESS_KEY = "kibundo.homework.progress.v1";
-
-// Columns (incl. “Gescannt am”)
-const COLS = "140px 72px minmax(0,0.9fr) 96px 110px 64px";
 
 // Subject visual meta
 const SUBJECTS = {
@@ -122,124 +111,7 @@ function deriveSubjectFromText(text = "") {
   return "Sonstiges";
 }
 
-// Choose icon by what/subject text
-function WhatIcon({ what = "", subject = "" }) {
-  const w = (what || "").toLowerCase();
-  const s = (subject || "").toLowerCase();
-  if (
-    s.includes("mathe") ||
-    /multiply|division|divide|reihe|worksheet|aufgaben|task|rechnung|arith|blatt/.test(
-      w
-    )
-  ) {
-    return <CalculatorOutlined style={{ fontSize: 18, color: "#2b6a5b" }} />;
-  }
-  if (/lesen|read|vorlesen|buch|text/.test(w) || s.includes("deutsch")) {
-    return <ReadOutlined style={{ fontSize: 18, color: "#2b6a5b" }} />;
-  }
-  if (/aufsatz|essay|schreiben|write/.test(w)) {
-    return <EditOutlined style={{ fontSize: 18, color: "#2b6a5b" }} />;
-  }
-  if (/basteln|craft|schere|paper|drachen/.test(w)) {
-    return <ScissorOutlined style={{ fontSize: 18, color: "#2b6a5b" }} />;
-  }
-  if (/experiment|lab|science|versuch/.test(w)) {
-    return <ExperimentOutlined style={{ fontSize: 18, color: "#2b6a5b" }} />;
-  }
-  return <QuestionCircleOutlined style={{ fontSize: 18, color: "#2b6a5b" }} />;
-}
 
-const CompactRow = ({
-  id,
-  subject,
-  what,
-  description,
-  due,
-  done,
-  createdAt,
-  onOpen,
-}) => {
-  const meta = SUBJECTS[subject] || { color: "#eef0f3", icon: "📚" };
-  const scanDate = formatScanDate(createdAt);
-  return (
-    <div
-      className="grid w-full min-h-[44px] divide-x-2 divide-gray-300
-                 bg-white hover:bg-[#f0f7f3] transition-colors duration-150
-                 cursor-pointer outline-none"
-      style={{ gridTemplateColumns: COLS }}
-      role="row"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onOpen?.()}
-      aria-label={`Aufgabe öffnen: ${subject || "Sonstiges"} – ${what || ""}`}
-    >
-      {/* Fächer */}
-      <div
-        className="flex items-center gap-2 px-3"
-        style={{ backgroundColor: meta.color }}
-        role="cell"
-      >
-        <span className="text-[16px]" aria-hidden>
-          {meta.icon}
-        </span>
-        <span className="font-semibold text-[#2b2b2b]">
-          {subject || "Sonstiges"}
-        </span>
-      </div>
-
-      {/* Was (Icon only) */}
-      <div
-        className="px-3 py-2 flex items-center justify-center"
-        role="cell"
-        title={what}
-        aria-label={what}
-      >
-        <WhatIcon what={what} subject={subject} />
-        <span className="sr-only">{what}</span>
-      </div>
-
-      {/* Beschreibung */}
-      <div className="px-3 py-2 text-[#5c6b6a] truncate" role="cell">
-        {description || "—"}
-      </div>
-
-      {/* Bis wann */}
-      <div className="px-3 py-2 text-center" role="cell">
-        <span className="inline-block bg-[#e9f2ef] text-[#2b6a5b] px-2.5 py-[3px] rounded-full text-[12px] font-semibold">
-          {due || "—"}
-        </span>
-      </div>
-
-      {/* Gescannt am */}
-      <div
-        className="px-3 py-2 text-center text-[#667b76] text-[12px]"
-        role="cell"
-      >
-        {scanDate}
-      </div>
-
-      {/* fertig */}
-      <div className="px-3 py-2 flex justify-center items-center" role="cell">
-        {done ? (
-          <span
-            className="inline-grid place-items-center w-6 h-6 rounded-full"
-            style={{ backgroundColor: "#ff8a3d", color: "#fff" }}
-            aria-label="fertig"
-            title="fertig"
-          >
-            <CheckOutlined style={{ fontSize: 12 }} />
-          </span>
-        ) : (
-          <span
-            className="inline-grid place-items-center w-6 h-6 rounded-full bg-[#e8efe9]"
-            title="offen"
-            aria-label="offen"
-          />
-        )}
-      </div>
-    </div>
-  );
-};
 
 export default function HomeworkList() {
   const navigate = useNavigate();
@@ -468,102 +340,88 @@ export default function HomeworkList() {
   return (
     <>
       <section className="w-full">
-        <div className="w-full rounded-[20px] overflow-hidden border-2 border-gray-300 bg-white">
-          {/* Header */}
-          <div
-            className="grid w-full divide-x-2 divide-gray-300 border-b-2 border-gray-300 bg-[#f6faf7] text-[#2b6a5b] font-semibold text-[12px] md:text-[13px]"
-            style={{ gridTemplateColumns: COLS }}
-          >
-            <div className="px-3 py-2" role="columnheader">
-              Fächer
-            </div>
-            <div className="px-3 py-2 text-center" role="columnheader">
-              Was
-            </div>
-            <div className="px-3 py-2" role="columnheader">
-              Beschreibung
-            </div>
-            <div className="px-3 py-2 text-center" role="columnheader">
-              Bis wann
-            </div>
-            <div className="px-3 py-2 text-center" role="columnheader">
-              Gescannt am
-            </div>
-            <div className="px-3 py-2 text-center" role="columnheader">
-              fertig
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-[#2b6a5b] mb-2">Hausaufgaben</h1>
+          <p className="text-[#51625e]">Verwalte deine gescannten und hinzugefügten Aufgaben</p>
+        </div>
+
+        {/* Cards Grid */}
+        {rows.length ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            {rows.map((r) => (
+              <HomeworkCard
+                key={r.id || `${r.subject}-${r.what}`}
+                {...r}
+                onOpen={() => openTask(r)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <div className="bg-white rounded-xl border-2 border-dashed border-gray-300 p-8">
+              <div className="text-[#51625e] mb-4">
+                <div className="text-4xl mb-2">📚</div>
+                <div className="text-lg font-medium mb-2">Noch keine Aufgaben</div>
+                <div className="text-sm">Noch keine Aufgaben gescannt oder hinzugefügt.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  navigate("/student/homework/doing", {
+                    state: { openHomeworkChat: true },
+                  })
+                }
+                className="px-6 py-3 rounded-full bg-[#2b6a5b] text-white hover:bg-[#1f4d3f] transition-colors duration-200 font-medium"
+              >
+                <PlusOutlined className="mr-2" />
+                Aufgabe hinzufügen
+              </button>
             </div>
           </div>
+        )}
 
-          {/* Body */}
-          {rows.length ? (
-            <div className="divide-y-2 divide-gray-300" role="rowgroup">
-              {rows.map((r) => (
-                <CompactRow
-                  key={r.id || `${r.subject}-${r.what}`}
-                  {...r}
-                  onOpen={() => openTask(r)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="p-6 text-center text-[#51625e]">
-              Noch keine Aufgaben gescannt oder hinzugefügt.
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate("/student/homework/doing", {
-                      state: { openHomeworkChat: true },
-                    })
-                  }
-                  className="px-3 py-1.5 rounded-full bg-[#e7ecea] text-[#51625e]"
-                >
-                  Aufgabe hinzufügen
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Pagination + FAB */}
-          <div className="flex items-center justify-between px-3 py-2 border-t-2 border-gray-300 w-full bg-white">
+        {/* Pagination */}
+        {rows.length > 0 && (
+          <div className="flex items-center justify-between bg-white rounded-xl border-2 border-gray-200 px-6 py-4">
             <button
-              className="px-2 py-1 rounded-full bg-[#e7ecea] text-[#51625e] disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#e7ecea] text-[#51625e] hover:bg-[#d4ddd9] disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
-              <LeftOutlined /> <span className="ml-1">Zurück</span>
+              <LeftOutlined /> <span>Zurück</span>
             </button>
 
-            <div className="text-[12px] text-[#51625e]">
-              Seite <strong>{Math.min(page, pageCount)}</strong> / {pageCount}
+            <div className="text-sm text-[#51625e]">
+              Seite <strong className="text-[#2b6a5b]">{Math.min(page, pageCount)}</strong> von {pageCount}
             </div>
 
             <button
-              className="px-2 py-1 rounded-full bg-[#e7ecea] text-[#51625e] disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#e7ecea] text-[#51625e] hover:bg-[#d4ddd9] disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
               disabled={page >= pageCount}
               onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
             >
-              <span className="mr-1">Weiter</span> <RightOutlined />
-            </button>
-
-            {/* FAB */}
-            <button
-              onClick={() =>
-                navigate("/student/homework/doing", {
-                  state: { openHomeworkChat: true },
-                })
-              }
-              className="ml-4 w-10 h-10 rounded-full bg-[#2b6a5b] text-white shadow-lg
-                     flex items-center justify-center hover:bg-[#1f4f43] transition-colors duration-200
-                     focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2b6a5b]"
-              aria-label="Neue Aufgabe scannen"
-            >
-              <PlusOutlined className="text-lg" />
+              <span>Weiter</span> <RightOutlined />
             </button>
           </div>
-        </div>
+        )}
+
+        {/* FAB */}
+        <button
+          onClick={() =>
+            navigate("/student/homework/doing", {
+              state: { openHomeworkChat: true },
+            })
+          }
+          className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-[#2b6a5b] text-white shadow-lg
+                 flex items-center justify-center hover:bg-[#1f4f43] transition-colors duration-200
+                 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2b6a5b] z-50"
+          aria-label="Neue Aufgabe scannen"
+        >
+          <PlusOutlined className="text-xl" />
+        </button>
       </section>
-      {/* Avoid overlap with sticky footer chat */}
+
       <ChatStripSpacer />
     </>
   );

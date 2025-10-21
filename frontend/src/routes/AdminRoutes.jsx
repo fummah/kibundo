@@ -34,8 +34,6 @@ import Newsletter from "@/pages/admin/newsletter/Newsletter.jsx";
 /* Academics */
 import AcademicsOverview from "@/pages/admin/academics/AcademicsOverview.jsx";
 import Game from "@/pages/admin/academics/Game.jsx";
-// ❌ removed old single Quiz import
-// import Quiz from "@/pages/admin/academics/Quiz.jsx";
 import Curricula from "@/pages/admin/academics/Curricula.jsx";
 import Worksheet from "@/pages/admin/academics/Worksheet.jsx";
 import AIAgent from "@/pages/admin/academics/AIAgent.jsx";
@@ -91,12 +89,17 @@ import DatabaseOverview from "@/pages/admin/database/DatabaseOverview.jsx";
 import DatabaseManagement from "@/pages/admin/database/DatabaseManagement.jsx";
 
 /* Lazy pages */
-const StudentAnalytics = lazy(() => import("@/pages/admin/analytics/StudentAnalytics.jsx"));
+const StudentAnalytics = lazy(() =>
+  import("@/pages/admin/analytics/StudentAnalytics.jsx")
+);
+
+// Local fallback for lazies
+const Fallback = <div className="p-4">Loading…</div>;
 
 export default function AdminRoutes() {
   return (
     <>
-      {/* Guard wraps the whole admin tree */}
+      {/* Entire admin tree is protected by ADMIN role */}
       <Route element={<ProtectedRoute allowedRoles={[ROLES.ADMIN]} />}>
         <Route path="/admin" element={<GlobalLayout />}>
           {/* Dashboards */}
@@ -109,7 +112,7 @@ export default function AdminRoutes() {
             <Route
               path="students"
               element={
-                <Suspense fallback={<div>Loading student analytics…</div>}>
+                <Suspense fallback={Fallback}>
                   <StudentAnalytics />
                 </Suspense>
               }
@@ -156,16 +159,21 @@ export default function AdminRoutes() {
             <Route path="worksheet" element={<Worksheet />} />
             <Route path="game" element={<Game />} />
 
-            {/* NEW: Quizzes main page (plural path) */}
+            {/* New quizzes page (plural) */}
             <Route path="quizzes" element={<QuizPage />} />
 
-            {/* Back-compat: redirect singular /quiz → plural /quizzes */}
-            <Route path="quiz" element={<Navigate to="/admin/academics/quizzes" replace />} />
+            {/* Back-compat: singular → plural */}
+            <Route
+              path="quiz"
+              element={<Navigate to="/admin/academics/quizzes" replace />}
+            />
 
-            {/* Canonical AI agent route */}
+            {/* AI Agent */}
             <Route path="kibundo" element={<AIAgent />} />
-            {/* Back-compat redirect */}
-            <Route path="ai-agent" element={<Navigate to="/admin/academics/kibundo" replace />} />
+            <Route
+              path="ai-agent"
+              element={<Navigate to="/admin/academics/kibundo" replace />}
+            />
 
             {/* OCR */}
             <Route path="ocr">
@@ -247,10 +255,24 @@ export default function AdminRoutes() {
             <Route path="management" element={<DatabaseManagement />} />
           </Route>
 
-          {/* Back-compat redirect for any nested old quizzes paths */}
-          <Route path="quizzes/*" element={<Navigate to="/admin/academics/quizzes" replace />} />
+          {/* Back-compat for any legacy nested quizzes paths */}
+          <Route
+            path="quizzes/*"
+            element={<Navigate to="/admin/academics/quizzes" replace />}
+          />
+
+          {/* Catch-all inside /admin → dashboard */}
+          <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
         </Route>
       </Route>
+
+      {/*
+        NOTE: Student/Parent/Teacher SSO landing routes live in their own route files:
+          - /student/sso  → StudentRoutes.jsx
+          - /parent/sso   → ParentRoutes.jsx
+          - /teacher/sso  → TeacherRoutes.jsx
+        The admin “Login as …” action should open one of those URLs in a new tab.
+      */}
     </>
   );
 }

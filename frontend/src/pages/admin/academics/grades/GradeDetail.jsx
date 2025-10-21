@@ -27,7 +27,7 @@ export default function GradeDetail() {
   const { id } = useParams();
   const navigate = useNavigate(); // ✅ was missing
   const [loading, setLoading] = useState(true);
-  const [grade, setGrade] = useState(null);
+  const [classData, setClassData] = useState(null);
   const [classInfo, setClassInfo] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
   const topbar = useTopbar();
@@ -65,11 +65,11 @@ export default function GradeDetail() {
     []
   );
 
-  const loadGrade = useCallback(async () => {
+  const loadClass = useCallback(async () => {
     try {
       setLoading(true);
-      const { data } = await api.get(`/grades/${id}`);
-      setGrade(data);
+      const { data } = await api.get(`/class/${id}`);
+      setClassData(data);
 
       // Fetch related class (using your provided endpoints)
       if (data?.class) {
@@ -80,18 +80,18 @@ export default function GradeDetail() {
 
       if (topbar && typeof topbar.update === "function") {
         topbar.update({
-          title: `Grade: ${data?.name || "Details"}`,
+          title: `Class: ${data?.class_name || data?.name || "Details"}`,
           breadcrumbs: [
             { title: "Admin", path: "/admin" },
             { title: "Academics", path: "/admin/academics" },
-            { title: "Grades", path: "/admin/academics/grades" },
-            { title: data?.name || "Details" },
+            { title: "Classes", path: "/admin/academics/grades" },
+            { title: data?.class_name || data?.name || "Details" },
           ],
         });
       }
     } catch (error) {
-      console.error("Failed to load grade:", error);
-      message.error("Failed to load grade details");
+      console.error("Failed to load class:", error);
+      message.error("Failed to load class details");
       navigate("/admin/academics/grades");
     } finally {
       setLoading(false);
@@ -101,19 +101,19 @@ export default function GradeDetail() {
   useEffect(() => {
     if (topbar && typeof topbar.update === "function") {
       topbar.update({
-        title: `Grade Details`,
+        title: `Class Details`,
         breadcrumbs: [
           { title: "Admin", path: "/admin" },
           { title: "Academics", path: "/admin/academics" },
-          { title: "Grades", path: "/admin/academics/grades" },
+          { title: "Classes", path: "/admin/academics/grades" },
           { title: "Details" },
         ],
       });
     }
-    loadGrade();
-  }, [id, topbar, loadGrade]);
+    loadClass();
+  }, [id, topbar, loadClass]);
 
-  if (!grade) return null;
+  if (!classData) return null;
 
   const tabs = [
     {
@@ -126,51 +126,35 @@ export default function GradeDetail() {
       children: (
         <Card className="mt-4" loading={loading}>
           <Descriptions bordered column={1} className="custom-descriptions">
-            <Descriptions.Item label="Grade Name">
-              <div className="font-medium">{grade.name}</div>
+            <Descriptions.Item label="Class Name">
+              <div className="font-medium">{classData.class_name}</div>
             </Descriptions.Item>
 
-            <Descriptions.Item label="Grade Code">
-              <Tag color="blue">{grade.code || "N/A"}</Tag>
+            <Descriptions.Item label="Class ID">
+              <Tag color="blue">{classData.id}</Tag>
             </Descriptions.Item>
 
-            <Descriptions.Item label="Class">
-              {classInfo ? (
-                <div className="flex items-center gap-2">
-                  <TeamOutlined className="text-blue-500" />
-                  <span>{classLabel(classInfo)}</span>
-                </div>
-              ) : (
-                <span>N/A</span>
-              )}
+            <Descriptions.Item label="Created By">
+              <div className="flex items-center gap-2">
+                <UserOutlined className="text-blue-500" />
+                <span>{classData.userCreated?.username || classData.userCreated?.email || "Unknown"}</span>
+              </div>
             </Descriptions.Item>
-
-            <Descriptions.Item label="Status">
-              <Tag color={grade.is_active ? "green" : "default"}>
-                {grade.is_active ? "Active" : "Inactive"}
-              </Tag>
-            </Descriptions.Item>
-
-            {grade.description && (
-              <Descriptions.Item label="Description">
-                <div className="whitespace-pre-line">{grade.description}</div>
-              </Descriptions.Item>
-            )}
 
             <Descriptions.Item label="Created At">
               <div className="flex items-center text-gray-500">
                 <ClockCircleOutlined className="mr-1" />
-                {grade.created_at
-                  ? new Date(grade.created_at).toLocaleString()
+                {classData.created_at
+                  ? new Date(classData.created_at).toLocaleString()
                   : "—"}
               </div>
             </Descriptions.Item>
 
-            {grade.updated_at && grade.updated_at !== grade.created_at && (
+            {classData.updated_at && classData.updated_at !== classData.created_at && (
               <Descriptions.Item label="Last Updated">
                 <div className="flex items-center text-gray-500">
                   <ClockCircleOutlined className="mr-1" />
-                  {new Date(grade.updated_at).toLocaleString()}
+                  {new Date(classData.updated_at).toLocaleString()}
                 </div>
               </Descriptions.Item>
             )}

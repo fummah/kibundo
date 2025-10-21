@@ -1,11 +1,20 @@
-import { Suspense, lazy } from "react";
-import { Route, Navigate, Outlet } from "react-router-dom";
+// src/routes/StudentsRoutes.jsx
+import { Suspense, lazy, useEffect } from "react";
+import { Route, Navigate, Outlet, useLocation, useSearchParams } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import { ROLES } from "@/utils/roleMapper";
 import { StudentAppProvider } from "@/context/StudentAppContext.jsx";
-
-// Mobile frame wrapper
 import MobileShell from "@/components/student/mobile/MobileShell.jsx";
+import IntroGate from "@/routes/IntroGate.jsx";
+import { hasSeenIntro, hasDoneTour } from "@/pages/student/onboarding/introFlags";
+
+// --- Optional helpers from api (safe if missing) ---
+let setPortalTokenFn = null;
+try {
+  // available if you used the axios update I gave you
+  const mod = await import("@/api/axios");
+  setPortalTokenFn = mod.setPortalToken || null;
+} catch { /* noop: handle with direct sessionStorage below */ }
 
 // --- Lazy student pages ---
 // Onboarding
@@ -30,9 +39,9 @@ const ReadingQuizFlow   = lazy(() => import("@/pages/student/reading/ReadingQuiz
 
 // Homework (new structure)
 import HomeworkLayout from "@/pages/student/homework/HomeworkLayout.jsx";
-const HomeworkList       = lazy(() => import("@/pages/student/homework/HomeworkList.jsx"));       // step 0
-const HomeworkDoing      = lazy(() => import("@/pages/student/homework/HomeworkDoing.jsx"));      // step 1
-const HomeworkFeedback   = lazy(() => import("@/pages/student/homework/HomeworkFeedback.jsx"));   // step 3
+const HomeworkList       = lazy(() => import("@/pages/student/homework/HomeworkList.jsx"));
+const HomeworkDoing      = lazy(() => import("@/pages/student/homework/HomeworkDoing.jsx"));
+const HomeworkFeedback   = lazy(() => import("@/pages/student/homework/HomeworkFeedback.jsx"));
 
 // Progress / Motivation
 const TreasureMap       = lazy(() => import("@/pages/student/TreasureMap.jsx"));
@@ -40,12 +49,6 @@ const MotivationTool    = lazy(() => import("@/pages/student/MotivationTool.jsx"
 
 // Settings
 const StudentSettings   = lazy(() => import("@/pages/student/StudentSettings.jsx"));
-
-// Chat opener was removed; routes that referenced it now redirect to concrete pages
-
-// Gate helper
-import IntroGate from "@/routes/IntroGate.jsx";
-import { hasSeenIntro, hasDoneTour } from "@/pages/student/onboarding/introFlags";
 
 // --- Helpers ---
 const Fallback = <div className="p-4">Loading…</div>;
@@ -57,13 +60,74 @@ function HomeGate() {
   return <StudentHome />;
 }
 
+/**
+ * StudentAccessGate
+ * Allows access if a portal token exists in sessionStorage (SSO tab),
+ * otherwise falls back to your regular ProtectedRoute.
+ */
+function StudentAccessGate({ allowedRoles }) {
+  const hasPortalToken =
+    typeof window !== "undefined" &&
+    !!sessionStorage.getItem("portal.token");
+
+  if (hasPortalToken) {
+    // Allow straight in (token will be picked by axios on /student/*)
+    return <Outlet />;
+  }
+  // Fallback to your normal auth/roles flow
+  return <ProtectedRoute allowedRoles={allowedRoles} />;
+}
+
+/**
+ * SsoReceiver
+ * Usage (admin opens student tab):
+ *   /student/sso?token=<JWT>&user=<base64(json)>
+ * Stores token (and optional user) in sessionStorage then redirects.
+ */
+function SsoReceiver({ redirectTo = "/student/home" }) {
+  const [params] = useSearchParams();
+  const token = params.get("token") || "";
+  const userB64 = params.get("user") || ""; // optional
+
+  useEffect(() => {
+    try {
+      if (token) {
+        // Prefer helper if present, else set directly
+        if (typeof setPortalTokenFn === "function") setPortalTokenFn(token);
+        else sessionStorage.setItem("portal.token", token);
+      }
+      if (userB64) {
+        try {
+          const json = atob(userB64);
+          const obj = JSON.parse(json);
+          sessionStorage.setItem("portal.user", JSON.stringify(obj));
+        } catch {
+          // ignore malformed user payload
+        }
+      }
+    } catch {
+      // no-op
+    }
+  }, [token, userB64]);
+
+  // If no token came in, send to student sign-in (or home to let guards handle)
+  if (!token) return <Navigate to="/signin" replace />;
+
+  // Clean URL after storing (optional: could also pushState)
+  return <Navigate to={redirectTo} replace />;
+}
+
 export default function StudentRoutes() {
   // Allow legacy student role id 3 during transition
   const STUDENT_ROLES = [ROLES.STUDENT, 3];
 
   return (
     <>
-      <Route element={<ProtectedRoute allowedRoles={STUDENT_ROLES} />} >
+      {/* SSO receiver must be reachable WITHOUT auth */}
+      <Route path="/student/sso" element={<SsoReceiver redirectTo="/student/home" />} />
+
+      {/* For everything else under /student, allow portal token OR ProtectedRoute */}
+      <Route element={<StudentAccessGate allowedRoles={STUDENT_ROLES} />}>
         <Route
           path="/student"
           element={
@@ -84,7 +148,7 @@ export default function StudentRoutes() {
                 </Suspense>
               }
             >
-              {/* Home (guarded) */}
+              {/* Home (guarded by onboarding flags) */}
               <Route path="home" element={<HomeGate />} />
 
               {/* Onboarding */}
@@ -115,14 +179,14 @@ export default function StudentRoutes() {
               <Route path="homework" element={<HomeworkLayout />}>
                 <Route index element={<HomeworkList />} />
                 <Route path="doing"      element={<HomeworkDoing />} />
-                <Route path="chat" element={<Navigate to="/student/homework/doing" replace />} />
+                <Route path="chat"       element={<Navigate to="/student/homework/doing" replace />} />
                 <Route path="feedback"   element={<HomeworkFeedback />} />
 
                 {/* Legacy fallback routes */}
-                <Route path="interaction" element={<Navigate to="doing" replace />} />
-                <Route path="done"        element={<Navigate to="feedback" replace />} />
-                <Route path="chat/:taskId" element={<Navigate to="chat" replace />} />
-                <Route path="feedback/:taskId" element={<Navigate to="feedback" replace />} />
+                <Route path="interaction"       element={<Navigate to="doing" replace />} />
+                <Route path="done"              element={<Navigate to="feedback" replace />} />
+                <Route path="chat/:taskId"      element={<Navigate to="chat" replace />} />
+                <Route path="feedback/:taskId"  element={<Navigate to="feedback" replace />} />
               </Route>
 
               {/* Progress / Motivation */}

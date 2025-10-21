@@ -9,7 +9,7 @@ import React, {
   useRef,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "@/api/axios"; // ⬅️ use your centralized Axios instance
+import api from "@/api/axios"; // ⬅️ your centralized Axios instance
 
 export const TASKS_KEY = "kibundo.homework.tasks.v1";
 export const PROGRESS_KEY = "kibundo.homework.progress.v1";
@@ -41,33 +41,55 @@ const ChatDockCtx = createContext(DEFAULT_CTX);
 const getKey = (mode = "general", taskId = null) =>
   `${CHAT_NS}:${mode}:${taskId ?? "__"}`;
 
+/* ---------- persistence helpers ---------- */
 const loadAllChats = () => {
   try {
-    return JSON.parse(localStorage.getItem(CHAT_NS) || "{}");
+    const raw = localStorage.getItem(CHAT_NS);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
   }
 };
 const saveAllChats = (chatByKey) => {
   try {
-    localStorage.setItem(CHAT_NS, JSON.stringify(chatByKey));
+    localStorage.setItem(CHAT_NS, JSON.stringify(chatByKey || {}));
   } catch {}
 };
 
-const mergeById = (a = [], b = []) => {
-  const seen = new Set();
+/* ---------- FIXED: robust mergeById (no Array.isArray(m) checks) ---------- */
+const mergeById = (left = [], right = []) => {
   const out = [];
-  for (const arr of [a, b]) {
-    if (!Array.isArray(arr)) continue;
+  const seen = new Set();
+
+  const createKey = (m) => {
+    if (!m || typeof m !== "object") return "";
+    if (m.id) return String(m.id);
+    if (m?.from === "student" && m?.content) {
+      const content = String(m.content).trim();
+      const ts = m?.timestamp || "";
+      return `student|${content}|${ts}`;
+    }
+    return `${m?.from}|${m?.timestamp}|${String(m?.content ?? "").slice(0, 64)}`;
+  };
+
+  const pushUnique = (arr) => {
+    if (!Array.isArray(arr)) return;
     for (const m of arr) {
-      const key =
-        m?.id ??
-        `${m?.from}|${m?.timestamp}|${String(m?.content).slice(0, 64)}`;
-      if (seen.has(key)) continue;
+      if (!m || typeof m !== "object") continue;
+      const key = createKey(m);
+      if (!key || seen.has(key)) continue;
       seen.add(key);
       out.push(m);
     }
-  }
+  };
+
+  // Priority order: left, then right
+  pushUnique(left);
+  pushUnique(right);
+
+  // Time ascending
+  out.sort((a, b) => new Date(a?.timestamp || 0) - new Date(b?.timestamp || 0));
   return out;
 };
 
@@ -80,25 +102,33 @@ const fmt = (content, from = "agent", type = "text", extra = {}) => ({
   ...extra,
 });
 
-/** Build a Markdown table + extracted text (safe for text-only renderers) */
-const qaToMarkdown = (extractedText = "", qa = []) => {
-  const header = "| # | Frage | Antwort |\n|---:|-------|---------|";
-  const rows =
-    Array.isArray(qa) && qa.length
-      ? qa
-          .map((q, i) => {
-            const question = (q?.text || q?.question || "—").replace(/\n+/g, " ");
-            const answer = (q?.answer || "—").replace(/\n+/g, " ");
-            return `| ${i + 1} | ${question} | ${answer} |`;
-          })
-          .join("\n")
-      : "| – | Keine Fragen erkannt | – |";
+/** Build child-friendly markdown format for homework analysis (safe for text-only renderers) */
+const qaToMarkdown = (extractedText = "", qa = [], isUnclear = false) => {
+  if (isUnclear) {
+    return `📸 **Das Bild ist nicht klar genug!**
+
+✨ **Tipps für ein besseres Foto:**
+• Halte das Handy ruhig
+• Achte auf gutes Licht (nicht zu dunkel)
+• Das Blatt soll ganz im Bild sein
+• Der Text soll scharf und klar zu lesen sein
+
+Dann kann ich dir viel besser helfen! 😊`;
+  }
 
   const extractedBlock = extractedText?.trim()
-    ? `\n\n**Erkannter Text**\n\n\`\`\`\n${extractedText}\n\`\`\`\n`
-    : "\n\n**Erkannter Text**\n\n_(keine Daten gefunden)_\n";
+    ? `\n\n📖 **Was ich in deinem Bild gesehen habe:**\n\n${extractedText}\n`
+    : "\n\n📖 **Was ich in deinem Bild gesehen habe:**\n\n_(nichts gefunden)_\n";
 
-  return `**Analyse-Ergebnis**\n\n${header}\n${rows}${extractedBlock}`;
+  const qaBlock = Array.isArray(qa) && qa.length
+    ? `\n\n🎯 **Deine Aufgaben (${qa.length}):**\n\n` + qa.map((q, i) => {
+        const question = (q?.text || q?.question || "—").replace(/\n+/g, " ");
+        const answer = (q?.answer || "—").replace(/\n+/g, " ");
+        return `${i + 1}. 💭 **Frage:** ${question}\n   ✅ **Antwort:** ${answer}`;
+      }).join("\n\n")
+    : "\n\n🎯 **Deine Aufgaben:**\n\n_(keine Aufgaben erkannt)_\n";
+
+  return `🎉 **Deine Hausaufgabe wurde gefunden!**\n${extractedBlock}${qaBlock}`;
 };
 
 /** 🚫 Never persist transient messages or base64 previews (Data URLs) */
@@ -125,7 +155,22 @@ export function ChatDockProvider({ children }) {
     analyzeOnOpen: false,
   }));
 
-  /** One-time migration: convert any legacy {type:'qa', content:{...}} to Markdown text */
+  /** Keep in sync if other tabs modify localStorage */
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key !== CHAT_NS) return;
+      try {
+        const parsed = e.newValue ? JSON.parse(e.newValue) : {};
+        if (parsed && typeof parsed === "object") {
+          setState((s) => ({ ...s, chatByKey: parsed }));
+        }
+      } catch {}
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  /** One-time migration: convert legacy {type:'qa', content:{...}} to Markdown text */
   useEffect(() => {
     setState((s) => {
       let changed = false;
@@ -151,9 +196,7 @@ export function ChatDockProvider({ children }) {
         })
       );
       if (changed) {
-        try {
-          localStorage.setItem(CHAT_NS, JSON.stringify(chatByKey));
-        } catch {}
+        saveAllChats(chatByKey);
         return { ...s, chatByKey };
       }
       return s;
@@ -172,17 +215,15 @@ export function ChatDockProvider({ children }) {
     setState((s) => {
       const key = getKey(mode, taskId);
       const current = s.chatByKey[key] || [];
-      const base = [...current];
+
       const nextVal =
         typeof next === "function"
-          ? next(base)
+          ? next([...current])
           : Array.isArray(next)
-          ? mergeById(base, next)
-          : base;
+          ? mergeById(current, next)       // ✅ fixed merge
+          : current;
 
-      // 🚫 Persist only safe messages
       const safeToPersist = filterPersistable(nextVal);
-
       const chatByKey = { ...s.chatByKey, [key]: safeToPersist };
       saveAllChats(chatByKey);
       return { ...s, chatByKey };
@@ -206,7 +247,10 @@ export function ChatDockProvider({ children }) {
 
       if (existing.length === 0) {
         const seed = hasProvided ? initialMessages : hasTaskMsgs ? task.messages : [];
-        if (seed.length > 0) setChatMessages(mode, task?.id, [...seed]);
+        if (seed.length > 0) {
+          // use array branch -> mergeById (now correct)
+          setChatMessages(mode, task?.id, [...seed]);
+        }
       }
 
       setState((s) => ({
@@ -275,7 +319,7 @@ export function ChatDockProvider({ children }) {
 
     analyzingRef.current = true;
 
-    // snapshot values to avoid races if state flips mid-request
+    // snapshot to avoid races
     const snapshot = {
       mode,
       taskId: task.id,
@@ -287,7 +331,7 @@ export function ChatDockProvider({ children }) {
     const isImage = snapshot.file.type?.startsWith("image/");
     const previewUrl = isImage ? URL.createObjectURL(snapshot.file) : null;
 
-    // 1) Show “analyzing…” + optional image bubble (transient preview)
+    // 1) show transient preview + analyzing notice
     setChatMessages(snapshot.mode, snapshot.taskId, (prev) => [
       ...prev,
       fmt("Ich analysiere dein Bild …", "system"),
@@ -296,17 +340,14 @@ export function ChatDockProvider({ children }) {
 
     (async () => {
       try {
-        // 2) Upload to your scanner API via Axios
         const fd = new FormData();
         fd.append("file", snapshot.file, snapshot.fileName || "upload");
         if (snapshot.userId) fd.append("userId", snapshot.userId);
 
-        // Authorization is handled by axios interceptor; no need to set headers unless you want to force multipart
         const { data } = await api.post("ai/upload", fd, {
           headers: { "Content-Type": "multipart/form-data" },
         });
 
-        // Extract structured info safely
         const extracted =
           data?.scan?.raw_text ??
           data?.parsed?.raw_text ??
@@ -317,19 +358,32 @@ export function ChatDockProvider({ children }) {
           (Array.isArray(data?.qa) && data.qa) ||
           [];
 
-        // 3) Emit Markdown (persistable)
-        const md = qaToMarkdown(extracted, qa);
-        setChatMessages(snapshot.mode, snapshot.taskId, (prev) => [
-          ...prev,
-          fmt(md, "agent", "text"),
-        ]);
+        // Show analysis results immediately with structured format
+        setChatMessages(snapshot.mode, snapshot.taskId, (prev) => {
+          const newMessages = [...prev];
+          
+          // Replace the loading message with completion message
+          const loadingIndex = newMessages.findIndex(msg => 
+            msg.content === "Ich analysiere dein Bild …" && msg.from === "system"
+          );
+          if (loadingIndex !== -1) {
+            newMessages[loadingIndex] = fmt("✅ Analyse abgeschlossen!", "agent");
+          }
+          
+          // Add analysis results
+          if (extracted || qa.length > 0) {
+            newMessages.push(fmt({ extractedText: extracted, qa }, "agent", "table"));
+            // Add follow-up message to encourage interaction
+            newMessages.push(fmt("Wie kann ich dir bei deiner Aufgabe helfen? Du kannst mir Fragen stellen oder um Erklärungen bitten!", "agent"));
+          } else {
+            newMessages.push(fmt("Ich habe das Dokument erhalten, konnte aber nichts Brauchbares extrahieren. Bitte versuche es mit einem anderen Bild oder beschreibe mir, womit ich dir helfen kann.", "agent"));
+          }
+          
+          return newMessages;
+        });
 
-        // 4) Store scanId / conversationId on the current task (kept in state only)
         const scanId = data?.scan?.id ?? data?.scanId ?? null;
         const conversationId = data?.conversationId ?? null;
-        console.log("yryryryrdata");
-
-        console.log(scanId, conversationId);
 
         if (scanId || conversationId) {
           setState((s) => ({
@@ -383,7 +437,4 @@ export function ChatDockProvider({ children }) {
   return <ChatDockCtx.Provider value={value}>{children}</ChatDockCtx.Provider>;
 }
 
-export const useChatDock = () => {
-  // Because we created the context with DEFAULT_CTX, this will never be null.
-  return useContext(ChatDockCtx);
-};
+export const useChatDock = () => useContext(ChatDockCtx);

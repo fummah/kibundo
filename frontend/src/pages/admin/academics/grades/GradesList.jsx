@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import EntityList from "@/components/EntityList.jsx";
 import { StarOutlined, BookOutlined, TeamOutlined } from "@ant-design/icons";
-import { Tag, Tooltip } from "antd";
+import { Tag, Tooltip, message } from "antd";
 import api from "@/api/axios";
 
 const classLabel = (cls) => {
@@ -32,17 +32,17 @@ export default function GradesList() {
   }, []);
 
   const cfg = {
-    entityKey: "grades",
-    titlePlural: "Grades",
-    titleSingular: "Grade",
+    entityKey: "classes",
+    titlePlural: "Classes",
+    titleSingular: "Class",
     routeBase: "/admin/academics/grades",
     idField: "id",
     statusFilter: false,
     billingFilter: false,
 
     api: {
-      listPath: "/admin/academics/grades",
-      removePath: (id) => `/admin/academics/grades/${id}`,
+      listPath: "/allclasses",
+      removePath: (id) => `/class/${id}`,
       parseList: (payload) => {
         const list = Array.isArray(payload)
           ? payload
@@ -50,17 +50,17 @@ export default function GradesList() {
           ? payload.data
           : [];
 
-        return list.map((g) => ({
-          id: g?.id,
-          name: g?.name || g?.grade_name || "-",
-          code: g?.code || g?.grade_code || "-",
-          description: g?.description || "",
-          class_id: g?.class_id,
-          class: g?.class,
-          created_by: g?.created_by_name || g?.created_by || "-",
-          created_at: g?.created_at || g?.createdAt || null,
-          is_active: g?.is_active ?? true,
-          raw: g,
+        return list.map((c) => ({
+          id: c?.id,
+          name: c?.class_name || c?.name || "-",
+          code: c?.class_code || c?.code || "-",
+          description: c?.description || "",
+          class_id: c?.id,
+          class: c,
+          created_by: c?.userCreated?.username || c?.created_by || "-",
+          created_at: c?.created_at || c?.createdAt || null,
+          is_active: c?.is_active ?? true,
+          raw: c,
         }));
       },
     },
@@ -77,7 +77,7 @@ export default function GradesList() {
       },
 
       name: {
-        title: "Grade",
+        title: "Class",
         key: "name",
         dataIndex: "name",
         ellipsis: true,
@@ -174,7 +174,7 @@ export default function GradesList() {
     breadcrumbs: [
       { title: "Admin", path: "/admin" },
       { title: "Academics", path: "/admin/academics" },
-      { title: "Grades" },
+      { title: "Classes" },
     ],
 
     rowActions: (record, { navigate, remove, hasPermission }) => [
@@ -196,16 +196,16 @@ export default function GradesList() {
         label: "Delete",
         icon: <span>🗑️</span>,
         danger: true,
-        confirm: `Are you sure you want to delete grade "${record.name}"?`,
+        confirm: `Are you sure you want to delete class "${record.name}"?`,
         onClick: () => remove(record.id, { name: record.name }),
-        disabled: !hasPermission("grades", "delete"),
+        disabled: !hasPermission("classes", "delete"),
       },
     ],
 
     createButton: {
-      text: "Add Grade",
+      text: "Add Class",
       onClick: (navigate) => navigate("/admin/academics/grades/new"),
-      permission: "grades:create",
+      permission: "classes:create",
     },
   };
 

@@ -1,6 +1,5 @@
 // src/components/student/mobile/HomeworkChat.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import { App } from "antd";
 import { CheckOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
@@ -35,7 +34,7 @@ const formatMessage = (content, from = "agent", type = "text", meta = {}) => ({
   ...meta,
 });
 
-/** Build a stable signature independent of timestamp to avoid dupes */
+/** stable signature for de-dupe */
 const msgSig = (m) => {
   const type = m?.type ?? "text";
   const from = (m?.from ?? m?.sender ?? "agent").toLowerCase();
@@ -46,24 +45,80 @@ const msgSig = (m) => {
   return `${type}|${from}|${body.slice(0, 160)}`;
 };
 
-const mergeById = (a = [], b = []) => {
+/** ✅ ENHANCED: More aggressive deduplication to prevent duplicate messages */
+const mergeById = (serverMessages = [], localMessages = []) => {
   const seen = new Set();
   const out = [];
-  for (const arr of [a, b]) {
-    if (!Array.isArray(arr)) continue;
+
+  const createKey = (m) => {
+    // Normalize the message content for comparison
+    const content = String(m?.content || "").trim().toLowerCase();
+    const from = (m?.from ?? m?.sender ?? "agent").toLowerCase();
+    const type = m?.type ?? "text";
+    
+    // Create multiple keys to catch different types of duplicates
+    const keys = [];
+    
+    // Key 1: Use ID if available (most reliable)
+    if (m?.id) {
+      keys.push(`id:${m.id}`);
+    }
+    
+    // Key 2: Content-based signature (primary deduplication)
+    keys.push(`content:${type}|${from}|${content}`);
+    
+    // Key 3: Simplified content key for exact matches
+    keys.push(`simple:${from}|${content}`);
+    
+    // Return the first available key
+    return keys[0];
+  };
+
+  const isDuplicate = (m) => {
+    const content = String(m?.content || "").trim().toLowerCase();
+    const from = (m?.from ?? m?.sender ?? "agent").toLowerCase();
+    
+    // Check against all possible keys
+    const keys = [
+      m?.id ? `id:${m.id}` : null,
+      `content:text|${from}|${content}`,
+      `simple:${from}|${content}`
+    ].filter(Boolean);
+    
+    return keys.some(key => seen.has(key));
+  };
+
+  const pushUnique = (arr) => {
+    if (!Array.isArray(arr)) return;
     for (const m of arr) {
-      const key = m?.id ?? msgSig(m);
-      if (seen.has(key)) continue;
-      seen.add(key);
+      if (!m || typeof m !== "object") continue;
+      
+      if (isDuplicate(m)) {
+        console.log("🔍 [mergeById] Skipping duplicate message:", {
+          content: typeof m.content === 'string' ? m.content.substring(0, 50) + "..." : String(m.content || ""),
+          from: m.from,
+          id: m.id,
+          timestamp: m.timestamp
+        });
+        continue;
+      }
+      
+      const key = createKey(m);
+      if (key) seen.add(key);
       out.push(m);
     }
-  }
-  return out;
+  };
+
+  // priority: server then local
+  pushUnique(serverMessages);
+  pushUnique(localMessages);
+
+  return out.sort(
+    (a, b) => new Date(a?.timestamp || 0) - new Date(b?.timestamp || 0)
+  );
 };
 
 const messageKey = (m, i) => m?.id ?? `${msgSig(m)}|${i}`;
-
-
 
 export default function HomeworkChat({
   messages: controlledMessagesProp,
@@ -88,22 +143,14 @@ export default function HomeworkChat({
     clearChatMessages,
   } = useChatDock();
   const { user: authUser } = useAuthContext();
-  
-  // No initial greeting - start with empty chat
-  const defaultInitialMessages = [];
 
-  // Conversation/task wiring, now SCOPED PER STUDENT
+
+  // per-student scoping
   const mode = "homework";
   const taskId = dockState?.task?.id ?? null;
-
-  // determine the active student id (prefer authenticated user)
   const studentId =
-    authUser?.id ??
-    dockState?.task?.userId ??
-    dockState?.student?.id ??
-    "anon";
+    authUser?.id ?? dockState?.task?.userId ?? dockState?.student?.id ?? "anon";
 
-  // IMPORTANT: scope the persisted key by student so nothing leaks across users
   const scopedTaskKey = useMemo(
     () => `${taskId ?? "global"}::u:${studentId}`,
     [taskId, studentId]
@@ -112,121 +159,170 @@ export default function HomeworkChat({
   const stableModeRef = useRef(mode);
   const stableTaskIdRef = useRef(scopedTaskKey);
 
-  useEffect(() => {
-    if (scopedTaskKey !== stableTaskIdRef.current) {
-      stableTaskIdRef.current = scopedTaskKey;
-      didSeedRef.current = false; // new thread can seed greeting
-      uploadNudgeShownRef.current = false; // reset nudge per thread
-    }
-  }, [scopedTaskKey]);
-
-  // Persist conversationId PER (mode + task + student)
+  // conversation id per thread
   const convKey = useMemo(
     () => `kibundo.convId.${mode}.${scopedTaskKey}`,
     [mode, scopedTaskKey]
   );
 
-  // ⬇️ Prioritize conversationId and scanId from task object (passed via openChat)
   const [conversationId, setConversationId] = useState(() => {
-    // FIRST: try to get from task object (most reliable)
-    if (dockState?.task?.conversationId) {
-      return dockState.task.conversationId;
-    }
-    // SECOND: try localStorage (may fail due to quota)
+    if (dockState?.task?.conversationId) return dockState.task.conversationId;
     try {
-      const stored = typeof window !== "undefined" && window.localStorage.getItem(convKey);
-      if (stored) return stored;
+      const stored =
+        typeof window !== "undefined" && window.localStorage.getItem(convKey);
+      return stored || null;
     } catch {
-      // localStorage may be full or unavailable
+      return null;
     }
-    return null;
   });
 
-  const [scanId, setScanId] = useState(() => {
-    return dockState?.task?.scanId ?? null;
-  });
+  const [scanId, setScanId] = useState(() => dockState?.task?.scanId ?? null);
+  const [backendMessages, setBackendMessages] = useState([]);
+  const [loadingBackendMessages, setLoadingBackendMessages] = useState(false);
 
-  // ⬇️ Update conversationId and scanId when they become available from task or localStorage
-  useEffect(() => {
-    const taskConvId = dockState?.task?.conversationId;
-    const taskScanId = dockState?.task?.scanId;
+  // Fetch messages from backend
+  const fetchBackendMessages = useCallback(async (convId) => {
+    if (!convId || loadingBackendMessages) return;
     
-    // Update conversationId if changed
-    if (taskConvId && taskConvId !== conversationId) {
-      console.log('✅ HomeworkChat: Updating conversationId from', conversationId, 'to', taskConvId);
-      setConversationId(taskConvId);
-    } else if (!taskConvId && !conversationId) {
-      // Try localStorage as fallback
-      try {
-        const storedConvId = typeof window !== "undefined" && window.localStorage.getItem(convKey);
-        if (storedConvId && storedConvId !== conversationId) {
-          console.log('✅ HomeworkChat: Loading conversationId from localStorage:', storedConvId);
-          setConversationId(storedConvId);
-        }
-      } catch {
-        // localStorage may be unavailable
+    setLoadingBackendMessages(true);
+    try {
+      const response = await api.get(`/conversations/${convId}/messages`);
+      if (response?.data && Array.isArray(response.data)) {
+        const formattedMessages = response.data.map(msg => formatMessage(
+          msg.content || "",
+          msg.sender === "student" ? "student" : "agent",
+          "text",
+          { 
+            id: msg.id,
+            timestamp: msg.created_at || msg.timestamp 
+          }
+        ));
+        setBackendMessages(formattedMessages);
       }
+    } catch (error) {
+      console.error("Failed to fetch backend messages:", error);
+      setBackendMessages([]);
+    } finally {
+      setLoadingBackendMessages(false);
     }
-    
-    // Update scanId if changed
-    if (taskScanId && taskScanId !== scanId) {
-      console.log('✅ HomeworkChat: Updating scanId from', scanId, 'to', taskScanId);
-      setScanId(taskScanId);
+  }, [loadingBackendMessages]);
+
+  useEffect(() => {
+    if (scopedTaskKey !== stableTaskIdRef.current) {
+      stableTaskIdRef.current = scopedTaskKey;
+      didSeedRef.current = false;
+      uploadNudgeShownRef.current = false;
     }
-  }, [convKey, dockState?.task?.conversationId, dockState?.task?.scanId, conversationId, scanId]);
+  }, [scopedTaskKey]);
+
+  useEffect(() => {
+    const tConv = dockState?.task?.conversationId;
+    const tScan = dockState?.task?.scanId;
+    if (tConv && tConv !== conversationId) setConversationId(tConv);
+    if (!tConv && !conversationId) {
+      try {
+        const stored =
+          typeof window !== "undefined" && window.localStorage.getItem(convKey);
+        if (stored && stored !== conversationId) setConversationId(stored);
+      } catch {}
+    }
+    if (tScan && tScan !== scanId) setScanId(tScan);
+  }, [
+    convKey,
+    dockState?.task?.conversationId,
+    dockState?.task?.scanId,
+    conversationId,
+    scanId,
+  ]);
 
   useEffect(() => {
     try {
-      if (conversationId) {
-        window.localStorage.setItem(convKey, conversationId);
-      } else {
-        window.localStorage.removeItem(convKey);
-      }
-    } catch (e) {
-      // Quota exceeded or localStorage unavailable - this is OK, we use task object as primary source
-      console.warn("Could not save conversationId to localStorage (quota exceeded or unavailable)");
-    }
+      if (conversationId) localStorage.setItem(convKey, conversationId);
+      else localStorage.removeItem(convKey);
+    } catch {}
   }, [conversationId, convKey]);
 
-  // Local buffer (keeps transient previews even if not persisted)
-  const [localMessages, setLocalMessages] = useState(
-    controlledMessagesProp ??
-      getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) ??
-      initialMessages ??
-      defaultInitialMessages
-  );
+  // Fetch backend messages when conversation ID changes
+  useEffect(() => {
+    if (conversationId) {
+      fetchBackendMessages(conversationId);
+    } else {
+      setBackendMessages([]);
+    }
+  }, [conversationId, fetchBackendMessages]);
 
-  // Seed persistence once per thread
+  // Local buffer
+  const [localMessages, setLocalMessages] = useState(() => {
+    if (controlledMessagesProp) return controlledMessagesProp;
+    const persisted = getChatMessages?.(
+      stableModeRef.current,
+      stableTaskIdRef.current
+    );
+    if (persisted?.length) return persisted;
+    if (initialMessages?.length) return initialMessages;
+    return [];
+  });
+
+  // 🌱 Seed ONLY when no persisted thread; otherwise hydrate from persisted
   const didSeedRef = useRef(false);
   useEffect(() => {
-    if (didSeedRef.current) return;
     if (!setChatMessages || !getChatMessages) return;
-    const current =
-      getChatMessages(stableModeRef.current, stableTaskIdRef.current) || [];
-    const seedMessages = initialMessages || defaultInitialMessages;
-    if (current.length === 0 && seedMessages?.length) {
-      setChatMessages(
-        stableModeRef.current,
-        stableTaskIdRef.current,
-        [...seedMessages]
-      );
-    }
-    didSeedRef.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setChatMessages, getChatMessages, initialMessages, defaultInitialMessages, scopedTaskKey]);
 
-  // Read view
+    const persisted =
+      getChatMessages(stableModeRef.current, stableTaskIdRef.current) || [];
+    const seedMessages = initialMessages?.length
+      ? initialMessages
+      : [];
+
+    if (!didSeedRef.current) {
+      if (persisted.length === 0 && seedMessages.length > 0) {
+        setChatMessages(
+          stableModeRef.current,
+          stableTaskIdRef.current,
+          [...seedMessages]
+        );
+        setLocalMessages(seedMessages);
+      } else if (persisted.length > 0) {
+        setLocalMessages(persisted);
+      }
+      didSeedRef.current = true;
+    }
+  }, [
+    setChatMessages,
+    getChatMessages,
+    initialMessages,
+    scopedTaskKey,
+  ]);
+
+  // Recompute messages (merge backend with existing messages to avoid duplicates)
   const msgs = useMemo(() => {
     if (controlledMessagesProp) return controlledMessagesProp;
-    const persisted =
-      getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) || [];
-    if (Array.isArray(persisted) || Array.isArray(localMessages)) {
-      return mergeById(persisted || [], localMessages || []);
+    
+    // Get existing messages
+    const persisted = getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) || [];
+    const existingLocal = localMessages || [];
+    
+    // If we have backend messages, merge them with existing messages
+    if (backendMessages.length > 0) {
+      console.log("🔍 [HomeworkChat] Merging backend messages:", {
+        backend: backendMessages.length,
+        persisted: persisted.length,
+        local: existingLocal.length
+      });
+      const merged = mergeById(backendMessages, [...persisted, ...existingLocal]);
+      console.log("🔍 [HomeworkChat] Merged result:", merged.length, "messages");
+      return merged;
     }
-    return localMessages || [];
-  }, [controlledMessagesProp, getChatMessages, localMessages]);
+    
+    // Fallback to local storage if no backend messages
+    const merged = mergeById(persisted, existingLocal);
+    if (merged.length === 0 && existingLocal.length > 0) {
+      return existingLocal;
+    }
+    return merged;
+  }, [controlledMessagesProp, backendMessages, getChatMessages, localMessages]);
 
-  // Filter: never persist base64 previews/transient
+  // never persist transient/base64 previews
   const filterForPersist = useCallback((arr) => {
     return (arr || []).filter((m) => {
       if (m?.transient === true) return false;
@@ -241,7 +337,7 @@ export default function HomeworkChat({
     });
   }, []);
 
-  // Writer
+  // ✅ Use msgs (rendered source) as base so we don't drop persisted items
   const updateMessages = useCallback(
     (next) => {
       const compute = (base) => (typeof next === "function" ? next(base) : next);
@@ -252,10 +348,8 @@ export default function HomeworkChat({
         return;
       }
 
-      const current =
-        getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) || [];
-      const baseArr = mergeById(current, Array.isArray(msgs) ? msgs : []);
-      const nextVal = compute(baseArr);
+      const baseNow = Array.isArray(msgs) ? msgs : [];
+      const nextVal = compute(baseNow);
 
       if (setChatMessages) {
         const persisted = filterForPersist(nextVal);
@@ -271,9 +365,8 @@ export default function HomeworkChat({
       controlledMessagesProp,
       onMessagesChangeProp,
       setChatMessages,
-      getChatMessages,
-      msgs,
       filterForPersist,
+      msgs,
     ]
   );
 
@@ -288,15 +381,15 @@ export default function HomeworkChat({
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
 
-  // HARD gate to stop double-fire before React state updates
   const sendingRef = useRef(false);
+  const lastSentMessageRef = useRef(null);
+  const lastSentTimeRef = useRef(0);
 
-  // Smooth autoscroll
+  // autoscroll
   const lastLenRef = useRef(0);
   useEffect(() => {
     if (!listRef.current) return;
-    if (msgs?.length === lastLenRef.current && !typing && !externalTyping)
-      return;
+    if (msgs?.length === lastLenRef.current && !typing && !externalTyping) return;
     lastLenRef.current = msgs?.length ?? 0;
     listRef.current.scrollTo({
       top: listRef.current.scrollHeight + 9999,
@@ -304,49 +397,67 @@ export default function HomeworkChat({
     });
   }, [msgs, typing, externalTyping]);
 
-  // Normalize server messages -> internal
   const toArray = (data) => {
     if (Array.isArray(data)) return data;
     if (data && Array.isArray(data.messages)) return data.messages;
     if (data && Array.isArray(data.items)) return data.items;
     return [];
   };
-  const mapServerToInternal = (arr) =>
-    toArray(arr).map((m) =>
+  const mapServerToInternal = (arr) => {
+    const messages = toArray(arr).map((m) =>
       formatMessage(
         m?.content ?? "",
-        (m?.sender || "agent").toLowerCase() === "student"
-          ? "student"
-          : "agent",
+        (m?.sender || "agent").toLowerCase() === "student" ? "student" : "agent",
         "text"
       )
     );
+    const seen = new Set();
+    return messages.filter((m) => {
+      const key = `${m.from}|${m.content}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
 
-  // Has the student already uploaded any image in this thread?
   const hasAnyImage = useMemo(
     () => Array.isArray(msgs) && msgs.some((m) => m?.type === "image"),
     [msgs]
   );
 
-  // show the “please upload” nudge only once per thread
   const uploadNudgeShownRef = useRef(false);
 
   const handleSendText = useCallback(
     async (text) => {
       const t = (text || "").trim();
       if (!t) return;
-      if (sendingRef.current || sending) return; // hard guard
+      if (sendingRef.current || sending) return;
+
+      const now = Date.now();
+      if (
+        lastSentMessageRef.current === t &&
+        now - lastSentTimeRef.current < 2000
+      ) {
+        return;
+      }
+
+      const recentStudentMessages = (msgs || [])
+        .filter((m) => m?.from === "student" && m?.content === t)
+        .slice(-2);
+      if (recentStudentMessages.length > 0) {
+        const lastMessage = recentStudentMessages[recentStudentMessages.length - 1];
+        const messageTime = new Date(lastMessage.timestamp).getTime();
+        if (now - messageTime < 3000) return;
+      }
+
+      lastSentMessageRef.current = t;
+      lastSentTimeRef.current = now;
+
       sendingRef.current = true;
       setSending(true);
 
-      // Optimistic student bubble (persisted so it survives close/reopen; dedupe handled by mergeById)
-      const optimisticMsg = formatMessage(t, "student", "text", {
-        pending: true,
-      });
+      const optimisticMsg = formatMessage(t, "student", "text", { pending: true });
       updateMessages((m) => [...m, optimisticMsg]);
-
-      // Gate: if there is no scan yet AND no image uploaded in this thread, nudge once
-   
 
       try {
         if (onSendText) {
@@ -354,21 +465,16 @@ export default function HomeworkChat({
           return;
         }
 
-        // Prefer append; on 400/404 retry create; on 404 overall fallback to ai/chat
         const firstUrl = conversationId
           ? `ai/conversations/${conversationId}/message`
           : `ai/conversations/message`;
 
-        console.log('📤 Sending message to:', firstUrl, '| conversationId:', conversationId, '| scanId:', scanId);
-
         let resp;
         try {
-          // NOTE: do NOT send userId; the server must read the user from auth
           resp = await api.post(firstUrl, { message: t, scanId });
         } catch (err) {
           const code = err?.response?.status;
           if (code === 404) {
-            // Backend doesn’t have conversation endpoints -> fallback
             const r = await api.post("ai/chat", {
               question: t,
               ai_agent: "ChildAgent",
@@ -377,19 +483,13 @@ export default function HomeworkChat({
               conversationId,
             });
             updateMessages((m) => [
-              ...m,
+              ...m.filter((x) => !x?.pending),
               formatMessage(r?.data?.answer || "Okay!", "agent"),
             ]);
-            setSending(false);
-            sendingRef.current = false;
             return;
           }
           if (conversationId && (code === 400 || code === 404)) {
-            // create new conversation
-            resp = await api.post(`ai/conversations/message`, {
-              message: t,
-              scanId,
-            });
+            resp = await api.post(`ai/conversations/message`, { message: t, scanId });
           } else {
             throw err;
           }
@@ -403,10 +503,16 @@ export default function HomeworkChat({
         const cid = j?.conversationId || conversationId;
         if (cid) {
           const r2 = await api.get(`ai/conversations/${cid}/messages`);
-          // Replace history with server truth to avoid optimistic duplicates
-          updateMessages(mapServerToInternal(r2.data));
+          const serverMessages = mapServerToInternal(r2.data);
+          updateMessages((current) => {
+            const withoutPending = current.filter((m) => !m?.pending);
+            return serverMessages.length > 0 ? serverMessages : withoutPending;
+          });
         } else if (j?.answer) {
-          updateMessages((m) => [...m, formatMessage(j.answer, "agent")]);
+          updateMessages((current) => [
+            ...current.filter((m) => !m?.pending),
+            formatMessage(j.answer, "agent"),
+          ]);
         }
       } catch (err) {
         const status = err?.response?.status;
@@ -415,12 +521,9 @@ export default function HomeworkChat({
           err?.response?.data?.error ||
           err?.message ||
           "Unbekannter Fehler";
-        updateMessages((m) => [
-          ...m,
-          formatMessage(
-            `Fehler beim Senden (${status ?? "?"}). ${serverMsg}`,
-            "agent"
-          ),
+        updateMessages((current) => [
+          ...current.filter((m) => !m?.pending),
+          formatMessage(`Fehler beim Senden (${status ?? "?"}). ${serverMsg}`, "agent"),
         ]);
         antdMessage.error(`Nachricht fehlgeschlagen: ${serverMsg}`);
       } finally {
@@ -428,18 +531,9 @@ export default function HomeworkChat({
         sendingRef.current = false;
       }
     },
-    [
-      sending,
-      onSendText,
-      updateMessages,
-      antdMessage,
-      conversationId,
-      scanId,
-      hasAnyImage,
-    ]
+    [sending, onSendText, updateMessages, antdMessage, conversationId, scanId, msgs]
   );
 
-  // Media upload (scan) — previews are transient; Axios with detailed errors
   const handleMediaUpload = useCallback(
     async (files) => {
       if (!files.length || uploading) return;
@@ -463,9 +557,8 @@ export default function HomeworkChat({
             } catch {}
           }
 
-          // Don't show the image in chat, only show analysis loading message
           const loadingMessage = formatMessage(
-            isImg ? "Ich analysiere dein Bild..." : "Ich verarbeite deine Datei...",
+            isImg ? "🔍 Ich schaue mir dein Bild an..." : "📄 Ich lese deine Datei...",
             "agent",
             "status",
             { transient: true }
@@ -478,7 +571,6 @@ export default function HomeworkChat({
             } else {
               const formData = new FormData();
               formData.append("file", file);
-              // DO NOT append userId — server infers from auth
 
               const res = await api.post(`ai/upload`, formData, {
                 headers: { "Content-Type": "multipart/form-data" },
@@ -492,41 +584,65 @@ export default function HomeworkChat({
                 : Array.isArray(data?.qa)
                 ? data.qa
                 : [];
+              const needsClearerImage = data?.needsClearerImage || data?.parsed?.unclear || data?.error;
 
               updateMessages((m) => {
                 const arr = [...m];
                 const idx = arr.findIndex((msg) => msg.id === loadingMessage.id);
-                if (idx !== -1)
-                  arr[idx] = formatMessage("Analyse abgeschlossen.", "agent");
-                if (extracted || qa.length > 0) {
-                  arr.push(
-                    formatMessage({ extractedText: extracted, qa }, "agent", "table")
-                  );
-                } else {
+                
+                if (needsClearerImage) {
+                  // Handle unclear image case
+                  if (idx !== -1)
+                    arr[idx] = formatMessage("🤔 Ich kann das Bild nicht gut lesen...", "agent");
+                  
                   arr.push(
                     formatMessage(
-                      "Ich habe das Dokument erhalten, konnte aber nichts Brauchbares extrahieren.",
+                      "📸 **Bitte mach ein besseres Foto!**\n\n" +
+                      "✨ **Tipps für ein gutes Foto:**\n" +
+                      "• Halte das Handy ruhig\n" +
+                      "• Achte auf gutes Licht (nicht zu dunkel)\n" +
+                      "• Das Blatt soll ganz im Bild sein\n" +
+                      "• Der Text soll scharf und klar zu lesen sein\n\n" +
+                      "Dann kann ich dir viel besser helfen! 😊",
+                      "agent"
+                    )
+                  );
+                } else if (extracted || qa.length > 0) {
+                  // Handle successful analysis
+                  if (idx !== -1)
+                    arr[idx] = formatMessage("🎉 Fertig! Ich habe deine Hausaufgabe gelesen!", "agent");
+                  
+                  arr.push(formatMessage({ extractedText: extracted, qa }, "agent", "table"));
+                  arr.push(
+                    formatMessage(
+                      "🎉 Super! Ich habe deine Hausaufgabe gefunden! Du kannst mir jetzt Fragen stellen oder um Hilfe bitten. Ich helfe dir gerne! 😊",
+                      "agent"
+                    )
+                  );
+                } else {
+                  // Handle other cases
+                  if (idx !== -1)
+                    arr[idx] = formatMessage("🤔 Ich kann das Bild nicht gut lesen...", "agent");
+                  
+                  arr.push(
+                    formatMessage(
+                      "📸 **Das Bild ist nicht klar genug!**\n\n" +
+                      "✨ **Versuche es nochmal mit:**\n" +
+                      "• Mehr Licht\n" +
+                      "• Ruhiger Hand\n" +
+                      "• Scharfem Text\n\n" +
+                      "Dann kann ich dir helfen! 😊",
                       "agent"
                     )
                   );
                 }
-                
-                // Add greeting after analysis result
-                const userName = authUser?.name || authUser?.username || "there";
-                arr.push(
-                  formatMessage(
-                    `Hello ${userName}, I've analyzed your homework. How can I help you with what you've scanned?`,
-                    "agent"
-                  )
-                );
-                
                 return arr;
               });
 
               const newCid = data?.conversationId;
               if (newCid && newCid !== conversationId) setConversationId(newCid);
 
-              // Upsert a task so the homework list shows this scan
+              // Upsert task in local storage
               try {
                 const sid = studentId || "anon";
                 const tasksKeyUser = `${TASKS_KEY}::u:${sid}`;
@@ -550,44 +666,41 @@ export default function HomeworkChat({
                 const tasks = load();
                 const idx = tasks.findIndex((t) => t?.id === effectiveTaskId);
                 const base = idx >= 0 ? tasks[idx] : {};
-                
-                // Derive subject from extracted text (look for subject keywords)
+
                 const deriveSubject = (text) => {
-                  const lowerText = text.toLowerCase();
-                  if (lowerText.includes('mathe') || lowerText.includes('rechnen') || lowerText.includes('zahl')) return 'Mathe';
-                  if (lowerText.includes('deutsch') || lowerText.includes('text') || lowerText.includes('lesen')) return 'Deutsch';
-                  if (lowerText.includes('englisch') || lowerText.includes('english')) return 'Englisch';
-                  if (lowerText.includes('wissenschaft') || lowerText.includes('science')) return 'Science';
-                  return 'Sonstiges';
+                  const lower = (text || "").toLowerCase();
+                  if (lower.match(/mathe|rechnen|zahl/)) return "Mathe";
+                  if (lower.match(/deutsch|text|lesen/)) return "Deutsch";
+                  if (lower.match(/englisch|english/)) return "Englisch";
+                  if (lower.match(/wissenschaft|science/)) return "Science";
+                  return "Sonstiges";
                 };
-                
-                // Derive "what" (task type) from analysis
-                const deriveWhat = (text, questionsCount) => {
-                  if (questionsCount > 0) return `${questionsCount} Frage${questionsCount > 1 ? 'n' : ''}`;
-                  if (text.length > 50) return 'Hausaufgabe';
-                  return 'Foto-Aufgabe';
+                const deriveWhat = (text, count) => {
+                  if (count > 0) return `${count} Frage${count > 1 ? "n" : ""}`;
+                  if ((text || "").length > 50) return "Hausaufgabe";
+                  return "Foto-Aufgabe";
                 };
-                
-                // Extract and use analysis data
+
                 const subjectFromAnalysis = extracted ? deriveSubject(extracted) : null;
                 const whatFromAnalysis = deriveWhat(extracted, qa.length);
-                const descriptionFromAnalysis = extracted 
-                  ? extracted.slice(0, 120).trim() + (extracted.length > 120 ? '...' : '')
+                const descriptionFromAnalysis = extracted
+                  ? extracted.slice(0, 120).trim() + (extracted.length > 120 ? "..." : "")
                   : null;
-                
+
                 const updated = {
                   id: effectiveTaskId,
                   createdAt: base.createdAt || nowIso,
                   updatedAt: nowIso,
                   subject: subjectFromAnalysis || base.subject || "Sonstiges",
                   what: whatFromAnalysis || base.what || "Foto-Aufgabe",
-                  description: descriptionFromAnalysis || base.description || (files?.[0]?.name || ""),
+                  description:
+                    descriptionFromAnalysis || base.description || (file?.name || ""),
                   due: base.due || null,
                   done: base.done ?? false,
                   source: base.source || "image",
-                  fileName: base.fileName || files?.[0]?.name || null,
-                  fileType: base.fileType || files?.[0]?.type || null,
-                  fileSize: base.fileSize || files?.[0]?.size || null,
+                  fileName: base.fileName || file?.name || null,
+                  fileType: base.fileType || file?.type || null,
+                  fileSize: base.fileSize || file?.size || null,
                   hasImage: true,
                   scanId: data?.scan?.id ?? base.scanId ?? null,
                   conversationId: newCid ?? base.conversationId ?? null,
@@ -610,12 +723,6 @@ export default function HomeworkChat({
               err?.response?.data?.error ||
               err?.message ||
               "Unbekannter Fehler";
-            console.error(
-              "Upload/Analyse failed:",
-              status,
-              serverMsg,
-              err?.response?.data
-            );
             updateMessages((m) => {
               const arr = [...m];
               const idx = arr.findIndex((msg) => msg.id === loadingMessage.id);
@@ -627,23 +734,25 @@ export default function HomeworkChat({
               }
               return arr;
             });
-            antdMessage.error(`Upload/Analyse fehlgeschlagen GGG: ${err}`);
-            antdMessage.error(`My token is --- : ${err}`);
+            antdMessage.error(`Upload/Analyse fehlgeschlagen: ${serverMsg}`);
           }
         }
       } finally {
         setUploading(false);
       }
     },
-    [onSendMedia, updateMessages, antdMessage, uploading, conversationId]
+    [onSendMedia, updateMessages, antdMessage, uploading, conversationId, studentId, taskId]
   );
 
   const sendText = useCallback(() => {
     if (!draft.trim()) return;
     if (sendingRef.current || sending) return;
-    handleSendText(draft).then(() => {
-      setDraft("");
+    const originalDraft = draft;
+    setDraft("");
+    handleSendText(originalDraft).then(() => {
       requestAnimationFrame(() => inputRef.current?.focus());
+    }).catch(() => {
+      setDraft(originalDraft);
     });
   }, [draft, handleSendText, sending]);
 
@@ -653,23 +762,27 @@ export default function HomeworkChat({
   };
 
   const startNewChat = useCallback(() => {
-    const modeKey = stableModeRef.current;
-    const taskKey = stableTaskIdRef.current;
-    clearChatMessages?.(modeKey, taskKey);
+    const ok =
+      typeof window !== "undefined"
+        ? window.confirm("Neuen Chat starten? Der Verlauf für diese Aufgabe wird gelöscht.")
+        : true;
+    if (!ok) return;
+
     const seed =
       Array.isArray(initialMessages) && initialMessages.length > 0
         ? [...initialMessages]
-        : defaultInitialMessages;
-    setChatMessages?.(modeKey, taskKey, seed);
+        : [];
+
+    clearChatMessages?.(stableModeRef.current, stableTaskIdRef.current);
+    setChatMessages?.(stableModeRef.current, stableTaskIdRef.current, seed);
     setLocalMessages(seed);
     setDraft("");
     setTyping(false);
-    // clear the conversationId for this scoped chat
     setConversationId(null);
     requestAnimationFrame(() =>
       listRef.current?.scrollTo({ top: 999999, behavior: "smooth" })
     );
-  }, [clearChatMessages, setChatMessages, initialMessages, defaultInitialMessages]);
+  }, [clearChatMessages, setChatMessages, initialMessages]);
 
   const handleCameraChange = (e) => {
     const file = e.target.files?.[0];
@@ -709,66 +822,93 @@ export default function HomeworkChat({
             )}
           </div>
         );
-      case "table": {
-        const extracted = message.content?.extractedText;
-        const qa = Array.isArray(message.content?.qa) ? message.content.qa : [];
+      case "table":
+      case "analysis": {
+        const extracted =
+          message.content?.extractedText ||
+          message.content?.raw_text ||
+          message.content?.analysisText;
+        const qa = Array.isArray(message.content?.qa)
+          ? message.content.qa
+          : Array.isArray(message.content?.questions)
+          ? message.content.questions
+          : [];
         return (
           <div className="w-full">
             {extracted && (
-              <div className="mb-3">
-                <div className="font-semibold mb-1">Erkannter Text</div>
-                <div className="p-2 bg-gray-50 rounded border border-gray-200 whitespace-pre-wrap">
+              <div className="mb-4">
+                <div className="font-bold mb-2 text-green-600 text-base flex items-center gap-2">
+                  📖 <span>Was ich in deinem Bild gesehen habe:</span>
+                </div>
+                <div className="p-4 bg-green-50 rounded-xl border-2 border-green-200 whitespace-pre-wrap text-base leading-relaxed">
                   {extracted}
                 </div>
               </div>
             )}
             {qa.length > 0 && (
               <div>
-                <div className="font-semibold mb-2">Erkannte Fragen und Antworten</div>
-                <table className="w-full text-sm border-separate border-spacing-0">
-                  <thead>
-                    <tr>
-                      <th className="text-left bg-gray-100 border border-gray-200 px-2 py-1 rounded-tl">
-                        Frage
-                      </th>
-                      <th className="text-left bg-gray-100 border border-gray-200 px-2 py-1 rounded-tr">
-                        Antwort
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {qa.map((q, i) => (
-                      <tr key={i}>
-                        <td className="align-top border border-gray-200 px-2 py-2 whitespace-pre-wrap">
-                          {q?.text || "-"}
-                        </td>
-                        <td className="align-top border border-gray-200 px-2 py-2 whitespace-pre-wrap">
-                          {q?.answer || "(keine)"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="font-bold mb-3 text-blue-600 text-base flex items-center gap-2">
+                  🎯 <span>Deine Aufgaben ({qa.length}):</span>
+                </div>
+                <div className="space-y-3">
+                  {qa.map((q, i) => (
+                    <div key={i} className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border-2 border-blue-200 p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold text-lg">
+                          {i + 1}
+                        </div>
+                        <div className="flex-1">
+                          <div className="mb-2">
+                            <div className="font-bold text-blue-800 text-base mb-1 flex items-center gap-2">
+                              💭 <span>Frage:</span>
+                            </div>
+                            <div className="text-gray-800 text-base leading-relaxed pl-6">
+                              {q?.text || q?.question || "-"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="font-bold text-green-700 text-base mb-1 flex items-center gap-2">
+                              ✅ <span>Antwort:</span>
+                            </div>
+                            <div className="text-gray-700 text-base leading-relaxed pl-6 bg-white rounded-lg p-3 border border-green-200">
+                              {q?.answer || "(Keine Antwort gefunden)"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {!extracted && qa.length === 0 && (
+              <div className="text-center p-6 bg-orange-50 rounded-xl border-2 border-orange-200">
+                <div className="text-4xl mb-3">📸</div>
+                <div className="text-orange-700 font-bold text-base mb-2">
+                  Das Bild ist nicht klar genug!
+                </div>
+                <div className="text-orange-600 text-sm space-y-1">
+                  <div>✨ <strong>Tipps für ein besseres Foto:</strong></div>
+                  <div>• Halte das Handy ruhig</div>
+                  <div>• Achte auf gutes Licht</div>
+                  <div>• Das Blatt soll ganz im Bild sein</div>
+                  <div>• Der Text soll scharf sein</div>
+                </div>
+                <div className="text-orange-700 font-medium text-sm mt-3">
+                  Dann kann ich dir viel besser helfen! 😊
+                </div>
               </div>
             )}
           </div>
         );
       }
       default:
-        return (
-          <div className="whitespace-pre-wrap">
-            {String(message.content ?? "")}
-          </div>
-        );
+        return <div className="whitespace-pre-wrap">{String(message.content ?? "")}</div>;
     }
   };
 
   return (
-    <div
-      className={["relative w-full h-full bg-white overflow-hidden", className].join(
-        " "
-      )}
-    >
+    <div className={["relative w-full h-full bg-white overflow-hidden", className].join(" ")}>
       {/* Hidden file inputs */}
       <input
         ref={cameraInputRef}
@@ -821,11 +961,7 @@ export default function HomeworkChat({
               className={`w-full flex ${isAgent ? "justify-start" : "justify-end"} mb-3`}
             >
               {isAgent && (
-                <img
-                  src={agentIcon}
-                  alt="Kibundo"
-                  className="w-7 h-7 rounded-full mr-2 self-end"
-                />
+                <img src={agentIcon} alt="Kibundo" className="w-7 h-7 rounded-full mr-2 self-end" />
               )}
               <div
                 className={`max-w-[78%] px-3 py-2 rounded-2xl shadow-sm ${
@@ -833,21 +969,12 @@ export default function HomeworkChat({
                 }`}
               >
                 {renderMessageContent(message)}
-                <div
-                  className={`text-xs mt-1 ${isAgent ? "text-[#1b3a1b]/80" : "text-gray-500"}`}
-                >
-                  {new Date(message.timestamp).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                <div className={`text-xs mt-1 ${isAgent ? "text-[#1b3a1b]/80" : "text-gray-500"}`}>
+                  {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </div>
               </div>
               {!isAgent && (
-                <img
-                  src={studentIcon}
-                  alt="Schüler"
-                  className="w-7 h-7 rounded-full ml-2 self-end"
-                />
+                <img src={studentIcon} alt="Schüler" className="w-7 h-7 rounded-full ml-2 self-end" />
               )}
             </div>
           );
@@ -855,22 +982,12 @@ export default function HomeworkChat({
 
         {(typing || externalTyping) && (
           <div className="w-full flex justify-start mb-3">
-            <img
-              src={agentIcon}
-              alt="Kibundo"
-              className="w-7 h-7 rounded-full mr-2 self-end"
-            />
+            <img src={agentIcon} alt="Kibundo" className="w-7 h-7 rounded-full mr-2 self-end" />
             <div className="max-w-[78%] px-3 py-2 rounded-2xl shadow-sm bg-[#aee17b] text-[#1b3a1b]">
               <div className="flex gap-1">
                 <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" />
-                <div
-                  className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce"
-                  style={{ animationDelay: "0.1s" }}
-                />
-                <div
-                  className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce"
-                  style={{ animationDelay: "0.2s" }}
-                />
+                <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" style={{ animationDelay: "0.1s" }} />
+                <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" style={{ animationDelay: "0.2s" }} />
               </div>
             </div>
           </div>
@@ -919,8 +1036,7 @@ export default function HomeworkChat({
                   draft.trim()
                 ) {
                   e.preventDefault();
-                  handleSendText(draft);
-                  setDraft("");
+                  sendText();
                 }
               }}
               placeholder="Frag etwas zur Aufgabe oder lade ein Bild über die Kamera/Galerie hoch…"
@@ -932,8 +1048,11 @@ export default function HomeworkChat({
 
           <button
             onClick={() => {
-              if (!draft.trim()) return startNewChat();
-              sendText();
+              if (draft.trim()) {
+                sendText();
+              } else {
+                startNewChat();
+              }
             }}
             className={`w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm ${
               sending || uploading ? "opacity-70" : "hover:brightness-95"

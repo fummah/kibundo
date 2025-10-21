@@ -1,5 +1,6 @@
-import React, { Suspense } from "react";
-import { Route, Navigate, Outlet } from "react-router-dom";
+// src/routes/ParentRoutes.jsx
+import React from "react";
+import { Route, Navigate, Outlet, useSearchParams } from "react-router-dom";
 import { ROLES } from "@/utils/roleMapper";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import { FLAGS } from "@/config/featureFlags.js";
@@ -27,70 +28,134 @@ import Tickets from "@/pages/parent/helpdesk/Tickets.jsx";
 import Settings from "@/pages/parent/Settings.jsx";
 import AccountSelect from "@/components/parent/account/AccountSelect.jsx";
 
+/* ------------------------------------------------------------------ *
+ * Gate: allow access if this tab has a portal token; otherwise require
+ * a normal auth session with parent roles.
+ * ------------------------------------------------------------------ */
+function ParentAccessGate({ allowedRoles }) {
+  const hasPortalToken =
+    typeof window !== "undefined" && !!sessionStorage.getItem("portal.token");
+
+  if (hasPortalToken) return <Outlet />; // Parent SSO tab is allowed
+  return <ProtectedRoute allowedRoles={allowedRoles} />;
+}
+
+/* ------------------------------------------------------------------ *
+ * /parent/sso receiver
+ * Accepts:
+ *   ?token=<JWT>&user=<base64(JSON)>   (user is optional)
+ * Stores in sessionStorage (tab-scoped) then redirects to /parent/home.
+ * ------------------------------------------------------------------ */
+function ParentSsoReceiver({ redirectTo = "/parent/home" }) {
+  const [params] = useSearchParams();
+  const token = params.get("token") || "";
+  const userB64 = params.get("user") || "";
+
+  if (!token) return <Navigate to="/signin" replace />;
+
+  try {
+    sessionStorage.setItem("portal.token", token);
+    sessionStorage.setItem("portal.role", "parent");
+    if (userB64) {
+      try {
+        const json = atob(userB64);
+        const obj = JSON.parse(json);
+        sessionStorage.setItem("portal.user", JSON.stringify(obj));
+      } catch {
+        // ignore malformed user payload
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+
+  return <Navigate to={redirectTo} replace />;
+}
+
 export default function ParentRoutes() {
   // Allow legacy parent role id 4 during transition, remove after migration
   const PARENT_ROLES = [ROLES.PARENT, 4];
 
   return (
-    <Route element={<ProtectedRoute allowedRoles={PARENT_ROLES} />}>
-      <Route
-        path="/parent"
-        element={
-          <ParentAppProvider>
-            <Outlet />
-          </ParentAppProvider>
-        }
-      >
-        {/* Home */}
-        <Route index element={<ParentHome />} />
-        <Route path="home" element={<ParentHome />} />
-        <Route path="overview" element={<Navigate to="/parent/home" replace />} />
+    <>
+      {/* Public SSO landing — no guard */}
+      <Route path="/parent/sso" element={<ParentSsoReceiver redirectTo="/parent/home" />} />
 
-        {/* My Family */}
-        <Route path="myfamily/family" element={<MyFamily />} />
-        <Route path="myfamily/activity" element={<Activity />} />
-        <Route path="myfamily/student/:id" element={<ParentStudentDetail />} />
-        <Route path="myfamily/add-student" element={<Navigate to="/parent/myfamily/family?add=1" replace />} />
-        <Route path="myfamily/add" element={<Navigate to="/parent/myfamily/family?add=1" replace />} />
-        <Route path="myfamily/add-student-flow" element={<AddStudentFlow />} />
+      {/* Parent tree: allow via portal token OR via normal auth + roles */}
+      <Route element={<ParentAccessGate allowedRoles={PARENT_ROLES} />}>
+        <Route
+          path="/parent"
+          element={
+            <ParentAppProvider>
+              <Outlet />
+            </ParentAppProvider>
+          }
+        >
+          {/* Home */}
+          <Route index element={<ParentHome />} />
+          <Route path="home" element={<ParentHome />} />
+          <Route path="overview" element={<Navigate to="/parent/home" replace />} />
 
-        {/* Learning (Parent) */}
-        <Route path="learning/scans" element={<Navigate to="/parent/myfamily/activity" replace />} />
-        {FLAGS.parentResources && <Route path="learning/resources" element={<Resources />} />}
+          {/* My Family */}
+          <Route path="myfamily/family" element={<MyFamily />} />
+          <Route path="myfamily/activity" element={<Activity />} />
+          <Route path="myfamily/student/:id" element={<ParentStudentDetail />} />
+          <Route
+            path="myfamily/add-student"
+            element={<Navigate to="/parent/myfamily/family?add=1" replace />}
+          />
+          <Route
+            path="myfamily/add"
+            element={<Navigate to="/parent/myfamily/family?add=1" replace />}
+          />
+          <Route path="myfamily/add-student-flow" element={<AddStudentFlow />} />
 
-        {/* Achievements */}
-        <Route path="achievements" element={<AchievementsPage />} />
+          {/* Learning (Parent) */}
+          <Route
+            path="learning/scans"
+            element={<Navigate to="/parent/myfamily/activity" replace />}
+          />
+          {FLAGS.parentResources && (
+            <Route path="learning/resources" element={<Resources />} />
+          )}
 
-        {/* Billing */}
-        <Route path="billing/overview" element={<BillingOverview />} />
-        <Route path="billing/subscription" element={<Subscriptions />} />
-        <Route path="billing/invoices" element={<Invoices />} />
-        <Route path="billing/coupons" element={<Coupons />} />
+          {/* Achievements */}
+          <Route path="achievements" element={<AchievementsPage />} />
 
-        {/* Communications */}
-        <Route path="communications" element={<Navigate to="/parent/communications/news" replace />} />
-        <Route path="communications/news">
-          <Route index element={<NewsFeed />} />
-          <Route path="preview/:id" element={<NewsArticle />} />
-          <Route path=":slug" element={<NewsArticle />} />
+          {/* Billing */}
+          <Route path="billing/overview" element={<BillingOverview />} />
+          <Route path="billing/subscription" element={<Subscriptions />} />
+          <Route path="billing/invoices" element={<Invoices />} />
+          <Route path="billing/coupons" element={<Coupons />} />
+
+          {/* Communications */}
+          <Route
+            path="communications"
+            element={<Navigate to="/parent/communications/news" replace />}
+          />
+          <Route path="communications/news">
+            <Route index element={<NewsFeed />} />
+            <Route path="preview/:id" element={<NewsArticle />} />
+            <Route path=":slug" element={<NewsArticle />} />
+          </Route>
+          <Route path="communications/newsletter" element={<Newsletter />} />
+          <Route path="communications/notifications" element={<Notifications />} />
+
+          {/* Chat */}
+          <Route path="chat" element={<ParentChat />} />
+
+          {/* Feedback */}
+          <Route path="feedback" element={<Navigate to="/parent/feedback/tickets" replace />} />
+          <Route path="feedback/tickets" element={<Tickets />} />
+
+          {/* Account */}
+          <Route path="settings" element={<Settings />} />
+          <Route path="account" element={<AccountSelect />} />
+
+          {/* Fallback inside /parent */}
+          <Route path="*" element={<Navigate to="/parent/home" replace />} />
         </Route>
-        <Route path="communications/newsletter" element={<Newsletter />} />
-        <Route path="communications/notifications" element={<Notifications />} />
-
-        {/* Chat */}
-        <Route path="chat" element={<ParentChat />} />
-
-        {/* Feedback */}
-        <Route path="feedback" element={<Navigate to="/parent/feedback/tickets" replace />} />
-        <Route path="feedback/tickets" element={<Tickets />} />
-
-        {/* Account */}
-        <Route path="settings" element={<Settings />} />
-        <Route path="account" element={<AccountSelect />} />
-
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/parent/home" replace />} />
       </Route>
-    </Route>
+    </>
   );
 }

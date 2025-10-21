@@ -37,7 +37,6 @@ export default function AuthForm({
           >
             <option value="">Select Role</option>
             <option value="teacher">Teacher</option>
-            <option value="student">Student</option>
             <option value="parent">Parent</option>
           </select>
         </>

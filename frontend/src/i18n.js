@@ -22,7 +22,7 @@ i18n
       caches: ["localStorage", "cookie"],
     },
     interpolation: { escapeValue: false },
-    debug: import.meta.env.DEV,
+    debug: false,
   });
 
 export default i18n;

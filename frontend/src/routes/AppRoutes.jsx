@@ -12,11 +12,14 @@ import NotFound from "@/components/NotFound.jsx";
 // 🔁 Smart role redirect
 import RoleBasedRedirect from "@/routes/RoleBasedRedirect.jsx";
 
-// 🔐 Role Routes (functions returning <Route> trees)
+// 🔐 Role Routes
 import AdminRoutes from "@/routes/AdminRoutes.jsx";
 import TeachersRoutes from "@/routes/TeachersRoutes.jsx";
 import StudentsRoutes from "@/routes/StudentsRoutes.jsx";
 import ParentsRoutes from "@/routes/ParentsRoutes.jsx";
+
+// 🆕 SSO Receiver
+import SSOReceiver from "@/pages/sso/SSOReceiver.jsx";
 
 export default function AppRoutes() {
   return (
@@ -28,6 +31,9 @@ export default function AppRoutes() {
         <Route path="/signup" element={<SignUp />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/unauthorized" element={<div>Unauthorized Access</div>} />
+
+        {/* 🆕 Public SSO intake */}
+        <Route path="/sso" element={<SSOReceiver />} />
 
         {/* 🔁 Dashboard Redirect */}
         <Route path="/dashboard" element={<RoleBasedRedirect />} />

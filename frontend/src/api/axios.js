@@ -55,7 +55,7 @@ const AUTH_MODE = (import.meta?.env?.VITE_AUTH_MODE || "bearer").toLowerCase();
  *  'on'          -> masked logs (first 12 chars)
  *  'full'        -> full token logs (dev only)
  */
-const AUTH_DEBUG = String(import.meta?.env?.VITE_AUTH_DEBUG || "").toLowerCase();
+const AUTH_DEBUG = String(import.meta?.env?.VITE_AUTH_DEBUG || "on").toLowerCase();
 
 /* ---------------------------- axios instance ------------------------ */
 const api = axios.create({
@@ -71,18 +71,19 @@ const api = axios.create({
   xsrfHeaderName: import.meta?.env?.VITE_XSRF_HEADER_NAME || "X-XSRF-TOKEN",
 });
 
-if (import.meta?.env?.DEV) {
-  // Useful to confirm requests won’t go to Vite’s 5173 origin
-  console.log("[api] baseURL =", api.defaults.baseURL);
-}
 
 /* ----------------------------- helpers ------------------------------ */
-const TOKEN_KEYS = ["kibundo_token", "token"];
+const TOKEN_KEYS = ["kibundo_token", "token"]; // admin/app token keys (localStorage)
+const PORTAL_TOKEN_KEY = "portal.token";       // portal token key (sessionStorage)
+const PORTAL_USER_KEY = "portal.user";
 
 const isGet = (cfg) => (cfg?.method || "get").toLowerCase() === "get";
 const getMeta = (cfg) => cfg?.meta || {};
 const isCanceled = (err) =>
   err?.code === "ERR_CANCELED" || err?.name === "CanceledError";
+
+const isPortalPath = (pathname) =>
+  /^\/(student|parent|teacher)\b/i.test(String(pathname || ""));
 
 const getCookie = (name) => {
   if (typeof document === "undefined") return "";
@@ -114,7 +115,7 @@ const toastOnce = (status, url, content) => {
   message.open({ key, type: "error", content, duration: 3 });
 };
 
-const readToken = () => {
+const readAdminToken = () => {
   try {
     for (const k of TOKEN_KEYS) {
       const v = localStorage.getItem(k);
@@ -124,19 +125,15 @@ const readToken = () => {
   return null;
 };
 
-const logToken = (token, where) => {
-  if (!AUTH_DEBUG) return;
-  if (!token) {
-    console.log(`🔑 [${where}] no token found`);
-    return;
-  }
-  if (AUTH_DEBUG === "full") {
-    console.log(`🔑 [${where}] token:`, token);
-  } else {
-    console.log(
-      `🔑 [${where}] token: ${token.slice(0, 12)}… (${token.length} chars)`
-    );
-  }
+const readPortalToken = () => {
+  try {
+    return sessionStorage.getItem(PORTAL_TOKEN_KEY);
+  } catch {}
+  return null;
+};
+
+const logToken = (token, where, label = "token") => {
+  // Debug logging removed
 };
 
 /* --------------------------- CSRF bootstrap ------------------------- */
@@ -174,40 +171,90 @@ const ensureCsrfCookie = () => {
 
 /* ------------------------------- boot ------------------------------- */
 (() => {
-  const t = readToken();
-  if (t) api.defaults.headers.common.Authorization = `Bearer ${t}`;
-  logToken(t, "boot");
+  const t = readAdminToken();
+  if (t) {
+    api.defaults.headers.common.Authorization = `Bearer ${t}`;
+    // Also ensure it's set for all requests
+    api.defaults.headers['Authorization'] = `Bearer ${t}`;
+  }
 })();
 
 /* ----------------------- request interceptor ------------------------ */
 api.interceptors.request.use(
   async (config) => {
-    const meta = getMeta(config);
+    // Always try to attach token from localStorage
+    const adminToken = readAdminToken();
+    if (adminToken) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${adminToken}`;
+      config.headers.authorization = `Bearer ${adminToken}`;
+    } else {
+    }
 
+    const meta = getMeta(config);
+    const here = window?.location?.pathname || "/";
+    const inPortalTab = isPortalPath(here);
+    const portalToken = readPortalToken();
+    const hasExplicitAuth =
+      !!(config.headers && Object.prototype.hasOwnProperty.call(config.headers, "Authorization"));
+
+
+    // When in cookie mode, ensure CSRF (but do NOT strip Authorization in portal tabs).
     const useCookies =
       typeof config.withCredentials === "boolean"
         ? config.withCredentials
         : api.defaults.withCredentials;
 
-    // Cookie mode -> ensure CSRF and avoid Authorization unless forced
     if (AUTH_MODE === "cookie" || useCookies) {
       await ensureCsrfCookie();
-      if (!meta.forceAuthHeader && config.headers && "Authorization" in config.headers) {
+
+      // Only strip Authorization automatically if:
+      // - not forced by meta
+      // - NOT in a portal tab (portal tab should keep explicit/portal header)
+      if (
+        !inPortalTab &&
+        !meta.forceAuthHeader &&
+        config.headers &&
+        "Authorization" in config.headers
+      ) {
         delete config.headers.Authorization;
       }
     }
 
-    // Bearer mode -> attach token unless disabled
+    // If caller explicitly set Authorization, we respect it (portal or not).
+    if (hasExplicitAuth) {
+      return config;
+    }
+
+    // Priority 1: In a portal tab, use the portal token (if present)
+    if (inPortalTab && portalToken && !meta.noAuthHeader) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${portalToken}`;
+      return config;
+    }
+
+    // Priority 2: Bearer mode or forced header -> attach admin token (unless disabled)
     const usingBearer =
       AUTH_MODE === "bearer" || (meta.forceAuthHeader && !meta.noAuthHeader);
     if (usingBearer && !meta.noAuthHeader) {
-      const token = readToken();
-      if (token) {
+      const adminToken = readAdminToken();
+      if (adminToken) {
         config.headers = config.headers || {};
-        config.headers.Authorization = `Bearer ${token}`;
+        config.headers.Authorization = `Bearer ${adminToken}`;
+        config.headers.authorization = `Bearer ${adminToken}`; // lowercase too
       }
-      logToken(token, "request");
     }
+
+    // Fallback: Always try to attach token if not already present
+    if (!config.headers?.Authorization && !config.headers?.authorization) {
+      const adminToken = readAdminToken();
+      if (adminToken) {
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${adminToken}`;
+        config.headers.authorization = `Bearer ${adminToken}`;
+      }
+    }
+
 
     return config;
   },
@@ -238,7 +285,7 @@ api.interceptors.response.use(
     }
 
     if (status === 401) {
-      // No auth toast; backend handles messaging
+      // Clear admin tokens only (do not touch the portal sessionStorage here)
       try {
         TOKEN_KEYS.forEach((k) => localStorage.removeItem(k));
         localStorage.removeItem("user");
@@ -254,7 +301,6 @@ api.interceptors.response.use(
     }
 
     if (status === 403) {
-      // No auth toast; backend handles messaging
       if (meta.redirectOn403) {
         setTimeout(() => {
           window.location.href =
@@ -265,12 +311,10 @@ api.interceptors.response.use(
     }
 
     if (status === 404) {
-      // No toast here; let backend/consumers handle messaging
       return Promise.reject(error);
     }
 
     if (status >= 400 && status < 500) {
-      // No generic 4xx toast for auth; let backend/callers decide
       return Promise.reject(error);
     }
 
@@ -293,13 +337,17 @@ export const setAuthToken = (token) => {
     if (token) {
       TOKEN_KEYS.forEach((k) => localStorage.setItem(k, token));
       api.defaults.headers.common.Authorization = `Bearer ${token}`;
-      logToken(token, "setAuthToken");
+      api.defaults.headers.Authorization = `Bearer ${token}`;
+      api.defaults.headers.authorization = `Bearer ${token}`;
     } else {
       TOKEN_KEYS.forEach((k) => localStorage.removeItem(k));
       delete api.defaults.headers.common.Authorization;
-      logToken(null, "setAuthToken");
+      delete api.defaults.headers.Authorization;
+      delete api.defaults.headers.authorization;
     }
-  } catch {}
+  } catch (error) {
+    // Error logging removed
+  }
 };
 
 export const clearAuth = () => {
@@ -312,6 +360,22 @@ export const clearAuth = () => {
 
 export const setBaseURL = (nextBase) => {
   api.defaults.baseURL = normalizeBase(nextBase);
+};
+
+/* Optional helpers for portal (not required, but handy) */
+export const setPortalToken = (token) => {
+  try {
+    if (token) sessionStorage.setItem(PORTAL_TOKEN_KEY, String(token));
+    else sessionStorage.removeItem(PORTAL_TOKEN_KEY);
+  } catch {}
+};
+export const getPortalUser = () => {
+  try {
+    const raw = sessionStorage.getItem(PORTAL_USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 };
 
 export default api;

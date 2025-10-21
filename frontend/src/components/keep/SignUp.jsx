@@ -16,7 +16,7 @@ export default function SignUp() {
     email: "",
     password: "",
     confirmPassword: "",
-    role: "student",
+    role: "parent",
   });
 
   const handleChange = (field, value) => {
@@ -89,7 +89,6 @@ export default function SignUp() {
             onChange={(value) => handleChange("role", value)}
             className="w-full"
           >
-            <Option value="student">Student</Option>
             <Option value="teacher">Teacher</Option>
             <Option value="parent">Parent</Option>
           </Select>
