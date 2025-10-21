@@ -117,6 +117,78 @@ const temppass = generateRandomPassword();
   }
 };
 
+// Get current logged-in user info
+exports.getCurrentUser = async (req, res) => {
+  try {
+    console.log("🎯 Current user info:", {
+      id: req.user.id,
+      email: req.user.email,
+      role_id: req.user.role_id
+    });
+    
+    const user = await User.findByPk(req.user.id, {
+      attributes: {
+        exclude: ['password']
+      },
+      include: [
+        {
+          model: Role,
+          as: "role",
+          attributes: { exclude: [] },
+          required: true
+        }
+      ]
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json(user);
+  } catch (err) {
+    console.error("Error fetching current user:", err);
+    res.status(500).json({ message: "Failed to get current user" });
+  }
+};
+
+// Debug endpoint to check specific user ID
+exports.debugUser = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    console.log("🎯 Debugging user ID:", userId);
+    
+    const user = await User.findByPk(userId, {
+      attributes: {
+        exclude: ['password']
+      },
+      include: [
+        {
+          model: Role,
+          as: "role",
+          attributes: { exclude: [] },
+          required: false
+        }
+      ]
+    });
+
+    console.log("🎯 User found:", user ? {
+      id: user.id,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      role_id: user.role_id
+    } : "NOT FOUND");
+
+    res.status(200).json({ 
+      found: !!user,
+      user: user || null 
+    });
+  } catch (err) {
+    console.error("Error debugging user:", err);
+    res.status(500).json({ message: "Failed to debug user", error: err.message });
+  }
+};
+
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await User.findAll({
@@ -132,6 +204,14 @@ exports.getAllUsers = async (req, res) => {
         }
       ]
     });
+
+    console.log("🎯 All users being returned:", users.map(u => ({
+      id: u.id,
+      email: u.email,
+      first_name: u.first_name,
+      last_name: u.last_name,
+      role_id: u.role_id
+    })));
 
     res.status(200).json(users);
   } catch (err) {
@@ -1354,6 +1434,27 @@ exports.addAgent = async (req, res) => {
   try {
     const { agent_name, entities, grade, state, file_name = '', api = '' } = req.body;
     const created_by = req.user.id; // from logged-in user
+    
+    console.log("🎯 Creating agent:", {
+      agent_name,
+      created_by,
+      user_id: req.user.id,
+      user_email: req.user.email,
+      user_role: req.user.role_id
+    });
+    
+    // Check if user is admin (role_id = 1)
+    if (req.user.role_id !== 1) {
+      console.log("❌ Non-admin user attempted to create agent:", {
+        user_id: req.user.id,
+        user_email: req.user.email,
+        user_role: req.user.role_id
+      });
+      return res.status(403).json({ 
+        error: "Only administrators can create agents",
+        message: "Access denied: Admin privileges required"
+      });
+    }
 
     // Create the AgentPromptSet
     const newAgent = await AgentPromptSet.create({

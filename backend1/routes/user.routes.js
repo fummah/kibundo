@@ -7,12 +7,14 @@ deleteProduct, addsubscription, getAllSubscriptions, getSubscriptionById, delete
 getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice, addcoupon, 
 getAllCoupons, getCouponById,deleteCoupon, addrole, adduser,addquiz,  getQuizzes, getQuizById,  deleteQuiz, 
 addcurriculum, getAllCurriculum,getCurriculumById, deleteCurriculum, addWorksheet, getAllWorksheets, getWorksheetById, deleteWorksheet,
-getAllStates, getAllAgents,getPublicTables,addAgent, getHomeworks, getAiAgentSettings,updateAiAgentSettings,updateAgent } = require("../controllers/user.controller");
+getAllStates, getAllAgents,getPublicTables,addAgent, getHomeworks, getAiAgentSettings,updateAiAgentSettings,updateAgent, getCurrentUser, debugUser } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
 
 // Protected route to get all users
 router.get("/users", verifyToken, getAllUsers);
+router.get("/current-user", verifyToken, getCurrentUser);
+router.get("/debug-user/:id", verifyToken, debugUser);
 router.post("/adduser", verifyToken, adduser);
 router.get("/analytics/dashboard", verifyToken, getDashboard);
 router.get("/statistics/dashboard", verifyToken, getStatisticsDashboard);

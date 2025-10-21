@@ -254,6 +254,8 @@ export default function AIAgent() {
     setUsersLoading(true);
     try {
       const { data } = await api.get("/users");
+      console.log("🎯 Frontend: All users received:", data);
+      
       const map = {};
       (Array.isArray(data) ? data : []).forEach((u) => {
         const fullName = `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim();
@@ -261,7 +263,14 @@ export default function AIAgent() {
           name: fullName || u.email || `User ${u.id}`,
           avatar: u.avatar || u.photo_url || u.image || u.picture || null,
         };
+        console.log("🎯 Frontend: Mapped user:", {
+          id: u.id,
+          fullName,
+          mapped: map[String(u.id)]
+        });
       });
+      
+      console.log("🎯 Frontend: Final users map:", map);
       setUsers(map);
     } catch (err) {
       message.error("Failed to load user data");
@@ -270,9 +279,47 @@ export default function AIAgent() {
     }
   };
 
+  const fetchUserById = async (userId) => {
+    try {
+      console.log("🎯 Frontend: Fetching user by ID:", userId);
+      const { data } = await api.get(`/debug-user/${userId}`);
+      console.log("🎯 Frontend: User data received:", data);
+      
+      if (data.found && data.user) {
+        const user = data.user;
+        const fullName = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim();
+        const userData = {
+          name: fullName || user.email || `User ${user.id}`,
+          avatar: user.avatar || user.photo_url || user.image || user.picture || null,
+        };
+        
+        // Update the users map with the fetched user
+        setUsers(prev => ({
+          ...prev,
+          [String(userId)]: userData
+        }));
+        
+        console.log("🎯 Frontend: Updated users map with fetched user:", userData);
+        return userData;
+      }
+    } catch (err) {
+      console.error("🎯 Frontend: Failed to fetch user by ID:", err);
+    }
+    return null;
+  };
+
   const createAgent = async (agentData) => {
     setLoading(true);
     try {
+      // Check if current user is admin before creating agent
+      const currentUser = JSON.parse(localStorage.getItem('kibundo_user') || '{}');
+      console.log("🎯 Current user creating agent:", currentUser);
+      
+      if (!currentUser || !currentUser.role_id || currentUser.role_id !== 1) {
+        message.error("Only administrators can create agents. Please log in as an admin.");
+        return false;
+      }
+      
       await api.post("/addagent", agentData);
       message.success("Agent created successfully");
       await fetchAgents();
@@ -837,10 +884,22 @@ export default function AIAgent() {
                 const creator = users[String(a.created_by)] || {};
                 let creatorName = "Unknown";
                 
+                console.log("🎯 Agent creator info:", {
+                  agent_id: a.id,
+                  agent_name: a.name,
+                  created_by: a.created_by,
+                  creator_user: creator,
+                  all_users: users
+                });
+                
                 if (creator.name) {
                   creatorName = creator.name;
                 } else if (a.created_by) {
-                  creatorName = `User ${a.created_by}`;
+                  // Try to fetch the user data if not found in the users list
+                  console.log("🎯 User not found in users list, attempting to fetch user data for ID:", a.created_by);
+                  fetchUserById(a.created_by);
+                  // Show a more descriptive fallback while fetching
+                  creatorName = `Admin (ID: ${a.created_by})`;
                 }
                 
                 const creatorAvatar = creator.avatar || null;
