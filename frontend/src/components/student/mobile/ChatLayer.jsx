@@ -81,11 +81,6 @@ const mergeById = (a = [], b = []) => {
       if (!m || typeof m !== "object") continue;
       
       if (isDuplicate(m)) {
-        console.log("🔍 [ChatLayer mergeById] Skipping duplicate message:", {
-          content: typeof m.content === 'string' ? m.content.substring(0, 50) + "..." : String(m.content || ""),
-          from: m.from,
-          id: m.id
-        });
         continue;
       }
       
@@ -149,7 +144,6 @@ export default function ChatLayer({
         setBackendMessages(formattedMessages);
       }
     } catch (error) {
-      console.error("Failed to fetch backend messages:", error);
       setBackendMessages([]);
     } finally {
       setLoadingBackendMessages(false);
@@ -206,7 +200,7 @@ export default function ChatLayer({
         clearChatMessages?.(stableModeRef.current, anonKey);
       }
     } catch (e) {
-      console.warn("Chat migration (anon → student) failed:", e?.message);
+      // Chat migration failed
     }
   }, [studentId, getChatMessages, setChatMessages, clearChatMessages, baseTaskId]);
 
@@ -233,13 +227,8 @@ export default function ChatLayer({
             id: null,
             name: selectedAgent,
           });
-          console.log("🎯 ChatLayer: Selected agent for homework:", selectedAgent);
         }
       } catch (err) {
-        console.warn(
-          "Could not fetch selected agent from AIAgent.jsx, using default ChildAgent:",
-          err.message
-        );
       }
     };
     fetchSelectedAgent();
@@ -300,10 +289,6 @@ export default function ChatLayer({
   // Single source for reading (merge backend with existing messages to avoid duplicates)
   const msgs = useMemo(() => {
     if (controlledMessagesProp) {
-      console.log(
-        "🔍 [ChatLayer] Using controlled messages:",
-        controlledMessagesProp.length
-      );
       return controlledMessagesProp;
     }
     
@@ -314,31 +299,11 @@ export default function ChatLayer({
     // If we have backend messages, merge them with existing messages
     if (backendMessages.length > 0) {
       const merged = mergeById(backendMessages, [...persisted, ...existingLocal]);
-      console.log(
-        "🔍 [ChatLayer] Using merged backend messages:",
-        merged.length,
-        "(backend:",
-        backendMessages.length,
-        "persisted:",
-        persisted.length,
-        "local:",
-        existingLocal.length,
-        ")"
-      );
       return merged;
     }
     
     // Fallback to local storage if no backend messages
     const merged = mergeById(persisted, existingLocal);
-    console.log(
-      "🔍 [ChatLayer] merged len:",
-      merged.length,
-      "(persisted:",
-      persisted?.length || 0,
-      "local:",
-      existingLocal?.length || 0,
-      ")"
-    );
     return merged;
   }, [controlledMessagesProp, backendMessages, getChatMessages, localMessages, scopedTaskKey]);
 
@@ -426,7 +391,6 @@ export default function ChatLayer({
         lastSentMessageRef.current === t &&
         now - lastSentTimeRef.current < 2000
       ) {
-        console.log("🚫 Preventing duplicate message:", t);
         return;
       }
 
@@ -439,7 +403,6 @@ export default function ChatLayer({
           recentStudentMessages[recentStudentMessages.length - 1];
         const messageTime = new Date(lastMessage.timestamp).getTime();
         if (now - messageTime < 3000) {
-          console.log("🚫 Preventing duplicate message in chat history:", t);
           return;
         }
       }
@@ -463,14 +426,6 @@ export default function ChatLayer({
         if (onSendText) {
           await onSendText(t);
         } else {
-          console.log("ChatLayer sending message with:", {
-            question: t,
-            ai_agent: assignedAgent.type,
-            agent_id: assignedAgent.id,
-            mode: "homework",
-            student_id: studentId,
-            assignedAgent: assignedAgent
-          });
           
           const { data } = await api.post("ai/chat", {
             question: t,
@@ -491,9 +446,6 @@ export default function ChatLayer({
           updateMessages((m) => [...m, aiMessage]);
         }
       } catch (err) {
-        console.error("ChatLayer sendMessage error:", err);
-        console.error("Error response:", err?.response?.data);
-        console.error("Error status:", err?.response?.status);
         
         updateMessages((m) => [
           ...m,
@@ -547,15 +499,6 @@ export default function ChatLayer({
   const renderMessageContent = (message) => {
     const type = (message?.type || "text").toLowerCase();
     
-    // Debug logging for analysis messages
-    if (type === "table" || message?.content?.qa || message?.content?.extractedText) {
-      console.log('🔍 [ChatLayer] Rendering analysis message:', {
-        type,
-        hasExtractedText: !!message?.content?.extractedText,
-        hasQA: !!message?.content?.qa,
-        qaLength: Array.isArray(message?.content?.qa) ? message.content.qa.length : 0
-      });
-    }
 
     if (type === "image") {
       const src =
@@ -589,11 +532,6 @@ export default function ChatLayer({
       const qa = Array.isArray(message.content?.qa) ? message.content.qa : 
                 Array.isArray(message.content?.questions) ? message.content.questions : [];
       
-      console.log('🔍 [ChatLayer] Analysis data:', {
-        extracted: extracted ? extracted.substring(0, 100) + '...' : 'none',
-        qaCount: qa.length,
-        qa: qa.slice(0, 2) // Show first 2 Q&A pairs for debugging
-      });
       
       return (
         <div className="w-full">
