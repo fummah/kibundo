@@ -82,10 +82,6 @@ CloseSquareFilled
       const user = resp?.data?.user ?? resp?.data?.data?.user ?? null;
       const token = extractToken(resp);
 
-      // Debug: Log the user data from login response
-      console.log("🔍 [SignIn] Login response user data:", user);
-      console.log("🔍 [SignIn] User first_name:", user?.first_name);
-      console.log("🔍 [SignIn] User last_name:", user?.last_name);
 
       if (!user || !token) {
         // Let backend/interceptor handle errors; avoid duplicate frontend toasts

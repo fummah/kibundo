@@ -64,7 +64,6 @@ exports.signup = async (req, res) => {
 
     res.status(201).json({ message: "User registered", user: userData, token });
   } catch (err) {
-    console.error("Signup error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -72,7 +71,6 @@ exports.signup = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { username, password } = req.body;
-console.log("username",req.body);
     if (!username || !password) {
       return res.status(400).json({ message: "Email/Username and password are required." });
     }
@@ -86,9 +84,6 @@ console.log("username",req.body);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     // 2. Check password
-    console.log("pASSWORD IS ",password);
-    console.log(req.body);
-    console.log("user",user);
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
 
@@ -105,7 +100,6 @@ console.log("username",req.body);
 
     res.status(200).json({ message: "Login successful", user: userData, token });
   } catch (err) {
-    console.error("Login error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

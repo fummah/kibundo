@@ -66,7 +66,6 @@ function loadInitialAuth() {
         if (ssoUser) {
           user = JSON.parse(ssoUser);
         }
-        console.log("🔍 [AuthContext] Found SSO token in sessionStorage");
       }
     } catch {}
   }
@@ -109,18 +108,14 @@ export const AuthProvider = ({ children }) => {
       
       // Only use SSO token if no regular login token exists
       if (ssoToken && !regularToken) {
-        console.log("🔍 [AuthContext] Detected SSO token on mount (no regular login detected)");
         setAxiosToken(ssoToken);
         if (ssoUser) {
           const userData = JSON.parse(ssoUser);
-          console.log("🔍 [AuthContext] Switching to SSO user:", userData);
           setAuth({ token: ssoToken, user: userData });
         } else {
-          console.log("🔍 [AuthContext] SSO token found but no user data");
         }
       }
     } catch (error) {
-      console.error("🔍 [AuthContext] Error handling SSO token:", error);
     }
   }, []);
 
@@ -132,10 +127,8 @@ export const AuthProvider = ({ children }) => {
       
       // Only use SSO token if no regular login token exists
       if (ssoToken && !regularToken) {
-        console.log("🔍 [AuthContext] Received SSO token event (no regular login detected)");
         setAxiosToken(ssoToken);
         if (ssoUser) {
-          console.log("🔍 [AuthContext] Switching to SSO user via event:", ssoUser);
           setAuth({ token: ssoToken, user: ssoUser });
         }
       }
@@ -153,13 +146,11 @@ export const AuthProvider = ({ children }) => {
         // 2. Either no current token OR current token matches SSO token
         // 3. No regular login token exists (to avoid overriding admin login)
         if (ssoToken && ssoUser && (!token || token !== ssoToken) && !regularToken) {
-          console.log("🔍 [AuthContext] Periodic check found SSO token (no regular login detected)");
           setAxiosToken(ssoToken);
           const userData = JSON.parse(ssoUser);
           setAuth({ token: ssoToken, user: userData });
         }
       } catch (error) {
-        console.error("🔍 [AuthContext] Error in periodic SSO check:", error);
       }
     };
 
@@ -184,7 +175,6 @@ export const AuthProvider = ({ children }) => {
     try {
       sessionStorage.removeItem("portal.token");
       sessionStorage.removeItem("portal.user");
-      console.log("🔍 [AuthContext] Cleared SSO tokens for regular login");
     } catch {}
     
     // 3) Token in axios + persist token (via axios helper)
@@ -194,10 +184,6 @@ export const AuthProvider = ({ children }) => {
     const summary = pickUserSummary(userObj);
     
     // Debug: Log the user data being stored
-    console.log("🔍 [AuthContext] Original user data:", userObj);
-    console.log("🔍 [AuthContext] Picked user summary:", summary);
-    console.log("🔍 [AuthContext] First name:", summary.first_name);
-    console.log("🔍 [AuthContext] Last name:", summary.last_name);
     
     safePersistSummary(summary);
 
