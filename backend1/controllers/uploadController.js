@@ -45,7 +45,7 @@ export const handleUpload = async (req, res) => {
     });
 
     // Check file size (additional validation)
-    const maxSize = 25 * 1024 * 1024; // 25MB
+    const maxSize = 50 * 1024 * 1024; // 50MB
     if (req.file.size > maxSize) {
       return res.status(400).json({ 
         error: `File too large. Maximum size is ${Math.round(maxSize / (1024 * 1024))}MB` 
@@ -199,7 +199,14 @@ export const handleUpload = async (req, res) => {
     // Handle specific error types
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({ 
-        error: "File too large. Maximum size is 25MB." 
+        error: "File too large. Maximum size is 50MB." 
+      });
+    }
+    
+    // Handle 413 Request Entity Too Large from server
+    if (err.status === 413 || err.message?.includes('413') || err.message?.includes('Request Entity Too Large')) {
+      return res.status(413).json({ 
+        error: "File too large. Please try with a smaller file or contact support if the file is under 50MB." 
       });
     }
     

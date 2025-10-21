@@ -128,6 +128,12 @@ export default function HomeworkDoing() {
 
   /* ---------------- upload via API ---------------- */
   const uploadWithApi = async (file) => {
+    // Check file size (50MB limit)
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxSize) {
+      throw new Error(`File too large. Maximum size is ${Math.round(maxSize / (1024 * 1024))}MB.`);
+    }
+
     const fd = new FormData();
     fd.append("file", file, file.name);
     // Backend expects auth token in header, not userId in form data

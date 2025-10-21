@@ -50,6 +50,13 @@ export default function HomeworkScanner({ userId }) {
       return;
     }
 
+    // Check file size (50MB limit)
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxSize) {
+      antdMessage?.error?.(`Datei zu groß. Maximale Größe ist ${Math.round(maxSize / (1024 * 1024))}MB.`);
+      return;
+    }
+
     setLoading(true);
 
     try {
