@@ -112,8 +112,9 @@ const mergeById = (serverMessages = [], localMessages = []) => {
       if (!m || typeof m !== "object") continue;
       
       if (isDuplicate(m)) {
+        const contentPreview = typeof m.content === 'string' ? m.content.substring(0, 50) + "..." : String(m.content || "");
         console.log("🔍 [mergeById] Skipping duplicate message:", {
-          content: typeof m.content === 'string' ? m.content.substring(0, 50) + "..." : String(m.content || ""),
+          content: contentPreview,
           from: m.from,
           id: m.id,
           timestamp: m.timestamp,
@@ -220,6 +221,7 @@ export default function HomeworkChat({
   }, [dockState?.task?.conversationId]);
 
   const [scanId, setScanId] = useState(() => dockState?.task?.scanId ?? null);
+  const [selectedAgent, setSelectedAgent] = useState("ChildAgent"); // Default fallback
   
   // Update scanId when dockState changes
   useEffect(() => {
@@ -227,6 +229,25 @@ export default function HomeworkChat({
       setScanId(dockState.task.scanId);
     }
   }, [dockState?.task?.scanId]);
+
+  // Fetch selected agent from backend
+  useEffect(() => {
+    const fetchSelectedAgent = async () => {
+      try {
+        const response = await api.get('/aisettings', {
+          withCredentials: true,
+        });
+        if (response?.data?.child_default_ai) {
+          setSelectedAgent(response.data.child_default_ai);
+          console.log("🎯 Selected agent for homework:", response.data.child_default_ai);
+        }
+      } catch (error) {
+        console.warn("Could not fetch selected agent, using default ChildAgent:", error);
+      }
+    };
+    
+    fetchSelectedAgent();
+  }, []);
   
   const [backendMessages, setBackendMessages] = useState([]);
   const [loadingBackendMessages, setLoadingBackendMessages] = useState(false);
@@ -247,7 +268,8 @@ export default function HomeworkChat({
           "text",
           { 
             id: msg.id,
-            timestamp: msg.created_at || msg.timestamp 
+            timestamp: msg.created_at || msg.timestamp,
+            agentName: msg?.agent_name || selectedAgent
           }
         ));
         setBackendMessages(formattedMessages);
@@ -471,7 +493,8 @@ export default function HomeworkChat({
         "text",
         { 
           id: m.id,
-          timestamp: m.created_at || m.timestamp 
+          timestamp: m.created_at || m.timestamp,
+          agentName: m?.agent_name || "Homework Assistant" // Include agent name from server
         }
       )
     );
@@ -535,7 +558,8 @@ export default function HomeworkChat({
 
         let resp;
         try {
-          resp = await api.post(firstUrl, { message: t, scanId }, {
+          console.log("🎯 HomeworkChat sending message with agentName:", selectedAgent);
+          resp = await api.post(firstUrl, { message: t, scanId, agentName: selectedAgent }, {
             withCredentials: true,
           });
         } catch (err) {
@@ -543,7 +567,7 @@ export default function HomeworkChat({
           if (code === 404) {
             const r = await api.post("ai/chat", {
               question: t,
-              ai_agent: "ChildAgent",
+              ai_agent: selectedAgent,
               mode: "homework",
               scanId,
               conversationId,
@@ -552,12 +576,12 @@ export default function HomeworkChat({
             });
             updateMessages((m) => [
               ...m.filter((x) => !x?.pending),
-              formatMessage(r?.data?.answer || "Okay!", "agent"),
+              formatMessage(r?.data?.answer || "Okay!", "agent", "text", { agentName: r?.data?.agentName || selectedAgent }),
             ]);
             return;
           }
           if (conversationId && (code === 400 || code === 404)) {
-            resp = await api.post(`ai/conversations/message`, { message: t, scanId }, {
+            resp = await api.post(`ai/conversations/message`, { message: t, scanId, agentName: selectedAgent }, {
               withCredentials: true,
             });
           } else {
@@ -588,7 +612,7 @@ export default function HomeworkChat({
         } else if (j?.answer) {
           updateMessages((current) => [
             ...current.filter((m) => !m?.pending),
-            formatMessage(j.answer, "agent"),
+            formatMessage(j.answer, "agent", "text", { agentName: j?.agentName || selectedAgent }),
           ]);
         }
       } catch (err) {
@@ -600,7 +624,7 @@ export default function HomeworkChat({
           "Unbekannter Fehler";
         updateMessages((current) => [
           ...current.filter((m) => !m?.pending),
-          formatMessage(`Fehler beim Senden (${status ?? "?"}). ${serverMsg}`, "agent"),
+          formatMessage(`Fehler beim Senden (${status ?? "?"}). ${serverMsg}`, "agent", "text", { agentName: selectedAgent }),
         ]);
         antdMessage.error(`Nachricht fehlgeschlagen: ${serverMsg}`);
       } finally {
@@ -638,7 +662,7 @@ export default function HomeworkChat({
             isImg ? "🔍 Ich schaue mir dein Bild an..." : "📄 Ich lese deine Datei...",
             "agent",
             "status",
-            { transient: true }
+            { transient: true, agentName: selectedAgent }
           );
           updateMessages((m) => [...m, loadingMessage]);
 
@@ -670,7 +694,7 @@ export default function HomeworkChat({
                 if (needsClearerImage) {
                   // Handle unclear image case
                   if (idx !== -1)
-                    arr[idx] = formatMessage("🤔 Ich kann das Bild nicht gut lesen...", "agent");
+                    arr[idx] = formatMessage("🤔 Ich kann das Bild nicht gut lesen...", "agent", "text", { agentName: selectedAgent });
                   
                   arr.push(
                     formatMessage(
@@ -681,25 +705,29 @@ export default function HomeworkChat({
                       "• Das Blatt soll ganz im Bild sein\n" +
                       "• Der Text soll scharf und klar zu lesen sein\n\n" +
                       "Dann kann ich dir viel besser helfen! 😊",
-                      "agent"
+                      "agent",
+                      "text",
+                      { agentName: selectedAgent }
                     )
                   );
                 } else if (extracted || qa.length > 0) {
                   // Handle successful analysis
                   if (idx !== -1)
-                    arr[idx] = formatMessage("🎉 Fertig! Ich habe deine Hausaufgabe gelesen!", "agent");
+                    arr[idx] = formatMessage("🎉 Fertig! Ich habe deine Hausaufgabe gelesen!", "agent", "text", { agentName: selectedAgent });
                   
-                  arr.push(formatMessage({ extractedText: extracted, qa }, "agent", "table"));
+                  arr.push(formatMessage({ extractedText: extracted, qa }, "agent", "table", { agentName: selectedAgent }));
                   arr.push(
                     formatMessage(
                       "🎉 Super! Ich habe deine Hausaufgabe gefunden! Du kannst mir jetzt Fragen stellen oder um Hilfe bitten. Ich helfe dir gerne! 😊",
-                      "agent"
+                      "agent",
+                      "text",
+                      { agentName: selectedAgent }
                     )
                   );
                 } else {
                   // Handle other cases
                   if (idx !== -1)
-                    arr[idx] = formatMessage("🤔 Ich kann das Bild nicht gut lesen...", "agent");
+                    arr[idx] = formatMessage("🤔 Ich kann das Bild nicht gut lesen...", "agent", "text", { agentName: selectedAgent });
                   
                   arr.push(
                     formatMessage(
@@ -709,7 +737,9 @@ export default function HomeworkChat({
                       "• Ruhiger Hand\n" +
                       "• Scharfem Text\n\n" +
                       "Dann kann ich dir helfen! 😊",
-                      "agent"
+                      "agent",
+                      "text",
+                      { agentName: selectedAgent }
                     )
                   );
                 }
@@ -806,7 +836,9 @@ export default function HomeworkChat({
               if (idx !== -1) {
                 arr[idx] = formatMessage(
                   `Analyse fehlgeschlagen (${status ?? "?"}). ${serverMsg}`,
-                  "agent"
+                  "agent",
+                  "text",
+                  { agentName: selectedAgent }
                 );
               }
               return arr;
@@ -839,12 +871,6 @@ export default function HomeworkChat({
   };
 
   const startNewChat = useCallback(() => {
-    const ok =
-      typeof window !== "undefined"
-        ? window.confirm("Neuen Chat starten? Der Verlauf für diese Aufgabe wird gelöscht.")
-        : true;
-    if (!ok) return;
-
     const seed =
       Array.isArray(initialMessages) && initialMessages.length > 0
         ? [...initialMessages]
@@ -1038,7 +1064,14 @@ export default function HomeworkChat({
               className={`w-full flex ${isAgent ? "justify-start" : "justify-end"} mb-3`}
             >
               {isAgent && (
-                <img src={agentIcon} alt="Kibundo" className="w-7 h-7 rounded-full mr-2 self-end" />
+                <div className="flex flex-col mr-2 self-end">
+                  <img src={agentIcon} alt="Kibundo" className="w-7 h-7 rounded-full" />
+                  {message?.agentName && (
+                    <div className="text-xs text-[#1b3a1b]/60 mt-1 text-center max-w-[60px] break-words">
+                      {message.agentName}
+                    </div>
+                  )}
+                </div>
               )}
               <div
                 className={`max-w-[78%] px-3 py-2 rounded-2xl shadow-sm ${
@@ -1051,7 +1084,12 @@ export default function HomeworkChat({
                 </div>
               </div>
               {!isAgent && (
-                <img src={studentIcon} alt="Schüler" className="w-7 h-7 rounded-full ml-2 self-end" />
+                <div className="flex flex-col ml-2 self-end">
+                  <img src={studentIcon} alt="Schüler" className="w-7 h-7 rounded-full" />
+                  <div className="text-xs text-[#1b3a1b]/60 mt-1 text-center max-w-[60px] break-words">
+                    You
+                  </div>
+                </div>
               )}
             </div>
           );

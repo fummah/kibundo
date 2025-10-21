@@ -1,6 +1,6 @@
 const { buildContext } = require('../services/parentContextBuilder');
 const { childBuildContext } = require('../services/childContextBuilder');
-const { teacherBuildContext } = require('../services/teacherContextBuilder');
+const { teacherContextBuilder } = require('../services/teacherContextBuilder');
 const { buildCustomAgentContext } = require('../services/customAgentContextBuilder');
 const OpenAI = require('openai');
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -8,16 +8,28 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 exports.chatWithAgent = async (req, res) => {
   try {
     const { question,ai_agent,entities, class: classFilter, state, scanId, mode, conversationId } = req.body;
+    console.log("🎯 AI Chat received ai_agent:", ai_agent);
 
     // Build structured context
     let contextObj = {};
     let trimmedContext = {};
-    if(ai_agent == "ParentAgent")
+    
+    // Determine agent type based on naming convention
+    let agentType = "child"; // Default to child agent
+    if (ai_agent && ai_agent.toLowerCase().includes("parent")) {
+      agentType = "parent";
+    } else if (ai_agent && ai_agent.toLowerCase().includes("teacher")) {
+      agentType = "teacher";
+    } else if (ai_agent && ai_agent.toLowerCase().includes("custom")) {
+      agentType = "custom";
+    }
+    
+    if(agentType === "parent" || ai_agent == "ParentAgent")
       {
        contextObj = await buildContext(req);  
        trimmedContext = summarizeContextParent(contextObj);
       }
-      else if(ai_agent == "ChildAgent")
+      else if(agentType === "child" || ai_agent == "ChildAgent")
       {
         contextObj = await childBuildContext(req)
         trimmedContext = summarizeContextChild(contextObj);
@@ -41,12 +53,12 @@ exports.chatWithAgent = async (req, res) => {
           console.log("❌ AI Chat: No scanId or mode mismatch. scanId:", scanId, "mode:", mode);
         }
       }
-      else if(ai_agent == "TeacherAgent")
+      else if(agentType === "teacher" || ai_agent == "TeacherAgent")
       {
-        contextObj = await teacherBuildContext(req)
+        contextObj = await teacherContextBuilder(req)
         trimmedContext = summarizeContextTeacher(contextObj);
       }
-      else if (ai_agent === "CustomAgent") {
+      else if (agentType === "custom" || ai_agent === "CustomAgent") {
       // For custom agents, use the dynamic builder
       
       contextObj = await buildCustomAgentContext({
@@ -59,12 +71,31 @@ exports.chatWithAgent = async (req, res) => {
       
       // Optionally, create a trimmed context for custom agent
       //trimmedContext = summarizeCustomContext(contextObj, entities);
+    } else {
+      // Fallback to child context for unknown agents
+      console.log("🤖 Unknown agent type, falling back to child context:", ai_agent);
+      contextObj = await childBuildContext(req)
+      trimmedContext = summarizeContextChild(contextObj);
     }
-    //console.log(contextObj);
-   // return;
+    console.log("🎯 Full context object:", JSON.stringify(contextObj, null, 2));
+    console.log("🎯 Trimmed context:", JSON.stringify(trimmedContext, null, 2));
      
     // Build system content with homework-specific instructions
     let systemContent = `You are an AI assistant for Kibundo Education System.
+
+STUDENT INFORMATION:
+- Student's full name: ${trimmedContext.user?.first_name || 'the student'} ${trimmedContext.user?.last_name || ''}
+- Student's first name: ${trimmedContext.user?.first_name || 'student'}
+- Student's grade: ${trimmedContext.class_or_grade?.[0]?.class_name || 'unknown'}
+- Student's email: ${trimmedContext.user?.email || 'unknown'}
+
+ABSOLUTE REQUIREMENTS - FOLLOW THESE EXACTLY:
+1. ALWAYS greet the student by their first name: "${trimmedContext.user?.first_name || 'student'}"
+2. NEVER use generic terms like "student" or "you" - ALWAYS use their name: "${trimmedContext.user?.first_name || 'student'}"
+3. NEVER say "I don't have access to your name" - their name is "${trimmedContext.user?.first_name || 'student'}"
+4. ALWAYS be personal and address them by name in EVERY response
+5. You have ALL their information including grade, subjects, and homework history
+
 Context: ${JSON.stringify(trimmedContext)}`;
 
     // Add homework-specific instructions if we have homework context
@@ -82,6 +113,8 @@ CRITICAL HOMEWORK INSTRUCTIONS:
 - If the student asks about something not in the homework, guide them back to the homework tasks`;
     }
 
+    console.log("🎯 System prompt being sent to AI:", systemContent);
+    
     const resp = await client.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
@@ -91,7 +124,15 @@ CRITICAL HOMEWORK INSTRUCTIONS:
     });
 
     const answer = resp.choices?.[0]?.message?.content || '';
-    res.json({ answer });
+    
+    // Use the actual agent name from the request, or fallback to a default
+    const agentDisplayName = ai_agent || "ChildAgent";
+    console.log("🎯 AI Chat sending back agentName:", agentDisplayName);
+    
+    res.json({ 
+      answer,
+      agentName: agentDisplayName
+    });
 
   } catch (err) {
     console.error(err);

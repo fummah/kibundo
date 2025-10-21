@@ -78,4 +78,14 @@ router.get("/aisettings", verifyToken,getAiAgentSettings);
 router.put("/updateaisettings", verifyToken,updateAiAgentSettings);
 router.put("/updateaiagents", verifyToken,updateAgent);
 
+// Get assigned agent for a student
+router.get("/student/:id/assigned-agent", verifyToken, (req, res) => {
+  // For now, return ChildAgent as default for homework
+  res.json({ 
+    agent: "ChildAgent",
+    agentName: "Homework Helper",
+    studentId: req.params.id 
+  });
+});
+
 module.exports = router;

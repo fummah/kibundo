@@ -10,6 +10,7 @@ const Subscription = db.subscription;
 const Product = db.product;
 const Invoice = db.invoice;
 const Parent = db.parent;
+const HomeworkScan = db.homeworkScan;
 
 async function childBuildContext(req) {
   try {
@@ -27,67 +28,50 @@ async function childBuildContext(req) {
           attributes: { exclude: [] },
           required: true
         },
-              
-          {
-              model: Student,
-              as: 'student',
-              include:[        
         {
-          model: Class,
-          as: 'class',
-          attributes: ['id', 'class_name'] // adjust based on your class model
-        },
-        {
-          model: StudentSubjects,
-          as: 'subject',
-          attributes: ['id'],
-          include: [
+          model: Student,
+          as: 'student',
+          include: [        
             {
-              model: Subject,
-              as: 'subject',   // ✅ match alias in StudentSubjects.js
-              attributes: ['id', 'subject_name']
-            }
-          ]
-        },
-          {
-          model: Parent,
-          as: 'parent',
-          attributes: { exclude: ['password'] }, // adjust fields
-            include: [
-            {
-              model: User,
-              as: 'user',   // ✅ match alias in StudentSubjects.js
-              attributes: { exclude: ['password'] }
+              model: Class,
+              as: 'class',
+              attributes: ['id', 'class_name']
             },
             {
-          model: Subscription,
-          as: 'subscription',
-          include: [
+              model: StudentSubjects,
+              as: 'subject',
+              attributes: ['id'],
+              include: [
+                {
+                  model: Subject,
+                  as: 'subject',
+                  attributes: ['id', 'subject_name']
+                }
+              ]
+            },
             {
-              model: Product,
-              as: 'product'
+              model: Parent,
+              as: 'parent',
+              attributes: { exclude: ['password'] },
+              include: [
+                {
+                  model: User,
+                  as: 'user',
+                  attributes: { exclude: ['password'] }
+                }
+              ]
+            },
+            {
+              model: HomeworkScan,
+              as: 'homeworkscan',
+              attributes: ['id', 'raw_text', 'file_url', 'created_at']
             }
           ]
-        },
-          {
-          model: HomeworkScan,
-          as: 'homeworkscan',
-          attributes: ['id', 'raw_text', 'file_url', 'created_at']
-        },
-        {
-          model: Invoice,
-          as: 'invoice'
         }
-          ]
-        }  
       ]
-    }    
-      
-      ]
-    
     });
  const plainUser = user ? user.get({ plain: true }) : { id: userId };
- //console.log(JSON.stringify(plainUser, null, 2));
+ console.log("🎯 Raw user data from database:", JSON.stringify(plainUser, null, 2));
 
 const context = {
   user: plainUser,
@@ -99,8 +83,8 @@ const context = {
   preferences: { language: 'en', timezone: 'Africa/Johannesburg' }
 };
 
-
-    return context;
+console.log("🎯 Final context being returned:", JSON.stringify(context, null, 2));
+return context;
   } catch (error) {
     console.error('Error building context:', error);
     return {

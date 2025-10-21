@@ -132,7 +132,9 @@ export default function ChatLayer({
     
     setLoadingBackendMessages(true);
     try {
-      const response = await api.get(`/conversations/${convId}/messages`);
+      const response = await api.get(`/conversations/${convId}/messages`, {
+        withCredentials: true,
+      });
       if (response?.data && Array.isArray(response.data)) {
         const formattedMessages = response.data.map(msg => formatMessage(
           msg.content || "",
@@ -140,7 +142,8 @@ export default function ChatLayer({
           "text",
           { 
             id: msg.id,
-            timestamp: msg.created_at || msg.timestamp 
+            timestamp: msg.created_at || msg.timestamp,
+            agentName: msg?.agent_name || assignedAgent.name || "ChildAgent"
           }
         ));
         setBackendMessages(formattedMessages);
@@ -162,7 +165,7 @@ export default function ChatLayer({
   const [assignedAgent, setAssignedAgent] = useState({
     type: "ChildAgent",
     id: null,
-    name: null,
+    name: "ChildAgent",
   });
 
   // Scoped key: per-student thread
@@ -216,33 +219,31 @@ export default function ChatLayer({
     }
   }, [conversationId, fetchBackendMessages]);
 
-  // Fetch student's assigned AI agent on mount
+  // Fetch selected AI agent from AIAgent.jsx settings
   useEffect(() => {
-    const fetchAssignedAgent = async () => {
-      if (!studentId || studentId === "anon") return;
+    const fetchSelectedAgent = async () => {
       try {
-        const { data } = await api.get(`/student/${studentId}/assigned-agent`);
-        if (data?.assigned_agent_type) {
+        const { data } = await api.get('/aisettings', {
+          withCredentials: true,
+        });
+        if (data?.child_default_ai) {
+          const selectedAgent = data.child_default_ai;
           setAssignedAgent({
-            type: data.assigned_agent_type,
-            id: data.assigned_agent_id || null,
-            name: data.assigned_agent?.name || data.assigned_agent_type,
+            type: selectedAgent,
+            id: null,
+            name: selectedAgent,
           });
-          console.log(
-            "📌 Loaded assigned agent for student:",
-            data.assigned_agent_type,
-            data.assigned_agent?.name
-          );
+          console.log("🎯 ChatLayer: Selected agent for homework:", selectedAgent);
         }
       } catch (err) {
         console.warn(
-          "Could not fetch assigned agent, using default ChildAgent:",
+          "Could not fetch selected agent from AIAgent.jsx, using default ChildAgent:",
           err.message
         );
       }
     };
-    fetchAssignedAgent();
-  }, [studentId]);
+    fetchSelectedAgent();
+  }, []);
 
   // Local UI buffer
   const [localMessages, setLocalMessages] = useState(
@@ -462,25 +463,45 @@ export default function ChatLayer({
         if (onSendText) {
           await onSendText(t);
         } else {
+          console.log("ChatLayer sending message with:", {
+            question: t,
+            ai_agent: assignedAgent.type,
+            agent_id: assignedAgent.id,
+            mode: "homework",
+            student_id: studentId,
+            assignedAgent: assignedAgent
+          });
+          
           const { data } = await api.post("ai/chat", {
             question: t,
             ai_agent: assignedAgent.type,
             agent_id: assignedAgent.id,
-            mode: "general",
+            mode: "homework",
+            student_id: studentId,
+          }, {
+            withCredentials: true,
           });
           const aiMessage = formatMessage(
             data?.answer ??
               "Entschuldigung, ich konnte keine Antwort generieren.",
-            "agent"
+            "agent",
+            "text",
+            { agentName: data?.agentName || assignedAgent.name || "ChildAgent" }
           );
           updateMessages((m) => [...m, aiMessage]);
         }
       } catch (err) {
+        console.error("ChatLayer sendMessage error:", err);
+        console.error("Error response:", err?.response?.data);
+        console.error("Error status:", err?.response?.status);
+        
         updateMessages((m) => [
           ...m,
           formatMessage(
             "Es gab ein Problem beim Senden deiner Nachricht. Bitte versuche es später erneut.",
-            "agent"
+            "agent",
+            "text",
+            { agentName: assignedAgent.name || "ChildAgent" }
           ),
         ]);
         antdMessage.error(
@@ -508,16 +529,8 @@ export default function ChatLayer({
     else navigate(minimiseTo);
   };
 
-  // Safer "new chat": confirm before clearing anything
+  // Start new chat directly without confirmation
   const startNewChat = useCallback(() => {
-    const ok =
-      typeof window !== "undefined"
-        ? window.confirm(
-            "Neuen Chat starten? Der Verlauf für diesen Schüler wird gelöscht."
-          )
-        : true;
-    if (!ok) return;
-
     clearChatMessages?.(stableModeRef.current, stableTaskIdRef.current);
     setChatMessages?.(stableModeRef.current, stableTaskIdRef.current, []);
     setLocalMessages([]);
@@ -692,11 +705,18 @@ export default function ChatLayer({
               } mb-3`}
             >
               {isAgent && (
-                <img
-                  src={agentIcon}
-                  alt="Kibundo"
-                  className="w-7 h-7 rounded-full mr-2 self-end"
-                />
+                <div className="flex flex-col mr-2 self-end">
+                  <img
+                    src={agentIcon}
+                    alt="Kibundo"
+                    className="w-7 h-7 rounded-full"
+                  />
+                  {message?.agentName && (
+                    <div className="text-xs text-[#1b3a1b]/60 mt-1 text-center max-w-[60px] break-words">
+                      {message.agentName}
+                    </div>
+                  )}
+                </div>
               )}
               <div
                 className={`max-w-[78%] px-3 py-2 rounded-2xl shadow-sm ${
@@ -718,11 +738,16 @@ export default function ChatLayer({
                 </div>
               </div>
               {!isAgent && (
-                <img
-                  src={studentIcon}
-                  alt="Schüler"
-                  className="w-7 h-7 rounded-full ml-2 self-end"
-                />
+                <div className="flex flex-col ml-2 self-end">
+                  <img
+                    src={studentIcon}
+                    alt="Schüler"
+                    className="w-7 h-7 rounded-full"
+                  />
+                  <div className="text-xs text-[#1b3a1b]/60 mt-1 text-center max-w-[60px] break-words">
+                    You
+                  </div>
+                </div>
               )}
             </div>
           );

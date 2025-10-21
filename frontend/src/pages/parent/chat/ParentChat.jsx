@@ -78,7 +78,7 @@ export default function ParentChat() {
   );
 
   const [messages, setMessages] = useState(() => [
-    makeMsg({ type: "received", content: welcomeMessage, sender: "Kibundo Assistant" }),
+    makeMsg({ type: "received", content: welcomeMessage, sender: "Parent Assistant" }),
   ]);
 
   const [input, setInput] = useState("");
@@ -129,7 +129,11 @@ export default function ParentChat() {
   const sendToAPI = useCallback(async (text) => {
     try {
       const { data } = await api.post("/ai/chat", { question: text, ai_agent: "ParentAgent" });
-      return { ok: true, answer: data?.answer ?? "(No answer returned)" };
+      return { 
+        ok: true, 
+        answer: data?.answer ?? "(No answer returned)",
+        agentName: data?.agentName ?? "Parent Assistant"
+      };
     } catch (err) {
       return { ok: false, error: err };
     }
@@ -150,10 +154,10 @@ export default function ParentChat() {
     setTyping(false);
 
     if (res.ok) {
-      pushMessage(makeMsg({ type: "received", content: res.answer, sender: "Kibundo Assistant" }));
+      pushMessage(makeMsg({ type: "received", content: res.answer, sender: res.agentName || "Parent Assistant" }));
     } else {
       const errText = "I'm having trouble connecting right now. Please try again or contact support.";
-      pushMessage(makeMsg({ type: "error", content: errText, sender: "Kibundo Assistant" }));
+      pushMessage(makeMsg({ type: "error", content: errText, sender: "Parent Assistant" }));
       message.error("Failed to send. Click retry to resend.");
     }
 

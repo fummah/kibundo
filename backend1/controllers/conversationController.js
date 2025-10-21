@@ -3,8 +3,9 @@ import { askOpenAI } from "./openaiHelper.js";
 
 export const handleConversation = async (req, res) => {
   try {
-    const { conversationId } = req.params;
-    const { userId, message, scanId } = req.body;
+    const { conversationId } = req.params || {};
+    const { userId, message, scanId, agentName } = req.body;
+    console.log("🎯 Backend received agentName:", agentName);
     let convId = conversationId;
 
     console.log("🔍 Conversation request:", { conversationId, userId, message: message?.substring(0, 50), scanId });
@@ -52,12 +53,19 @@ export const handleConversation = async (req, res) => {
 
     const { text: aiReply, raw } = await askOpenAI(systemPrompt, grounding + message, { max_tokens: 800 });
 
+    const displayAgentName = agentName || "Homework Assistant";
+    console.log("🎯 Backend storing agentName:", displayAgentName);
+    
     await pool.query(
       `INSERT INTO messages(conversation_id, sender, content, meta) VALUES($1,$2,$3,$4)`,
-      [convId, "bot", aiReply, raw]
+      [convId, "bot", aiReply, JSON.stringify({ ...raw, agentName: displayAgentName })]
     );
 
-    res.json({ conversationId: convId, reply: aiReply });
+    res.json({ 
+      conversationId: convId, 
+      reply: aiReply,
+      agentName: displayAgentName
+    });
   } catch (err) {
     console.error("❌ Chat error:", err);
     res.status(500).json({ error: err.message });
@@ -71,7 +79,27 @@ export const getChatHistory = async (req, res) => {
       `SELECT * FROM messages WHERE conversation_id=$1 ORDER BY created_at ASC`,
       [conversationId]
     );
-    res.json(r.rows);
+    
+    // Extract agent_name from meta field for each message
+    const messagesWithAgentName = r.rows.map(msg => {
+      try {
+        const meta = msg.meta ? JSON.parse(msg.meta) : {};
+        const agentName = meta.agentName || "ChildAgent";
+        console.log("🎯 Backend retrieving agentName:", agentName, "from meta:", meta);
+        return {
+          ...msg,
+          agent_name: agentName
+        };
+      } catch (e) {
+        console.log("🎯 Backend error parsing meta for agentName, falling back to ChildAgent:", e);
+        return {
+          ...msg,
+          agent_name: "ChildAgent"
+        };
+      }
+    });
+    
+    res.json(messagesWithAgentName);
   } catch (err) {
     console.error("❌ History error:", err);
     res.status(500).json({ error: err.message });

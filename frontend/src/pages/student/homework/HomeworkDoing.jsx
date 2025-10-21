@@ -56,6 +56,26 @@ export default function HomeworkDoing() {
   const initialLoad = useRef(true);
 
   const [uploading, setUploading] = useState(false);   // controls centered overlay
+  const [selectedAgent, setSelectedAgent] = useState("ChildAgent"); // Default fallback
+
+  // Fetch selected agent from backend
+  useEffect(() => {
+    const fetchSelectedAgent = async () => {
+      try {
+        const response = await api.get('/aisettings', {
+          withCredentials: true,
+        });
+        if (response?.data?.child_default_ai) {
+          setSelectedAgent(response.data.child_default_ai);
+          console.log("🎯 HomeworkDoing: Selected agent for homework:", response.data.child_default_ai);
+        }
+      } catch (error) {
+        console.warn("Could not fetch selected agent in HomeworkDoing, using default ChildAgent:", error);
+      }
+    };
+    
+    fetchSelectedAgent();
+  }, []);
 
   // Clean up old localStorage data on mount to prevent quota issues
   useEffect(() => {
@@ -172,7 +192,7 @@ export default function HomeworkDoing() {
 
     if (file) {
       // status bubble with spinner (rendered by HomeworkChat for type="status")
-      loadingMsg = fmt("Ich analysiere dein Bild…", "agent", "status", { transient: true });
+      loadingMsg = fmt("Ich analysiere dein Bild…", "agent", "status", { transient: true, agentName: selectedAgent || "ChildAgent" });
 
       // Push only loader message (no image preview), then open & expand the dock right away
       appendToChat(mode, scopedKey, [loadingMsg]);
@@ -214,7 +234,7 @@ export default function HomeworkDoing() {
         
         if (loadingMsg) {
           replaceMessageInChat(mode, scopedKey, loadingMsg.id, () =>
-            fmt(userMessage, "agent")
+            fmt(userMessage, "agent", "text", { agentName: selectedAgent || "ChildAgent" })
           );
         }
         
@@ -223,7 +243,7 @@ export default function HomeworkDoing() {
           setTimeout(() => {
             setChatMessages(mode, scopedKey, (prev) => [
               ...prev,
-              fmt("Du kannst mir Fragen zu deiner Aufgabe stellen, auch ohne Bildanalyse. Was möchtest du wissen?", "agent")
+              fmt("Du kannst mir Fragen zu deiner Aufgabe stellen, auch ohne Bildanalyse. Was möchtest du wissen?", "agent", "text", { agentName: selectedAgent || "ChildAgent" })
             ]);
           }, 1000);
         }
@@ -362,7 +382,7 @@ export default function HomeworkDoing() {
       // Replace loader status
       if (loadingMsg) {
         replaceMessageInChat(mode, scopedKey, loadingMsg.id, () =>
-          fmt("Analyse abgeschlossen.", "agent", "status", { transient: true })
+          fmt("Analyse abgeschlossen.", "agent", "status", { transient: true, agentName: selectedAgent || "ChildAgent" })
         );
       }
       // Append extraction/table or fallback
@@ -374,10 +394,12 @@ export default function HomeworkDoing() {
         : [];
       const resultMsg =
         extracted || qa.length
-          ? fmt({ extractedText: extracted, qa }, "agent", "table")
+          ? fmt({ extractedText: extracted, qa }, "agent", "table", { agentName: selectedAgent || "ChildAgent" })
           : fmt(
               "Ich habe das Dokument erhalten, konnte aber nichts Brauchbares extrahieren.",
-              "agent"
+              "agent",
+              "text",
+              { agentName: selectedAgent || "ChildAgent" }
             );
 
       appendToChat(mode, scopedKey, [resultMsg]);

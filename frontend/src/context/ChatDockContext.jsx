@@ -154,6 +154,28 @@ export function ChatDockProvider({ children }) {
     chatByKey: loadAllChats(),
     analyzeOnOpen: false,
   }));
+  
+  const [selectedAgent, setSelectedAgent] = useState("ChildAgent"); // Default fallback
+
+  // Fetch selected agent from backend
+  useEffect(() => {
+    const fetchSelectedAgent = async () => {
+      try {
+        const { default: api } = await import("@/api/axios");
+        const response = await api.get('/aisettings', {
+          withCredentials: true,
+        });
+        if (response?.data?.child_default_ai) {
+          setSelectedAgent(response.data.child_default_ai);
+          console.log("🎯 ChatDockContext: Selected agent for homework:", response.data.child_default_ai);
+        }
+      } catch (error) {
+        console.warn("Could not fetch selected agent in ChatDockContext, using default ChildAgent:", error);
+      }
+    };
+    
+    fetchSelectedAgent();
+  }, []);
 
   /** Keep in sync if other tabs modify localStorage */
   useEffect(() => {
@@ -368,17 +390,17 @@ export function ChatDockProvider({ children }) {
             msg.content === "Ich analysiere dein Bild …" && msg.from === "system"
           );
           if (loadingIndex !== -1) {
-            newMessages[loadingIndex] = fmt("✅ Analyse abgeschlossen!", "agent");
+            newMessages[loadingIndex] = fmt("✅ Analyse abgeschlossen!", "agent", "text", { agentName: selectedAgent || "ChildAgent" || "ChildAgent" });
           }
           
           // Add analysis results - be more flexible about what we show
           if (extracted || qa.length > 0) {
-            newMessages.push(fmt({ extractedText: extracted, qa }, "agent", "table"));
+            newMessages.push(fmt({ extractedText: extracted, qa }, "agent", "table", { agentName: selectedAgent || "ChildAgent" }));
             // Add follow-up message to encourage interaction
-            newMessages.push(fmt("Wie kann ich dir bei deiner Aufgabe helfen? Du kannst mir Fragen stellen oder um Erklärungen bitten!", "agent"));
+            newMessages.push(fmt("Wie kann ich dir bei deiner Aufgabe helfen? Du kannst mir Fragen stellen oder um Erklärungen bitten!", "agent", "text", { agentName: selectedAgent || "ChildAgent" }));
           } else {
             // Even if no structured data, show that we got the image and offer help
-            newMessages.push(fmt("Ich habe dein Bild erhalten! Du kannst mir trotzdem Fragen stellen. Beschreibe mir einfach, womit ich dir helfen kann.", "agent"));
+            newMessages.push(fmt("Ich habe dein Bild erhalten! Du kannst mir trotzdem Fragen stellen. Beschreibe mir einfach, womit ich dir helfen kann.", "agent", "text", { agentName: selectedAgent || "ChildAgent" }));
           }
           
           return newMessages;
@@ -430,13 +452,13 @@ export function ChatDockProvider({ children }) {
             msg.content === "Ich analysiere dein Bild …" && msg.from === "system"
           );
           if (loadingIndex !== -1) {
-            newMessages[loadingIndex] = fmt(userMessage, "agent");
+            newMessages[loadingIndex] = fmt(userMessage, "agent", "text", { agentName: selectedAgent || "ChildAgent" });
           } else {
-            newMessages.push(fmt(userMessage, "agent"));
+            newMessages.push(fmt(userMessage, "agent", "text", { agentName: selectedAgent || "ChildAgent" }));
           }
           
           // Add helpful suggestion
-          newMessages.push(fmt("Du kannst mir Fragen zu deiner Aufgabe stellen, auch ohne Bildanalyse. Was möchtest du wissen?", "agent"));
+          newMessages.push(fmt("Du kannst mir Fragen zu deiner Aufgabe stellen, auch ohne Bildanalyse. Was möchtest du wissen?", "agent", "text", { agentName: selectedAgent || "ChildAgent" }));
           
           return newMessages;
         });

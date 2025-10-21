@@ -425,20 +425,22 @@ export default function HomeworkList() {
         )}
 
         {/* FAB */}
-        <button
-          onClick={() =>
-            navigate("/student/homework/doing", {
-              state: { openHomeworkChat: true },
-            })
-          }
-          className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-[#2b6a5b] text-white shadow-xl
-                 flex items-center justify-center hover:bg-[#1f4f43] transition-all duration-200
-                 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2b6a5b] z-50
-                 hover:shadow-2xl hover:scale-105 transform"
-          aria-label="Neue Aufgabe scannen"
-        >
-          <PlusOutlined className="text-2xl" />
-        </button>
+        <div className="flex justify-end mt-6">
+          <button
+            onClick={() =>
+              navigate("/student/homework/doing", {
+                state: { openHomeworkChat: true },
+              })
+            }
+            className="w-16 h-16 rounded-full bg-[#2b6a5b] text-white shadow-xl
+                   flex items-center justify-center hover:bg-[#1f4f43] transition-all duration-200
+                   focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2b6a5b]
+                   hover:shadow-2xl hover:scale-105 transform"
+            aria-label="Neue Aufgabe scannen"
+          >
+            <PlusOutlined className="text-2xl" />
+          </button>
+        </div>
       </section>
 
       <ChatStripSpacer />

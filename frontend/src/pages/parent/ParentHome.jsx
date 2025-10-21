@@ -120,7 +120,8 @@ export default function ParentHome() {
         setMessages([
           {
             role: "assistant",
-            content: `Hello ${parentName}! I'm your Assistant. How can I help you today?`
+            content: `Hello ${parentName}! I'm your Assistant. How can I help you today?`,
+            agentName: "Parent Assistant"
           }
         ]);
       }
@@ -177,7 +178,8 @@ export default function ParentHome() {
       const payload = { question: q, context: "User", ai_agent: "ParentAgent" };
       const res = await api.post("/ai/chat", payload);
       const answer = res?.data?.answer || res?.data?.data?.answer || res?.data?.message || "";
-      setMessages((prev) => [...prev, { role: "assistant", content: String(answer || "No response") }]);
+      const agentName = res?.data?.agentName || "Parent Assistant";
+      setMessages((prev) => [...prev, { role: "assistant", content: String(answer || "No response"), agentName }]);
     } catch (err) {
       const backendMsg = err?.response?.data?.error;
       // If backend signals rate limit, impose a short cooldown
@@ -186,7 +188,7 @@ export default function ParentHome() {
       }
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: backendMsg || "Sorry, I couldn't process that right now." },
+        { role: "assistant", content: backendMsg || "Sorry, I couldn't process that right now.", agentName: "Parent Assistant" },
       ]);
       // Optionally log: console.error(err);
     } finally {
@@ -299,11 +301,18 @@ export default function ParentHome() {
                   return (
                     <div key={idx} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                       <div className={`flex items-end gap-2 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
-                        <img
-                          src={avatar}
-                          alt={isUser ? "You" : "Assistant"}
-                          className="w-8 h-8 rounded-full shadow border border-white/60"
-                        />
+                        <div className="flex flex-col items-center">
+                          <img
+                            src={avatar}
+                            alt={isUser ? "You" : "Assistant"}
+                            className="w-8 h-8 rounded-full shadow border border-white/60"
+                          />
+                          {!isUser && m.agentName && (
+                            <div className="text-xs text-neutral-500 mt-1 text-center max-w-[60px] break-words">
+                              {m.agentName}
+                            </div>
+                          )}
+                        </div>
                         <div className={`px-3 py-2 rounded-2xl text-sm max-w-[70vw] sm:max-w-[520px] whitespace-pre-wrap ${isUser ? "bg-emerald-600 text-white rounded-br-sm" : "bg-neutral-100 text-neutral-800 rounded-bl-sm"}`}>
                           {m.content}
                         </div>

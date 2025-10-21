@@ -25,6 +25,26 @@ export default function HomeworkScanner({ userId }) {
   const [file, setFile] = useState(null);
   const [scanResult, setScanResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState("ChildAgent"); // Default fallback
+
+  // Fetch selected agent from backend
+  useEffect(() => {
+    const fetchSelectedAgent = async () => {
+      try {
+        const response = await api.get('/aisettings', {
+          withCredentials: true,
+        });
+        if (response?.data?.child_default_ai) {
+          setSelectedAgent(response.data.child_default_ai);
+          console.log("🎯 HomeworkScanner: Selected agent for homework:", response.data.child_default_ai);
+        }
+      } catch (error) {
+        console.warn("Could not fetch selected agent in HomeworkScanner, using default ChildAgent:", error);
+      }
+    };
+    
+    fetchSelectedAgent();
+  }, []);
 
   async function handleUpload() {
     if (!file) {
@@ -99,7 +119,7 @@ export default function HomeworkScanner({ userId }) {
         parts.join("\n\n") ||
         "Das Bild wurde hochgeladen. Ich konnte allerdings keine Details extrahieren.";
 
-      const analysisMsg = formatMessage(agentSummary, "agent", "text");
+      const analysisMsg = formatMessage(agentSummary, "agent", "text", { agentName: selectedAgent || "ChildAgent" });
 
       // ---- 4) construct a minimal task to anchor this chat thread ----
       // carry over IDs so HomeworkChat can keep appending to the same conversation
