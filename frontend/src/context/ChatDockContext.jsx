@@ -167,10 +167,9 @@ export function ChatDockProvider({ children }) {
         });
         if (response?.data?.child_default_ai) {
           setSelectedAgent(response.data.child_default_ai);
-          console.log("🎯 ChatDockContext: Selected agent for homework:", response.data.child_default_ai);
         }
       } catch (error) {
-        console.warn("Could not fetch selected agent in ChatDockContext, using default ChildAgent:", error);
+        // Using default ChildAgent
       }
     };
     
@@ -328,7 +327,7 @@ export function ChatDockProvider({ children }) {
         );
       }
     } catch (e) {
-      console.error("Error marking homework as done:", e);
+      // Error marking homework as done
     }
 
     navigate("/student/homework/feedback", { state: { taskId: task?.id || null } });
@@ -424,14 +423,13 @@ export function ChatDockProvider({ children }) {
             try {
               const convKey = `kibundo.convId.${snapshot.mode}.${snapshot.taskId}::u:${snapshot.userId}`;
               localStorage.setItem(convKey, conversationId);
-              console.log("💾 Stored conversation ID:", conversationId, "for task:", snapshot.taskId);
             } catch (e) {
-              console.warn("Failed to store conversation ID:", e);
+              // Failed to store conversation ID
             }
           }
         }
       } catch (err) {
-        console.error("Upload/Analyse failed:", err);
+        // Upload/Analyse failed
         
         // Handle specific backend errors
         const errorMessage = err?.response?.data?.message || err?.message || "Unbekannter Fehler";

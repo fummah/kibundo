@@ -36,10 +36,8 @@ export default function HomeworkScanner({ userId }) {
         });
         if (response?.data?.child_default_ai) {
           setSelectedAgent(response.data.child_default_ai);
-          console.log("🎯 HomeworkScanner: Selected agent for homework:", response.data.child_default_ai);
         }
       } catch (error) {
-        console.warn("Could not fetch selected agent in HomeworkScanner, using default ChildAgent:", error);
       }
     };
     
@@ -152,7 +150,6 @@ export default function HomeworkScanner({ userId }) {
         antdMessage?.success?.("Analyse abgeschlossen – Chat geöffnet.");
       }
     } catch (e) {
-      console.error(e);
       const status = e?.response?.status;
       const msg =
         e?.response?.data?.message ||

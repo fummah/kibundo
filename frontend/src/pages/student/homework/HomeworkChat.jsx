@@ -93,7 +93,6 @@ async function analyzeOneImage(file) {
     const md = qaToMarkdown(extracted, qa);
     return { ok: true, md };
   } catch (err) {
-    console.error("analyzeOneImage error:", err);
     return {
       ok: false,
       err:
@@ -206,7 +205,6 @@ export default function HomeworkChat() {
           assignedAgent = aiSettings.child_default_ai;
         }
       } catch (err) {
-        console.warn("Could not fetch AI settings:", err);
       }
 
       // Text → general chat
@@ -216,7 +214,6 @@ export default function HomeworkChat() {
       });
       return { success: true, response: data?.answer || "—" };
     } catch (error) {
-      console.error("AI Chat error:", error);
       return {
         success: false,
         error:

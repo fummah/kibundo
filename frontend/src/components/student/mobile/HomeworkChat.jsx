@@ -112,14 +112,6 @@ const mergeById = (serverMessages = [], localMessages = []) => {
       if (!m || typeof m !== "object") continue;
       
       if (isDuplicate(m)) {
-        const contentPreview = typeof m.content === 'string' ? m.content.substring(0, 50) + "..." : String(m.content || "");
-        console.log("🔍 [mergeById] Skipping duplicate message:", {
-          content: contentPreview,
-          from: m.from,
-          id: m.id,
-          timestamp: m.timestamp,
-          pending: m.pending
-        });
         continue;
       }
       
@@ -142,7 +134,6 @@ const mergeById = (serverMessages = [], localMessages = []) => {
     if (msg.from === "student") {
       const contentKey = typeof msg.content === 'string' ? msg.content.trim().toLowerCase() : String(msg.content || "").trim().toLowerCase();
       if (contentKey && studentContentSeen.has(contentKey)) {
-        console.log("🔍 [mergeById] Final cleanup - removing duplicate student message:", contentKey.substring(0, 30));
         continue;
       }
       if (contentKey) studentContentSeen.add(contentKey);
@@ -239,10 +230,9 @@ export default function HomeworkChat({
         });
         if (response?.data?.child_default_ai) {
           setSelectedAgent(response.data.child_default_ai);
-          console.log("🎯 Selected agent for homework:", response.data.child_default_ai);
         }
       } catch (error) {
-        console.warn("Could not fetch selected agent, using default ChildAgent:", error);
+        // Using default ChildAgent
       }
     };
     
@@ -275,7 +265,6 @@ export default function HomeworkChat({
         setBackendMessages(formattedMessages);
       }
     } catch (error) {
-      console.error("Failed to fetch backend messages:", error);
       setBackendMessages([]);
     } finally {
       setLoadingBackendMessages(false);
@@ -386,13 +375,7 @@ export default function HomeworkChat({
     
     // If we have backend messages, merge them with existing messages
     if (backendMessages.length > 0) {
-      console.log("🔍 [HomeworkChat] Merging backend messages:", {
-        backend: backendMessages.length,
-        persisted: persisted.length,
-        local: existingLocal.length
-      });
       const merged = mergeById(backendMessages, [...persisted, ...existingLocal]);
-      console.log("🔍 [HomeworkChat] Merged result:", merged.length, "messages");
       return merged;
     }
     
@@ -558,7 +541,6 @@ export default function HomeworkChat({
 
         let resp;
         try {
-          console.log("🎯 HomeworkChat sending message with agentName:", selectedAgent);
           resp = await api.post(firstUrl, { message: t, scanId, agentName: selectedAgent }, {
             withCredentials: true,
           });
@@ -600,13 +582,9 @@ export default function HomeworkChat({
           const serverMessages = mapServerToInternal(r2.data);
           updateMessages((current) => {
             const withoutPending = current.filter((m) => !m?.pending);
-            console.log("🔍 [HomeworkChat] Before merge - Local:", withoutPending.length, "Server:", serverMessages.length);
-            console.log("🔍 [HomeworkChat] Local messages:", withoutPending.map(m => ({ from: m.from, content: typeof m.content === 'string' ? m.content.substring(0, 30) : String(m.content || ""), pending: m.pending })));
-            console.log("🔍 [HomeworkChat] Server messages:", serverMessages.map(m => ({ from: m.from, content: typeof m.content === 'string' ? m.content.substring(0, 30) : String(m.content || ""), id: m.id })));
             
             // Merge server messages with local messages to avoid duplicates
             const merged = mergeById(serverMessages, withoutPending);
-            console.log("🔍 [HomeworkChat] Merged result:", merged.length, "messages");
             return merged;
           });
         } else if (j?.answer) {

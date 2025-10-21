@@ -167,7 +167,6 @@ export default function HomeworkList() {
     
     try {
       setLoading(true);
-      console.log(`Fetching homework scans for student ID: ${studentId}`);
       const { data } = await api.get('/user/homeworkscans', {
         params: { student_id: studentId },
         withCredentials: true, // Include auth headers
@@ -178,13 +177,7 @@ export default function HomeworkList() {
         : [];
       
       setApiTasks(transformedTasks);
-      console.log(`Loaded ${transformedTasks.length} homework scans from database for student ${studentId}`);
-      if (transformedTasks.length === 0) {
-        console.log('💡 No homework scans found. Make sure the homework_scans table has entries with this student_id.');
-      }
     } catch (error) {
-      console.warn('Could not fetch homework scans from database:', error.response?.data?.message || error.message);
-      console.log('Falling back to localStorage data only');
       // Silently fail - localStorage data will still be available
       setApiTasks([]); // Set empty array on error
     } finally {
@@ -205,7 +198,6 @@ export default function HomeworkList() {
   // Refresh when window regains focus (user returns from another screen)
   useEffect(() => {
     const onFocus = () => {
-      console.log('📋 Window focused, refreshing homework list...');
       refreshLocalTasks();
       fetchHomeworkScans();
     };
@@ -230,7 +222,6 @@ export default function HomeworkList() {
 
     // Listen for custom task update events (fired from HomeworkDoing in same tab)
     const onTaskUpdate = () => {
-      console.log('📋 Tasks updated event received, refreshing homework list...');
       refreshLocalTasks();
       fetchHomeworkScans();
     };
@@ -340,19 +331,16 @@ export default function HomeworkList() {
 
   // Handle edit task
   const handleEditTask = (task) => {
-    console.log('Edit task:', task);
     // Add edit functionality here
   };
 
   // Handle delete task
   const handleDeleteTask = (task) => {
-    console.log('Delete task:', task);
     // Add delete functionality here
   };
 
   // Handle mark task as done/undone
   const handleMarkTaskDone = (task) => {
-    console.log('Mark task done:', task);
     // Add mark done functionality here
   };
 

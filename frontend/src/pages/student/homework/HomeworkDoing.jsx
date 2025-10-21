@@ -67,10 +67,8 @@ export default function HomeworkDoing() {
         });
         if (response?.data?.child_default_ai) {
           setSelectedAgent(response.data.child_default_ai);
-          console.log("🎯 HomeworkDoing: Selected agent for homework:", response.data.child_default_ai);
         }
       } catch (error) {
-        console.warn("Could not fetch selected agent in HomeworkDoing, using default ChildAgent:", error);
       }
     };
     
@@ -94,10 +92,8 @@ export default function HomeworkDoing() {
             localStorage.removeItem(k);
           } catch {}
         });
-        console.log(`🧹 Cleaned up ${keysToCheck.length - 10} old conversation IDs from localStorage`);
       }
     } catch (e) {
-      console.warn("Could not clean up localStorage:", e);
     }
   }, []); // Run once on mount
 
@@ -143,7 +139,6 @@ export default function HomeworkDoing() {
       withCredentials: true, // Include cookies/auth headers
     });
     
-    console.log("📤 Upload response:", data);
     
     // Backend returns: { success, message, fileUrl, scan, parsed, aiText, conversationId }
     if (!data.success) {
@@ -248,7 +243,6 @@ export default function HomeworkDoing() {
           }, 1000);
         }
         
-        console.error("Upload/Analyse failed (HomeworkDoing)", status, serverMsg, e?.response?.data);
         
         let errorDisplayMsg;
         if (isTimeoutError) {
@@ -415,7 +409,6 @@ export default function HomeworkDoing() {
         // Re-open chat with updated conversationId and scanId
         openAndFocusChat(id, updatedTaskData);
         
-        console.log('✅ Updated chat with conversationId:', scanData.conversationId, 'scanId:', scanData?.scan?.id);
         
         // Try to store in localStorage (optional fallback, ignore quota errors)
         const convKey = `kibundo.convId.${mode}.${scopedKey}`;
@@ -423,7 +416,6 @@ export default function HomeworkDoing() {
           localStorage.setItem(convKey, String(scanData.conversationId));
         } catch (e) {
           // Quota exceeded - clean up old conversation IDs
-          console.warn("localStorage quota exceeded, cleaning up old data...");
           try {
             // Remove old conversation IDs
             const keysToRemove = [];
@@ -438,7 +430,6 @@ export default function HomeworkDoing() {
             // Try again
             localStorage.setItem(convKey, String(scanData.conversationId));
           } catch (cleanupErr) {
-            console.warn("Could not store conversationId even after cleanup:", cleanupErr);
           }
         }
       }

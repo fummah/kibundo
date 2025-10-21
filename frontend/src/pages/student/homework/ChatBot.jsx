@@ -60,7 +60,6 @@ export default function ChatBot({ conversationId, userId, scanId }) {
     fetchMessages(convId, ctrl.signal).catch((e) => {
       if (e.name !== "CanceledError" && e.name !== "AbortError") {
         // eslint-disable-next-line no-console
-        console.error("ChatBot init fetch error:", e);
       }
     });
     return () => ctrl.abort();
@@ -111,7 +110,6 @@ export default function ChatBot({ conversationId, userId, scanId }) {
       setText("");
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("ChatBot sendMessage error:", e?.response?.status || e.message);
     } finally {
       setSending(false);
       sendingRef.current = false;
