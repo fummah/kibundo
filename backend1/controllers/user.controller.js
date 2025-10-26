@@ -1409,6 +1409,26 @@ exports.getAllAgents = async (req, res) => {
   }
 };
 
+exports.deleteAgent = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if the record exists
+    const agent = await AgentPromptSet.findByPk(id);
+    if (!agent) {
+      return res.status(404).json({ message: "Agent not found" });
+    }
+
+    // Delete the record
+    await agent.destroy();
+    res.json({ message: "Agent deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting agent:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
 exports.getPublicTables = async (req, res) => {
   try {
     const query = `
@@ -1585,5 +1605,249 @@ exports.updateAgent = async (req, res) => {
   } catch (error) {
     console.error("Error updating agent:", error);
     return res.status(500).json({ error: "Failed to update agent" });
+  }
+};
+
+exports.editUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      first_name,
+      last_name,
+      email,
+      contact_number,
+      state,
+      role_id,
+    } = req.body;
+
+    // 1. Find user by ID
+    const user = await User.findByPk(id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // 2. If updating password, validate match and hash
+    let updatedFields = {
+      first_name,
+      last_name,
+      email,
+      contact_number,
+      state,
+      role_id,
+    };
+
+
+
+    // 3. Update user
+    await user.update(updatedFields);
+
+    res.json({ message: "User updated successfully", user });
+  } catch (err) {
+    console.error("Error updating user:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+exports.editSubject = async (req, res) => {
+  try {
+    const { id } = req.params; // Subject ID from URL
+    const { subject_name, class_id } = req.body;
+    const updated_by = req.user.id; // user performing the edit
+
+    // 1. Find subject by ID
+    const subject = await Subject.findByPk(id);
+    if (!subject) {
+      return res.status(404).json({ message: "Subject not found" });
+    }
+
+    // 2. Update subject fields
+    await subject.update({
+      subject_name,
+      class_id,
+      updated_by,
+    });
+
+    // 3. Send response
+    res.json({
+      message: "Subject updated successfully",
+      subject,
+    });
+  } catch (err) {
+    console.error("Edit subject error:", err);
+    res.status(500).json({ message: "Server error", error: err });
+  }
+};
+
+exports.editClass = async (req, res) => {
+  try {
+    const { id } = req.params; // Class ID from URL
+    const { class_name } = req.body;
+    const updated_by = req.user.id; // user performing the edit
+
+    // 1. Find class by ID
+    const existingClass = await Class.findByPk(id);
+    if (!existingClass) {
+      return res.status(404).json({ message: "Class not found" });
+    }
+
+    // 2. Update class fields
+    await existingClass.update({
+      class_name,
+      updated_by,
+    });
+
+    // 3. Send response
+    res.json({
+      message: "Class updated successfully",
+      class: existingClass,
+    });
+  } catch (err) {
+    console.error("Edit class error:", err);
+    res.status(500).json({ message: "Server error", error: err });
+  }
+};
+
+exports.editProduct = async (req, res) => {
+  try {
+    const { id } = req.params; // Product ID from DB
+    const { name, description, price, trial_period_days } = req.body;
+    const updated_by = req.user.id;
+
+    // 1️⃣ Find product in your DB
+    const product = await Product.findByPk(id);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    // 2️⃣ Update product in Stripe if name or description changed
+    if (product.stripe_product_id) {
+      await stripe.products.update(product.stripe_product_id, {
+        name,
+        description,
+      });
+    }
+
+    // 3️⃣ Update local database record
+    await product.update({
+      name,
+      description,
+      price,
+      trial_period_days,
+      updated_by,
+    });
+
+    // 4️⃣ Return updated product
+    res.json({
+      message: "Product updated successfully",
+      product,
+    });
+  } catch (err) {
+    console.error("Edit product error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+exports.editSubscription = async (req, res) => {
+  try {
+    const { id } = req.params; // Subscription ID from URL
+    const { parent_id, stripe_subscription_id, plan_id } = req.body;
+    const updated_by = req.user.id;
+
+    // 1️⃣ Find subscription by ID
+    const subscription = await Subscription.findByPk(id);
+    if (!subscription) {
+      return res.status(404).json({ message: "Subscription not found" });
+    }
+
+    // 2️⃣ Update subscription fields
+    await subscription.update({
+      parent_id,
+      stripe_subscription_id,
+      plan_id,
+      updated_by,
+    });
+
+    // 3️⃣ Send success response
+    res.json({
+      message: "Subscription updated successfully",
+      subscription,
+    });
+  } catch (err) {
+    console.error("Edit subscription error:", err);
+    res.status(500).json({ message: "Server error", error: err });
+  }
+};
+exports.editQuiz = async (req, res) => {
+  try {
+    const { id } = req.params; // Quiz ID from URL
+    const {
+      title,
+      description,
+      tags,
+      subject,
+      grade,
+      bundesland,
+      difficulty,
+      objectives,
+      status,
+      items, // optional updated quiz items
+    } = req.body;
+
+    const updated_by = req.user.id;
+
+    // 1️⃣ Find quiz by ID
+    const quiz = await Quiz.findByPk(id);
+    if (!quiz) {
+      return res.status(404).json({ message: "Quiz not found" });
+    }
+
+    // 2️⃣ Update quiz fields
+    await quiz.update({
+      title,
+      description,
+      tags,
+      subject,
+      grade,
+      bundesland,
+      difficulty,
+      objectives,
+      status,
+      updated_by,
+    });
+
+    // 3️⃣ If quiz items are provided, update them
+    if (items && Array.isArray(items)) {
+      for (const item of items) {
+        if (item.id) {
+          // Update existing quiz item
+          await QuizItem.update(
+            {
+              question: item.question,
+              options: item.options,
+              correct_answer: item.correct_answer,
+              marks: item.marks,
+            },
+            { where: { id: item.id, quiz_id: quiz.id } }
+          );
+        } else {
+          // Add new quiz item
+          await QuizItem.create({
+            quiz_id: quiz.id,
+            question: item.question,
+            options: item.options,
+            correct_answer: item.correct_answer,
+            marks: item.marks,
+            created_by: updated_by,
+          });
+        }
+      }
+    }
+
+    // 4️⃣ Send response
+    res.json({
+      message: "Quiz updated successfully",
+      quiz,
+    });
+  } catch (err) {
+    console.error("Edit quiz error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
