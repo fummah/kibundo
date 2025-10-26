@@ -1,5 +1,6 @@
 // src/pages/admin/academics/ocr/OCRWorkspace.jsx
 import { useEffect, useRef, useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Typography,
   Card,
@@ -55,6 +56,7 @@ const ACCEPTED_MIME = [
 ];
 
 export default function OCRWorkspace() {
+  const { t } = useTranslation();
   // UI State
   const [uploading, setUploading] = useState(false);
   const [abortCtrl, setAbortCtrl] = useState(null);
@@ -496,7 +498,7 @@ export default function OCRWorkspace() {
       key: "upload",
       label: (
         <span>
-          <UploadOutlined /> Upload
+          <UploadOutlined /> {t("common.upload")}
           {fileList.length > 0 && <Badge count={fileList.length} style={{ marginLeft: 8 }} />}
         </span>
       ),
@@ -504,10 +506,10 @@ export default function OCRWorkspace() {
         <>
           <Row gutter={[16, 16]}>
             <Col xs={24} md={10}>
-              <Card title={<Space><SettingOutlined /> Options</Space>} className="dark:bg-gray-800">
+              <Card title={<Space><SettingOutlined /> {t("common.options")}</Space>} className="dark:bg-gray-800">
                 <Space direction="vertical" style={{ width: "100%" }}>
                   <div>
-                    <Text strong>Language</Text>
+                    <Text strong>{t("common.language")}</Text>
                     <Select
                       style={{ width: "100%", marginTop: 6 }}
                       value={lang}

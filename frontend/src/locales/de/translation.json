@@ -206,5 +206,83 @@
         "title": "Fortschrittsübersicht"
       }
     }
+  },
+  "auth": {
+    "signIn": "Anmelden",
+    "signUp": "Registrieren",
+    "noAccount": "Noch kein Konto?",
+    "haveAccount": "Bereits ein Konto?"
+  },
+  "helpdesk": {
+    "categories": {
+      "general": "Allgemeine Frage",
+      "billing": "Abrechnung",
+      "technical": "Technisches Problem",
+      "content": "Inhalt/Lektion",
+      "other": "Sonstiges"
+    },
+    "ticketSubmitted": "Ticket eingereicht",
+    "minCharacters": "Bitte geben Sie mindestens {{count}} Zeichen ein."
+  },
+  "common": {
+    "upload": "Hochladen",
+    "download": "Herunterladen",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "create": "Erstellen",
+    "add": "Hinzufügen",
+    "remove": "Entfernen",
+    "submit": "Absenden",
+    "reset": "Zurücksetzen",
+    "search": "Suchen",
+    "filter": "Filtern",
+    "sort": "Sortieren",
+    "view": "Ansehen",
+    "show": "Anzeigen",
+    "hide": "Ausblenden",
+    "close": "Schließen",
+    "open": "Öffnen",
+    "next": "Weiter",
+    "previous": "Zurück",
+    "back": "Zurück",
+    "continue": "Fortfahren",
+    "finish": "Beenden",
+    "complete": "Abgeschlossen",
+    "start": "Start",
+    "stop": "Stopp",
+    "pause": "Pause",
+    "resume": "Fortsetzen",
+    "confirm": "Bestätigen",
+    "options": "Optionen",
+    "language": "Sprache"
+  },
+  "teacher": {
+    "noPendingWorksheets": "Keine ausstehenden Arbeitsblätter",
+    "untitledWorksheet": "Unbenanntes Arbeitsblatt",
+    "duplicate": "Duplikat",
+    "new": "Neu",
+    "unknownEditor": "Unbekannter Editor",
+    "unknownPublisher": "Unbekannter Herausgeber",
+    "approve": "Genehmigen",
+    "needsFix": "Korrektur erforderlich",
+    "reject": "Ablehnen"
+  },
+  "profile": {
+    "selectAvatar": "Bitte wähle zuerst einen Avatar.",
+    "welcomeMessage": "Hallo {{name}}, schön dich kennenzulernen. Wähle einen Avatar aus.",
+    "chooseAvatar": "Avatar auswählen",
+    "continue": "Weiter"
+  },
+  "onboarding": {
+    "welcome": "Willkommen bei Kibundo!",
+    "chooseBuddy": "Wähle deinen Buddy",
+    "chooseBuddySubtitle": "Wähle einen kleinen Freund, der dich auf deiner Lernreise begleitet.",
+    "interests": "Deine Interessen",
+    "interestsSubtitle": "Erzähl uns, was dir gefällt, damit wir dir passende Inhalte zeigen können.",
+    "subjects": "Deine Fächer",
+    "subjectsSubtitle": "Wähle die Fächer aus, in denen du lernen möchtest.",
+    "success": "Perfekt! Du bist bereit zu lernen!"
   }
 }

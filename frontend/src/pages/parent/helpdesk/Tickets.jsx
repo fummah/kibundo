@@ -1,6 +1,7 @@
 // src/pages/parent/helpdesk/Tickets.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Card,
   Form,
@@ -24,6 +25,7 @@ import globalBg from "@/assets/backgrounds/global-bg.png"; // optional backgroun
 const { Title, Text } = Typography;
 
 export default function Tickets() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
@@ -34,13 +36,13 @@ export default function Tickets() {
 
   const categories = useMemo(
     () => [
-      { label: "General question", value: "general" },
-      { label: "Billing", value: "billing" },
-      { label: "Technical issue", value: "technical" },
-      { label: "Content/lesson", value: "content" },
-      { label: "Other", value: "other" },
+      { label: t("helpdesk.categories.general"), value: "general" },
+      { label: t("helpdesk.categories.billing"), value: "billing" },
+      { label: t("helpdesk.categories.technical"), value: "technical" },
+      { label: t("helpdesk.categories.content"), value: "content" },
+      { label: t("helpdesk.categories.other"), value: "other" },
     ],
-    []
+    [t]
   );
 
   useEffect(() => {
@@ -60,13 +62,13 @@ export default function Tickets() {
 
       const msg = (values.message || "").trim();
       if (msg.length < MIN_LEN) {
-        throw new Error(`Please enter at least ${MIN_LEN} characters.`);
+        throw new Error(t("helpdesk.minCharacters", { count: MIN_LEN }));
       }
 
       // Simulate API call
       await new Promise((res) => setTimeout(res, 700));
 
-      message.success("Ticket submitted");
+      message.success(t("helpdesk.ticketSubmitted"));
       form.resetFields();
       form.setFieldsValue({ category: "general" });
     } catch (e) {

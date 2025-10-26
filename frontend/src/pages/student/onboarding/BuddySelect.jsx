@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Typography } from "antd";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 
 /* New shared UI components */
@@ -30,6 +31,7 @@ const BUDDIES = [
 ];
 
 export default function BuddySelect() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { buddy, setBuddy } = useStudentApp();
   const [selected, setSelected] = useState(buddy?.id || null);
@@ -73,9 +75,9 @@ export default function BuddySelect() {
 
         {/* Title + subtitle */}
         <div className="mt-1 text-center">
-          <Title level={4} className="!mb-1">Wähle deinen Buddy</Title>
+          <Title level={4} className="!mb-1">{t("onboarding.chooseBuddy")}</Title>
           <Text className="text-neutral-700">
-            Wähle einen kleinen Freund, der dich auf deiner Lernreise begleitet.
+            {t("onboarding.chooseBuddySubtitle")}
           </Text>
         </div>
 
@@ -103,7 +105,7 @@ export default function BuddySelect() {
             onClick={next}
             className="w-full"
           >
-            Weiter
+            {t("common.next")}
           </CTAButton>
         </div>
       </div>

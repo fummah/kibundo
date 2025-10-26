@@ -27,7 +27,7 @@ if (theme === "dark") document.documentElement.classList.add("dark");
 else document.documentElement.classList.remove("dark");
 
 // i18n language persistence
-const lang = localStorage.getItem("i18nextLng") || "en";
+const lang = localStorage.getItem("i18nextLng") || "de";
 document.documentElement.lang = lang;
 
 // Single QueryClient

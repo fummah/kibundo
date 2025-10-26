@@ -1,5 +1,7 @@
 // src/pages/profile/CreateProfile.jsx
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Button,
   Card,
@@ -33,6 +35,8 @@ import a5 from "@/assets/avatars/a5.png";
 import a6 from "@/assets/avatars/a6.png";
 
 export default function CreateProfile() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
   const [selected, setSelected] = useState(null);
   const screens = useBreakpoint();
 
@@ -66,11 +70,11 @@ export default function CreateProfile() {
   const handleCreate = () => {
     if (!selected) {
       // Keep it gentle—AntD notification not strictly required
-      alert("Bitte wähle zuerst einen Avatar.");
+      alert(t("profile.selectAvatar", "Bitte wähle zuerst einen Avatar."));
       return;
     }
-    // TODO: wire into your API / navigation
-    console.log("Create profile with avatar:", selected);
+    // Navigate to interests selection after avatar selection
+    navigate("/student/onboarding/interests");
   };
 
   // --- styles

@@ -3,6 +3,7 @@ import { useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
 import { Form, Input, Button, Typography } from "antd";
+import { useTranslation } from "react-i18next";
 import {
   MailOutlined,
   UserOutlined,
@@ -56,6 +57,7 @@ function normalizeRoleId(user) {
 
 /* ------------------------------ page ------------------------------- */
 export default function SignIn() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { login } = useAuthContext();
   const [loading, setLoading] = useState(false);
@@ -235,14 +237,14 @@ CloseSquareFilled
                 className="w-full bg-indigo-600 hover:bg-indigo-700"
                 loading={loading}
               >
-                {loading ? "Sign in" : "Sign In"}
+                {loading ? t("auth.signIn") : t("auth.signIn")}
               </Button>
             </Form.Item>
 
             <div className="text-center text-sm">
-              Don&apos;t have an account?{" "}
+              {t("auth.noAccount")}{" "}
               <Link to="/signup" className="text-indigo-600 hover:underline">
-                Sign Up
+                {t("auth.signUp")}
               </Link>
             </div>
           </Form>

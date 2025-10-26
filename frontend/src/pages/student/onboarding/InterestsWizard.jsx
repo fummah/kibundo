@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { Card, Typography, Button } from "antd";
 import { ArrowLeft, Volume2, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
 import DeviceFrame from "@/components/student/mobile/DeviceFrame.jsx";
@@ -63,6 +64,7 @@ const STEPS = [
 ];
 
 export default function InterestsWizard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { buddy, interests, setInterests } = useStudentApp();
   const [stepIdx, setStepIdx] = useState(0);

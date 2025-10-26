@@ -21,6 +21,9 @@ export const upload = multer({
       cb(null, uniqueSuffix + "-" + file.originalname);
     },
   }),
+  limits: {
+    fileSize: 200 * 1024 * 1024, // 200 MB
+  },
 });
 
 const client = new OpenAI({

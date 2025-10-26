@@ -34,19 +34,22 @@ export default function SettingsPage() {
 
   useEffect(() => {
     form.setFieldsValue({
-      name: user?.name ?? "",
+      first_name: user?.first_name ?? "",
+      last_name: user?.last_name ?? "",
       email: user?.email ?? "",
+      contact_number: user?.contact_number ?? "",
+      state: user?.state ?? "",
     });
   }, [user, form]);
 
   const handleSaveSettings = async (values) => {
     try {
       setLoading(true);
-      await api.put("/api/user/settings", { ...values, darkMode }, { withCredentials: true });
+      await api.put("/api/user/profile", values, { withCredentials: true });
       updateUser?.({ ...user, ...values });
-      message.success("Settings saved successfully");
+      message.success("Einstellungen erfolgreich gespeichert");
     } catch (err) {
-      message.error(err?.response?.data?.message || "Failed to save settings");
+      message.error(err?.response?.data?.message || "Fehler beim Speichern der Einstellungen");
     } finally {
       setLoading(false);
     }
@@ -55,8 +58,8 @@ export default function SettingsPage() {
   const beforeUpload = (file) => {
     const isImage = file.type.startsWith("image/");
     const isLt2M = file.size / 1024 / 1024 < 2;
-    if (!isImage) message.error("You can only upload image files!");
-    if (!isLt2M) message.error("Image must be smaller than 2MB!");
+    if (!isImage) message.error("Nur Bilddateien sind erlaubt!");
+    if (!isLt2M) message.error("Bild muss kleiner als 2MB sein!");
     return isImage && isLt2M;
   };
 
@@ -78,10 +81,10 @@ export default function SettingsPage() {
       if (url) {
         updateUser?.({ ...user, avatar: url });
       }
-      message.success("Avatar updated");
+      message.success("Avatar erfolgreich aktualisiert");
       onSuccess?.(data);
     } catch (err) {
-      message.error(err?.response?.data?.message || "Avatar upload failed");
+      message.error(err?.response?.data?.message || "Avatar-Upload fehlgeschlagen");
       onError?.(err);
     }
   };
@@ -98,9 +101,9 @@ export default function SettingsPage() {
       setPasswordLoading(true);
       await api.post("/api/user/change-password", values, { withCredentials: true });
       passwordForm.resetFields();
-      message.success("Password changed successfully");
+      message.success("Passwort erfolgreich geändert");
     } catch (err) {
-      message.error(err?.response?.data?.message || "Failed to change password");
+      message.error(err?.response?.data?.message || "Fehler beim Ändern des Passworts");
     } finally {
       setPasswordLoading(false);
     }
@@ -111,7 +114,7 @@ export default function SettingsPage() {
       key: "account",
       label: (
         <span>
-          <UserOutlined /> Account
+          <UserOutlined /> Konto
         </span>
       ),
       children: (
@@ -122,22 +125,44 @@ export default function SettingsPage() {
           className="max-w-xl"
         >
           <Form.Item
-            label="Name"
-            name="name"
-            rules={[{ required: true, message: "Your name is required" }]}
+            label="Vorname"
+            name="first_name"
+            rules={[{ required: true, message: "Vorname ist erforderlich" }]}
           >
-            <Input placeholder="Your name" />
+            <Input placeholder="Ihr Vorname" />
           </Form.Item>
 
           <Form.Item
-            label="Email"
+            label="Nachname"
+            name="last_name"
+            rules={[{ required: true, message: "Nachname ist erforderlich" }]}
+          >
+            <Input placeholder="Ihr Nachname" />
+          </Form.Item>
+
+          <Form.Item
+            label="E-Mail"
             name="email"
             rules={[
-              { required: true, message: "Email is required" },
-              { type: "email", message: "Enter a valid email" },
+              { required: true, message: "E-Mail ist erforderlich" },
+              { type: "email", message: "Gültige E-Mail eingeben" },
             ]}
           >
-            <Input placeholder="Email address" />
+            <Input placeholder="E-Mail-Adresse" />
+          </Form.Item>
+
+          <Form.Item
+            label="Telefonnummer"
+            name="contact_number"
+          >
+            <Input placeholder="Telefonnummer" />
+          </Form.Item>
+
+          <Form.Item
+            label="Bundesland"
+            name="state"
+          >
+            <Input placeholder="Bundesland" />
           </Form.Item>
 
           <Form.Item label="Avatar">
@@ -147,13 +172,13 @@ export default function SettingsPage() {
               beforeUpload={beforeUpload}
               customRequest={handleAvatarUpload}
             >
-              <Button icon={<UploadOutlined />}>Upload Avatar</Button>
+              <Button icon={<UploadOutlined />}>Avatar hochladen</Button>
             </Upload>
           </Form.Item>
 
           <div className="flex items-center gap-4 my-4">
             <Avatar src={user?.avatar} size={64} icon={<UserOutlined />} />
-            <span className="text-gray-500 dark:text-gray-300">Current Avatar</span>
+            <span className="text-gray-500 dark:text-gray-300">Aktueller Avatar</span>
           </div>
 
           <Form.Item>
@@ -163,7 +188,7 @@ export default function SettingsPage() {
               icon={<SaveOutlined />}
               loading={loading}
             >
-              Save Settings
+              Einstellungen speichern
             </Button>
           </Form.Item>
         </Form>
@@ -173,7 +198,7 @@ export default function SettingsPage() {
       key: "security",
       label: (
         <span>
-          <LockOutlined /> Security
+          <LockOutlined /> Sicherheit
         </span>
       ),
       children: (
@@ -184,39 +209,39 @@ export default function SettingsPage() {
           className="max-w-xl"
         >
           <Form.Item
-            label="Current Password"
+            label="Aktuelles Passwort"
             name="currentPassword"
-            rules={[{ required: true, message: "Enter your current password" }]}
+            rules={[{ required: true, message: "Aktuelles Passwort eingeben" }]}
           >
-            <Input.Password placeholder="Current Password" />
+            <Input.Password placeholder="Aktuelles Passwort" />
           </Form.Item>
           <Form.Item
-            label="New Password"
+            label="Neues Passwort"
             name="newPassword"
             rules={[
-              { required: true, message: "Enter a new password" },
-              { min: 6, message: "Minimum 6 characters" },
+              { required: true, message: "Neues Passwort eingeben" },
+              { min: 6, message: "Mindestens 6 Zeichen" },
             ]}
           >
-            <Input.Password placeholder="New Password" />
+            <Input.Password placeholder="Neues Passwort" />
           </Form.Item>
           <Form.Item
-            label="Confirm New Password"
+            label="Passwort bestätigen"
             name="confirmPassword"
             dependencies={["newPassword"]}
             rules={[
-              { required: true, message: "Confirm your new password" },
+              { required: true, message: "Passwort bestätigen" },
               ({ getFieldValue }) => ({
                 validator(_, value) {
                   if (!value || getFieldValue("newPassword") === value) {
                     return Promise.resolve();
                   }
-                  return Promise.reject(new Error("Passwords do not match"));
+                  return Promise.reject(new Error("Passwörter stimmen nicht überein"));
                 },
               }),
             ]}
           >
-            <Input.Password placeholder="Confirm New Password" />
+            <Input.Password placeholder="Passwort bestätigen" />
           </Form.Item>
           <Form.Item>
             <Button
@@ -225,7 +250,7 @@ export default function SettingsPage() {
               icon={<KeyOutlined />}
               loading={passwordLoading}
             >
-              Change Password
+              Passwort ändern
             </Button>
           </Form.Item>
         </Form>
