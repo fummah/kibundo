@@ -7,7 +7,8 @@ deleteProduct, addsubscription, getAllSubscriptions, getSubscriptionById, delete
 getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice, addcoupon, 
 getAllCoupons, getCouponById,deleteCoupon, addrole, adduser,addquiz,  getQuizzes, getQuizById,  deleteQuiz, 
 addcurriculum, getAllCurriculum,getCurriculumById, deleteCurriculum, addWorksheet, getAllWorksheets, getWorksheetById, deleteWorksheet,
-getAllStates, getAllAgents,getPublicTables,addAgent, getHomeworks, getAiAgentSettings,updateAiAgentSettings,updateAgent, getCurrentUser, debugUser } = require("../controllers/user.controller");
+getAllStates, getAllAgents,getPublicTables,addAgent, getHomeworks, getAiAgentSettings,updateAiAgentSettings,updateAgent, 
+getCurrentUser, debugUser, deleteAgent, editUser,editSubject,editClass,editProduct,editSubscription, editQuiz } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
 
@@ -79,6 +80,15 @@ router.get("/homeworkscans",verifyToken, getHomeworks);
 router.get("/aisettings", verifyToken,getAiAgentSettings);
 router.put("/updateaisettings", verifyToken,updateAiAgentSettings);
 router.put("/updateaiagents", verifyToken,updateAgent);
+router.delete("/agents/:id", verifyToken, deleteAgent);
+router.put("/users/:id", verifyToken,editUser);
+router.put("/subjects/:id", verifyToken,editSubject);
+router.put("/classes/:id", verifyToken,editClass);
+router.put("/products/:id", verifyToken,editProduct);
+router.put("/subscriptions/:id", verifyToken,editSubscription);
+router.put("/quizzes/:id", verifyToken,editQuiz);
+
+
 
 // Get assigned agent for a student
 router.get("/student/:id/assigned-agent", verifyToken, (req, res) => {
