@@ -1,7 +1,7 @@
 // src/pages/admin/parents/ParentDetail.jsx
-import React, { useMemo, useCallback, useRef } from "react";
+import React, { useMemo, useCallback, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Tag } from "antd";
+import { Tag, Button, Modal, App } from "antd";
 import EntityDetail from "@/components/EntityDetail.jsx";
 import BillingTab from "./BillingTab";
 
@@ -9,6 +9,9 @@ export default function ParentDetail() {
   // Freeze any prefill coming via router state so later URL/tab changes don't clobber it
   const location = useLocation();
   const prefillRef = useRef(location.state?.prefill || null);
+  const { message } = App.useApp();
+
+
 
   // Normalizer: makes sure we always have a top-level `email`, etc.
   const coerceParent = useCallback((src) => {
@@ -37,8 +40,7 @@ export default function ParentDetail() {
         const lastName = u.last_name || "";
         const userId = u.id || p.user_id || p.id;
         if (firstName && lastName && userId) {
-          const firstTwo = firstName.substring(0, 2).toLowerCase();
-          const firstLetter = lastName.substring(0, 1).toLowerCase();
+          const firstTwo = firstName.substring(0, 2).toLowerCase();          const firstLetter = lastName.substring(0, 1).toLowerCase();
           return `${firstTwo}${firstLetter}${userId}`;
         }
         return undefined;
@@ -82,6 +84,7 @@ export default function ParentDetail() {
           `/users/${entity?.raw?.user?.id ?? entity?.user_id}/status`,
 
         removePath: (id) => `/parent/${id}`,
+        updatePath: (id) => `/parents/${id}`,
         linkStudentByIdPath: (id) => `/parents/${id}/children`,
         linkStudentByEmailPath: (id) => `/parents/${id}/children/link-by-email`,
         unlinkStudentPath: (id, studentId) => `/parents/${id}/children/${studentId}`,
@@ -114,6 +117,7 @@ export default function ParentDetail() {
         { label: "Bundesland", name: "bundesland" },
         { label: "Member Since", name: "member_since" },
       ],
+
 
       tabs: {
         related: {
@@ -196,5 +200,10 @@ export default function ParentDetail() {
     [coerceParent, initialEntity, renderBillingTab]
   );
 
-  return <EntityDetail cfg={cfg} />;
+  return (
+    <App>
+      <EntityDetail cfg={cfg} />
+    </App>
+  );
 }
+

@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import EntityDetail from "@/components/EntityDetail.jsx";
-import { Button, Tag, message, Modal, Select } from "antd";
+import { Button, Tag, Modal, Select, App } from "antd";
 import { PlusOutlined, UnorderedListOutlined } from "@ant-design/icons";
 import api from "@/api/axios";
 
@@ -16,6 +16,7 @@ export default function StudentDetail() {
   // Read location once, but freeze the prefill so later URL/tab changes don't trigger work
   const location = useLocation();
   const prefillRef = useRef(location.state?.prefill || null);
+  const { message } = App.useApp();
 
   const [availableSubjects, setAvailableSubjects] = useState([]);
   const [assignSubjectModalVisible, setAssignSubjectModalVisible] = useState(false);
@@ -78,6 +79,7 @@ export default function StudentDetail() {
     [apiPaths]
   );
 
+
   // Stable config object (does not depend on location)
   const cfg = useMemo(() => ({
     titleSingular: "Student",
@@ -91,6 +93,7 @@ export default function StudentDetail() {
       getPath: (id) => `/student/${id}`,
       updateStatusPath: (id) => `/student/${id}/status`,
       removePath: (id) => `/student/${id}`,
+      updatePath: (id) => `/students/${id}`,
       getSubjectsPath: "/allsubjects",
       getSubjectPath: (id) => `/subject/${id}`,
       assignSubjectPath: (studentId, subjectId) => `/student/${studentId}/subject/${subjectId}`,
@@ -216,6 +219,7 @@ export default function StudentDetail() {
       if (e.state && e.state !== "-") chips.push(<Tag key="state">{e.state}</Tag>);
       return chips;
     },
+
 
     tabs: {
       // Subjects tab
@@ -455,5 +459,10 @@ export default function StudentDetail() {
     },
   }), [availableSubjects, handleAssignSubject, handleRemoveSubject, assignSubjectModalVisible, selectedSubjectId, assigning]);
 
-  return <EntityDetail cfg={cfg} />;
+  return (
+    <App>
+      <EntityDetail cfg={cfg} />
+    </App>
+  );
 }
+

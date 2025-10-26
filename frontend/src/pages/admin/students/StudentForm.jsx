@@ -57,7 +57,7 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
       apiCfg={{
         getPath: (id) => `/student/${id}`,
         createPath: "/addstudent",
-        updatePath: (id) => `/student/${id}`,
+        updatePath: (id) => `/students/${id}`,
         afterCreate: (res) => {
           if (isModal) {
             onSuccess(res);

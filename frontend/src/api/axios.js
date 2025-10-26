@@ -13,21 +13,20 @@ const DEFAULT_DEV_PORT = String(import.meta?.env?.VITE_BACKEND_PORT || "8080");
 // Resolve base preference with dev safeguards
 let RAW_BASE = import.meta?.env?.VITE_API_BASE;
 if (!RAW_BASE) {
-  RAW_BASE = import.meta?.env?.DEV
-    ? `http://localhost:${DEFAULT_DEV_PORT}/api`
-    : "/api";
+  // In dev mode, use relative URL to go through Vite proxy
+  RAW_BASE = "/api";
 } else if (import.meta?.env?.DEV) {
-  // If developer provided a relative path (e.g., '/api') in dev, rewrite to absolute
+  // If developer provided a relative path (e.g., '/api') in dev, keep it relative
   const trimmed = String(RAW_BASE).trim();
   if (trimmed.startsWith("/")) {
-    RAW_BASE = `http://localhost:${DEFAULT_DEV_PORT}${trimmed}`;
+    RAW_BASE = trimmed; // Keep relative for Vite proxy
   }
 }
 
 /** Ensures absolute origins get an '/api' path if none was provided. */
 const normalizeBase = (raw) => {
   let base = (raw || "").trim();
-  if (!base) return `http://localhost:${DEFAULT_DEV_PORT}/api`;
+  if (!base) return "/api"; // Default to relative URL for Vite proxy
 
   // strip trailing slashes
   base = base.replace(/\/+$/, "");
@@ -60,7 +59,7 @@ const AUTH_DEBUG = String(import.meta?.env?.VITE_AUTH_DEBUG || "on").toLowerCase
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 60000, // Increased to 60 seconds for uploads
-  withCredentials: AUTH_MODE === "cookie",
+  withCredentials: true, // Always use credentials for proper authentication
   headers: {
     Accept: "application/json",
     "Content-Type": "application/json",

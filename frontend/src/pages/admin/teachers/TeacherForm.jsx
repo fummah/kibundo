@@ -10,6 +10,7 @@ export default function TeacherForm() {
       apiCfg={{
         // Detail path
         getPath: (id) => `/teacher/${id}`,
+        updatePath: (id) => `/teachers/${id}`,
         
         afterCreate: (res) => {
           // Redirect to the created teacher's detail page

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/api/axios";
+import { useAuthContext } from "@/context/AuthContext";
 
 // Ant Design
 import {
@@ -117,7 +118,8 @@ function normalizeEntitiesPayload(raw) {
 
 export default function AIAgent() {
   const navigate = useNavigate();
-  const { message } = useApp();
+  const { message, modal } = useApp();
+  const { user } = useAuthContext();
 
   const [state, setState] = useState({
     playground: {
@@ -197,11 +199,17 @@ export default function AIAgent() {
     }
   }, [state.playground.selectedAgent, state.playground.selectedStudentAgent]);
 
-  // Pagination logic
+  // Pagination logic with sorting by ID (highest ID first)
   const totalAgents = state.sources.agents?.length || 0;
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = startIndex + pageSize;
-  const paginatedAgents = state.sources.agents?.slice(startIndex, endIndex) || [];
+  
+  // Sort agents by ID in descending order (highest ID first)
+  const sortedAgents = [...(state.sources.agents || [])].sort((a, b) => {
+    return Number(b.id) - Number(a.id); // Descending order (highest ID first)
+  });
+  
+  const paginatedAgents = sortedAgents.slice(startIndex, endIndex);
 
   // ——————————————— API calls ———————————————
   const fetchStates = async () => {
@@ -254,7 +262,6 @@ export default function AIAgent() {
     setUsersLoading(true);
     try {
       const { data } = await api.get("/users");
-      console.log("🎯 Frontend: All users received:", data);
       
       const map = {};
       (Array.isArray(data) ? data : []).forEach((u) => {
@@ -263,14 +270,8 @@ export default function AIAgent() {
           name: fullName || u.email || `User ${u.id}`,
           avatar: u.avatar || u.photo_url || u.image || u.picture || null,
         };
-        console.log("🎯 Frontend: Mapped user:", {
-          id: u.id,
-          fullName,
-          mapped: map[String(u.id)]
-        });
       });
       
-      console.log("🎯 Frontend: Final users map:", map);
       setUsers(map);
     } catch (err) {
       message.error("Failed to load user data");
@@ -281,9 +282,7 @@ export default function AIAgent() {
 
   const fetchUserById = async (userId) => {
     try {
-      console.log("🎯 Frontend: Fetching user by ID:", userId);
       const { data } = await api.get(`/debug-user/${userId}`);
-      console.log("🎯 Frontend: User data received:", data);
       
       if (data.found && data.user) {
         const user = data.user;
@@ -299,7 +298,6 @@ export default function AIAgent() {
           [String(userId)]: userData
         }));
         
-        console.log("🎯 Frontend: Updated users map with fetched user:", userData);
         return userData;
       }
     } catch (err) {
@@ -312,10 +310,8 @@ export default function AIAgent() {
     setLoading(true);
     try {
       // Check if current user is admin before creating agent
-      const currentUser = JSON.parse(localStorage.getItem('kibundo_user') || '{}');
-      console.log("🎯 Current user creating agent:", currentUser);
       
-      if (!currentUser || !currentUser.role_id || currentUser.role_id !== 1) {
+      if (!user || !user.role_id || user.role_id !== 10) {
         message.error("Only administrators can create agents. Please log in as an admin.");
         return false;
       }
@@ -325,6 +321,10 @@ export default function AIAgent() {
       await fetchAgents();
       await fetchUsers(); // Refresh users data to ensure creator info is available
       setCurrentPage(1); // Reset to first page after creating agent
+      
+      // Clear all form fields
+      setSelectedState("");
+      setSelectedGrade("");
       setState((s) => ({
         ...s,
         sources: {
@@ -434,11 +434,12 @@ export default function AIAgent() {
 
   const openEditModal = (agent) => {
     setEditingAgent(agent);
+    
     setEditFormData({
       name: agent.name || "",
       entities: agent.entities || agent.prompts?.entities || [],
-      grade: agent.grade || null,
-      state: agent.state || null,
+      grade: agent.grade || null,  // Keep the ID for the form value
+      state: agent.state || null,  // Keep the ID for the form value
       file_name: agent.file_name || agent.prompts?.file_name || "",
       api: agent.api || agent.prompts?.api || "",
       url: agent.prompts?.url || "",
@@ -463,7 +464,7 @@ export default function AIAgent() {
 
   const deleteAgent = async (agentId, agentName) => {
     try {
-      await api.delete(`/deleteagent/${agentId}`);
+      await api.delete(`/agents/${agentId}`);
       message.success(`Agent "${agentName}" deleted successfully!`);
       await fetchAgents(); // Refresh the agents list
       
@@ -482,7 +483,7 @@ export default function AIAgent() {
   };
 
   const handleDeleteAgent = (agent) => {
-    Modal.confirm({
+    modal.confirm({
       title: 'Delete Agent',
       content: `Are you sure you want to delete the agent "${agent.name}"? This action cannot be undone.`,
       okText: 'Yes, Delete',
@@ -884,19 +885,10 @@ export default function AIAgent() {
                 const creator = users[String(a.created_by)] || {};
                 let creatorName = "Unknown";
                 
-                console.log("🎯 Agent creator info:", {
-                  agent_id: a.id,
-                  agent_name: a.name,
-                  created_by: a.created_by,
-                  creator_user: creator,
-                  all_users: users
-                });
-                
                 if (creator.name) {
                   creatorName = creator.name;
                 } else if (a.created_by) {
                   // Try to fetch the user data if not found in the users list
-                  console.log("🎯 User not found in users list, attempting to fetch user data for ID:", a.created_by);
                   fetchUserById(a.created_by);
                   // Show a more descriptive fallback while fetching
                   creatorName = `Admin (ID: ${a.created_by})`;
@@ -909,7 +901,12 @@ export default function AIAgent() {
                   <List.Item key={a.id}>
                     <Space direction="vertical" className="w-full">
                       <Space className="w-full justify-between">
-                        <Text strong>{a.name}</Text>
+                        <Space>
+                          <Text strong>{a.name}</Text>
+                          <Text type="secondary" className="text-sm" style={{ color: '#1890ff', fontWeight: 'bold' }}>
+                            (ID: {a.id || a.agent_id || a.ID || 'N/A'})
+                          </Text>
+                        </Space>
                         <Space direction="vertical" align="end" size="small">
                           <Dropdown
                             menu={{
@@ -955,8 +952,16 @@ export default function AIAgent() {
                         {a.stage && (
                           <Tag color={a.stage === "prod" ? "green" : "orange"}>{a.stage}</Tag>
                         )}
-                        {a.grade && <Tag color="purple">Grade: {a.grade}</Tag>}
-                        {a.state && <Tag color="cyan">State: {a.state}</Tag>}
+                        {a.grade && (
+                          <Tag color="purple">
+                            Grade: {grades.find(g => Number(g.value) === Number(a.grade))?.label || a.grade}
+                          </Tag>
+                        )}
+                        {a.state && (
+                          <Tag color="cyan">
+                            State: {states.find(s => Number(s.id) === Number(a.state))?.name || a.state}
+                          </Tag>
+                        )}
                         {(a.prompts?.entities || a.entities || []).map((entity) => (
                           <Tag key={entity} color="geekblue">
                             {entity}
@@ -1260,28 +1265,42 @@ export default function AIAgent() {
           <Form.Item label="State">
             <Select
               placeholder="Select State"
-              value={editFormData.state || undefined}
+              value={editFormData.state ? Number(editFormData.state) : undefined}
               onChange={(value) =>
                 setEditFormData({ ...editFormData, state: value })
               }
               allowClear
               optionFilterProp="label"
               loading={loadingStates}
-              options={states.map((st) => ({ value: st.id, label: st.name }))}
+              options={states.map((st) => ({ 
+                value: Number(st.id), 
+                label: st.name || `State ${st.id}` 
+              }))}
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+              }
             />
           </Form.Item>
 
           <Form.Item label="Grade">
             <Select
               placeholder="Select Grade"
-              value={editFormData.grade || undefined}
+              value={editFormData.grade ? Number(editFormData.grade) : undefined}
               onChange={(value) =>
                 setEditFormData({ ...editFormData, grade: value })
               }
               allowClear
               optionFilterProp="label"
               loading={loadingGrades}
-              options={grades}
+              options={grades.map((g) => ({ 
+                value: Number(g.value), 
+                label: g.label || `Grade ${g.value}` 
+              }))}
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+              }
             />
           </Form.Item>
 

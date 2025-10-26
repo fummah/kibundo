@@ -71,7 +71,7 @@ const ROLE_API = {
 // Derive admin rights from the small summary in AuthContext
 const isAdminFromUser = (u) => {
   const name = String(u?.role_name || u?.role || "").toLowerCase();
-  return u?.role_id === 1 || name === "admin";
+  return u?.role_id === 10 || name === "admin";
 };
 
 /* -------------------------------- utils ------------------------------- */

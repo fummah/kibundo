@@ -537,7 +537,7 @@ export default function Curricula() {
         onClose={() => { setShowEditor(false); setDrawerOpen(false); }}
         title={editId ? "Edit Curriculum" : "New Curriculum"}
         width={Math.min(720, typeof window !== "undefined" ? window.innerWidth - 32 : 720)}
-        destroyOnClose
+        destroyOnHidden
         footer={
           <div style={{ textAlign: "right" }}>
             <Space>

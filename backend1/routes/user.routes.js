@@ -8,7 +8,7 @@ getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,dele
 getAllCoupons, getCouponById,deleteCoupon, addrole, adduser,addquiz,  getQuizzes, getQuizById,  deleteQuiz, 
 addcurriculum, getAllCurriculum,getCurriculumById, deleteCurriculum, addWorksheet, getAllWorksheets, getWorksheetById, deleteWorksheet,
 getAllStates, getAllAgents,getPublicTables,addAgent, getHomeworks, getAiAgentSettings,updateAiAgentSettings,updateAgent, 
-getCurrentUser, debugUser, deleteAgent, editUser,editSubject,editClass,editProduct,editSubscription, editQuiz } = require("../controllers/user.controller");
+getCurrentUser, debugUser, deleteAgent, editUser,editSubject,editClass,editProduct,editSubscription, editQuiz, editStudent, editTeacher, editParent } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
 
@@ -87,6 +87,9 @@ router.put("/classes/:id", verifyToken,editClass);
 router.put("/products/:id", verifyToken,editProduct);
 router.put("/subscriptions/:id", verifyToken,editSubscription);
 router.put("/quizzes/:id", verifyToken,editQuiz);
+router.put("/students/:id", verifyToken,editStudent);
+router.put("/teachers/:id", verifyToken,editTeacher);
+router.put("/parents/:id", verifyToken,editParent);
 
 
 

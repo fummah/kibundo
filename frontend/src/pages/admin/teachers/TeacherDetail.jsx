@@ -1,7 +1,7 @@
 // src/pages/admin/teachers/TeacherDetail.jsx
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { useLocation } from "react-router-dom";
-import { Tag, Form, Select, Button, Spin } from "antd";
+import { Tag, Form, Select, Button, Spin, Modal, App } from "antd";
 import EntityDetail from "@/components/EntityDetail.jsx";
 import api from "@/api/axios";
 
@@ -94,6 +94,10 @@ export default function TeacherDetail() {
   // Read location once, but freeze the prefill so later URL/tab changes don't trigger work
   const location = useLocation();
   const prefillRef = useRef(location.state?.prefill || null);
+  const { message } = App.useApp();
+
+  const [addClassModalOpen, setAddClassModalOpen] = useState(false);
+
 
   // Stable config object (does not depend on location)
   const cfg = useMemo(() => ({
@@ -108,6 +112,7 @@ export default function TeacherDetail() {
       getPath: (id) => `/teacher/${id}`,
       updateStatusPath: (id, entity) => `/users/${entity?.raw?.user_id}/status`,
       removePath: (id) => `/teacher/${id}`,
+      updatePath: (id) => `/teachers/${id}`,
 
       parseEntity: (payload) => {
         const t = payload?.data ?? payload ?? {};
@@ -160,6 +165,7 @@ export default function TeacherDetail() {
       { label: "Member Since", name: "member_since" },
     ],
 
+
     tabs: {
       related: {
         enabled: true,
@@ -182,5 +188,9 @@ export default function TeacherDetail() {
     },
   }), []);
 
-  return <EntityDetail cfg={cfg} />;
+  return (
+    <App>
+      <EntityDetail cfg={cfg} />
+    </App>
+  );
 }

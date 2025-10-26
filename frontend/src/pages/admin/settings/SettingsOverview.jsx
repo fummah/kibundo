@@ -45,8 +45,12 @@ export default function SettingsPage() {
   const handleSaveSettings = async (values) => {
     try {
       setLoading(true);
-      await api.put("/api/user/profile", values, { withCredentials: true });
-      updateUser?.({ ...user, ...values });
+      const response = await api.put(`/api/users/${user?.id}`, values, { withCredentials: true });
+      if (response.data?.user) {
+        updateUser?.(response.data.user);
+      } else {
+        updateUser?.({ ...user, ...values });
+      }
       message.success("Einstellungen erfolgreich gespeichert");
     } catch (err) {
       message.error(err?.response?.data?.message || "Fehler beim Speichern der Einstellungen");
@@ -67,9 +71,9 @@ export default function SettingsPage() {
   const handleAvatarUpload = async ({ file, onProgress, onSuccess, onError }) => {
     try {
       const formData = new FormData();
-      formData.append("avatar", file);
+      formData.append("file", file);
 
-      const { data } = await api.post("/api/user/upload-avatar", formData, {
+      const { data } = await api.post("/api/upload", formData, {
         withCredentials: true,
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: ({ loaded, total }) => {
@@ -77,9 +81,15 @@ export default function SettingsPage() {
         },
       });
 
-      const url = data?.url || data?.avatarUrl || data?.path;
+      const url = data?.url || data?.fileUrl || data?.path;
       if (url) {
-        updateUser?.({ ...user, avatar: url });
+        // Update user with new avatar URL
+        const response = await api.put(`/api/users/${user?.id}`, { avatar: url }, { withCredentials: true });
+        if (response.data?.user) {
+          updateUser?.(response.data.user);
+        } else {
+          updateUser?.({ ...user, avatar: url });
+        }
       }
       message.success("Avatar erfolgreich aktualisiert");
       onSuccess?.(data);
@@ -97,16 +107,7 @@ export default function SettingsPage() {
   };
 
   const handlePasswordChange = async (values) => {
-    try {
-      setPasswordLoading(true);
-      await api.post("/api/user/change-password", values, { withCredentials: true });
-      passwordForm.resetFields();
-      message.success("Passwort erfolgreich geändert");
-    } catch (err) {
-      message.error(err?.response?.data?.message || "Fehler beim Ändern des Passworts");
-    } finally {
-      setPasswordLoading(false);
-    }
+    message.warning("Passwort-Änderung ist derzeit nicht verfügbar. Bitte kontaktieren Sie den Administrator.");
   };
 
   const tabs = [

@@ -1463,8 +1463,8 @@ exports.addAgent = async (req, res) => {
       user_role: req.user.role_id
     });
     
-    // Check if user is admin (role_id = 1)
-    if (req.user.role_id !== 1) {
+    // Check if user is admin (role_id = 10)
+    if (req.user.role_id !== 10) {
       console.log("❌ Non-admin user attempted to create agent:", {
         user_id: req.user.id,
         user_email: req.user.email,
@@ -1849,5 +1849,241 @@ exports.editQuiz = async (req, res) => {
   } catch (err) {
     console.error("Edit quiz error:", err);
     res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+exports.editStudent = async (req, res) => {
+  try {
+    const { id } = req.params; // Student ID from URL
+    const {
+      first_name,
+      last_name,
+      email,
+      contact_number,
+      state,
+      class_id,
+      parent_id,
+      subjects
+    } = req.body;
+    const updated_by = req.user.id; // user performing the edit
+
+    // 1. Find student by ID
+    const student = await Student.findByPk(id, {
+      include: [{ model: User, as: 'user' }]
+    });
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    // 2. Update user fields
+    const userUpdateFields = {
+      first_name,
+      last_name,
+      email,
+      contact_number,
+      state,
+    };
+
+    await student.user.update(userUpdateFields);
+
+    // 3. Update student fields
+    const studentUpdateFields = {
+      class_id,
+      parent_id,
+      updated_by,
+    };
+
+    await student.update(studentUpdateFields);
+
+    // 4. If subjects are provided, update them
+    if (subjects && Array.isArray(subjects)) {
+      // Delete existing student-subject relationships
+      await StudentSubjects.destroy({ where: { student_id: id } });
+      
+      // Create new student-subject relationships
+      const subjectMappings = subjects.map(subject_id => ({
+        student_id: id,
+        subject_id: subject_id,
+        created_by: updated_by
+      }));
+      
+      await StudentSubjects.bulkCreate(subjectMappings);
+    }
+
+    // 5. Return updated student with associations
+    const updatedStudent = await Student.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: { exclude: ['password'] },
+        },
+        {
+          model: Parent,
+          as: 'parent',
+          include: [
+            {
+              model: User,
+              as: 'user',
+              attributes: { exclude: ['password'] }
+            }
+          ]
+        },
+        {
+          model: Class,
+          as: 'class',
+          attributes: ['id', 'class_name']
+        },
+        {
+          model: StudentSubjects,
+          as: 'subject',
+          attributes: ['id'],
+          include: [
+            {
+              model: Subject,
+              as: 'subject',
+              attributes: ['id', 'subject_name']
+            }
+          ]
+        }
+      ]
+    });
+
+    res.json({ message: "Student updated successfully", student: updatedStudent });
+  } catch (err) {
+    console.error("Error updating student:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.editTeacher = async (req, res) => {
+  try {
+    const { id } = req.params; // Teacher ID from URL
+    const {
+      first_name,
+      last_name,
+      email,
+      contact_number,
+      state,
+      class_id
+    } = req.body;
+    const updated_by = req.user.id; // user performing the edit
+
+    // 1. Find teacher by ID
+    const teacher = await Teacher.findByPk(id, {
+      include: [{ model: User, as: 'user' }]
+    });
+    if (!teacher) {
+      return res.status(404).json({ message: "Teacher not found" });
+    }
+
+    // 2. Update user fields
+    const userUpdateFields = {
+      first_name,
+      last_name,
+      email,
+      contact_number,
+      state,
+    };
+
+    await teacher.user.update(userUpdateFields);
+
+    // 3. Update teacher fields
+    const teacherUpdateFields = {
+      class_id,
+      updated_by,
+    };
+
+    await teacher.update(teacherUpdateFields);
+
+    // 4. Return updated teacher with associations
+    const updatedTeacher = await Teacher.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: { exclude: ['password'] },
+        },
+        {
+          model: Class,
+          as: 'class',
+          attributes: ['id', 'class_name']
+        }
+      ]
+    });
+
+    res.json({ message: "Teacher updated successfully", teacher: updatedTeacher });
+  } catch (err) {
+    console.error("Error updating teacher:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.editParent = async (req, res) => {
+  try {
+    const { id } = req.params; // Parent ID from URL
+    const {
+      first_name,
+      last_name,
+      email,
+      contact_number,
+      state,
+      is_payer
+    } = req.body;
+    const updated_by = req.user.id; // user performing the edit
+
+    // 1. Find parent by ID
+    const parent = await Parent.findByPk(id, {
+      include: [{ model: User, as: 'user' }]
+    });
+    if (!parent) {
+      return res.status(404).json({ message: "Parent not found" });
+    }
+
+    // 2. Update user fields
+    const userUpdateFields = {
+      first_name,
+      last_name,
+      email,
+      contact_number,
+      state,
+    };
+
+    await parent.user.update(userUpdateFields);
+
+    // 3. Update parent fields
+    const parentUpdateFields = {
+      is_payer,
+      updated_by,
+    };
+
+    await parent.update(parentUpdateFields);
+
+    // 4. Return updated parent with associations
+    const updatedParent = await Parent.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: { exclude: ['password'] },
+        },
+        {
+          model: Student,
+          as: 'student',
+          include: [
+            {
+              model: User,
+              as: 'user',
+              attributes: { exclude: ['password'] }
+            }
+          ]
+        }
+      ]
+    });
+
+    res.json({ message: "Parent updated successfully", parent: updatedParent });
+  } catch (err) {
+    console.error("Error updating parent:", err);
+    res.status(500).json({ message: err.message });
   }
 };

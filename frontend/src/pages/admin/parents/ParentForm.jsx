@@ -10,6 +10,7 @@ export default function ParentForm() {
       apiCfg={{
         // Detail path (you already have GET /parent/:id)
         getPath: (id) => `/parent/${id}`,
+        updatePath: (id) => `/parents/${id}`,
         
         afterCreate: (res) => {
           // Redirect to the created parent's detail page

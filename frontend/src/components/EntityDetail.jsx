@@ -308,6 +308,7 @@ export default function EntityDetail({ cfg }) {
         return prev;
       });
       setInitialLoadDone(true);
+      formManuallyUpdatedRef.current = false; // Reset manual update flag on fresh load
     } catch (err) {
       if (!entity) {
         const defaultEntity = { [idField]: id, name: "-", status: "active" };
@@ -321,6 +322,7 @@ export default function EntityDetail({ cfg }) {
         messageApi.warning("Could not load details. Showing cached row.");
       }
       setInitialLoadDone(true);
+      formManuallyUpdatedRef.current = false; // Reset manual update flag on error load
     } finally {
       setLoading(false);
     }
@@ -400,6 +402,89 @@ export default function EntityDetail({ cfg }) {
   const [infoForm] = Form.useForm();
   const isEditingInfo = true;
   const [passwordVisible, setPasswordVisible] = useState({});
+  const [states, setStates] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [loadingDropdowns, setLoadingDropdowns] = useState(false);
+  const formManuallyUpdatedRef = useRef(false);
+
+  /* --- Load dropdown data --- */
+  useEffect(() => {
+    const loadDropdownData = async () => {
+      setLoadingDropdowns(true);
+      try {
+        // Load states
+        const statesResponse = await api.get("/states", { withCredentials: true });
+        const statesData = Array.isArray(statesResponse.data) ? statesResponse.data : [];
+        const processedStates = statesData.map(state => {
+          // Handle State objects with state_name, id, created_at, created_by
+          if (state && typeof state === 'object') {
+            const value = state.state_name || state.name || state.id;
+            const label = state.state_name || state.name || state.id;
+            return { 
+              value: String(value), 
+              label: String(label)
+            };
+          }
+          return { value: String(state), label: String(state) };
+        });
+        setStates(processedStates);
+
+        // Load classes
+        const classesResponse = await api.get("/allclasses", { withCredentials: true });
+        const classesData = Array.isArray(classesResponse.data) ? classesResponse.data : [];
+        const processedClasses = classesData.map(cls => {
+          // Handle Class objects with class_name, id, etc.
+          if (cls && typeof cls === 'object') {
+            const value = cls.id;
+            const label = cls.class_name || cls.name || `Class ${cls.id}`;
+            return { 
+              value: String(value), 
+              label: String(label)
+            };
+          }
+          return { value: String(cls), label: String(cls) };
+        });
+        setClasses(processedClasses);
+      } catch (error) {
+        console.error("Failed to load dropdown data:", error);
+        // Set empty arrays as fallback
+        setStates([]);
+        setClasses([]);
+      } finally {
+        setLoadingDropdowns(false);
+      }
+    };
+
+    loadDropdownData();
+  }, []);
+
+  /* --- Optimized change handlers --- */
+  const handleFieldChange = useCallback((fieldName, value) => {
+    // Prevent unnecessary updates if value hasn't changed
+    if (entity?.[fieldName] === value) return;
+    
+    const newEntity = {
+      ...entity,
+      [fieldName]: value,
+    };
+    setEntity(newEntity);
+    infoForm.setFieldValue(fieldName, value);
+    formManuallyUpdatedRef.current = true; // Mark form as manually updated
+  }, [entity, infoForm]);
+
+  const handleInputChange = useCallback((fieldName, event) => {
+    const newValue = event.target.value;
+    // Prevent unnecessary updates if value hasn't changed
+    if (entity?.[fieldName] === newValue) return;
+    
+    const newEntity = {
+      ...entity,
+      [fieldName]: newValue,
+    };
+    setEntity(newEntity);
+    infoForm.setFieldValue(fieldName, newValue);
+    formManuallyUpdatedRef.current = true; // Mark form as manually updated
+  }, [entity, infoForm]);
 
   /* --- Auto-generate portal credentials --- */
   const generatePassword = useCallback(() => {
@@ -436,9 +521,12 @@ export default function EntityDetail({ cfg }) {
           entity.plain_pass || entity.portal_password || "testpass1234",
       };
 
+      // Only set form values if they haven't been manually changed
       setTimeout(() => {
         try {
-          infoForm.setFieldsValue(formValues);
+          if (!formManuallyUpdatedRef.current) {
+            infoForm.setFieldsValue(formValues);
+          }
         } catch (error) {}
       }, 100);
 
@@ -455,7 +543,7 @@ export default function EntityDetail({ cfg }) {
         const saveToDb = async () => {
           try {
             if (typeof apiObj.updatePath === "function") {
-              await api.patch(apiObj.updatePath(id), updates, {
+              await api.put(apiObj.updatePath(id), updates, {
                 withCredentials: true,
               });
             }
@@ -476,7 +564,7 @@ export default function EntityDetail({ cfg }) {
         const updatePath =
           safeCfg.api?.updatePath ||
           ((id) => `/${safeCfg.routeBase || "entities"}/${id}`);
-        await api.patch(updatePath(id), updateData, { withCredentials: true });
+        await api.put(updatePath(id), updateData, { withCredentials: true });
         setEntity((prev) => ({ ...prev, ...updateData }));
         messageApi.success(`${field.label} updated successfully`);
         setEditingField(null);
@@ -534,11 +622,21 @@ export default function EntityDetail({ cfg }) {
         const isReadOnly =
           isIp || isDateAdded || name.toLowerCase().includes("id");
 
+        // Determine field type based on name
+        let fieldType = field.type || field.input || "text";
+        if (name.toLowerCase().includes("grade") || name.toLowerCase().includes("class")) {
+          fieldType = "grade";
+        } else if (name.toLowerCase().includes("state") || name.toLowerCase().includes("bundesland")) {
+          fieldType = "state";
+        } else if (name.toLowerCase().includes("status")) {
+          fieldType = "status";
+        }
+
         return {
           ...field,
           name,
           editable: !isReadOnly,
-          type: field.type || field.input || "text",
+          type: fieldType,
         };
       });
 
@@ -569,7 +667,7 @@ export default function EntityDetail({ cfg }) {
       }
 
       if (typeof apiObj.updatePath === "function") {
-        await api.patch(apiObj.updatePath(id), values, { withCredentials: true });
+        await api.put(apiObj.updatePath(id), values, { withCredentials: true });
         messageApi.success("Saved");
         await load();
       } else {
@@ -1230,14 +1328,7 @@ export default function EntityDetail({ cfg }) {
                                 className="flex-1"
                                 id={`input-${uniqueId}`}
                                 value={entity?.[field.name] || ""}
-                                onChange={(e) => {
-                                  const newValue = e.target.value;
-                                  setEntity((prev) => ({
-                                    ...prev,
-                                    [field.name]: newValue,
-                                  }));
-                                  infoForm.setFieldValue(field.name, newValue);
-                                }}
+                                onChange={(e) => handleInputChange(field.name, e)}
                               />
                               <Button
                                 type="text"
@@ -1281,6 +1372,43 @@ export default function EntityDetail({ cfg }) {
                                 className="!p-2 !h-8 !w-8 border border-gray-300 rounded"
                               />
                             </div>
+                          ) : field.type === "grade" ? (
+                            <Select
+                              placeholder={`Select ${field.label}`}
+                              options={classes || []}
+                              disabled={!field.editable}
+                              className="w-full"
+                              id={`select-${uniqueId}`}
+                              loading={loadingDropdowns}
+                              showSearch
+                              optionFilterProp="label"
+                              value={entity?.[field.name] || entity?.class_id}
+                              onChange={(value) => {
+                                handleFieldChange(field.name, value);
+                                if (field.type === "grade") {
+                                  handleFieldChange("class_id", value);
+                                }
+                              }}
+                              filterOption={(input, option) =>
+                                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                              }
+                            />
+                          ) : field.type === "state" ? (
+                            <Select
+                              placeholder={`Select ${field.label}`}
+                              options={states || []}
+                              disabled={!field.editable}
+                              className="w-full"
+                              id={`select-${uniqueId}`}
+                              loading={loadingDropdowns}
+                              showSearch
+                              optionFilterProp="label"
+                              value={entity?.[field.name]}
+                              onChange={(value) => handleFieldChange(field.name, value)}
+                              filterOption={(input, option) =>
+                                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                              }
+                            />
                           ) : field.type === "select" ? (
                             <Select
                               placeholder={`Select ${field.label}`}
@@ -1303,6 +1431,8 @@ export default function EntityDetail({ cfg }) {
                               id={`input-${field.name}-${id}-${Math.random()
                                 .toString(36)
                                 .substr(2, 9)}`}
+                              value={entity?.[field.name] || ""}
+                              onChange={(e) => handleInputChange(field.name, e)}
                             />
                           )}
                         </Form.Item>
@@ -1433,6 +1563,9 @@ export default function EntityDetail({ cfg }) {
     addCommentOpen,
     passwordVisible,
     generatePassword,
+    states,
+    classes,
+    loadingDropdowns,
   ]);
 
   const relatedTab = useMemo(() => {
@@ -2196,6 +2329,8 @@ export default function EntityDetail({ cfg }) {
             )}
           </div>
           <Space wrap>
+            {/* Custom Actions */}
+            {safeCfg.customActions && safeCfg.customActions(entity)}
             <Dropdown menu={actionsMenu} trigger={["click"]}>
               <Button>
                 Actions <span className="ml-1">▼</span>
