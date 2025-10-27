@@ -69,11 +69,19 @@ export default function SubjectForm({ classes: classesProp, initialValues, onSub
 
     try {
       setLoading(true);
-      await api.post("/addsubject", id ? { id, ...vals } : vals);
-      message.success(id ? "Subject updated." : "Subject added.");
+      if (id) {
+        // Use PUT for updates
+        await api.put(`/subjects/${id}`, vals);
+        message.success("Subject updated.");
+      } else {
+        // Use POST for new subjects
+        await api.post("/addsubject", vals);
+        message.success("Subject added.");
+      }
       navigate("/admin/academics/subjects");
-    } catch {
-      message.error("Save failed.");
+    } catch (err) {
+      console.error("Save failed:", err);
+      message.error(err?.response?.data?.message || "Save failed.");
     } finally {
       setLoading(false);
     }

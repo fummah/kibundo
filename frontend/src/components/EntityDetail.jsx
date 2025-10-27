@@ -24,6 +24,7 @@ import {
   message,
   Divider,
   Select,
+  App,
 } from "antd";
 import {
   ArrowLeftOutlined,
@@ -154,6 +155,7 @@ export default function EntityDetail({ cfg }) {
   const { id } = useParams();
   const location = useLocation();
   const [messageApi, ctx] = message.useMessage();
+  const { modal } = App.useApp();
   const screens = Grid.useBreakpoint();
 
   // Create a unique ID generator that ensures uniqueness across renders
@@ -446,7 +448,7 @@ export default function EntityDetail({ cfg }) {
         });
         setClasses(processedClasses);
       } catch (error) {
-        console.error("Failed to load dropdown data:", error);
+        // console.error("Failed to load dropdown data:", error);
         // Set empty arrays as fallback
         setStates([]);
         setClasses([]);
@@ -619,8 +621,10 @@ export default function EntityDetail({ cfg }) {
         const isDateAdded = ["date_added", "created_at", "createdAt", "member_since"].some(
           (dateField) => name.toLowerCase().includes(dateField.toLowerCase())
         );
+        // Allow specific "id" fields to be editable (class_id, parent_id, etc.)
+        const isEditableId = ["class_id", "parent_id", "user_id", "role_id"].includes(name);
         const isReadOnly =
-          isIp || isDateAdded || name.toLowerCase().includes("id");
+          isIp || isDateAdded || (name.toLowerCase().includes("id") && !isEditableId && !field.type) || field.editable === false;
 
         // Determine field type based on name
         let fieldType = field.type || field.input || "text";
@@ -658,6 +662,11 @@ export default function EntityDetail({ cfg }) {
     try {
       const values = await infoForm.validateFields();
       delete values[idField];
+      
+      // Add class_id from entity if it exists (for grade field handling)
+      if (entity?.class_id !== undefined && values.class_id === undefined) {
+        values.class_id = entity.class_id;
+      }
 
       for (const k of Object.keys(values)) {
         const v = values[k];
@@ -666,8 +675,41 @@ export default function EntityDetail({ cfg }) {
         }
       }
 
+      // Transform field names to match backend expectations
+      const transformedValues = { ...values };
+      
+      // Map firstName to first_name and lastName to last_name for backend
+      if (transformedValues.firstName) {
+        transformedValues.first_name = transformedValues.firstName;
+        delete transformedValues.firstName;
+      }
+      if (transformedValues.lastName) {
+        transformedValues.last_name = transformedValues.lastName;
+        delete transformedValues.lastName;
+      }
+      
+      // Map bundesland to state for backend
+      if (transformedValues.bundesland) {
+        transformedValues.state = transformedValues.bundesland;
+        delete transformedValues.bundesland;
+      }
+      
+      // Capitalize status to match database enum (Active, Inactive, Pending, Suspended)
+      if (transformedValues.status) {
+        transformedValues.status = transformedValues.status.charAt(0).toUpperCase() + transformedValues.status.slice(1).toLowerCase();
+      }
+      
+      // Remove read-only fields that shouldn't be sent to backend
+      delete transformedValues.createdAt; // read-only field
+      
+      // Grade is display-only text - always delete it as it doesn't need to be sent
+      // class_id is the actual field that should be sent to backend
+      // Delete grade field since it's just display text
+      delete transformedValues.grade;
+
       if (typeof apiObj.updatePath === "function") {
-        await api.put(apiObj.updatePath(id), values, { withCredentials: true });
+        // console.log("Sending to backend:", transformedValues);
+        await api.put(apiObj.updatePath(id), transformedValues, { withCredentials: true });
         messageApi.success("Saved");
         await load();
       } else {
@@ -975,8 +1017,18 @@ export default function EntityDetail({ cfg }) {
       `${routeBase || location.pathname.replace(/\/[^/]+$/, "")}/${id}/edit`
     );
   const onDelete = () => {
-    if (!removePath) return;
-    Modal.confirm({
+    if (!removePath) {
+      // console.log("❌ No removePath configured");
+      return;
+    }
+    
+    // console.log(`🗑️ Delete requested for ID: ${id}`);
+    // console.log(`🗑️ removePath function: ${removePath}`);
+    // console.log(`🗑️ removePath result: ${removePath(id)}`);
+    // console.log(`🗑️ safeCfg.titleSingular: ${safeCfg.titleSingular}`);
+    // console.log(`🗑️ entity:`, entity);
+    
+    modal.confirm({
       title: `Delete ${safeCfg.titleSingular || "record"}?`,
       content: (
         <>
@@ -996,10 +1048,18 @@ export default function EntityDetail({ cfg }) {
       cancelText: "Cancel",
       onOk: async () => {
         try {
+          // console.log(`🗑️ Attempting to delete: ${removePath(id)}`);
           await api.delete(removePath(id), { withCredentials: true });
+          // console.log(`✅ Successfully deleted: ${id}`);
           messageApi.success("Deleted");
+          // Navigate to list and reload to refresh the data
           navigate(routeBase || "/");
-        } catch {
+          setTimeout(() => {
+            window.location.reload();
+          }, 500);
+        } catch (error) {
+          // console.error(`❌ Delete failed:`, error);
+          // console.error(`❌ Error response:`, error?.response);
           messageApi.error("Failed to delete");
         }
       },
@@ -1354,17 +1414,17 @@ export default function EntityDetail({ cfg }) {
                             <div className="flex items-center gap-2">
                               <Select
                                 placeholder="Active"
-                                defaultValue="active"
+                                value={(entity?.[field.name] || entity?.status || "Active").toLowerCase()}
                                 options={
                                   field.options || [
                                     { value: "active", label: "Active" },
-                                    { value: "inactive", label: "Inactive" },
                                     { value: "suspended", label: "Suspended" },
                                   ]
                                 }
                                 disabled={!field.editable}
                                 className="flex-1"
                                 id={`select-${uniqueId}`}
+                                onChange={(value) => handleFieldChange(field.name, value)}
                               />
                               <Button
                                 type="text"
@@ -1382,12 +1442,10 @@ export default function EntityDetail({ cfg }) {
                               loading={loadingDropdowns}
                               showSearch
                               optionFilterProp="label"
-                              value={entity?.[field.name] || entity?.class_id}
+                              value={entity?.class_id}
                               onChange={(value) => {
-                                handleFieldChange(field.name, value);
-                                if (field.type === "grade") {
-                                  handleFieldChange("class_id", value);
-                                }
+                                // Only update class_id, not the grade display field
+                                handleFieldChange("class_id", value);
                               }}
                               filterOption={(input, option) =>
                                 (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
@@ -2201,7 +2259,7 @@ export default function EntityDetail({ cfg }) {
           : "user";
       messageApi.success(`Opened ${who} portal for (${username})`);
     } catch (error) {
-      console.error("SSO error:", error);
+      // console.error("SSO error:", error);
       try {
         ssoWin.close();
       } catch {}
@@ -2213,39 +2271,24 @@ export default function EntityDetail({ cfg }) {
 
   /* ---------- Render ---------- */
   const actionsMenu = useMemo(() => {
-    const getLoginLabel = () => {
-      if (currentEntityType === "students") return "Login as student";
-      if (currentEntityType === "parents") return "Login as parent";
-      if (currentEntityType === "teachers") return "Login as teacher";
-      return "Login as customer";
-    };
-
     return {
       items: [
-        {
-          key: "login-as-customer",
-          label: getLoginLabel(),
-          icon: <UserOutlined />,
-        },
-        ...(updateStatusPath || removePath ? [{ type: "divider" }] : []),
         ...(updateStatusPath
           ? [
               { key: "activate", label: "Activate" },
-              { key: "block", label: "Block", danger: true },
+              { key: "suspend", label: "Suspend", danger: true },
             ]
           : []),
         ...(updateStatusPath && removePath ? [{ type: "divider" }] : []),
         ...(removePath ? [{ key: "delete", label: "Delete", danger: true }] : []),
       ],
       onClick: async ({ key }) => {
-        if (key === "login-as-customer") return handleLoginAsCustomer();
         if (key === "activate") return setStatus("active");
-        if (key === "block") return setStatus("disabled");
+        if (key === "suspend") return setStatus("suspended");
         if (key === "delete" && removePath) return onDelete();
       },
     };
   }, [
-    handleLoginAsCustomer,
     updateStatusPath,
     removePath,
     setStatus,

@@ -237,6 +237,7 @@ export default function Quiz() {
     items: true,
     status: true,
     tags: true,
+    created_at: true,
     actions: true,
   });
   const toggleCol = (k) => setVisibleCols((p) => ({ ...p, [k]: !p[k] }));
@@ -367,6 +368,13 @@ export default function Quiz() {
       },
       { title: "Tags", dataIndex: "tags", key: "tags", render: (tags) => <SafeTags value={tags} /> },
       {
+        title: "Created At",
+        dataIndex: "created_at",
+        key: "created_at",
+        width: 140,
+        render: (date) => <SafeText value={date ? new Date(date).toLocaleDateString() : "-"} />,
+      },
+      {
         title: "Actions",
         key: "actions",
         width: 80,
@@ -431,6 +439,7 @@ export default function Quiz() {
     items: "Items",
     status: "Status",
     tags: "Tags",
+    created_at: "Created At",
     actions: "Actions",
   };
 

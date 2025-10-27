@@ -114,7 +114,7 @@ export default function SSOReceiver() {
       handleToken(data.token, data.redirect || "/");
     }
 
-    window.addEventListener("message", onMsg);
+    window.addEventListener("message", onMsg, false);
     return () => window.removeEventListener("message", onMsg);
   }, []);
 

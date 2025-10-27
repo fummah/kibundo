@@ -18,15 +18,23 @@ const statusChip = (s) => {
   const baseCls = '!m-0 !px-3 !py-[2px] !rounded';
   if (!norm) return <Tag className={baseCls}>-</Tag>;
 
-  // Treat pending-like states as Active
+  // Handle Active status
   if (norm === 'active' || norm === 'pending' || norm === 'invited' || norm === 'invite_sent') {
-    return <Tag color="green" className={baseCls}>{i18next.t('entityList.status.active')}</Tag>;
+    return <Tag color="success" className={baseCls}>Active</Tag>;
   }
-  if (norm === 'suspended') return <Tag color="orange" className={baseCls}>{i18next.t('entityList.status.suspended')}</Tag>;
-  if (norm === 'disabled' || norm === 'blocked' || norm === 'inactive') return <Tag color="red" className={baseCls}>{i18next.t('entityList.status.blocked')}</Tag>;
+  // Handle Suspended status
+  if (norm === 'suspended') {
+    return <Tag color="error" className={baseCls}>Suspended</Tag>;
+  }
+  // Handle inactive/disabled status
+  if (norm === 'disabled' || norm === 'blocked' || norm === 'inactive') {
+    return <Tag color="error" className={baseCls}>Inactive</Tag>;
+  }
 
   // Fallback: show the actual status text with a neutral/blue tag
-  return <Tag color="blue" className={baseCls}>{s}</Tag>;
+  // Capitalize first letter for consistency
+  const capitalized = String(s || '').charAt(0).toUpperCase() + String(s || '').slice(1).toLowerCase();
+  return <Tag color="default" className={baseCls}>{capitalized}</Tag>;
 };
 
 export const columnFactories = {

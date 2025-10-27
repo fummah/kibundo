@@ -28,26 +28,16 @@ module.exports = (sequelize, DataTypes) => {
     timestamps: false
   });
 
-    // Optional: associate with Role if Role model exists
   Teacher.associate = (models) => {
     Teacher.belongsTo(models.user, {
       foreignKey: 'user_id',
       as: 'user'
     });
-  };
-
-     Teacher.associate = (models) => {
 
     Teacher.belongsTo(models.class, {
       foreignKey: 'class_id',
       as: 'class'
     });
-
-    Teacher.belongsTo(models.user, {
-    foreignKey: 'user_id',
-    as: 'user'
-  });
-
   };
 
   return Teacher;

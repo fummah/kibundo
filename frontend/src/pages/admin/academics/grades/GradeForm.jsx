@@ -1,6 +1,6 @@
 // src/pages/admin/academics/grades/GradeForm.jsx
 import React, { useEffect, useState, useCallback } from "react";
-import { Form, Input, Button, Card, message, Switch, Select, Spin } from "antd";
+import { Form, Input, Button, Card, message, Switch, Select, Spin, App } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   StarOutlined,
@@ -23,6 +23,7 @@ export default function GradeForm() {
   const navigate = useNavigate();
   const { id } = useParams();
   const isEdit = !!id;
+  const { message } = App.useApp();
 
   const topbar = useTopbar();
 
@@ -109,7 +110,7 @@ export default function GradeForm() {
       setSubmitting(true);
 
       if (isEdit) {
-        await api.put(`/class/${id}`, payload);
+        await api.put(`/classes/${id}`, payload);
         message.success("Class updated successfully.");
       } else {
         await api.post("/addclass", payload);

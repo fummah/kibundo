@@ -386,6 +386,33 @@ const created_by = req.user.id;
   }
 };
 
+exports.getClassById = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const classData = await Class.findOne({
+      where: { id },
+      include: [
+        {
+          model: User,
+          as: 'userCreated',
+          attributes: { exclude: ['password'] },
+        }
+      ]
+    });
+
+    if (!classData) {
+      return res.status(404).json({ message: 'Class not found' });
+    }
+
+    return res.status(200).json(classData);
+
+  } catch (error) {
+    console.error('Error fetching class by ID:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 exports.addsubject = async (req, res) => {
   try {
     const { subject_name, class_id } = req.body;
@@ -639,25 +666,6 @@ const created_by = req.user.id;
   }
 };
 
-exports.deleteParent = async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const parent = await Parent.findByPk(id);
-
-    if (!parent) {
-      return res.status(404).json({ message: 'Parent not found' });
-    }
-
-    await parent.destroy();
-
-    return res.status(200).json({ message: 'Parent deleted successfully' });
-
-  } catch (error) {
-    console.error('Error deleting parent:', error);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
 exports.addproduct = async (req, res) => {
   try {
     const { name, description, price, trial_period_days } = req.body;
@@ -1125,9 +1133,16 @@ exports.addrole = async (req, res) => {
   try {
     const { role_name, permissions } = req.body;
 const created_by = req.user.id;
+    
+    // Convert permissions array to JSON string if it's an array
+    let permissionsValue = permissions;
+    if (Array.isArray(permissions)) {
+      permissionsValue = JSON.stringify(permissions);
+    }
+
     const newRole = await Role.create({
    name:role_name, 
-   permissions,
+   permissions: permissionsValue,
     created_by,
     });
 
@@ -1135,6 +1150,54 @@ const created_by = req.user.id;
   } catch (err) {
     console.error("New role error:", err);
     res.status(500).json({ message: "Server error", error:err });
+  }
+};
+
+// Update role
+exports.updateRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, permissions } = req.body;
+
+    const role = await Role.findByPk(id);
+    if (!role) {
+      return res.status(404).json({ message: "Role not found" });
+    }
+
+    // Convert permissions array to JSON string if it's an array
+    let permissionsValue = permissions;
+    if (Array.isArray(permissions)) {
+      permissionsValue = JSON.stringify(permissions);
+    }
+
+    await role.update({
+      name,
+      permissions: permissionsValue,
+    });
+
+    res.json({ message: "Role updated successfully", role });
+  } catch (err) {
+    console.error("Error updating role:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// Delete role
+exports.deleteRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const role = await Role.findByPk(id);
+    if (!role) {
+      return res.status(404).json({ message: "Role not found" });
+    }
+
+    await role.destroy();
+
+    res.json({ message: "Role deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting role:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -1181,7 +1244,8 @@ exports.addquiz = async (req, res) => {
 exports.getQuizzes = async (req, res) => {
   try {
     const quizzes = await Quiz.findAll({
-      include: [{ model: QuizItem, as: 'items' }]
+      include: [{ model: QuizItem, as: 'items' }],
+      order: [['id', 'ASC']]
     });
     return res.json(quizzes);
   } catch (error) {
@@ -1215,10 +1279,10 @@ exports.deleteQuiz = async (req, res) => {
     const { id } = req.params;
 
     // Delete items first
-    await QuizItem.destroy({ where: { quiz_id: id }, transaction: t });
+    await QuizItem.destroy({ where: { quiz_id: id } });
 
     // Delete quiz
-    const deleted = await Quiz.destroy({ where: { id }, transaction: t });
+    const deleted = await Quiz.destroy({ where: { id } });
 
 
     if (!deleted) {
@@ -1227,7 +1291,6 @@ exports.deleteQuiz = async (req, res) => {
 
     return res.json({ message: 'Quiz deleted successfully' });
   } catch (error) {
-    await t.rollback();
     console.error('Error deleting quiz:', error);
     return res.status(500).json({ error: 'Failed to delete quiz' });
   }
@@ -1609,6 +1672,7 @@ exports.updateAgent = async (req, res) => {
 };
 
 exports.editUser = async (req, res) => {
+ 
   try {
     const { id } = req.params;
     const {
@@ -1635,9 +1699,6 @@ exports.editUser = async (req, res) => {
       state,
       role_id,
     };
-
-
-
     // 3. Update user
     await user.update(updatedFields);
 
@@ -1651,7 +1712,6 @@ exports.editSubject = async (req, res) => {
   try {
     const { id } = req.params; // Subject ID from URL
     const { subject_name, class_id } = req.body;
-    const updated_by = req.user.id; // user performing the edit
 
     // 1. Find subject by ID
     const subject = await Subject.findByPk(id);
@@ -1659,21 +1719,35 @@ exports.editSubject = async (req, res) => {
       return res.status(404).json({ message: "Subject not found" });
     }
 
-    // 2. Update subject fields
+    // 2. Update subject fields (only fields that exist in the model)
     await subject.update({
       subject_name,
       class_id,
-      updated_by,
     });
 
-    // 3. Send response
+    // 3. Return updated subject with associations
+    const updatedSubject = await Subject.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: 'userCreated',
+          attributes: { exclude: ['password'] },
+        },
+        {
+          model: Class,
+          as: 'class',
+          attributes: ['id', 'class_name']
+        }
+      ]
+    });
+
     res.json({
       message: "Subject updated successfully",
-      subject,
+      subject: updatedSubject,
     });
   } catch (err) {
     console.error("Edit subject error:", err);
-    res.status(500).json({ message: "Server error", error: err });
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -1681,7 +1755,6 @@ exports.editClass = async (req, res) => {
   try {
     const { id } = req.params; // Class ID from URL
     const { class_name } = req.body;
-    const updated_by = req.user.id; // user performing the edit
 
     // 1. Find class by ID
     const existingClass = await Class.findByPk(id);
@@ -1689,20 +1762,29 @@ exports.editClass = async (req, res) => {
       return res.status(404).json({ message: "Class not found" });
     }
 
-    // 2. Update class fields
+    // 2. Update class fields (only fields that exist in the model)
     await existingClass.update({
       class_name,
-      updated_by,
     });
 
-    // 3. Send response
+    // 3. Return updated class with associations
+    const updatedClass = await Class.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: 'userCreated',
+          attributes: { exclude: ['password'] },
+        }
+      ]
+    });
+
     res.json({
       message: "Class updated successfully",
-      class: existingClass,
+      class: updatedClass,
     });
   } catch (err) {
     console.error("Edit class error:", err);
-    res.status(500).json({ message: "Server error", error: err });
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -1810,7 +1892,6 @@ exports.editQuiz = async (req, res) => {
       difficulty,
       objectives,
       status,
-      updated_by,
     });
 
     // 3️⃣ If quiz items are provided, update them
@@ -1861,11 +1942,19 @@ exports.editStudent = async (req, res) => {
       email,
       contact_number,
       state,
+      status,
       class_id,
       parent_id,
-      subjects
+      subjects,
+      school,
+      grade
     } = req.body;
     const updated_by = req.user.id; // user performing the edit
+    
+    // Note: grade from frontend is just display text from class.class_name
+    // Don't use grade to update class_id - only use explicit class_id parameter
+    // This prevents trying to save "Grade 983" as an integer
+    const finalClassId = class_id;
 
     // 1. Find student by ID
     const student = await Student.findByPk(id, {
@@ -1882,18 +1971,31 @@ exports.editStudent = async (req, res) => {
       email,
       contact_number,
       state,
+      status: status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : undefined,
     };
+    
+    // Remove undefined values to avoid overwriting with null
+    Object.keys(userUpdateFields).forEach(key => {
+      if (userUpdateFields[key] === undefined) {
+        delete userUpdateFields[key];
+      }
+    });
 
     await student.user.update(userUpdateFields);
 
     // 3. Update student fields
-    const studentUpdateFields = {
-      class_id,
-      parent_id,
-      updated_by,
-    };
-
-    await student.update(studentUpdateFields);
+    const studentUpdateFields = {};
+    if (finalClassId !== undefined) studentUpdateFields.class_id = finalClassId;
+    if (parent_id !== undefined) studentUpdateFields.parent_id = parent_id;
+    studentUpdateFields.updated_by = updated_by;
+    
+    // Note: grade is derived from class_id (stored in classes.class_name)
+    // school is display-only (computed from class relationship)
+    
+    // Only update student fields if there are fields to update
+    if (Object.keys(studentUpdateFields).length > 0) {
+      await student.update(studentUpdateFields);
+    }
 
     // 4. If subjects are provided, update them
     if (subjects && Array.isArray(subjects)) {
@@ -1965,6 +2067,7 @@ exports.editTeacher = async (req, res) => {
       email,
       contact_number,
       state,
+      status,
       class_id
     } = req.body;
     const updated_by = req.user.id; // user performing the edit
@@ -1984,6 +2087,7 @@ exports.editTeacher = async (req, res) => {
       email,
       contact_number,
       state,
+      status: status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : undefined,
     };
 
     await teacher.user.update(userUpdateFields);
@@ -2028,6 +2132,7 @@ exports.editParent = async (req, res) => {
       email,
       contact_number,
       state,
+      status,
       is_payer
     } = req.body;
     const updated_by = req.user.id; // user performing the edit
@@ -2047,6 +2152,7 @@ exports.editParent = async (req, res) => {
       email,
       contact_number,
       state,
+      status: status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : undefined,
     };
 
     await parent.user.update(userUpdateFields);
@@ -2085,5 +2191,188 @@ exports.editParent = async (req, res) => {
   } catch (err) {
     console.error("Error updating parent:", err);
     res.status(500).json({ message: err.message });
+  }
+};
+
+// Update student status
+exports.updateStudentStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const student = await Student.findByPk(id, {
+      include: [{ model: User, as: 'user' }]
+    });
+
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    const capitalizedStatus = status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : undefined;
+    
+    await student.user.update({ status: capitalizedStatus });
+
+    res.json({ message: "Student status updated successfully" });
+  } catch (err) {
+    console.error("Error updating student status:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Update teacher status
+exports.updateTeacherStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const teacher = await Teacher.findByPk(id, {
+      include: [{ model: User, as: 'user' }]
+    });
+
+    if (!teacher) {
+      return res.status(404).json({ message: "Teacher not found" });
+    }
+
+    const capitalizedStatus = status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : undefined;
+    
+    await teacher.user.update({ status: capitalizedStatus });
+
+    res.json({ message: "Teacher status updated successfully" });
+  } catch (err) {
+    console.error("Error updating teacher status:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Update parent status
+exports.updateParentStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const parent = await Parent.findByPk(id, {
+      include: [{ model: User, as: 'user' }]
+    });
+
+    if (!parent) {
+      return res.status(404).json({ message: "Parent not found" });
+    }
+
+    const capitalizedStatus = status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : undefined;
+    
+    await parent.user.update({ status: capitalizedStatus });
+
+    res.json({ message: "Parent status updated successfully" });
+  } catch (err) {
+    console.error("Error updating parent status:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Delete student
+exports.deleteStudent = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    console.log(`🗑️ Attempting to delete student ID: ${id}`);
+    const student = await Student.findByPk(id, {
+      include: [{ model: User, as: 'user' }]
+    });
+
+    if (!student) {
+      console.log(`❌ Student not found: ${id}`);
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    console.log(`✅ Found student: ${id}, user_id: ${student.user_id}`);
+
+    // Delete the student record
+    await student.destroy();
+    console.log(`✅ Deleted student record ${id}`);
+
+    // Optionally delete the associated user
+    if (student.user_id) {
+      await User.destroy({ where: { id: student.user_id } });
+      console.log(`✅ Deleted associated user ${student.user_id}`);
+    }
+
+    console.log(`✅ Successfully deleted student ${id}`);
+    return res.status(200).json({ message: 'Student deleted successfully' });
+
+  } catch (error) {
+    console.error('❌ Error deleting student:', error);
+    return res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+};
+
+// Delete teacher
+exports.deleteTeacher = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    console.log(`🗑️ Attempting to delete teacher ID: ${id}`);
+    const teacher = await Teacher.findByPk(id, {
+      include: [{ model: User, as: 'user' }]
+    });
+
+    if (!teacher) {
+      console.log(`❌ Teacher not found: ${id}`);
+      return res.status(404).json({ message: 'Teacher not found' });
+    }
+
+    console.log(`✅ Found teacher: ${id}, user_id: ${teacher.user_id}`);
+
+    // Delete the teacher record
+    await teacher.destroy();
+    console.log(`✅ Deleted teacher record ${id}`);
+
+    // Optionally delete the associated user
+    if (teacher.user_id) {
+      await User.destroy({ where: { id: teacher.user_id } });
+      console.log(`✅ Deleted associated user ${teacher.user_id}`);
+    }
+
+    console.log(`✅ Successfully deleted teacher ${id}`);
+    return res.status(200).json({ message: 'Teacher deleted successfully' });
+
+  } catch (error) {
+    console.error('❌ Error deleting teacher:', error);
+    return res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+};
+
+// Delete parent
+exports.deleteParent = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    console.log(`🗑️ Attempting to delete parent ID: ${id}`);
+    const parent = await Parent.findByPk(id, {
+      include: [{ model: User, as: 'user' }]
+    });
+
+    if (!parent) {
+      console.log(`❌ Parent not found: ${id}`);
+      return res.status(404).json({ message: 'Parent not found' });
+    }
+
+    console.log(`✅ Found parent: ${id}, user_id: ${parent.user_id}`);
+
+    // Delete the parent record
+    await parent.destroy();
+    console.log(`✅ Deleted parent record ${id}`);
+
+    // Optionally delete the associated user
+    if (parent.user_id) {
+      await User.destroy({ where: { id: parent.user_id } });
+      console.log(`✅ Deleted associated user ${parent.user_id}`);
+    }
+
+    console.log(`✅ Successfully deleted parent ${id}`);
+    return res.status(200).json({ message: 'Parent deleted successfully' });
+
+  } catch (error) {
+    console.error('❌ Error deleting parent:', error);
+    return res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };

@@ -96,6 +96,11 @@ export async function createQuiz(payload) {
     }
   }
   
+  // If payload has an id, use update endpoint instead
+  if (payload.id) {
+    return updateQuiz(payload.id, normalizedPayload);
+  }
+  
   try {
     const { data } = await api.post(PATH.list, normalizedPayload);
     return normalizeQuiz(data);
@@ -120,8 +125,11 @@ export async function updateQuiz(id, payload) {
     }
   }
   
+  // Remove id from payload to avoid duplication
+  delete normalizedPayload.id;
+  
   try {
-    const { data } = await api.patch(PATH.item(id), normalizedPayload);
+    const { data } = await api.put(PATH.item(id), normalizedPayload);
     return normalizeQuiz(data);
   } catch (err) {
     try {

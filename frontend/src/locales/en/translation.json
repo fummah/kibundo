@@ -181,5 +181,36 @@
         "title": "Progress Overview"
       }
     }
+  },
+  "admin": {
+    "dashboard": {
+      "title": "Admin Dashboard",
+      "totalUsers": "Total Users",
+      "parents": "Parents",
+      "students": "Students",
+      "activeContracts": "Active Contracts",
+      "quickActions": "Quick Actions",
+      "generateReport": "Generate Report",
+      "manageContracts": "Manage Contracts",
+      "features": "Features",
+      "failedToLoad": "Failed to Load Dashboard",
+      "tryAgain": "Try Again",
+      "mom": "MoM",
+      "wow": "WoW",
+      "next30d": "Next 30d"
+    },
+    "statistics": {
+      "dashboard": "Statistics Dashboard",
+      "description": "Access real-time platform usage statistics.",
+      "reportGeneration": "Report Generation",
+      "reportDescription": "Generate detailed reports on user activity and performance.",
+      "contractManagement": "Contract Management",
+      "contractDescription": "Manage contracts with schools and institutions.",
+      "databaseManagement": "Database Management",
+      "databaseDescription": "Oversee and manage the platform's database.",
+      "viewAll": "View All",
+      "recentActivity": "Recent Activity",
+      "noRecentActivity": "No recent activity"
+    }
   }
 }

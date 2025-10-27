@@ -42,7 +42,7 @@ export default function GradesList() {
 
     api: {
       listPath: "/allclasses",
-      removePath: (id) => `/class/${id}`,
+      removePath: (id) => `/classes/${id}`,
       parseList: (payload) => {
         const list = Array.isArray(payload)
           ? payload
@@ -53,13 +53,12 @@ export default function GradesList() {
         return list.map((c) => ({
           id: c?.id,
           name: c?.class_name || c?.name || "-",
-          code: c?.class_code || c?.code || "-",
-          description: c?.description || "",
           class_id: c?.id,
           class: c,
-          created_by: c?.userCreated?.username || c?.created_by || "-",
+          created_by: c?.userCreated?.first_name && c?.userCreated?.last_name 
+            ? `${c.userCreated.first_name} ${c.userCreated.last_name}` 
+            : c?.userCreated?.username || c?.userCreated?.email || c?.created_by || "-",
           created_at: c?.created_at || c?.createdAt || null,
-          is_active: c?.is_active ?? true,
           raw: c,
         }));
       },
@@ -92,71 +91,16 @@ export default function GradesList() {
         csv: (r) => r?.name ?? "-",
       },
 
-      code: {
-        title: "Code",
-        key: "code",
-        dataIndex: "code",
-        width: 100,
-        render: (v) => <Tag className="!m-0">{dash(v)}</Tag>,
-        sorter: (a, b) => String(a?.code || "").localeCompare(String(b?.code || "")),
-        csv: (r) => r?.code ?? "-",
-      },
-      
-      class: {
-        title: "Class",
-        key: "class",
-        dataIndex: ["class", "name"],
+      created_by: {
+        title: "Created By",
+        key: "created_by",
+        dataIndex: "created_by",
         width: 200,
-        render: (_, record) => {
-          const classInfo = record.class || (record.class_id && classes[record.class_id]);
-          if (!classInfo) return "-";
-          
-          return (
-            <div className="flex items-center gap-2">
-              <TeamOutlined className="text-blue-500" />
-              <Tooltip title={`Class ID: ${classInfo.id}`}>
-                <span>{classLabel(classInfo)}</span>
-              </Tooltip>
-            </div>
-          );
-        },
-        sorter: (a, b) => {
-          const aClass = a.class || (a.class_id && classes[a.class_id]);
-          const bClass = b.class || (b.class_id && classes[b.class_id]);
-          return String(classLabel(aClass) || "").localeCompare(String(classLabel(bClass) || ""));
-        },
-        csv: (r) => {
-          const classInfo = r.class || (r.class_id && classes[r.class_id]);
-          return classLabel(classInfo) || "-";
-        },
-      },
-
-      description: {
-        title: "Description",
-        key: "description",
-        dataIndex: "description",
         ellipsis: true,
         render: (v) => dash(v),
-        csv: (r) => r?.description ?? "",
-      },
-
-      is_active: {
-        title: "Status",
-        key: "is_active",
-        dataIndex: "is_active",
-        width: 120,
-        render: (v) =>
-          v ? (
-            <Tag color="green" className="!m-0">
-              Active
-            </Tag>
-          ) : (
-            <Tag color="default" className="!m-0">
-              Inactive
-            </Tag>
-          ),
-        sorter: (a, b) => Number(!!a?.is_active) - Number(!!b?.is_active),
-        csv: (r) => (r?.is_active ? "Active" : "Inactive"),
+        sorter: (a, b) =>
+          String(a?.created_by || "").localeCompare(String(b?.created_by || "")),
+        csv: (r) => r?.created_by ?? "-",
       },
 
       created_at: {
@@ -170,6 +114,9 @@ export default function GradesList() {
         csv: (r) => fmtDate(r?.created_at, { format: "YYYY-MM-DD" }),
       },
     }),
+
+    // Define which columns are visible by default
+    defaultVisible: ["id", "name", "created_by", "created_at"],
 
     breadcrumbs: [
       { title: "Admin", path: "/admin" },

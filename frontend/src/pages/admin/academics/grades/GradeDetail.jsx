@@ -196,14 +196,11 @@ export default function GradeDetail() {
           </Button>
           <h1 className="text-2xl font-bold mt-2 flex items-center">
             <StarOutlined className="mr-2 text-blue-500" />
-            {grade.name}
-            <Tag color={grade.is_active ? "green" : "default"} className="ml-3">
-              {grade.is_active ? "Active" : "Inactive"}
-            </Tag>
+            {classData.class_name || classData.name || "Class"}
           </h1>
-          {grade.code && (
+          {classData.id && (
             <div className="text-gray-500 text-sm mt-1">
-              Code: <span className="font-mono">{grade.code}</span>
+              ID: <span className="font-mono">{classData.id}</span>
             </div>
           )}
         </div>
@@ -213,7 +210,7 @@ export default function GradeDetail() {
             icon={<EditOutlined />}
             onClick={() => navigate(`/admin/academics/grades/${id}/edit`)}
           >
-            Edit Grade
+            Edit Class
           </Button>
         </div>
       </div>
@@ -228,9 +225,9 @@ export default function GradeDetail() {
           Back to Grades
         </Button>
         <Space>
-          <Button onClick={() => navigate(`/admin/academics/grades/${id}/edit`)}>
-            Edit Grade
-          </Button>
+        <Button onClick={() => navigate(`/admin/academics/grades/${id}/edit`)}>
+          Edit Class
+        </Button>
         </Space>
       </div>
     </div>

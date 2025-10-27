@@ -16,7 +16,7 @@ export default function StudentDetail() {
   // Read location once, but freeze the prefill so later URL/tab changes don't trigger work
   const location = useLocation();
   const prefillRef = useRef(location.state?.prefill || null);
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
 
   const [availableSubjects, setAvailableSubjects] = useState([]);
   const [assignSubjectModalVisible, setAssignSubjectModalVisible] = useState(false);
@@ -47,7 +47,7 @@ export default function StudentDetail() {
 
   // Assign a subject to a student
   const handleAssignSubject = useCallback(
-    async (studentId) => {
+    async (studentId, onReload) => {
       if (!selectedSubjectId) return;
       setAssigning(true);
       try {
@@ -55,28 +55,34 @@ export default function StudentDetail() {
         message.success("Subject assigned successfully");
         setAssignSubjectModalVisible(false);
         setSelectedSubjectId(null);
-        // Let EntityDetail re-fetch by using its built-in Reload button; or you can signal via events if supported.
+        // Trigger reload if callback provided
+        if (onReload && typeof onReload === 'function') {
+          await onReload();
+        }
       } catch (err) {
         message.error(err?.response?.data?.message || "Failed to assign subject");
       } finally {
         setAssigning(false);
       }
     },
-    [selectedSubjectId, apiPaths]
+    [selectedSubjectId, apiPaths, message]
   );
 
   // Remove (unlink) subject from student
   const handleRemoveSubject = useCallback(
-    async (studentId, subjectId) => {
+    async (studentId, subjectId, onReload) => {
       try {
         await api.delete(apiPaths.unlinkSubject(studentId, subjectId));
         message.success("Subject removed successfully");
-        // Again, rely on the tab's reload action if available.
+        // Trigger reload if callback provided
+        if (onReload && typeof onReload === 'function') {
+          await onReload();
+        }
       } catch (err) {
         message.error(err?.response?.data?.message || "Failed to remove subject");
       }
     },
-    [apiPaths]
+    [apiPaths, message]
   );
 
 
@@ -107,10 +113,11 @@ export default function StudentDetail() {
         const fb = (v) =>
           v === undefined || v === null || String(v).trim() === "" ? "-" : String(v).trim();
 
+        const firstName = fb(user.first_name);
+        const lastName = fb(user.last_name);
         const name = fb([user.first_name, user.last_name].filter(Boolean).join(" "));
         const email = fb(user.email);
-        const grade = fb(s.class?.class_name || s.class_name || s.grade || user.grade);
-        const school = fb(s.school?.name || s.school_name || s.school);
+        const grade = fb(s.grade || s.class?.class_name || s.class_name);
         const state = fb(user.state || s.state);
 
         // Subjects: accept either array of subjects or array of links containing subject
@@ -165,20 +172,25 @@ export default function StudentDetail() {
             }
           : null;
 
-        const status = fb(user.status || s.status || "active");
+        const status = fb(user.status || s.status || "Active");
         const createdAt = user.created_at || s.created_at || null;
+        
+        // Extract class_id from student or class relationship
+        const class_id = s.class_id || s.class?.id || null;
 
         return {
           id: s.id,
+          firstName,
+          lastName,
           name,
           email,
           grade,
+          class_id, // Add class_id for backend updates
           subjectsText,
           parent_name: parentName,
           parent_email: parentEmail,
           parent_id: parentId,
           parentSummary,
-          school,
           state,
           status,
           createdAt,
@@ -204,12 +216,12 @@ export default function StudentDetail() {
     initialEntity: prefillRef.current || undefined,
 
     infoFields: [
-      { label: "Name", name: "name" },
+      { label: "First Name", name: "firstName" },
+      { label: "Last Name", name: "lastName" },
       { label: "Grade", name: "grade" },
-      { label: "School", name: "school" },
       { label: "State", name: "state" },
       { label: "Status", name: "status" },
-      { label: "Date added", name: "createdAt" },
+      { label: "Date added", name: "createdAt", editable: false },
     ],
 
     topInfo: (e) => {
@@ -247,15 +259,14 @@ export default function StudentDetail() {
 
           const onConfirmRemove = async (subject) => {
             const subjectId = subject?.id ?? subject?.subject_id;
-            Modal.confirm({
+            modal.confirm({
               title: "Remove Subject",
               content: `Are you sure you want to remove ${
                 subject?.subject_name || subject?.name || `Subject #${subjectId}`
               } from this student?`,
               okButtonProps: { danger: true },
               onOk: async () => {
-                await handleRemoveSubject(studentId, subjectId);
-                if (reload) await reload();
+                await handleRemoveSubject(studentId, subjectId, reload);
               },
             });
           };
@@ -311,8 +322,7 @@ export default function StudentDetail() {
                   setSelectedSubjectId(null);
                 }}
                 onOk={async () => {
-                  await handleAssignSubject(studentId);
-                  if (reload) await reload();
+                  await handleAssignSubject(studentId, reload);
                 }}
                 confirmLoading={assigning}
                 okText="Assign"
@@ -387,11 +397,15 @@ export default function StudentDetail() {
             dataIndex: "status",
             key: "status",
             width: 100,
-            render: (status) => (
-              <Tag color={status === "active" ? "green" : "red"} className="capitalize">
-                {status || "inactive"}
-              </Tag>
-            ),
+            render: (status) => {
+              const statusLower = status?.toLowerCase();
+              const color = statusLower === "active" ? "green" : statusLower === "suspended" ? "red" : "default";
+              return (
+                <Tag color={color} className="capitalize">
+                  {status || "inactive"}
+                </Tag>
+              );
+            },
           },
           {
             title: "Actions",
@@ -457,7 +471,7 @@ export default function StudentDetail() {
         },
       },
     },
-  }), [availableSubjects, handleAssignSubject, handleRemoveSubject, assignSubjectModalVisible, selectedSubjectId, assigning]);
+  }), [availableSubjects, handleAssignSubject, handleRemoveSubject, assignSubjectModalVisible, selectedSubjectId, assigning, modal]);
 
   return (
     <App>

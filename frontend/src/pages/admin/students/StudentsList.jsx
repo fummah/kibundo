@@ -15,8 +15,8 @@ export default function StudentsList() {
         idField: "id",
         api: {
           listPath: "/allstudents",
-          updateStatusPath: (id) => `/students/${id}/status`,
-          removePath: (id) => `/students/${id}`,
+          updateStatusPath: (id) => `/student/${id}/status`,
+          removePath: (id) => `/student/${id}`,
           parseList: (data) => {
             const src = Array.isArray(data) ? data : [];
             const fallback = (v) =>

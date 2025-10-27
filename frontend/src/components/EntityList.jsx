@@ -541,7 +541,6 @@ export default function EntityList({ cfg }) {
         ? [
             { key: "reactivate", label: t("entityList.bulk.setActive") },
             { key: "suspend", label: t("entityList.bulk.setSuspended") },
-            { key: "disable", label: t("entityList.bulk.setBlocked") },
             { type: "divider" },
           ]
         : []),
@@ -721,7 +720,6 @@ export default function EntityList({ cfg }) {
           { value: "All", label: t("entityList.status.allSelected") },
           { value: "active", label: t("entityList.status.active") },
           { value: "suspended", label: t("entityList.status.suspended") },
-          { value: "disabled", label: t("entityList.status.blocked") },
         ]}
         style={{ width: 160 }}
       />

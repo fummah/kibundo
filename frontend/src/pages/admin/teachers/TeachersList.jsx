@@ -15,7 +15,7 @@ export default function TeachersList() {
         idField: "id",
         api: {
           listPath: "/allteachers",
-          updateStatusPath: (id) => `/teachers/${id}/status`,
+          updateStatusPath: (id) => `/teacher/${id}/status`,
           removePath: (id) => `/teacher/${id}`,
           parseList: (data) => {
             const src = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);

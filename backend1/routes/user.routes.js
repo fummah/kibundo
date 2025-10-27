@@ -1,14 +1,15 @@
 const express = require("express");
 const router = express.Router();
-const { getAllUsers, getAllRoles, addstudent, addteacher, addclass, addsubject, getAllClasses, getAllStudents, 
-    getAllTeachers, getAllSubjects, getSubjectById, getStudentById, getTeacherById, deleteSubject, 
+const { getAllUsers, getAllRoles, addstudent, addteacher, addclass, getClassById, addsubject, getAllClasses, getAllStudents, 
+    getAllTeachers, getAllSubjects, getSubjectById, getStudentById, getTeacherById, deleteSubject, deleteStudent, deleteTeacher,
     getParentById, getAllParents, addparent, deleteParent, addproduct, getAllProducts, getProductById,
 deleteProduct, addsubscription, getAllSubscriptions, getSubscriptionById, deleteSubscription, addblogpost,getAllBlogPosts, 
 getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice, addcoupon, 
-getAllCoupons, getCouponById,deleteCoupon, addrole, adduser,addquiz,  getQuizzes, getQuizById,  deleteQuiz, 
+getAllCoupons, getCouponById,deleteCoupon, addrole, updateRole, deleteRole, adduser,addquiz,  getQuizzes, getQuizById,  deleteQuiz, 
 addcurriculum, getAllCurriculum,getCurriculumById, deleteCurriculum, addWorksheet, getAllWorksheets, getWorksheetById, deleteWorksheet,
 getAllStates, getAllAgents,getPublicTables,addAgent, getHomeworks, getAiAgentSettings,updateAiAgentSettings,updateAgent, 
-getCurrentUser, debugUser, deleteAgent, editUser,editSubject,editClass,editProduct,editSubscription, editQuiz, editStudent, editTeacher, editParent } = require("../controllers/user.controller");
+getCurrentUser, debugUser, deleteAgent, editUser,editSubject,editClass,editProduct,editSubscription, editQuiz, editStudent, editTeacher, editParent, 
+updateStudentStatus, updateTeacherStatus, updateParentStatus } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
 
@@ -26,7 +27,10 @@ router.post("/addteacher", verifyToken, addteacher);
 router.post("/addstudent", verifyToken, addstudent);
 router.get("/allroles", getAllRoles);
 router.post("/addrole", verifyToken, addrole);
+router.put("/roles/:id", verifyToken, updateRole);
+router.delete("/roles/:id", verifyToken, deleteRole);
 router.post("/addclass", verifyToken, addclass);
+router.get("/class/:id", verifyToken, getClassById);
 router.post("/addsubject", verifyToken, addsubject);
 router.get("/allclasses", verifyToken, getAllClasses);
 router.get("/allstudents", verifyToken, getAllStudents);
@@ -34,7 +38,9 @@ router.get("/allteachers", verifyToken, getAllTeachers);
 router.get("/allsubjects", verifyToken, getAllSubjects);
 router.get('/subject/:id', verifyToken,getSubjectById);
 router.get('/student/:id', verifyToken,getStudentById);
+router.delete('/student/:id', verifyToken,deleteStudent);
 router.get('/teacher/:id', verifyToken,getTeacherById);
+router.delete('/teacher/:id', verifyToken,deleteTeacher);
 router.delete('/subject/:id', verifyToken,deleteSubject);
 router.get('/parent/:id', verifyToken,getParentById);
 router.get("/parents", verifyToken, getAllParents);
@@ -91,7 +97,57 @@ router.put("/students/:id", verifyToken,editStudent);
 router.put("/teachers/:id", verifyToken,editTeacher);
 router.put("/parents/:id", verifyToken,editParent);
 
+// Status update routes
+router.patch("/student/:id/status", verifyToken, updateStudentStatus);
+router.patch("/teacher/:id/status", verifyToken, updateTeacherStatus);
+router.patch("/parent/:id/status", verifyToken, updateParentStatus);
 
+// Student-Subject assignment routes
+router.post("/student/:studentId/subject/:subjectId", verifyToken, async (req, res) => {
+  try {
+    const { studentId, subjectId } = req.params;
+    const db = require("../models");
+    const StudentSubjects = db.student_subjects;
+    
+    // Check if relationship already exists
+    const existing = await StudentSubjects.findOne({
+      where: { student_id: studentId, subject_id: subjectId }
+    });
+    
+    if (existing) {
+      return res.status(409).json({ message: "Subject already assigned to student" });
+    }
+    
+    // Create the relationship
+    await StudentSubjects.create({
+      student_id: parseInt(studentId),
+      subject_id: parseInt(subjectId),
+      created_by: String(req.user.id)
+    });
+    
+    res.json({ message: "Subject assigned successfully" });
+  } catch (err) {
+    // console.error("Error assigning subject:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+});
+
+router.delete("/student/:studentId/subject/:subjectId", verifyToken, async (req, res) => {
+  try {
+    const { studentId, subjectId } = req.params;
+    const db = require("../models");
+    const StudentSubjects = db.student_subjects;
+    
+    await StudentSubjects.destroy({
+      where: { student_id: parseInt(studentId), subject_id: parseInt(subjectId) }
+    });
+    
+    res.json({ message: "Subject unassigned successfully" });
+  } catch (err) {
+    // console.error("Error unassigning subject:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+});
 
 // Get assigned agent for a student
 router.get("/student/:id/assigned-agent", verifyToken, (req, res) => {

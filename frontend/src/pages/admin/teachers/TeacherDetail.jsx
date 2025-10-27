@@ -110,30 +110,41 @@ export default function TeacherDetail() {
 
     api: {
       getPath: (id) => `/teacher/${id}`,
-      updateStatusPath: (id, entity) => `/users/${entity?.raw?.user_id}/status`,
+      updateStatusPath: (id) => `/teacher/${id}/status`,
       removePath: (id) => `/teacher/${id}`,
       updatePath: (id) => `/teachers/${id}`,
 
       parseEntity: (payload) => {
         const t = payload?.data ?? payload ?? {};
         const u = t?.user ?? {};
-        const name = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
+        const fb = (v) =>
+          v === undefined || v === null || String(v).trim() === "" ? "-" : String(v).trim();
+        
+        const firstName = fb(u.first_name);
+        const lastName = fb(u.last_name);
+        const name = [firstName, lastName].filter(Boolean).join(" ").trim();
         const member_since = u.created_at
           ? new Date(u.created_at).toLocaleDateString()
           : "-";
+        
+        // Extract grade (class_name) and class_id
+        const grade = fb(t.grade || t.class?.class_name || t.class_name);
+        const class_id = t.class_id || t.class?.id || null;
 
         return {
           id: t.id,
           user_id: u.id,
+          firstName,
+          lastName,
           name: name || "-",
-          email: u.email || "-",
-          status: u.status || "active",
+          email: fb(u.email),
+          status: fb(u.status || "Active"),
           created_at: u.created_at,
           member_since,
           contact_number: u.contact_number ?? null,
-          bundesland: u.state ?? null,
-          className: t.class?.class_name || t.department || "-",
-          class_id: t.class_id,
+          bundesland: fb(u.state),
+          grade,
+          class_id,
           // Include portal credentials from backend
           username: u.username || t.username,
           plain_pass: u.plain_pass || t.plain_pass,
@@ -151,18 +162,18 @@ export default function TeacherDetail() {
         name: "status",
         render: (v) => {
           let color = "default";
-          if (v === "active") color = "success";
-          if (v === "inactive") color = "warning";
-          if (v === "locked") color = "error";
+          if (v?.toLowerCase() === "active") color = "success";
+          if (v?.toLowerCase() === "suspended") color = "error";
           return <Tag color={color}>{v || "unknown"}</Tag>;
         },
       },
-      { label: "Full Name", name: "name" },
+      { label: "First Name", name: "firstName" },
+      { label: "Last Name", name: "lastName" },
       { label: "Email", name: "email" },
       { label: "Phone Number", name: "contact_number" },
-      { label: "Class", name: "className" },
+      { label: "Grade", name: "grade", editable: true },
       { label: "Bundesland", name: "bundesland" },
-      { label: "Member Since", name: "member_since" },
+      { label: "Member Since", name: "member_since", editable: false },
     ],
 
 

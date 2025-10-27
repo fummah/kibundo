@@ -8,7 +8,7 @@ import {
   Input,
   Button,
   Tag,
-  message,
+  App,
   Tooltip,
   Spin,
   Space, // ✅ Add this line
@@ -38,6 +38,7 @@ import api from "@/api/axios";
 const { Title, Text } = Typography;
 
 export default function DatabaseManager() {
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(true);
   const [database, setDatabase] = useState([]);
   const [search, setSearch] = useState("");
@@ -50,16 +51,18 @@ export default function DatabaseManager() {
       setDatabase(data.tables);
       setStatsData(data.stats);
     } catch (err) {
-      message.error("Failed to fetch database info");
+      // message.error("Failed to fetch database info");
+      // Endpoint not implemented yet
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 30000); // Poll every 30 seconds
-    return () => clearInterval(interval);
+    // fetchData();
+    // const interval = setInterval(fetchData, 30000); // Poll every 30 seconds
+    // return () => clearInterval(interval);
+    // TODO: Implement backend endpoint /database/overview
   }, []);
 
   const handleExport = async () => {

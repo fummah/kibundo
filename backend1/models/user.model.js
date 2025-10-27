@@ -23,7 +23,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     },
     status: {
-      type: DataTypes.STRING,
+      type: DataTypes.ENUM('Active', 'Suspended'),
       defaultValue: 'Active'
     },
     contact_number: {

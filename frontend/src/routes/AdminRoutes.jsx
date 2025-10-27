@@ -37,8 +37,6 @@ import Game from "@/pages/admin/academics/Game.jsx";
 import Curricula from "@/pages/admin/academics/Curricula.jsx";
 import Worksheet from "@/pages/admin/academics/Worksheet.jsx";
 import AIAgent from "@/pages/admin/academics/AIAgent.jsx";
-import OCRWorkspace from "@/pages/admin/academics/ocr/OCRWorkspace.jsx";
-import ScansOverview from "@/pages/admin/academics/ocr/ScansOverview.jsx";
 
 /* Academics → Subjects */
 import SubjectsList from "@/pages/admin/academics/subjects/SubjectsList.jsx";
@@ -174,12 +172,6 @@ export default function AdminRoutes() {
               path="ai-agent"
               element={<Navigate to="/admin/academics/kibundo" replace />}
             />
-
-            {/* OCR */}
-            <Route path="ocr">
-              <Route index element={<ScansOverview />} />
-              <Route path="workspace" element={<OCRWorkspace />} />
-            </Route>
 
             {/* Subjects */}
             <Route path="subjects">

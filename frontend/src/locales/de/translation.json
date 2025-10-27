@@ -7,9 +7,11 @@
     "pending": "Ausstehend",
     "active": "Aktiv",
     "inactive": "Inaktiv",
+    "suspended": "Gesperrt",
     "all": "Alle",
     "cancel": "Abbrechen",
     "save": "Speichern",
+    "saveChanges": "Änderungen speichern",
     "edit": "Bearbeiten",
     "delete": "Löschen",
     "moreActions": "Weitere Aktionen"
@@ -60,18 +62,19 @@
       },
       "edit": "Rolle bearbeiten",
       "create": "Rolle erstellen",
+      "deleteConfirm": "Rolle \"{{name}}\" löschen?",
       "permissions": {
         "required": "Wählen Sie mindestens eine Berechtigung aus",
         "adminOnly": "Nur Administratoren können 'agent:*' (Kibundo) Berechtigungen bearbeiten",
         "placeholder": "Berechtigungen auswählen"
       }
     },
-    "actions": {
-      "createAndSendReset": "Erstellen & Zurücksetzung senden"
-    },
     "user": {
       "edit": "Benutzer bearbeiten",
       "create": "Benutzer erstellen",
+      "deleteConfirm": "Benutzer \"{{email}}\" löschen?",
+      "resetConfirm": "Passwort-Zurücksetzung an {{email}} senden?",
+      "agentPermsAdminOnly": "Nur Administratoren können Kibundo Agent-Berechtigungen zuweisen.",
       "firstName": "Vorname",
       "lastName": "Nachname",
       "contactNumber": "Kontaktnummer",
@@ -104,6 +107,33 @@
       },
       "inheritFromRole": "Von Rolle erben",
       "inheritingFromRole": "Von Rolle erben…"
+    },
+    "actions": {
+      "createAndSendReset": "Erstellen & Zurücksetzung senden",
+      "deactivate": "Deaktivieren",
+      "activate": "Aktivieren",
+      "send": "Senden",
+      "resetPassword": "Passwort zurücksetzen"
+    },
+    "toasts": {
+      "rolesFetchFail": "Fehler beim Laden der Rollen aus der Datenbank.",
+      "usersFetchFail": "Fehler beim Laden der Benutzer aus der Datenbank.",
+      "roleUpdated": "Rolle aktualisiert.",
+      "roleCreated": "Rolle erstellt.",
+      "roleDeleted": "Rolle gelöscht.",
+      "roleEndpointMissing": "Ihre API stellt noch keine Create/Update Role-Endpunkte bereit. Nur die Auflistung ist verfügbar.",
+      "roleSaveFailed": "Fehler beim Speichern der Rolle.",
+      "roleDeleteMissing": "Ihre API stellt keine Delete Role-Endpunkt bereit.",
+      "roleDeleteFailed": "Fehler beim Löschen der Rolle.",
+      "userCreated": "Benutzer erstellt.",
+      "initialResetSent": "E-Mail für anfängliche Passwort-Einrichtung gesendet",
+      "resetSent": "Passwort-Zurücksetzungs-E-Mail gesendet",
+      "toAddress": "an",
+      "unauthorized": "Nicht autorisiert. Überprüfen Sie Ihr Token (verifyToken).",
+      "endpointMissing": "Endpunkt nicht gefunden. Bestätigen Sie, dass /adduser unter /api montiert ist.",
+      "userCreateError": "API-Fehler beim Erstellen des Benutzers.",
+      "toggleImplement": "Implementieren Sie einen API-Endpunkt zum Umschalten des Benutzer-Aktivzustands.",
+      "userDeleteImplement": "Implementieren Sie DELETE /users/:id und rufen Sie es hier auf."
     }
   },
   "entityList": {
@@ -284,5 +314,36 @@
     "subjects": "Deine Fächer",
     "subjectsSubtitle": "Wähle die Fächer aus, in denen du lernen möchtest.",
     "success": "Perfekt! Du bist bereit zu lernen!"
+  },
+  "admin": {
+    "dashboard": {
+      "title": "Admin Dashboard",
+      "totalUsers": "Gesamt Benutzer",
+      "parents": "Eltern",
+      "students": "Schüler",
+      "activeContracts": "Aktive Verträge",
+      "quickActions": "Schnellaktionen",
+      "generateReport": "Bericht erstellen",
+      "manageContracts": "Verträge verwalten",
+      "features": "Funktionen",
+      "failedToLoad": "Dashboard konnte nicht geladen werden",
+      "tryAgain": "Erneut versuchen",
+      "mom": "Vergleich zum Vormonat",
+      "wow": "Vergleich zur Vorwoche",
+      "next30d": "Nächste 30 Tage"
+    },
+    "statistics": {
+      "dashboard": "Statistik Dashboard",
+      "description": "Zugriff auf Echtzeit-Nutzungsstatistiken der Plattform.",
+      "reportGeneration": "Berichterstellung",
+      "reportDescription": "Detaillierte Berichte zu Benutzeraktivität und -leistung erstellen.",
+      "contractManagement": "Vertragsverwaltung",
+      "contractDescription": "Verträge mit Schulen und Institutionen verwalten.",
+      "databaseManagement": "Datenbankverwaltung",
+      "databaseDescription": "Überwachung und Verwaltung der Plattformdatenbank.",
+      "viewAll": "Alle anzeigen",
+      "recentActivity": "Letzte Aktivitäten",
+      "noRecentActivity": "Keine letzten Aktivitäten"
+    }
   }
 }

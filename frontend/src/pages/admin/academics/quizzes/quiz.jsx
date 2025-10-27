@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import {
   Button, Card, Form, Input, Select, Space, Tag, Drawer, Divider,
-  Grid, Dropdown, Modal, Descriptions, Tabs, InputNumber, Tooltip, message, Upload, Image, Checkbox
+  Grid, Dropdown, Modal, Descriptions, Tabs, InputNumber, Tooltip, message, Upload, Image, Checkbox, App
 } from "antd";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -135,6 +135,7 @@ const toApiItem = (q = {}, idx = 0) => {
 };
 
 export default function Quiz() {
+  const { modal } = App.useApp();
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
   const qc = useQueryClient();
@@ -173,11 +174,11 @@ export default function Quiz() {
         const statesList = Array.isArray(statesData) ? statesData : [];
         setStates(statesList);
         
-        console.log("Loaded subjects:", subjectsList.length);
-        console.log("Loaded classes:", classesList.length);
-        console.log("Loaded states:", statesList.length);
+        // console.log("Loaded subjects:", subjectsList.length);
+        // console.log("Loaded classes:", classesList.length);
+        // console.log("Loaded states:", statesList.length);
       } catch (error) {
-        console.error("Error fetching subjects/classes/states:", error);
+        // console.error("Error fetching subjects/classes/states:", error);
         message.error("Failed to load dropdown data");
       }
     };
@@ -217,6 +218,7 @@ export default function Quiz() {
     items: true,
     status: true,
     tags: true,
+    created_at: true,
     actions: true,
   });
   const toggleCol = (k) => setVisibleCols((p) => ({ ...p, [k]: !p[k] }));
@@ -309,12 +311,12 @@ export default function Quiz() {
       ...(editId ? { id: editId } : {}),
     };
     
-    console.log('Quiz payload:', payload); // Debug log to verify grade is numeric
+    // console.log('Quiz payload:', payload); // Debug log to verify grade is numeric
     saveMut.mutate(payload);
   };
 
   const confirmDelete = (id) => {
-    Modal.confirm({
+    modal.confirm({
       title: "Delete this quiz?",
       content: "This action cannot be undone.",
       okType: "danger",
@@ -383,6 +385,13 @@ export default function Quiz() {
       },
       { title: "Tags", dataIndex: "tags", key: "tags", render: (tags) => <SafeTags value={tags} /> },
       {
+        title: "Created At",
+        dataIndex: "created_at",
+        key: "created_at",
+        width: 140,
+        render: (date) => <SafeText value={date ? new Date(date).toLocaleDateString() : "-"} />,
+      },
+      {
         title: "Actions",
         key: "actions",
         width: 80,
@@ -447,6 +456,7 @@ export default function Quiz() {
     items: "Items",
     status: "Status",
     tags: "Tags",
+    created_at: "Created At",
     actions: "Actions",
   };
 
@@ -937,11 +947,13 @@ export default function Quiz() {
                     <Select 
                       showSearch
                       placeholder="Select Subject"
-                      options={subjects.map(s => {
+                      options={subjects.map((s, index) => {
                         const subjectName = s.subject_name || s.name || String(s);
+                        const subjectId = s.id || s.subject_id || index;
                         return { 
                           value: subjectName, 
-                          label: subjectName 
+                          label: subjectName,
+                          key: `subject-${subjectId}-${subjectName}`
                         };
                       })}
                       filterOption={(input, option) =>

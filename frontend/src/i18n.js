@@ -15,11 +15,13 @@ i18n
       de: { translation: de },
       en: { translation: en },
     },
+    lng: "de", // Default language is German
     fallbackLng: "de",
     supportedLngs: ["de", "en"],
     detection: {
       order: ["localStorage", "cookie", "htmlTag", "navigator"], // no ?lng=
       caches: ["localStorage", "cookie"],
+      lookupLocalStorage: "i18nextLng",
     },
     interpolation: { escapeValue: false },
     debug: false,

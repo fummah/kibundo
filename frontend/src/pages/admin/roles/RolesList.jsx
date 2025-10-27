@@ -62,9 +62,9 @@ const ALL_PERMS = [
 // Role endpoints (primary + graceful fallbacks)
 const ROLE_API = {
   list: "/allroles",
-  create: ["/roles", "/addrole"],
-  update: (id) => [`/roles/${id}`, `/updaterole/${id}`],
-  delete: (id) => [`/roles/${id}`, `/deleterole/${id}`],
+  create: ["/addrole"],
+  update: (id) => [`/roles/${id}`],
+  delete: (id) => [`/roles/${id}`],
 };
 
 /* ----------------------------- security helpers ---------------------------- */
@@ -105,10 +105,10 @@ export default function RolesLocal() {
 
   // Log once per language change (avoid spam from re-renders)
   useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log("Translation hook ready:", { lang: i18n.language });
-    // eslint-disable-next-line no-console
-    console.log("i18n test:", t("rolesList.accessControl.title", "Access Control"));
+    // // eslint-disable-next-line no-console
+    // console.log("Translation hook ready:", { lang: i18n.language });
+    // // eslint-disable-next-line no-console
+    // console.log("i18n test:", t("rolesList.accessControl.title", "Access Control"));
   }, [i18n.language, t]);
 
   /* ------------------------------- state ------------------------------ */
@@ -181,8 +181,8 @@ export default function RolesLocal() {
       normalized.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
       setRoles(normalized);
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("fetchRoles error:", err);
+      // // eslint-disable-next-line no-console
+      // console.error("fetchRoles error:", err);
       messageApi.error(t("rolesList.toasts.rolesFetchFail", "Failed to load roles from the database."));
     } finally {
       setRolesLoading(false);
@@ -210,8 +210,8 @@ export default function RolesLocal() {
       normalized.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
       setUsers(normalized);
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("fetchUsers error:", err);
+      // // eslint-disable-next-line no-console
+      // console.error("fetchUsers error:", err);
       messageApi.error(t("rolesList.toasts.usersFetchFail", "Failed to load users from the database."));
     } finally {
       setUsersLoading(false);
@@ -290,8 +290,8 @@ export default function RolesLocal() {
       setEditingRole(null);
       fetchRoles();
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("role submit error:", err);
+      // // eslint-disable-next-line no-console
+      // console.error("role submit error:", err);
       if (err?.response?.status === 404) {
         messageApi.error(t("rolesList.toasts.roleEndpointMissing", "Your API does not expose create/update role endpoints yet. Only listing is available."));
       } else {
@@ -312,8 +312,8 @@ export default function RolesLocal() {
           messageApi.success(t("rolesList.toasts.roleDeleted", "Role deleted."));
           fetchRoles();
         } catch (err) {
-          // eslint-disable-next-line no-console
-          console.error("delete role error:", err);
+          // // eslint-disable-next-line no-console
+          // console.error("delete role error:", err);
           if (err?.response?.status === 404) {
             messageApi.error(t("rolesList.toasts.roleDeleteMissing", "Your API does not expose delete role endpoint."));
           } else {

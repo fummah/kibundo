@@ -14,7 +14,7 @@ export default function ParentsList() {
         idField: "id",
         api: {
           listPath: "/parents",
-          updateStatusPath: (id) => `/parents/${id}/status`,
+          updateStatusPath: (id) => `/parent/${id}/status`,
           removePath: (id) => `/parent/${id}`,
           parseList: (data) => {
             const src = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
