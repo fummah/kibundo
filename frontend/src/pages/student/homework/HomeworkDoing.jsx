@@ -193,7 +193,8 @@ export default function HomeworkDoing() {
 
     if (file) {
       // status bubble with spinner (rendered by HomeworkChat for type="status")
-      loadingMsg = fmt("Ich analysiere dein Bild…", "agent", "status", { transient: true, agentName: selectedAgent || "ChildAgent" });
+      const fileType = file.type?.startsWith("image/") ? "Bild" : "Datei";
+      loadingMsg = fmt(`Ich analysiere deine ${fileType}…`, "agent", "status", { transient: true, agentName: selectedAgent || "ChildAgent" });
 
       // Push only loader message (no image preview), then open & expand the dock right away
       appendToChat(mode, scopedKey, [loadingMsg]);
@@ -222,13 +223,14 @@ export default function HomeworkDoing() {
         const isTimeoutError = serverMsg.includes("timeout") || e?.code === "ECONNABORTED";
         const isNetworkError = !e?.response || e?.message?.includes("Network Error");
         
+        const fileTypeLabel = file.type?.startsWith("image/") ? "Bild" : "Datei";
         let userMessage;
         if (isTimeoutError) {
-          userMessage = "Das Bild ist zu groß oder die Verbindung ist langsam. Bitte versuche es mit einem kleineren Bild oder warte einen Moment und versuche es erneut.";
+          userMessage = `Die ${fileTypeLabel} ist zu groß oder die Verbindung ist langsam. Bitte versuche es mit einer kleineren ${fileTypeLabel} oder warte einen Moment und versuche es erneut.`;
         } else if (isNetworkError) {
           userMessage = "Netzwerkfehler. Bitte überprüfe deine Internetverbindung und versuche es erneut.";
         } else if (isImageUrlError) {
-          userMessage = "Das Bild konnte nicht automatisch analysiert werden. Du kannst mir trotzdem Fragen stellen! Beschreibe mir einfach, was du für Hilfe brauchst.";
+          userMessage = `Die ${fileTypeLabel} konnte nicht automatisch analysiert werden. Du kannst mir trotzdem Fragen stellen! Beschreibe mir einfach, was du für Hilfe brauchst.`;
         } else {
           userMessage = `Analyse fehlgeschlagen (${status ?? "?"}). ${serverMsg}`;
         }
@@ -252,11 +254,11 @@ export default function HomeworkDoing() {
         
         let errorDisplayMsg;
         if (isTimeoutError) {
-          errorDisplayMsg = "Upload-Timeout - versuche ein kleineres Bild";
+          errorDisplayMsg = "Upload-Timeout - versuche eine kleinere Datei";
         } else if (isNetworkError) {
           errorDisplayMsg = "Netzwerkfehler - überprüfe deine Verbindung";
         } else if (isImageUrlError) {
-          errorDisplayMsg = "Bildformat-Problem - aber Chat funktioniert trotzdem!";
+          errorDisplayMsg = "Dateiformat-Problem - aber Chat funktioniert trotzdem!";
         } else {
           errorDisplayMsg = serverMsg;
         }
@@ -488,7 +490,7 @@ export default function HomeworkDoing() {
       <input
         ref={galleryInputRef}
         type="file"
-        accept="*/*"
+        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
         className="hidden"
         onChange={onGalleryChange}
       />
@@ -539,7 +541,7 @@ export default function HomeworkDoing() {
         >
           <div className="flex flex-col items-center gap-3 px-5 py-4 rounded-2xl bg-white shadow-2xl">
             <span className="inline-block w-9 h-9 border-2 border-[#1b3a1b] border-t-transparent rounded-full animate-spin" />
-            <span className="text-sm text-[#1b3a1b]">Bild wird hochgeladen…</span>
+            <span className="text-sm text-[#1b3a1b]">Datei wird hochgeladen und analysiert…</span>
           </div>
         </div>
       )}

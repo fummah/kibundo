@@ -126,8 +126,43 @@ export const handleUpload = async (req, res) => {
       Do NOT wrap the JSON in code blocks. Return pure JSON only.
     `;
 
-    // ✅ Send image/PDF to ChatGPT (gpt-4o supports both)
+    // ✅ OpenAI Vision API only supports images (JPEG, PNG, GIF, WebP)
     console.log("🤖 Sending to OpenAI for analysis...");
+    
+    const isImage = mimeType.startsWith('image/');
+    
+    // Check if file is not an image
+    if (!isImage) {
+      // For non-image files, provide helpful guidance in German
+      const extractedText = mimeType === 'application/pdf' 
+        ? "Ich habe eine PDF-Datei erhalten. Für die beste Analyse empfohlen: Konvertiere die PDF in Screenshots oder mache Fotos der Seiten, die du analysieren möchtest."
+        : "Ich habe eine Datei erhalten. Für die beste Analyse empfehle ich, Screenshots oder Fotos von den Seiten zu machen, die du analysieren möchtest.";
+      
+      const parsed = {
+        raw_text: extractedText,
+        questions: []
+      };
+      
+      // Update scan record with the message
+      await pool.query(
+        `UPDATE homework_scans SET raw_text = $1 WHERE id = $2`,
+        [extractedText, scan.id]
+      );
+      
+      // Return early with a helpful message
+      res.json({
+        success: true,
+        message: "Datei empfangen. Für die beste Analyse empfohlen: Verwende Screenshots oder Fotos.",
+        fileUrl,
+        scan: { ...scan, raw_text: extractedText },
+        parsed,
+        aiText: extractedText,
+        conversationId,
+      });
+      return;
+    }
+    
+    // For images, proceed with Vision API
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [

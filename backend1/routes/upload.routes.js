@@ -14,20 +14,31 @@ const upload = multer({
     files: 1
   },
   fileFilter: (req, file, cb) => {
-    // Accept common image formats and PDFs
+    // Accept images, PDFs, and Office documents
     const allowedTypes = [
       'image/jpeg',
       'image/jpg', 
       'image/png',
       'image/gif',
       'image/webp',
-      'application/pdf'
+      'image/bmp',
+      'image/tiff',
+      'application/pdf',
+      'application/msword', // .doc
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+      'application/vnd.ms-excel', // .xls
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-powerpoint', // .ppt
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+      'text/plain', // .txt
+      'application/zip', // Some files might be sent as zip
+      'application/x-zip-compressed' // Windows zip
     ];
     
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error(`File type ${file.mimetype} not supported. Please upload JPEG, PNG, GIF, WebP, or PDF files only.`), false);
+      cb(new Error(`File type ${file.mimetype} not supported. Please upload images (JPEG, PNG, GIF, WebP, BMP, TIFF) or documents (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT). For best analysis results, use images or screenshots.`), false);
     }
   }
 });

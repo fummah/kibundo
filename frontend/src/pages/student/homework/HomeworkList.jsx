@@ -167,7 +167,7 @@ export default function HomeworkList() {
     
     try {
       setLoading(true);
-      const { data } = await api.get('/user/homeworkscans', {
+      const { data } = await api.get('/homeworkscans', {
         params: { student_id: studentId },
         withCredentials: true, // Include auth headers
       });
