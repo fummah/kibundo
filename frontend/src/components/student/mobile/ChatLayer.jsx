@@ -117,13 +117,51 @@ export default function ChatLayer({
   const { getChatMessages, setChatMessages, clearChatMessages } = useChatDock();
   const { user: authUser } = useAuthContext();
   
+  // Always "general" mode — but we SCOPE the key PER STUDENT
+  const mode = "general";
+  const baseTaskId = "global";
+  const studentId = authUser?.id || "anon";
+  
   const [backendMessages, setBackendMessages] = useState([]);
   const [loadingBackendMessages, setLoadingBackendMessages] = useState(false);
-  const [conversationId, setConversationId] = useState(null);
+  
+  // 🔥 Load conversationId from localStorage on mount
+  const conversationIdKey = `kibundo.convId.${mode}.${studentId}`;
+  const [conversationId, setConversationId] = useState(() => {
+    try {
+      const saved = localStorage.getItem(conversationIdKey);
+      if (saved) {
+        console.log("🔄 CHATLAYER: Loaded existing conversationId:", saved);
+        return parseInt(saved, 10);
+      }
+    } catch (e) {
+      console.log("❌ CHATLAYER: Failed to load conversationId:", e);
+    }
+    return null;
+  });
 
+  // AI agent state - MOVED BEFORE fetchBackendMessages to fix initialization order
+  const [assignedAgent, setAssignedAgent] = useState({
+    type: "ChildAgent",
+    id: null,
+    name: "ChildAgent",
+  });
+
+  // Track which conversations we've already fetched
+  const fetchedConversationsRef = useRef(new Set());
+  
   // Fetch messages from backend
   const fetchBackendMessages = useCallback(async (convId) => {
-    if (!convId || loadingBackendMessages) return;
+    if (!convId) return;
+    
+    // Prevent duplicate fetches for the same conversation
+    if (fetchedConversationsRef.current.has(convId)) {
+      console.log("⏭️ CHATLAYER: Already fetched conversation", convId, "- skipping");
+      return;
+    }
+    
+    console.log("🔍 CHATLAYER: Fetching messages for conversation", convId);
+    fetchedConversationsRef.current.add(convId);
     
     setLoadingBackendMessages(true);
     try {
@@ -131,36 +169,34 @@ export default function ChatLayer({
         withCredentials: true,
       });
       if (response?.data && Array.isArray(response.data)) {
-        const formattedMessages = response.data.map(msg => formatMessage(
-          msg.content || "",
-          msg.sender === "student" ? "student" : "agent",
-          "text",
-          { 
-            id: msg.id,
-            timestamp: msg.created_at || msg.timestamp,
-            agentName: msg?.agent_name || assignedAgent.name || "ChildAgent"
-          }
-        ));
+        console.log("✅ CHATLAYER: Fetched", response.data.length, "messages");
+        const formattedMessages = response.data.map(msg => {
+          // 🔥 Extract agent name from meta field (stored by backend)
+          const agentName = msg?.meta?.agentName || msg?.agent_name || assignedAgent.name || "ChildAgent";
+          console.log("📝 Message from:", msg.sender, "agentName:", agentName, "meta:", msg?.meta);
+          
+          return formatMessage(
+            msg.content || "",
+            msg.sender === "student" ? "student" : "agent",
+            "text",
+            { 
+              id: msg.id,
+              timestamp: msg.created_at || msg.timestamp,
+              agentName: agentName
+            }
+          );
+        });
         setBackendMessages(formattedMessages);
       }
     } catch (error) {
+      console.log("❌ CHATLAYER: Error fetching messages:", error.message);
       setBackendMessages([]);
+      // Remove from fetched set so we can retry later
+      fetchedConversationsRef.current.delete(convId);
     } finally {
       setLoadingBackendMessages(false);
     }
-  }, [loadingBackendMessages]);
-
-  // Always "general" mode — but we SCOPE the key PER STUDENT
-  const mode = "general";
-  const baseTaskId = "global";
-  const studentId = authUser?.id || "anon";
-
-  // AI agent state
-  const [assignedAgent, setAssignedAgent] = useState({
-    type: "ChildAgent",
-    id: null,
-    name: "ChildAgent",
-  });
+  }, [assignedAgent.name]);
 
   // Scoped key: per-student thread
   const scopedTaskKey = useMemo(
@@ -204,31 +240,55 @@ export default function ChatLayer({
     }
   }, [studentId, getChatMessages, setChatMessages, clearChatMessages, baseTaskId]);
 
-  // Fetch backend messages when conversation ID changes
+  // 🔥 Save conversationId to localStorage whenever it changes
   useEffect(() => {
+    if (conversationId) {
+      try {
+        localStorage.setItem(conversationIdKey, conversationId.toString());
+        console.log("💾 CHATLAYER: Saved conversationId to localStorage:", conversationId);
+      } catch (e) {
+        console.log("❌ CHATLAYER: Failed to save conversationId:", e);
+      }
+    }
+  }, [conversationId, conversationIdKey]);
+
+  // Fetch backend messages when conversation ID changes (ONLY in uncontrolled mode)
+  useEffect(() => {
+    // 🔥 Don't fetch if in controlled mode (parent manages messages)
+    if (controlledMessagesProp) {
+      console.log("⏭️ CHATLAYER: Controlled mode - skipping backend fetch");
+      return;
+    }
+    
     if (conversationId) {
       fetchBackendMessages(conversationId);
     } else {
       setBackendMessages([]);
     }
-  }, [conversationId, fetchBackendMessages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, controlledMessagesProp]); // Only depend on conversationId, not the fetch function
 
   // Fetch selected AI agent from AIAgent.jsx settings
   useEffect(() => {
     const fetchSelectedAgent = async () => {
       try {
+        console.log("🤖 CHATLAYER: Fetching AI agent settings...");
         const { data } = await api.get('/aisettings', {
           withCredentials: true,
         });
         if (data?.child_default_ai) {
           const selectedAgent = data.child_default_ai;
+          console.log("✅ CHATLAYER: AI agent loaded:", selectedAgent);
           setAssignedAgent({
             type: selectedAgent,
             id: null,
             name: selectedAgent,
           });
+        } else {
+          console.log("⚠️ CHATLAYER: No child_default_ai found, using ChildAgent");
         }
       } catch (err) {
+        console.error("❌ CHATLAYER: Failed to fetch AI agent:", err);
       }
     };
     fetchSelectedAgent();
@@ -286,24 +346,28 @@ export default function ChatLayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setChatMessages, getChatMessages, scopedTaskKey]);
 
-  // Single source for reading (merge backend with existing messages to avoid duplicates)
+  // Single source for reading - backend is source of truth when available
   const msgs = useMemo(() => {
     if (controlledMessagesProp) {
       return controlledMessagesProp;
     }
     
-    // Get existing messages
-    const persisted = getChatMessages?.(stableModeRef.current, scopedTaskKey) || [];
-    const existingLocal = localMessages || [];
+    console.log("🔍 MSGS DEBUG:", {
+      backendCount: backendMessages.length,
+      localCount: localMessages.length,
+      scopedTaskKey
+    });
     
-    // If we have backend messages, merge them with existing messages
+    // 🔥 If we have backend messages, USE ONLY THEM - they are the complete source of truth
     if (backendMessages.length > 0) {
-      const merged = mergeById(backendMessages, [...persisted, ...existingLocal]);
-      return merged;
+      console.log("✅ USING backend messages (source of truth):", backendMessages.length, "messages");
+      return backendMessages; // Don't merge - backend is complete conversation history
     }
     
-    // Fallback to local storage if no backend messages
-    const merged = mergeById(persisted, existingLocal);
+    // 🔥 Otherwise, use localStorage OR local state (when backend not yet loaded)
+    const persisted = getChatMessages?.(stableModeRef.current, scopedTaskKey) || [];
+    const merged = mergeById(persisted, localMessages);
+    console.log("✅ USING localStorage:", merged.length, "messages");
     return merged;
   }, [controlledMessagesProp, backendMessages, getChatMessages, localMessages, scopedTaskKey]);
 
@@ -365,6 +429,7 @@ export default function ChatLayer({
   // Track last sent message to prevent duplicates
   const lastSentMessageRef = useRef(null);
   const lastSentTimeRef = useRef(0);
+  const sendingInProgressRef = useRef(false); // 🔥 Prevent concurrent sends
 
   // Auto scroll
   const lastLenRef = useRef(0);
@@ -383,7 +448,14 @@ export default function ChatLayer({
   const handleSendText = useCallback(
     async (text) => {
       const t = (text || "").trim();
-      if (!t || sending) return;
+      if (!t || sending || sendingInProgressRef.current) {
+        console.log("⏭️ CHATLAYER: Skipping send - empty or already sending");
+        return;
+      }
+      
+      // 🔥 LOCK: Prevent any concurrent sends
+      sendingInProgressRef.current = true;
+      console.log("📝 CHATLAYER: Starting to send message:", t.substring(0, 30));
 
       // Prevent duplicate messages within 2 seconds
       const now = Date.now();
@@ -391,6 +463,7 @@ export default function ChatLayer({
         lastSentMessageRef.current === t &&
         now - lastSentTimeRef.current < 2000
       ) {
+        sendingInProgressRef.current = false; // 🔥 UNLOCK
         return;
       }
 
@@ -403,6 +476,7 @@ export default function ChatLayer({
           recentStudentMessages[recentStudentMessages.length - 1];
         const messageTime = new Date(lastMessage.timestamp).getTime();
         if (now - messageTime < 3000) {
+          sendingInProgressRef.current = false; // 🔥 UNLOCK
           return;
         }
       }
@@ -426,16 +500,40 @@ export default function ChatLayer({
         if (onSendText) {
           await onSendText(t);
         } else {
+          console.log("📤 CHATLAYER: Sending to /ai/chat with conversationId:", conversationId);
+          console.log("🤖 CHATLAYER: Using AI agent:", assignedAgent.type, assignedAgent);
           
           const { data } = await api.post("ai/chat", {
             question: t,
             ai_agent: assignedAgent.type,
             agent_id: assignedAgent.id,
-            mode: "homework",
+            mode: "general", // ✅ Changed from "homework" to "general" for general chat
             student_id: studentId,
+            conversationId: conversationId, // 🔥 Send conversation ID for memory
           }, {
             withCredentials: true,
           });
+          
+          console.log("📥 CHATLAYER: Received response from backend:", {
+            hasConversationId: !!data?.conversationId,
+            conversationId: data?.conversationId,
+            answer: data?.answer?.substring(0, 50)
+          });
+          
+          // 🔥 Update conversation ID if backend returns a new one (first message)
+          if (data?.conversationId && data.conversationId !== conversationId) {
+            console.log("🔥 CHATLAYER: Updating conversationId from", conversationId, "to", data.conversationId);
+            setConversationId(data.conversationId);
+          } else if (data?.conversationId) {
+            console.log("✅ CHATLAYER: ConversationId already matches:", data.conversationId);
+            // 🔥 Refetch messages to get the latest from backend
+            console.log("🔄 CHATLAYER: Refetching messages after send...");
+            fetchedConversationsRef.current.delete(data.conversationId); // Clear cache
+            fetchBackendMessages(data.conversationId); // Refetch
+          } else {
+            console.log("❌ CHATLAYER: No conversationId in response!");
+          }
+          
           const aiMessage = formatMessage(
             data?.answer ??
               "Entschuldigung, ich konnte keine Antwort generieren.",
@@ -463,9 +561,10 @@ export default function ChatLayer({
         );
       } finally {
         setSending(false);
+        sendingInProgressRef.current = false; // 🔥 UNLOCK
       }
     },
-    [sending, onSendText, updateMessages, antdMessage, assignedAgent, msgs]
+    [sending, onSendText, updateMessages, antdMessage, assignedAgent, msgs, conversationId, studentId]
   );
 
   const sendText = useCallback(() => {
@@ -483,6 +582,16 @@ export default function ChatLayer({
 
   // Start new chat directly without confirmation
   const startNewChat = useCallback(() => {
+    // 🔥 Clear conversation ID to start fresh
+    setConversationId(null);
+    setBackendMessages([]);
+    try {
+      localStorage.removeItem(conversationIdKey);
+      console.log("🗑️ CHATLAYER: Cleared conversationId, starting new chat");
+    } catch (e) {
+      console.log("❌ CHATLAYER: Failed to clear conversationId:", e);
+    }
+    
     clearChatMessages?.(stableModeRef.current, stableTaskIdRef.current);
     setChatMessages?.(stableModeRef.current, stableTaskIdRef.current, []);
     setLocalMessages([]);
@@ -493,6 +602,7 @@ export default function ChatLayer({
   }, [
     clearChatMessages,
     setChatMessages,
+    conversationIdKey,
   ]);
 
   /** ---------- RENDER CONTENT ---------- */

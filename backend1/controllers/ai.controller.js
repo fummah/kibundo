@@ -115,23 +115,103 @@ CRITICAL HOMEWORK INSTRUCTIONS:
 
     console.log("🎯 System prompt being sent to AI:", systemContent);
     
+    // 🔥 CREATE OR RETRIEVE CONVERSATION
+    let convId = conversationId;
+    let conversationMessages = [];
+    
+    try {
+      const { pool } = require('../config/db.js');
+      
+      // If no conversation ID, create a new conversation
+      if (!convId) {
+        const userId = req.user?.id || req.user?.student?.[0]?.user_id;
+        const title = `Chat for ${trimmedContext.user?.first_name || "student"} ${new Date().toISOString()}`;
+        console.log("🆕 Creating new conversation for userId:", userId);
+        
+        const result = await pool.query(
+          `INSERT INTO conversations(user_id, title) VALUES($1,$2) RETURNING *`,
+          [userId || null, title]
+        );
+        convId = result.rows[0].id;
+        console.log("✅ Created new conversation:", convId);
+      }
+      
+      // Retrieve conversation history if conversation exists
+      if (convId) {
+        console.log("🔍 Fetching conversation history for conversationId:", convId);
+        const historyResult = await pool.query(
+          `SELECT sender, content FROM messages 
+           WHERE conversation_id=$1 
+           ORDER BY created_at ASC`,
+          [convId]
+        );
+        
+        const history = historyResult.rows || [];
+        console.log(`✅ Retrieved ${history.length} messages from conversation history`);
+        
+        // Convert database format to OpenAI format
+        conversationMessages = history.map(msg => ({
+          role: msg.sender === "student" ? "user" : 
+                msg.sender === "bot" || msg.sender === "agent" ? "assistant" : 
+                "user",
+          content: msg.content
+        }));
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to create/fetch conversation:', error);
+      // Continue without history
+    }
+    
+    // Build messages array with conversation history
+    let messages = [{ role: 'system', content: systemContent }];
+    
+    if (conversationMessages.length > 0) {
+      // Add conversation history BEFORE the current question
+      messages = messages.concat(conversationMessages);
+      console.log(`📜 Including ${conversationMessages.length} previous messages for context`);
+    }
+    
+    // Add the current question
+    messages.push({ role: 'user', content: question });
+    
+    console.log(`📤 Sending ${messages.length} messages to OpenAI (1 system + ${conversationMessages.length} history + 1 current)`);
+    
     const resp = await client.chat.completions.create({
       model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemContent },
-        { role: 'user', content: question }
-      ]
+      messages: messages
     });
 
     const answer = resp.choices?.[0]?.message?.content || '';
     
+    // 🔥 STORE MESSAGE IN CONVERSATION
+    if (convId) {
+      try {
+        const { pool } = require('../config/db.js');
+        // Store user message
+        await pool.query(
+          `INSERT INTO messages(conversation_id, sender, content) VALUES($1,$2,$3)`,
+          [convId, "student", question]
+        );
+        // Store AI response
+        await pool.query(
+          `INSERT INTO messages(conversation_id, sender, content, meta) VALUES($1,$2,$3,$4)`,
+          [convId, "bot", answer, JSON.stringify({ agentName: ai_agent || "ChildAgent" })]
+        );
+        console.log("✅ Stored messages in conversation:", convId);
+      } catch (error) {
+        console.warn('⚠️ Failed to store messages in conversation:', error);
+        // Continue even if storage fails
+      }
+    }
+    
     // Use the actual agent name from the request, or fallback to a default
     const agentDisplayName = ai_agent || "ChildAgent";
-    console.log("🎯 AI Chat sending back agentName:", agentDisplayName);
+    console.log("🎯 AI Chat sending back agentName:", agentDisplayName, "conversationId:", convId);
     
     res.json({ 
       answer,
-      agentName: agentDisplayName
+      agentName: agentDisplayName,
+      conversationId: convId // 🔥 Return conversation ID to frontend
     });
 
   } catch (err) {

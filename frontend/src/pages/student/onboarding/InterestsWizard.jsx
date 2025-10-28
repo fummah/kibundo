@@ -1,11 +1,12 @@
 import { useMemo, useState, useEffect } from "react";
-import { Card, Typography, Button } from "antd";
+import { Card, Typography, Button, App } from "antd";
 import { ArrowLeft, Volume2, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
+import { useAuthContext } from "@/context/AuthContext.jsx";
 import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
-import DeviceFrame from "@/components/student/mobile/DeviceFrame.jsx";
+import api from "@/api/axios";
 
 import globalBg from "../../../assets/backgrounds/global-bg.png";
 import intBack from "../../../assets/backgrounds/int-back.png";
@@ -64,10 +65,13 @@ const STEPS = [
 ];
 
 export default function InterestsWizard() {
+  const { message } = App.useApp();
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { buddy, interests, setInterests } = useStudentApp();
+  const { user } = useAuthContext();
+  const { buddy, interests, setInterests, profile, ttsEnabled, theme } = useStudentApp();
   const [stepIdx, setStepIdx] = useState(0);
+  const [saving, setSaving] = useState(false);
   const [answers, setAnswers] = useState(() =>
     interests?.length ? [...interests] : []
   );
@@ -108,19 +112,70 @@ export default function InterestsWizard() {
     setStepIdx((i) => i - 1);
   };
 
-  const onNext = () => {
-    if (stepIdx < STEPS.length - 1) setStepIdx((i) => i + 1);
-    else {
+  const onNext = async () => {
+    if (stepIdx < STEPS.length - 1) {
+      setStepIdx((i) => i + 1);
+    } else {
       const final = answers.filter(Boolean);
       setInterests(final);
-      try { localStorage.setItem("kibundo_interests", JSON.stringify(final)); } catch {}
+      
+      try { 
+        localStorage.setItem("kibundo_interests", JSON.stringify(final)); 
+      } catch {}
+      
+      // Save to database
+      setSaving(true);
+      try {
+        // Find student ID
+        const allRes = await api.get("/allstudents", {
+          validateStatus: (s) => s >= 200 && s < 500,
+        });
+        
+        const all = Array.isArray(allRes?.data) ? allRes.data : [];
+        const match = all.find(
+          (s) =>
+            s?.user?.id === user?.id ||
+            s?.user_id === user?.id ||
+            s?.id === user?.id
+        );
+        
+        if (match && match.id) {
+          // Save interests to database
+          const payload = {
+            profile: {
+              name: profile?.name ?? "",
+              ttsEnabled: Boolean(ttsEnabled),
+              theme: theme || "indigo",
+            },
+            interests: final,
+            buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
+          };
+          
+          console.log("💾 Saving interests from wizard to database:", {
+            studentId: match.id,
+            interests: final
+          });
+          
+          await api.patch(`/student/${match.id}`, payload);
+          console.log("✅ Interests saved to database successfully!");
+          message.success?.("Interessen erfolgreich gespeichert!");
+        } else {
+          console.warn("⚠️ No student record found - interests saved locally only");
+        }
+      } catch (error) {
+        console.error("❌ Failed to save interests to database:", error);
+        // Don't show error to user - they can still proceed
+      } finally {
+        setSaving(false);
+      }
+      
       navigate("/student/onboarding/success");
     }
   };
 
   return (
-    <div className="relative min-h-[100svh] md:min-h-screen overflow-hidden">
-       <DeviceFrame>
+    <App>
+      <div className="relative min-h-[100svh] md:min-h-screen overflow-hidden">
       {/* Backgrounds */}
       <img
         src={globalBg}
@@ -138,8 +193,8 @@ export default function InterestsWizard() {
       {/* Page content */}
       <div
         className="
-          relative z-10 w-full max-w-[480px] mx-auto
-          px-3 md:px-4 py-4
+          relative z-10 w-full max-w-[800px] mx-auto
+          px-4 md:px-8 py-6
           min-h-[100svh] md:min-h-screen
           flex flex-col
         "
@@ -315,23 +370,23 @@ export default function InterestsWizard() {
 
         {/* Footer Aktionen */}
         <div className="mt-5 flex gap-2 mb-[env(safe-area-inset-bottom,0)]">
-          <Button onClick={onBack} className="rounded-xl">
+          <Button onClick={onBack} disabled={saving} className="rounded-xl">
             Zurück
           </Button>
           <Button
             type="primary"
-            disabled={!canNext}
+            disabled={!canNext || saving}
+            loading={saving}
             onClick={onNext}
             className="rounded-xl"
           >
-            Weiter
+            {stepIdx === STEPS.length - 1 ? "Fertig" : "Weiter"}
           </Button>
         </div>
 
        
       </div>
-       </DeviceFrame>
     </div>
-     
+    </App>
   );
 }

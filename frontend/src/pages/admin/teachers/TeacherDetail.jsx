@@ -2,8 +2,10 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { Tag, Form, Select, Button, Spin, Modal, App } from "antd";
+import { KeyOutlined } from "@ant-design/icons";
 import EntityDetail from "@/components/EntityDetail.jsx";
 import api from "@/api/axios";
+import EditCredentialsModal from "@/components/common/EditCredentialsModal";
 
 // Component to render the Add Class modal content
 function AddClassModal({ id, onSuccess, onClose, messageApi }) {
@@ -97,6 +99,8 @@ export default function TeacherDetail() {
   const { message } = App.useApp();
 
   const [addClassModalOpen, setAddClassModalOpen] = useState(false);
+  const [credentialsModalVisible, setCredentialsModalVisible] = useState(false);
+  const [currentEntity, setCurrentEntity] = useState(null);
 
 
   // Stable config object (does not depend on location)
@@ -173,6 +177,8 @@ export default function TeacherDetail() {
       { label: "Phone Number", name: "contact_number" },
       { label: "Grade", name: "grade", editable: true },
       { label: "Bundesland", name: "bundesland" },
+      { label: "Portal Login", name: "username", editable: true },
+      { label: "Portal Password", name: "plain_pass", editable: true, type: "password" },
       { label: "Member Since", name: "member_since", editable: false },
     ],
 
@@ -201,7 +207,31 @@ export default function TeacherDetail() {
 
   return (
     <App>
-      <EntityDetail cfg={cfg} />
+      <EntityDetail 
+        cfg={cfg}
+        onEntityLoad={(entity) => setCurrentEntity(entity)}
+        extraHeaderButtons={(entity) => (
+          <Button
+            type="default"
+            icon={<KeyOutlined />}
+            onClick={() => setCredentialsModalVisible(true)}
+            disabled={!entity?.raw?.user?.id}
+          >
+            Edit Login Credentials
+          </Button>
+        )}
+      />
+      
+      {/* Edit Credentials Modal */}
+      <EditCredentialsModal
+        visible={credentialsModalVisible}
+        onCancel={() => setCredentialsModalVisible(false)}
+        userId={currentEntity?.raw?.user?.id}
+        userName={currentEntity?.name || 'Teacher'}
+        onSuccess={() => {
+          message.success('Credentials updated successfully');
+        }}
+      />
     </App>
   );
 }

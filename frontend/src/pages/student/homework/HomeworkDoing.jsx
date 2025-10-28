@@ -44,7 +44,7 @@ export default function HomeworkDoing() {
   const location = useLocation();
 
   // write into chat storage directly so preview + status show instantly
-  const { openChat, expandChat, getChatMessages, setChatMessages } = useChatDock();
+  const { openChat, expandChat, getChatMessages, setChatMessages, closeChat } = useChatDock();
   const { user: authUser } = useAuthContext();
 
   const studentId = authUser?.id ?? "anon";
@@ -105,26 +105,53 @@ export default function HomeworkDoing() {
     }
   };
 
-  // Resume deep-linked task (if any)
+  // Resume deep-linked task (if any) OR open chat from homework list
   useEffect(() => {
     if (!openChat || !initialLoad.current) return;
     initialLoad.current = false;
 
+    // Priority 1: Check for taskId (from HomeworkList click on existing homework)
+    const taskId = location.state?.taskId;
+    if (taskId) {
+      const existing = loadTasks().find((t) => t.id === taskId);
+      if (existing) {
+        console.log("📝 HOMEWORK: Opening task chat from ID:", taskId);
+        // 🔥 Close the FooterChat before navigating
+        closeChat?.();
+        // Navigate directly to chat with the task context
+        navigate("/student/homework/chat", { 
+          replace: true,
+          state: { task: existing, taskId: taskId }
+        });
+        return;
+      }
+    }
+
+    // Priority 2: Check for full task object (legacy support)
     const taskFromState = location.state?.task;
-    if (!taskFromState?.id) return;
+    if (taskFromState?.id) {
+      const existing = loadTasks().find((t) => t.id === taskFromState.id);
+      const t = existing || taskFromState;
 
-    const existing = loadTasks().find((t) => t.id === taskFromState.id);
-    const t = existing || taskFromState;
+      console.log("📝 HOMEWORK: Opening task chat from object:", t.id);
+      // 🔥 Close the FooterChat before navigating
+      closeChat?.();
+      navigate("/student/homework/chat", { 
+        replace: true,
+        state: { task: t, taskId: t.id }
+      });
+      return;
+    }
 
-    openChat({
-      mode: "homework",
-      task: { ...t, userId: studentId },
-      key: `homework:${t.id}::u:${studentId}`,
-      restore: true,
-      focus: "last",
-    });
-    expandChat?.(true);
-  }, [openChat, expandChat, location.state, studentId]);
+    // Priority 3: Generic "openHomeworkChat" flag (new homework, no existing task)
+    if (location.state?.openHomeworkChat) {
+      console.log("📝 HOMEWORK: Ready to add new homework on HomeworkDoing page");
+      // Stay on this page - user will scan/upload homework here
+      // Don't redirect to chat - let them use camera/gallery buttons
+      closeChat?.(); // Close any existing chat
+      return;
+    }
+  }, [openChat, expandChat, closeChat, location.state, studentId, navigate]);
 
   /* ---------------- upload via API ---------------- */
   const uploadWithApi = async (file) => {
@@ -164,6 +191,67 @@ export default function HomeworkDoing() {
     const prev = getChatMessages?.(mode, scopedKey) || [];
     const next = prev.map((m) => (m.id === msgId ? replacer(m) : m));
     setChatMessages?.(mode, scopedKey, next);
+  };
+
+  /* ------ Image Compression ------ */
+  const compressImage = async (file, maxSizeMB = 10) => {
+    // Skip compression for non-images or small files
+    if (!file.type.startsWith('image/') || file.size <= maxSizeMB * 1024 * 1024) {
+      return file;
+    }
+
+    console.log(`🗜️ Compressing image (${(file.size / 1024 / 1024).toFixed(2)}MB)...`);
+
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          // Calculate new dimensions (max 2048px on longest side)
+          const MAX_DIMENSION = 2048;
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+            if (width > height) {
+              height = (height / width) * MAX_DIMENSION;
+              width = MAX_DIMENSION;
+            } else {
+              width = (width / height) * MAX_DIMENSION;
+              height = MAX_DIMENSION;
+            }
+          }
+
+          // Create canvas and compress
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Convert to blob with quality reduction
+          canvas.toBlob(
+            (blob) => {
+              if (blob && blob.size < file.size) {
+                const compressedFile = new File([blob], file.name, {
+                  type: 'image/jpeg',
+                  lastModified: Date.now(),
+                });
+                console.log(`✅ Compressed: ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`);
+                resolve(compressedFile);
+              } else {
+                console.log('⚠️ Compression did not reduce size, using original');
+                resolve(file);
+              }
+            },
+            'image/jpeg',
+            0.85 // 85% quality
+          );
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
   const openAndFocusChat = (taskId, extraTaskData = {}) => {
@@ -209,7 +297,9 @@ export default function HomeworkDoing() {
     if (file) {
       setUploading(true); // ⬅️ show centered overlay
       try {
-        scanData = await uploadWithApi(file);
+        // Compress large images before upload
+        const fileToUpload = await compressImage(file);
+        scanData = await uploadWithApi(fileToUpload);
       } catch (e) {
         const status = e?.response?.status;
         const serverMsg =
@@ -276,8 +366,17 @@ export default function HomeworkDoing() {
       ? scanData.parsed.questions 
       : Array.isArray(scanData?.qa) ? scanData.qa : [];
     
-    // Derive subject from extracted text (look for subject keywords)
+    // Get detected subject from AI analysis (first priority) or derive from text (fallback)
+    const detectedSubject = scanData?.parsed?.subject || scanData?.scan?.detected_subject;
+    
     const deriveSubject = (text) => {
+      // If AI already detected the subject, use it!
+      if (detectedSubject) {
+        console.log("📚 Using AI-detected subject:", detectedSubject);
+        return detectedSubject;
+      }
+      
+      // Fallback: derive from text if AI didn't provide a subject
       const lowerText = text.toLowerCase();
       if (lowerText.includes('mathe') || lowerText.includes('rechnen') || lowerText.includes('zahl')) return 'Mathe';
       if (lowerText.includes('deutsch') || lowerText.includes('text') || lowerText.includes('lesen')) return 'Deutsch';
@@ -394,6 +493,37 @@ export default function HomeworkDoing() {
         : Array.isArray(scanData?.qa)
         ? scanData.qa
         : [];
+      
+      // Get detected subject from AI
+      const aiDetectedSubject = scanData?.parsed?.subject || scanData?.scan?.detected_subject;
+      
+      // Build messages to append
+      const messagesToAppend = [];
+      
+      // Add subject notification if detected
+      if (aiDetectedSubject) {
+        const subjectEmoji = {
+          'Mathe': '🔢',
+          'Deutsch': '📗',
+          'Englisch': '🇬🇧',
+          'Sachkunde': '🔬',
+          'Erdkunde': '🌍',
+          'Kunst': '🎨',
+          'Musik': '🎵',
+          'Sport': '⚽',
+        }[aiDetectedSubject] || '📚';
+        
+        messagesToAppend.push(
+          fmt(
+            `${subjectEmoji} Fach erkannt: ${aiDetectedSubject}`,
+            "agent",
+            "text",
+            { agentName: selectedAgent || "ChildAgent" }
+          )
+        );
+      }
+      
+      // Add extraction result
       const resultMsg =
         extracted || qa.length
           ? fmt({ extractedText: extracted, qa }, "agent", "table", { agentName: selectedAgent || "ChildAgent" })
@@ -403,8 +533,10 @@ export default function HomeworkDoing() {
               "text",
               { agentName: selectedAgent || "ChildAgent" }
             );
+      
+      messagesToAppend.push(resultMsg);
 
-      appendToChat(mode, scopedKey, [resultMsg]);
+      appendToChat(mode, scopedKey, messagesToAppend);
 
       // ⬇️ Update the chat with conversationId and scanId from upload response
       // Re-open the chat with updated task data (conversationId, scanId)

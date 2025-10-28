@@ -150,7 +150,7 @@ const REQUIRED_REMOVE_PATH = {
   invoices: (id) => `/invoice/${id}`,
 };
 
-export default function EntityDetail({ cfg }) {
+export default function EntityDetail({ cfg, extraHeaderButtons, onEntityLoad }) {
   const navigate = useNavigate();
   const { id } = useParams();
   const location = useLocation();
@@ -221,6 +221,13 @@ export default function EntityDetail({ cfg }) {
   const [activeTab, setActiveTab] = useState("information");
   const [addCommentOpen, setAddCommentOpen] = useState(false);
   const [linkChildModalOpen, setLinkChildModalOpen] = useState(false);
+
+  // Call onEntityLoad callback when entity changes
+  useEffect(() => {
+    if (entity && onEntityLoad) {
+      onEntityLoad(entity);
+    }
+  }, [entity, onEntityLoad]);
 
   // Track if initial load is done to prevent flicker
   const [initialLoadDone, setInitialLoadDone] = useState(!!parsedPrefill);
@@ -503,9 +510,8 @@ export default function EntityDetail({ cfg }) {
     if (entity && infoForm && id) {
       const formValues = {
         ...entity,
-        portal_login:
+        username:
           entity.username ||
-          entity.portal_login ||
           (() => {
             const firstName =
               entity.first_name || entity.user?.first_name || "";
@@ -519,8 +525,8 @@ export default function EntityDetail({ cfg }) {
             }
             return "";
           })(),
-        portal_password:
-          entity.plain_pass || entity.portal_password || "testpass1234",
+        plain_pass:
+          entity.plain_pass || "testpass1234",
       };
 
       // Only set form values if they haven't been manually changed
@@ -533,11 +539,11 @@ export default function EntityDetail({ cfg }) {
       }, 100);
 
       const updates = {};
-      if (!entity.portal_login && formValues.portal_login) {
-        updates.portal_login = formValues.portal_login;
+      if (!entity.username && formValues.username) {
+        updates.username = formValues.username;
       }
-      if (!entity.portal_password) {
-        updates.portal_password = formValues.portal_password;
+      if (!entity.plain_pass) {
+        updates.plain_pass = formValues.plain_pass;
       }
 
       if (Object.keys(updates).length > 0) {
@@ -606,9 +612,7 @@ export default function EntityDetail({ cfg }) {
           : field.name;
         return (
           name !== "parent_id" &&
-          !name.includes("parent.id") &&
-          name !== "portal_login" &&
-          name !== "portal_password"
+          !name.includes("parent.id")
         );
       })
       .map((field) => {
@@ -646,13 +650,6 @@ export default function EntityDetail({ cfg }) {
 
     const baseFields = [
       { name: idField, label: "ID", editable: false, type: "text" },
-      { name: "portal_login", label: "Portal login", editable: true, type: "text" },
-      {
-        name: "portal_password",
-        label: "Portal password",
-        editable: true,
-        type: "password",
-      },
     ];
 
     return [...baseFields, ...configuredFields];
@@ -708,7 +705,10 @@ export default function EntityDetail({ cfg }) {
       delete transformedValues.grade;
 
       if (typeof apiObj.updatePath === "function") {
-        // console.log("Sending to backend:", transformedValues);
+        console.log("🚀 Frontend sending to backend:", {
+          ...transformedValues,
+          plain_pass: transformedValues.plain_pass ? '***' : undefined
+        });
         await api.put(apiObj.updatePath(id), transformedValues, { withCredentials: true });
         messageApi.success("Saved");
         await load();
@@ -1304,7 +1304,7 @@ export default function EntityDetail({ cfg }) {
   }, [commCfg?.enabled, comments, commentsLoading, addComment, addCommentOpen]);
 
   const informationTab = useMemo(() => {
-    let portalLogin = entity?.username || entity?.portal_login;
+    let portalLogin = entity?.username;
 
     if (!portalLogin) {
       const firstName = entity?.first_name || entity?.user?.first_name || "";
@@ -1320,9 +1320,9 @@ export default function EntityDetail({ cfg }) {
 
     const formInitialValues = {
       ...entity,
-      portal_login: portalLogin || "",
-      portal_password:
-        entity?.plain_pass || entity?.portal_password || "testpass1234",
+      username: portalLogin || "",
+      plain_pass:
+        entity?.plain_pass || "testpass1234",
     };
 
     return (
@@ -1340,7 +1340,9 @@ export default function EntityDetail({ cfg }) {
             >
               <div className="space-y-3">
                 {editableInfoFields.map((field, index) => {
-                  const isPassword = field.name?.toLowerCase().includes("password");
+                  const isPassword = field.name?.toLowerCase().includes("password") || 
+                                     field.name?.toLowerCase().includes("plain_pass") ||
+                                     field.type === "password";
                   const isEmail = field.name?.toLowerCase().includes("email");
                   const isPhone = field.name?.toLowerCase().includes("phone");
                   const isStatus = field.name?.toLowerCase() === "status";
@@ -2018,28 +2020,50 @@ export default function EntityDetail({ cfg }) {
   ];
 
   const customTabKeys = useMemo(() => {
-    const t = safeCfg.tabs || {};
-    return Object.keys(t)
-      .filter((k) => !BUILTIN_KEYS.includes(k))
-      .filter((k) => t[k]?.enabled && typeof t[k]?.render === "function");
+    try {
+      const t = safeCfg.tabs || {};
+      const keys = Object.keys(t)
+        .filter((k) => !BUILTIN_KEYS.includes(k))
+        .filter((k) => t[k]?.enabled && typeof t[k]?.render === "function");
+      console.log("customTabKeys computed:", keys);
+      return keys;
+    } catch (error) {
+      console.error("Error computing customTabKeys:", error);
+      return [];
+    }
   }, [safeCfg.tabs]);
 
   const explicitOrder = useMemo(() => {
-    const order1 = Array.isArray(safeCfg.tabsOrder) ? safeCfg.tabsOrder : null;
-    const order2 = Array.isArray(safeCfg.tabs?.order) ? safeCfg.tabs.order : null;
-    const base = order1 || order2;
-    if (base && base.length) return base;
-    return [
-      "information",
-      "related",
-      ...customTabKeys,
-      "activity",
-      "tasks",
-      "documents",
-      "communication",
-      "billing",
-      "audit",
-    ];
+    try {
+      const order1 = Array.isArray(safeCfg.tabsOrder) ? safeCfg.tabsOrder : null;
+      const order2 = Array.isArray(safeCfg.tabs?.order) ? safeCfg.tabs.order : null;
+      const base = order1 || order2;
+      if (Array.isArray(base) && base.length > 0) {
+        console.log("explicitOrder using base:", base);
+        return base;
+      }
+      
+      // Safety check for customTabKeys
+      const safeCustomKeys = Array.isArray(customTabKeys) ? customTabKeys : [];
+      console.log("explicitOrder custom keys:", safeCustomKeys);
+      
+      const result = [
+        "information",
+        "related",
+        ...safeCustomKeys,
+        "activity",
+        "tasks",
+        "documents",
+        "communication",
+        "billing",
+        "audit",
+      ];
+      console.log("explicitOrder result:", result);
+      return result;
+    } catch (error) {
+      console.error("Error computing explicitOrder:", error);
+      return ["information", "related"];
+    }
   }, [safeCfg.tabsOrder, safeCfg.tabs, customTabKeys]);
 
   const ActivityTab = useMemo(() => {
@@ -2110,9 +2134,14 @@ export default function EntityDetail({ cfg }) {
       communication: commCfg?.enabled ? CommunicationPanel : null,
       activity: ActivityTab,
     };
-    Object.keys(customTabPanels).forEach((key) => {
-      map[key] = customTabPanels[key];
-    });
+    
+    // Safety check for customTabPanels
+    if (customTabPanels && typeof customTabPanels === 'object') {
+      Object.keys(customTabPanels).forEach((key) => {
+        map[key] = customTabPanels[key];
+      });
+    }
+    
     return map;
   }, [
     informationTab,
@@ -2130,36 +2159,51 @@ export default function EntityDetail({ cfg }) {
   ]);
 
   const tabItems = useMemo(() => {
-    const items = [];
-    const seenKeys = new Set();
+    try {
+      const items = [];
+      const seenKeys = new Set();
 
-    explicitOrder.forEach((key) => {
-      const panel = panelByKey[key];
-      if (!panel || seenKeys.has(key)) return;
+      // Safety check for explicitOrder
+      const safeOrder = Array.isArray(explicitOrder) ? explicitOrder : [];
+      console.log("tabItems - processing order:", safeOrder);
+      
+      safeOrder.forEach((key) => {
+        const panel = panelByKey[key];
+        if (!panel || seenKeys.has(key)) return;
 
-      seenKeys.add(key);
-      const label =
-        safeCfg.tabs?.[key]?.label ||
-        (key.charAt(0).toUpperCase() + key.slice(1));
+        seenKeys.add(key);
+        const label =
+          safeCfg.tabs?.[key]?.label ||
+          (key.charAt(0).toUpperCase() + key.slice(1));
 
-      items.push({
-        key,
-        label,
-        children: <div key={`tab-content-${key}`}>{panel}</div>,
-        forceRender: true,
+        items.push({
+          key,
+          label,
+          children: <div key={`tab-content-${key}`}>{panel}</div>,
+          forceRender: true,
+        });
       });
-    });
 
-    if (!seenKeys.has("information")) {
-      items.unshift({
+      if (!seenKeys.has("information")) {
+        items.unshift({
+          key: "information",
+          label: "Information",
+          children: <div key="tab-content-information">{informationTab}</div>,
+          forceRender: true,
+        });
+      }
+
+      console.log("tabItems generated:", items.map(i => i.key));
+      return items;
+    } catch (error) {
+      console.error("Error generating tabItems:", error);
+      return [{
         key: "information",
         label: "Information",
-        children: <div key="tab-content-information">{informationTab}</div>,
+        children: <div>Error loading tabs. Please refresh the page.</div>,
         forceRender: true,
-      });
+      }];
     }
-
-    return items;
   }, [explicitOrder, panelByKey, safeCfg.tabs, informationTab]);
 
   /* ---------- Login as customer handler (SSO; Student/Parent/Teacher) ---------- */
@@ -2183,7 +2227,7 @@ export default function EntityDetail({ cfg }) {
     try {
       setSaving(true);
 
-      let username = entity?.username || entity?.portal_login;
+      let username = entity?.username;
       if (!username) {
         const firstName = entity?.first_name || entity?.user?.first_name || "";
         const lastName = entity?.last_name || entity?.user?.last_name || "";
@@ -2193,7 +2237,7 @@ export default function EntityDetail({ cfg }) {
         username = `${firstTwo}${firstOne}${entityId}`;
       }
       const password =
-        entity?.plain_pass || entity?.portal_password || entity?.password || "testpass1234";
+        entity?.plain_pass || entity?.password || "testpass1234";
 
       if (!username || !password) {
         try {
@@ -2334,7 +2378,6 @@ export default function EntityDetail({ cfg }) {
               {titleName} (
               {entity?.login ||
                 entity?.username ||
-                entity?.portal_login ||
                 `${safeCfg.entityKey || "ID"} - ${entity?.[idField]}`}
               )
             </h1>
@@ -2349,7 +2392,7 @@ export default function EntityDetail({ cfg }) {
       {/* Entity Summary Bar */}
       <Card className="!rounded-xl mb-4" styles={{ body: { padding: "16px 24px" } }}>
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <Text strong className="text-base">
               {currentEntityType === "students"
                 ? "Student"
@@ -2359,21 +2402,28 @@ export default function EntityDetail({ cfg }) {
                 ? "Teacher"
                 : "Entity"}
             </Text>
+            
+            
             {entity?.balance !== undefined && (
-              <Text type="secondary">
-                Account balance:{" "}
-                <Text
-                  strong
-                  className={entity.balance < 0 ? "text-red-600" : ""}
-                >
-                  {entity.balance}
+              <>
+                <Text type="secondary" className="mx-2">|</Text>
+                <Text type="secondary">
+                  Account balance:{" "}
+                  <Text
+                    strong
+                    className={entity.balance < 0 ? "text-red-600" : ""}
+                  >
+                    {entity.balance}
+                  </Text>
                 </Text>
-              </Text>
+              </>
             )}
           </div>
           <Space wrap>
             {/* Custom Actions */}
             {safeCfg.customActions && safeCfg.customActions(entity)}
+            {/* Extra Header Buttons (from prop) */}
+            {extraHeaderButtons && typeof extraHeaderButtons === 'function' && extraHeaderButtons(entity)}
             <Dropdown menu={actionsMenu} trigger={["click"]}>
               <Button>
                 Actions <span className="ml-1">▼</span>

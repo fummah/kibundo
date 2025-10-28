@@ -8,6 +8,7 @@ import {
   ExperimentOutlined,
   QuestionCircleOutlined,
   DeleteOutlined,
+  MoreOutlined,
 } from "@ant-design/icons";
 
 // Subject visual meta
@@ -84,7 +85,9 @@ const HomeworkCard = ({
   const scanDate = formatScanDate(createdAt);
 
   const handleCardClick = () => {
-    setShowActions(!showActions);
+    // 🔥 Open the chat directly when card is clicked
+    console.log("📋 HomeworkCard clicked, opening chat for:", id);
+    onOpen?.();
   };
 
   const handleActionClick = (e, action) => {
@@ -92,6 +95,11 @@ const HomeworkCard = ({
     if (action === 'edit') onEdit?.();
     if (action === 'delete') onDelete?.();
     if (action === 'mark') onMarkDone?.();
+  };
+
+  const handleToggleActions = (e) => {
+    e.stopPropagation();
+    setShowActions(!showActions);
   };
 
   // Format due date to match the style (Mi. 10.08.)
@@ -119,6 +127,15 @@ const HomeworkCard = ({
       tabIndex={0}
       aria-label={`Aufgabe: ${subject || "Sonstiges"} – ${what || ""}`}
     >
+      {/* Menu Button (top-right) */}
+      <button
+        className="absolute top-3 right-3 w-8 h-8 bg-white/80 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-all shadow-sm"
+        onClick={handleToggleActions}
+        aria-label="Aktionen anzeigen"
+      >
+        <MoreOutlined className="text-gray-700" style={{ fontSize: 16 }} />
+      </button>
+
       {/* Top Section - Icon */}
       <div className="flex justify-center mb-4">
         <div className="w-12 h-12 bg-white rounded-full border border-gray-300 flex items-center justify-center">

@@ -29,6 +29,12 @@ export default defineConfig(({ mode }) => {
           // If your backend does NOT have the /api prefix, uncomment:
           // rewrite: (p) => p.replace(/^\/api/, ""),
         },
+        // Frontend -> /uploads/... will be proxied to your backend
+        "/uploads": {
+          target: backend,
+          changeOrigin: true,
+          secure: false,
+        },
       },
     },
     build: {

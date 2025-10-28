@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Table, Tag, Button, Select, Typography, Descriptions, Tabs,
-  Space, message, Badge, Tooltip, Skeleton, Empty, Alert, Modal
+  Space, Badge, Tooltip, Skeleton, Empty, Alert, App
 } from 'antd';
 import { 
   FilePdfOutlined, 
@@ -17,7 +17,7 @@ import dayjs from 'dayjs';
 const { Title, Text } = Typography;
 
 const BillingTab = ({ parent, parentId: parentIdProp }) => {
-  const [messageApi, contextHolder] = message.useMessage();
+  const { message: messageApi, modal } = App.useApp();
   const params = useParams();            // expects a route like /parents/:id
   const routeId = params?.id && Number.isFinite(+params.id) ? +params.id : params?.id;
   const parentId = parent?.id ?? parentIdProp ?? routeId ?? null;
@@ -52,7 +52,7 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
     } catch (error) {
       console.error('Error fetching invoices:', error);
       setInvoices([]);
-      message.error('Failed to load invoices');
+      messageApi.error('Failed to load invoices');
     } finally {
       setLoading((p) => ({ ...p, invoices: false }));
     }
@@ -162,7 +162,7 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
     } catch (error) {
       console.error('Error fetching subscriptions:', error);
       setSubscriptions([]);
-      message.error('Failed to load subscriptions');
+      messageApi.error('Failed to load subscriptions');
     } finally {
       setLoading((p) => ({ ...p, subscriptions: false }));
     }
@@ -177,7 +177,7 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
 
   const handleGenerateInvoice = async (subscription) => {
     if (!subscription?.id || !parentId) {
-      message.error('Fehlende Abonnement- oder Eltern-ID');
+      messageApi.error('Fehlende Abonnement- oder Eltern-ID');
       return;
     }
     
@@ -212,7 +212,7 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
 
       // Show preview before saving
       const confirmCreate = await new Promise((resolve) => {
-        Modal.confirm({
+        modal.confirm({
           title: 'Rechnungsvorschau',
           icon: <FilePdfOutlined />,
           width: 900,
@@ -229,7 +229,7 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
       });
 
       if (!confirmCreate) {
-        message.info('Vorgang abgebrochen');
+        messageApi.info('Vorgang abgebrochen');
         return;
       }
 
@@ -246,18 +246,18 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
       
       // Refresh the invoices list
       await fetchInvoices();
-      message.success('Rechnung erfolgreich erstellt');
+      messageApi.success('Rechnung erfolgreich erstellt');
       
     } catch (error) {
       console.error('Fehler beim Erstellen der Rechnung:', error);
-      message.error(error?.response?.data?.message || 'Fehler beim Erstellen der Rechnung');
+      messageApi.error(error?.response?.data?.message || 'Fehler beim Erstellen der Rechnung');
     } finally {
       setLoading((p) => ({ ...p, invoice: false }));
     }
   };
 
   const handleUpdateBillingCycle = async (subscriptionId, newCycle) => {
-    if (!subscriptionId) return message.error('Invalid subscription');
+    if (!subscriptionId) return messageApi.error('Invalid subscription');
     try {
       setLoading((p) => ({ ...p, updating: true }));
       // Update subscription billing cycle
@@ -275,10 +275,10 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
         )
       );
       
-      message.success('Billing cycle updated successfully');
+      messageApi.success('Billing cycle updated successfully');
     } catch (error) {
       console.error('Update error:', error);
-      message.error(error?.response?.data?.message || 'Failed to update billing cycle');
+      messageApi.error(error?.response?.data?.message || 'Failed to update billing cycle');
     } finally {
       setLoading((p) => ({ ...p, updating: false }));
     }
@@ -387,6 +387,31 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
     },
   ];
 
+  const handleGenerateApiUsageInvoice = async () => {
+    if (!parentId) {
+      messageApi.error('No parent selected');
+      return;
+    }
+    
+    try {
+      setLoading((p) => ({ ...p, invoice: true }));
+      
+      const { data } = await api.post(`/parent/${parentId}/generate-api-invoice`);
+      
+      if (data.success) {
+        messageApi.success('API usage invoice generated successfully');
+        await fetchInvoices();
+      } else {
+        messageApi.error(data.message || 'Failed to generate invoice');
+      }
+    } catch (error) {
+      console.error('Error generating API usage invoice:', error);
+      messageApi.error(error?.response?.data?.message || 'Failed to generate invoice');
+    } finally {
+      setLoading((p) => ({ ...p, invoice: false }));
+    }
+  };
+
   const invoiceColumns = [
     {
       title: 'Invoice',
@@ -397,14 +422,34 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
           <Text type="secondary" className="text-xs">
             {record?.created_at ? dayjs(record.created_at).format('MMM D, YYYY') : '—'}
           </Text>
+          {record?.lines && record.lines.length > 0 && (
+            <div className="mt-1">
+              {record.lines.map((line, idx) => (
+                <Tag key={idx} color="blue" className="text-xs mr-1 mb-1">
+                  {line.student_name || `Student #${line.student_id}`}
+                </Tag>
+              ))}
+            </div>
+          )}
         </div>
       ),
     },
     {
       title: 'Amount',
-      dataIndex: 'amount',
       key: 'amount',
-      render: (amount) => (amount ? `$${amount.toFixed(2)}` : '—'),
+      render: (_, record) => {
+        const amount = record.total_cents ? (record.total_cents / 100) : record.amount;
+        return (
+          <div>
+            <div className="font-medium">{amount ? `$${amount.toFixed(2)}` : '—'}</div>
+            {record?.lines && record.lines.length > 0 && (
+              <Text type="secondary" className="text-xs">
+                {record.lines.length} student{record.lines.length > 1 ? 's' : ''}
+              </Text>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: 'Status',
@@ -415,6 +460,7 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
         if (status === 'paid') color = 'success';
         if (status === 'unpaid') color = 'error';
         if (status === 'pending') color = 'warning';
+        if (status === 'draft') color = 'default';
         return <Tag color={color}>{status || '—'}</Tag>;
       },
     },
@@ -422,15 +468,69 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
       title: 'Actions',
       key: 'actions',
       render: (_, record) => (
-        <Button
-          type="link"
-          icon={<FilePdfOutlined />}
-          onClick={() => handleDownloadInvoice(record)}
-          loading={loading.invoice}
-          size="small"
-        >
-          Download
-        </Button>
+        <Space>
+          <Button
+            type="link"
+            icon={<FilePdfOutlined />}
+            onClick={() => handleDownloadInvoice(record)}
+            loading={loading.invoice}
+            size="small"
+          >
+            Download
+          </Button>
+          {record.lines && record.lines.length > 0 && (
+            <Tooltip title="View student breakdown">
+              <Button
+                type="link"
+                icon={<InfoCircleOutlined />}
+                onClick={() => {
+                  modal.info({
+                    title: `Invoice #${record.id} - Student Breakdown`,
+                    width: 700,
+                    content: (
+                      <div className="mt-4">
+                        <Table
+                          size="small"
+                          dataSource={record.lines}
+                          pagination={false}
+                          rowKey={(line) => line.student_id}
+                          columns={[
+                            { 
+                              title: 'Student', 
+                              dataIndex: 'student_name', 
+                              key: 'student_name',
+                              render: (name, line) => name || `Student #${line.student_id}`
+                            },
+                            { 
+                              title: 'Scans', 
+                              dataIndex: 'scan_count', 
+                              key: 'scan_count' 
+                            },
+                            { 
+                              title: 'Tokens', 
+                              dataIndex: 'tokens_used', 
+                              key: 'tokens_used',
+                              render: (tokens) => tokens?.toLocaleString() || 0
+                            },
+                            { 
+                              title: 'Amount', 
+                              dataIndex: 'amount', 
+                              key: 'amount',
+                              render: (amount) => `$${amount?.toFixed(4) || '0.0000'}`
+                            },
+                          ]}
+                        />
+                      </div>
+                    ),
+                  });
+                }}
+                size="small"
+              >
+                Details
+              </Button>
+            </Tooltip>
+          )}
+        </Space>
       ),
     },
   ];
@@ -502,7 +602,29 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
               Invoices
             </span>
           ),
-          children: renderInvoicesTable()
+          children: (
+            <div>
+              <div className="mb-4 flex justify-between items-center">
+                <Alert
+                  message="API Usage Invoices"
+                  description="Invoices are automatically generated based on AI homework analysis usage. Each invoice shows per-student costs."
+                  type="info"
+                  showIcon
+                  className="flex-1 mr-4"
+                />
+                <Button
+                  type="primary"
+                  icon={<DollarOutlined />}
+                  onClick={handleGenerateApiUsageInvoice}
+                  loading={loading.invoice}
+                  size="large"
+                >
+                  Generate/Update API Invoice
+                </Button>
+              </div>
+              {renderInvoicesTable()}
+            </div>
+          )
         }
       ]}
     />
@@ -540,7 +662,6 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
 
   return (
     <div className="billing-tab">
-      {contextHolder}
       <Card
         title={
           <Space>

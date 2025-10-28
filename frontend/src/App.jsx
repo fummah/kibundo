@@ -53,8 +53,11 @@ export default function App() {
         <AppRoutes />
       )}
 
-      {/* Global floating chat dock (student routes only) & toasts */}
-      <ChatDockContainer includeOnRoutes={["/student/*"]} />
+      {/* Global floating chat dock (student routes only, EXCLUDING routes handled by FooterChat) & toasts */}
+      <ChatDockContainer 
+        includeOnRoutes={["/student/*"]} 
+        excludeOnRoutes={["/student/home", "/student/homework"]} 
+      />
       <ToastContainer position="top-center" autoClose={3000} theme="colored" />
     </ChatDockProvider>
   );

@@ -4,69 +4,212 @@ import { pool } from "../config/db.js";
 import OpenAI from "openai";
 import multer from "multer";
 
-// ✅ Create /uploads folder if it doesn’t exist
+// ✅ Ensure /uploads folder exists
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
 }
 
-// ✅ Configure multer to store uploads locally
+// ✅ Multer setup
 export const upload = multer({
   storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, uploadDir);
-    },
+    destination: (req, file, cb) => cb(null, uploadDir),
     filename: (req, file, cb) => {
       const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
       cb(null, uniqueSuffix + "-" + file.originalname);
     },
   }),
-  limits: {
-    fileSize: 200 * 1024 * 1024, // 200 MB
-  },
+  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
 });
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// ✅ API Usage Tracking (in-memory for development, use Redis/DB for production)
+const apiUsageStats = {
+  totalCalls: 0,
+  totalTokens: 0,
+  totalCost: 0, // Estimated cost in USD
+  lastReset: new Date(),
+  callsToday: 0,
+  costsToday: 0,
+};
+
+// GPT-4o-mini pricing (as of 2024): $0.150/1M input tokens, $0.600/1M output tokens
+const PRICING = {
+  input: 0.150 / 1_000_000,  // $0.150 per 1M tokens
+  output: 0.600 / 1_000_000, // $0.600 per 1M tokens
+};
+
+function trackAPIUsage(tokensUsed, type = 'vision') {
+  const inputTokens = tokensUsed?.prompt_tokens || 0;
+  const outputTokens = tokensUsed?.completion_tokens || 0;
+  const totalTokens = tokensUsed?.total_tokens || inputTokens + outputTokens;
+  
+  const cost = (inputTokens * PRICING.input) + (outputTokens * PRICING.output);
+  
+  apiUsageStats.totalCalls++;
+  apiUsageStats.totalTokens += totalTokens;
+  apiUsageStats.totalCost += cost;
+  apiUsageStats.callsToday++;
+  apiUsageStats.costsToday += cost;
+  
+  console.log(`💰 API Usage: Call #${apiUsageStats.totalCalls} | Tokens: ${totalTokens} | Cost: $${cost.toFixed(4)} | Total: $${apiUsageStats.totalCost.toFixed(2)}`);
+  
+  // Reset daily counters at midnight
+  const now = new Date();
+  if (now.getDate() !== apiUsageStats.lastReset.getDate()) {
+    console.log(`📊 Daily Reset - Yesterday: ${apiUsageStats.callsToday} calls, $${apiUsageStats.costsToday.toFixed(2)}`);
+    apiUsageStats.callsToday = 0;
+    apiUsageStats.costsToday = 0;
+    apiUsageStats.lastReset = now;
+  }
+  
+  // Warning if costs exceed threshold
+  if (apiUsageStats.costsToday > 5) {
+    console.warn(`⚠️ WARNING: Daily API costs exceed $5 (current: $${apiUsageStats.costsToday.toFixed(2)})`);
+  }
+  
+  return { totalTokens, cost, dailyTotal: apiUsageStats.costsToday };
+}
+
+// ✅ Enhanced subject detector with confidence scoring (Grades 1–7)
+function detectSubject(text) {
+  if (!text) return "Sonstiges";
+  const lower = text.toLowerCase();
+  
+  // Score-based detection for better accuracy
+  const scores = {
+    Mathe: 0,
+    Deutsch: 0,
+    Englisch: 0,
+    Sachkunde: 0,
+    Biologie: 0,
+    Erdkunde: 0,
+    Geschichte: 0,
+    Religion: 0,
+    Ethik: 0,
+    Kunst: 0,
+    Musik: 0,
+    Sport: 0,
+    Technik: 0,
+  };
+
+  // 🧮 Math - highest priority if numbers present
+  if (/[0-9+\-×÷=<>]/.test(text)) scores.Mathe += 10;
+  if (/\b(plus|minus|mal|geteilt|rechnen|addieren|subtrahieren|multiplizieren|dividieren|summe|differenz|produkt|quotient|lösung|aufgabe|berechne|ergebnis|gleichung|term|zahl|prozent|bruch|kommazu)\b/i.test(lower)) 
+    scores.Mathe += 5;
+  if (/\b(mathe|mathematik|algebra|geometrie)\b/i.test(lower)) scores.Mathe += 15;
+
+  // 📖 German
+  if (/\b(der|die|das|ein|eine|dem|den|des)\b/i.test(lower)) scores.Deutsch += 2;
+  if (/\b(lesen|schreiben|buchstaben|wort|satz|absatz|geschichte|text|grammatik|rechtschreibung|aufsatz|diktat|erzählen|vorlesen|literatur|gedicht|märchen|wörterbuch|verb|nomen|adjektiv|silbe)\b/i.test(lower))
+    scores.Deutsch += 8;
+  if (/\b(deutsch|deutschunterricht)\b/i.test(lower)) scores.Deutsch += 15;
+
+  // 🇬🇧 English
+  if (/\b(the|and|is|are|was|were|have|has|do|does)\b/i.test(lower)) scores.Englisch += 2;
+  if (/\b(english|vocabulary|word|school|teacher|book|dog|cat|color|hello|goodbye|please|thank|sorry|yes|no|family|house|food|animal)\b/i.test(lower))
+    scores.Englisch += 8;
+  if (/\b(englisch|englischunterricht)\b/i.test(lower)) scores.Englisch += 15;
+
+  // 🔬 Sachkunde (Grades 1–4)
+  if (/\b(tier|pflanze|natur|experiment|wasser|luft|erde|umwelt|körper|sinne|sehen|hören|riechen|schmecken|fühlen|wetter|jahreszeit|frühling|sommer|herbst|winter|sonne|mond|stern|tag|nacht|energie|strom|magnet|licht|schatten)\b/i.test(lower))
+    scores.Sachkunde += 8;
+  if (/\b(sachkunde|sachunterricht)\b/i.test(lower)) scores.Sachkunde += 15;
+
+  // 🧫 Biology (Grades 5+)
+  if (/\b(zelle|organismus|pflanzen|tiere|biologie|ökosystem|atmung|verdauung|herz|blut|knochen|muskel|organ|fotosynthese|evolution|genetik|dna|nahrungskette|lebensraum)\b/i.test(lower))
+    scores.Biologie += 8;
+  if (/\b(biologie|biologieunterricht)\b/i.test(lower)) scores.Biologie += 15;
+
+  // 🗺 Geography
+  if (/\b(erde|karte|land|länder|kontinent|europa|asien|afrika|amerika|australien|deutschland|stadt|dorf|hauptstadt|meer|ozean|fluss|see|berg|gebirge|tal|hügel|richtung|norden|süden|osten|westen|kompass|klima|wüste|regenwald)\b/i.test(lower))
+    scores.Erdkunde += 8;
+  if (/\b(erdkunde|geografie|geographie)\b/i.test(lower)) scores.Erdkunde += 15;
+
+  // 📜 History
+  if (/\b(geschichte|historisch|vergangenheit|antike|mittelalter|neuzeit|krieg|frieden|könig|königin|kaiser|ritter|burg|schloss|römer|griechen|ägypter|pharao|pyramide|datum|jahr|jahrhundert|epoche|ereignis|revolution)\b/i.test(lower))
+    scores.Geschichte += 8;
+  if (/\b(geschichtsunterricht)\b/i.test(lower)) scores.Geschichte += 15;
+
+  // ✝️ Religion
+  if (/\b(gott|bibel|koran|thora|kirche|moschee|synagoge|tempel|religion|glaube|jesus|mohammed|moses|buddha|heilig|beten|gebet|gottesdienst|engel|himmel|hölle|christentum|islam|judentum|buddhismus)\b/i.test(lower))
+    scores.Religion += 8;
+  if (/\b(religionsunterricht)\b/i.test(lower)) scores.Religion += 15;
+
+  // 🧠 Ethics
+  if (/\b(ethik|moral|werte|wert|gerechtigkeit|respekt|toleranz|freundschaft|ehrlichkeit|verantwortung|gewissen|gut|böse|richtig|falsch|konflikt|streit|versöhnung)\b/i.test(lower))
+    scores.Ethik += 8;
+  if (/\b(ethikunterricht)\b/i.test(lower)) scores.Ethik += 15;
+
+  // 🎨 Art
+  if (/\b(malen|zeichnen|farbe|bild|kunst|künstler|pinsel|stift|kreide|wasserfarbe|basteln|formen|collage|skulptur|gemälde|portrait|landschaft|rot|blau|gelb|grün)\b/i.test(lower))
+    scores.Kunst += 8;
+  if (/\b(kunstunterricht)\b/i.test(lower)) scores.Kunst += 15;
+
+  // 🎵 Music
+  if (/\b(musik|note|noten|lied|singen|song|instrument|gitarre|klavier|flöte|trommel|geige|cello|rhythmus|melodie|takt|ton|hören|komponist|orchester|chor|konzert)\b/i.test(lower))
+    scores.Musik += 8;
+  if (/\b(musikunterricht)\b/i.test(lower)) scores.Musik += 15;
+
+  // 🤸‍♀️ Sports
+  if (/\b(sport|laufen|rennen|springen|werfen|turnen|spielen|ball|fußball|basketball|volleyball|handball|schwimmen|bewegung|übung|training|fitness|team|mannschaft|wettkampf|sieg|niederlage)\b/i.test(lower))
+    scores.Sport += 8;
+  if (/\b(sportunterricht)\b/i.test(lower)) scores.Sport += 15;
+
+  // 🔧 Technical / Crafts
+  if (/\b(technik|technisch|bauen|konstruieren|werkzeug|hammer|säge|schrauben|holz|metall|basteln|konstruktion|mechanik|elektronik|schaltung|computer|programmieren)\b/i.test(lower))
+    scores.Technik += 8;
+  if (/\b(technikunterricht|werken)\b/i.test(lower)) scores.Technik += 15;
+
+  // Find subject with highest score
+  let maxScore = 0;
+  let detectedSubject = "Sonstiges";
+  
+  for (const [subject, score] of Object.entries(scores)) {
+    if (score > maxScore) {
+      maxScore = score;
+      detectedSubject = subject;
+    }
+  }
+  
+  // Only return detected subject if confidence is high enough (>= 5 points)
+  if (maxScore >= 5) {
+    console.log(`📚 Subject detected: ${detectedSubject} (confidence: ${maxScore})`);
+    return detectedSubject;
+  }
+  
+  console.log(`📚 Subject unclear, defaulting to Sonstiges (max score: ${maxScore})`);
+  return "Sonstiges";
+}
+
+// ✅ Simple upload route
+export const handleSimpleUpload = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const fileUrl = `/uploads/${req.file.filename}`;
+    console.log("✅ File uploaded:", fileUrl);
+    res.json({ success: true, message: "File uploaded successfully", fileUrl });
+  } catch (err) {
+    console.error("❌ Upload error:", err);
+    res.status(500).json({ error: err.message || "File upload failed" });
+  }
+};
+
+// ✅ Main upload + AI vision
 export const handleUpload = async (req, res) => {
   try {
     const userId = req.user?.id;
-    console.log("👤 User ID from token:", userId);
-
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-
-    // Validate file
-    console.log("📁 File info:", {
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-      path: req.file.path
-    });
-
-    // Check file size (additional validation)
-    const maxSize = 50 * 1024 * 1024; // 50MB
-    if (req.file.size > maxSize) {
-      return res.status(400).json({ 
-        error: `File too large. Maximum size is ${Math.round(maxSize / (1024 * 1024))}MB` 
-      });
-    }
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     const filePath = req.file.path;
-    const fileUrl = `/uploads/${req.file.filename}`; // relative URL for your frontend
+    const fileUrl = `/uploads/${req.file.filename}`;
     const mimeType = req.file.mimetype;
 
-    // ✅ Get student linked to this user
-    const studentRes = await pool.query(
-      "SELECT id FROM students WHERE user_id = $1 LIMIT 1",
-      [userId]
-    );
+    const studentRes = await pool.query("SELECT id FROM students WHERE user_id = $1 LIMIT 1", [userId]);
     const studentId = studentRes.rows[0]?.id;
 
-    // ✅ Save the scan record (before AI)
+    // Save scan record
     const scanRes = await pool.query(
       `INSERT INTO homework_scans(student_id, raw_text, file_url)
        VALUES($1, $2, $3) RETURNING *`,
@@ -75,94 +218,62 @@ export const handleUpload = async (req, res) => {
     const scan = scanRes.rows[0];
     const scanId = scan.id;
 
-    // ✅ Create conversation record
+    // Create conversation
     const title = `Conversation for scan #${scanId} - ${new Date().toLocaleString()}`;
     const convRes = await pool.query(
       `INSERT INTO conversations(user_id, scan_id, title)
-       VALUES($1, $2, $3)
-       RETURNING *`,
+       VALUES($1, $2, $3) RETURNING *`,
       [userId, scanId, title]
     );
-    const conversation = convRes.rows[0];
-    const conversationId = conversation.id;
+    const conversationId = convRes.rows[0].id;
 
-    console.log("🗣️ New conversation created:", conversationId);
+    // Non-image file handling
+    if (!mimeType.startsWith("image/")) {
+      const msg = "Bitte lade ein Bild hoch (JPEG oder PNG) für die Analyse.";
+      await pool.query(`UPDATE homework_scans SET raw_text=$1, detected_subject=$2 WHERE id=$3`, [msg, "Sonstiges", scan.id]);
+      return res.json({
+        success: true,
+        message: msg,
+        fileUrl,
+        scan,
+        parsed: { raw_text: msg, subject: "Sonstiges", questions: [] },
+        conversationId,
+      });
+    }
 
-    // ✅ Read uploaded file and convert to base64
+    // AI Prompt (grade 1–7 focused)
+    const systemPrompt = `
+      You are a kind and patient homework helper for students in Grades 1–7.
+      Identify the SUBJECT using the rules below.
+
+      SUBJECT DETECTION RULES:
+      - Numbers, math symbols (+, -, ×, ÷) → "Mathe"
+      - Words, sentences, writing tasks → "Deutsch"
+      - English vocabulary → "Englisch"
+      - Nature, animals, science → "Sachkunde"
+      - Biology, body, plants → "Biologie"
+      - Geography, maps, countries → "Erdkunde"
+      - Historical events, kings, wars → "Geschichte"
+      - Religion, ethics, values → "Religion" or "Ethik"
+      - Art, colors, drawings → "Kunst"
+      - Music notes, instruments → "Musik"
+      - Sports, physical activities → "Sport"
+      - Tools, building, crafts → "Technik"
+      - Mixed or unclear → "Sonstiges"
+
+      Return valid JSON only:
+      {
+        "subject": "German subject name",
+        "raw_text": "Extracted text and description",
+        "questions": [
+          { "text": "Question", "answer": "Simple answer for a child" }
+        ]
+      }
+    `;
+
     const fileBuffer = fs.readFileSync(filePath);
     const fileBase64 = fileBuffer.toString("base64");
 
-    // ✅ AI instructions
-    const systemPrompt = `
-      You are a kind and patient homework helper for Grade 1 students.
-      
-      IMPORTANT: You must ALWAYS extract something from the image, even if it's just a description of what you see.
-      
-      You must:
-      - Look carefully at the uploaded homework (it may be a photo or PDF).
-      - Extract ALL text you can see, even if it's handwritten or unclear.
-      - Identify any math problems, questions, or tasks.
-      - Give very simple, clear answers a 6-year-old can understand.
-      - Encourage and motivate the child with kindness.
-      
-      If you see ANY text, numbers, or problems, extract them. Even if you can't solve them perfectly, describe what you see.
-
-      IMPORTANT: Return ONLY valid JSON, no markdown formatting, no code blocks.
-      
-      Return JSON in this EXACT format:
-      {
-        "raw_text": "All text you can see in the image",
-        "questions": [
-          { "text": "Question text", "answer": "Simple, happy answer." }
-        ]
-      }
-      
-      If you cannot see any text at all, return:
-      {
-        "raw_text": "I can see an image but the text is not clear enough to read. Please try taking a clearer photo or describe what you need help with.",
-        "questions": []
-      }
-      
-      Do NOT wrap the JSON in code blocks. Return pure JSON only.
-    `;
-
-    // ✅ OpenAI Vision API only supports images (JPEG, PNG, GIF, WebP)
-    console.log("🤖 Sending to OpenAI for analysis...");
-    
-    const isImage = mimeType.startsWith('image/');
-    
-    // Check if file is not an image
-    if (!isImage) {
-      // For non-image files, provide helpful guidance in German
-      const extractedText = mimeType === 'application/pdf' 
-        ? "Ich habe eine PDF-Datei erhalten. Für die beste Analyse empfohlen: Konvertiere die PDF in Screenshots oder mache Fotos der Seiten, die du analysieren möchtest."
-        : "Ich habe eine Datei erhalten. Für die beste Analyse empfehle ich, Screenshots oder Fotos von den Seiten zu machen, die du analysieren möchtest.";
-      
-      const parsed = {
-        raw_text: extractedText,
-        questions: []
-      };
-      
-      // Update scan record with the message
-      await pool.query(
-        `UPDATE homework_scans SET raw_text = $1 WHERE id = $2`,
-        [extractedText, scan.id]
-      );
-      
-      // Return early with a helpful message
-      res.json({
-        success: true,
-        message: "Datei empfangen. Für die beste Analyse empfohlen: Verwende Screenshots oder Fotos.",
-        fileUrl,
-        scan: { ...scan, raw_text: extractedText },
-        parsed,
-        aiText: extractedText,
-        conversationId,
-      });
-      return;
-    }
-    
-    // For images, proceed with Vision API
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
@@ -170,7 +281,7 @@ export const handleUpload = async (req, res) => {
         {
           role: "user",
           content: [
-            { type: "text", text: "Please scan and answer this homework in Grade 1 language." },
+            { type: "text", text: "Scan and describe this Grade 1–7 homework." },
             { type: "image_url", image_url: { url: `data:${mimeType};base64,${fileBase64}` } },
           ],
         },
@@ -178,45 +289,37 @@ export const handleUpload = async (req, res) => {
       max_tokens: 1500,
     });
 
+    // Track API usage and costs
+    const usageStats = trackAPIUsage(completion.usage, 'vision');
+
     const aiText = completion.choices[0].message.content;
-    console.log("✅ OpenAI response received:", aiText?.substring(0, 200) + "...");
-
-    // ✅ Try parsing AI response
-    let parsed = null;
+    let parsed;
     try {
-      // Handle markdown-wrapped JSON (```json ... ```)
-      let jsonText = aiText.trim();
-      if (jsonText.startsWith('```json')) {
-        jsonText = jsonText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (jsonText.startsWith('```')) {
-        jsonText = jsonText.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      
+      let jsonText = aiText.trim().replace(/^```json\s*/i, "").replace(/```$/, "");
       parsed = JSON.parse(jsonText);
-      console.log("✅ Successfully parsed AI JSON response");
-    } catch (parseError) {
-      console.warn("⚠️ AI output not valid JSON. Storing raw text instead.", parseError.message);
-      console.log("Raw AI response:", aiText);
+    } catch {
+      parsed = null;
     }
 
-    // ✅ Update scan record with extracted text
     const extractedText = parsed?.raw_text || aiText || "";
-    if (extractedText) {
-      await pool.query(
-        `UPDATE homework_scans SET raw_text = $1 WHERE id = $2`,
-        [extractedText, scan.id]
-      );
-      console.log("✅ Updated scan record with extracted text:", extractedText.substring(0, 100) + "...");
-    }
+    let detectedSubject = parsed?.subject || detectSubject(extractedText);
 
-    // ✅ Store generated answers
+    // Update scan with results and API usage stats
+      await pool.query(
+      `UPDATE homework_scans 
+       SET raw_text=$1, detected_subject=$2, 
+           api_tokens_used=$3, api_cost_usd=$4, processed_at=NOW()
+       WHERE id=$5`,
+      [extractedText, detectedSubject, usageStats.totalTokens, usageStats.cost, scan.id]
+    );
+
     if (Array.isArray(parsed?.questions)) {
       await Promise.all(
-        parsed.questions.map((q, idx) =>
+        parsed.questions.map((q, i) =>
           pool.query(
             `INSERT INTO generated_answers(scan_id, question_index, question_text, answer_text, full_response)
              VALUES($1, $2, $3, $4, $5)`,
-            [scan.id, idx, q.text, q.answer, aiText]
+            [scan.id, i, q.text, q.answer, JSON.stringify({ response: aiText })]
           )
         )
       );
@@ -233,42 +336,6 @@ export const handleUpload = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Upload error:", err);
-    
-    // Handle specific error types
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ 
-        error: "File too large. Maximum size is 50MB." 
-      });
-    }
-    
-    // Handle 413 Request Entity Too Large from server
-    if (err.status === 413 || err.message?.includes('413') || err.message?.includes('Request Entity Too Large')) {
-      return res.status(413).json({ 
-        error: "File too large. Please try with a smaller file or contact support if the file is under 50MB." 
-      });
-    }
-    
-    if (err.message?.includes('not supported')) {
-      return res.status(400).json({ 
-        error: err.message 
-      });
-    }
-    
-    if (err.status === 400 && err.message?.includes('image_url')) {
-      return res.status(500).json({ 
-        error: "Image processing failed. Please try with a different image format (JPEG, PNG, or PDF)." 
-      });
-    }
-    
-    if (err.status === 429) {
-      return res.status(503).json({ 
-        error: "Service temporarily unavailable. Please try again in a few moments." 
-      });
-    }
-    
-    // Generic error response
-    res.status(500).json({ 
-      error: err.message || "An unexpected error occurred while processing your image. Please try again." 
-    });
+    res.status(500).json({ error: err.message || "Error while processing image" });
   }
 };

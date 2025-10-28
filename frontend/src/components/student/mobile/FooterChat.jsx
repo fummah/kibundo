@@ -27,7 +27,7 @@ export function ChatStripSpacer({ className = "" }) {
 
 export default function FooterChat({
   includeOnRoutes = ["/student/home", "/student/homework"],
-  hideOnRoutes = ["/student/chat"],
+  hideOnRoutes = ["/student/chat", "/student/homework/chat", "/student/homework/doing"],
   className = "",
   sheetHeight = "75%", // bottom sheet height
 }) {

@@ -5,6 +5,7 @@ import { LogOut, Menu, Bell, Search, Settings, Sun, Moon, ChevronRight } from "l
 import { Tooltip, Badge, Avatar } from "antd";
 import Logo from "../../assets/logo.png";
 import { useAuthContext } from "../../context/AuthContext";
+import { ROLES } from "@/utils/roleMapper";
 
 /** Small helpers */
 const safe = (v) => (typeof v === "string" ? v.trim() : "");
@@ -32,10 +33,10 @@ export default function GlobalNavBar({ onToggleSidebar }) {
 
   const roleId = Number(user?.role_id);
   const roleLabel =
-    roleId === 1 ? "Admin" :
-    roleId === 2 ? "Teacher" :
-    roleId === 3 ? "Student" :
-    roleId === 4 ? "Parent" : "Guest";
+    roleId === ROLES.ADMIN ? "Admin" :
+    roleId === ROLES.TEACHER ? "Teacher" :
+    roleId === ROLES.STUDENT ? "Student" :
+    roleId === ROLES.PARENT ? "Parent" : "Guest";
 
   const [darkMode, setDarkMode] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -108,18 +109,18 @@ export default function GlobalNavBar({ onToggleSidebar }) {
 
   const goToDashboard = useCallback(() => {
     if (!isAuthenticated) return navigate("/");
-    if (roleId === 1) navigate("/admin/dashboard");
-    else if (roleId === 2) navigate("/teacher");
-    else if (roleId === 3) navigate("/student");
-    else if (roleId === 4) navigate("/parent");
+    if (roleId === ROLES.ADMIN) navigate("/admin/dashboard");
+    else if (roleId === ROLES.TEACHER) navigate("/teacher");
+    else if (roleId === ROLES.STUDENT) navigate("/student");
+    else if (roleId === ROLES.PARENT) navigate("/parent");
     else navigate("/dashboard");
   }, [isAuthenticated, navigate, roleId]);
 
   const goToSettings = useCallback(() => {
-    if (roleId === 1) navigate("/admin/settings");
-    else if (roleId === 2) navigate("/teacher/settings");
-    else if (roleId === 3) navigate("/student/settings");
-    else if (roleId === 4) navigate("/parent/settings");
+    if (roleId === ROLES.ADMIN) navigate("/admin/settings");
+    else if (roleId === ROLES.TEACHER) navigate("/teacher/settings");
+    else if (roleId === ROLES.STUDENT) navigate("/student/settings");
+    else if (roleId === ROLES.PARENT) navigate("/parent/settings");
     else navigate("/settings");
   }, [navigate, roleId]);
 
@@ -280,8 +281,8 @@ export default function GlobalNavBar({ onToggleSidebar }) {
                 aria-expanded={userDropdownOpen}
                 aria-controls="user-menu"
               >
-                <Avatar size="small" src={user?.avatarUrl} className="bg-indigo-500 text-white">
-                  {!user?.avatarUrl && initials(fullNameFromUser(user))}
+                <Avatar size="small" src={user?.avatar} className="bg-indigo-500 text-white">
+                  {!user?.avatar && initials(fullNameFromUser(user))}
                 </Avatar>
                 <span className="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-100">
                   {name}

@@ -25,6 +25,21 @@ module.exports = (sequelize, DataTypes) => {
     },
         parent_id: {
       type: DataTypes.INTEGER
+    },
+    profile: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+      defaultValue: null
+    },
+    interests: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+      defaultValue: null
+    },
+    buddy: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+      defaultValue: null
     }
   }, {
     tableName: 'students',

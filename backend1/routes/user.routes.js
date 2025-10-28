@@ -1,5 +1,9 @@
 const express = require("express");
 const router = express.Router();
+const multer = require("multer");
+const path = require("path");
+const db = require("../models");
+const HomeworkScan = db.homeworkScan;
 const { getAllUsers, getAllRoles, addstudent, addteacher, addclass, getClassById, addsubject, getAllClasses, getAllStudents, 
     getAllTeachers, getAllSubjects, getSubjectById, getStudentById, getTeacherById, deleteSubject, deleteStudent, deleteTeacher,
     getParentById, getAllParents, addparent, deleteParent, addproduct, getAllProducts, getProductById,
@@ -7,11 +11,60 @@ deleteProduct, addsubscription, getAllSubscriptions, getSubscriptionById, delete
 getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice, addcoupon, 
 getAllCoupons, getCouponById,deleteCoupon, addrole, updateRole, deleteRole, adduser,addquiz,  getQuizzes, getQuizById,  deleteQuiz, 
 addcurriculum, getAllCurriculum,getCurriculumById, deleteCurriculum, addWorksheet, getAllWorksheets, getWorksheetById, deleteWorksheet,
-getAllStates, getAllAgents,getPublicTables,addAgent, getHomeworks, getAiAgentSettings,updateAiAgentSettings,updateAgent, 
+getAllStates, getAllAgents,getPublicTables,addAgent, getHomeworks, getStudentApiUsage, getAiAgentSettings,updateAiAgentSettings,updateAgent, 
 getCurrentUser, debugUser, deleteAgent, editUser,editSubject,editClass,editProduct,editSubscription, editQuiz, editStudent, editTeacher, editParent, 
-updateStudentStatus, updateTeacherStatus, updateParentStatus } = require("../controllers/user.controller");
+updateStudentStatus, updateTeacherStatus, updateParentStatus, changePassword, adminUpdateCredentials } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
+
+// Configure multer for simple file uploads (profile pictures, etc.)
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + "-" + file.originalname);
+  },
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    // Only allow image files
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"), false);
+    }
+  },
+});
+
+// Simple file upload endpoint (profile pictures, etc.)
+router.post("/upload", verifyToken, upload.single("file"), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+    
+    const fileUrl = `/uploads/${req.file.filename}`;
+    console.log("✅ File uploaded successfully:", fileUrl);
+    
+    res.json({
+      success: true,
+      message: "File uploaded successfully",
+      url: fileUrl,
+      fileUrl: fileUrl,
+      path: fileUrl,
+    });
+  } catch (err) {
+    console.error("❌ Upload error:", err);
+    res.status(500).json({ 
+      error: err.message || "File upload failed" 
+    });
+  }
+});
 
 // Protected route to get all users
 router.get("/users", verifyToken, getAllUsers);
@@ -37,6 +90,8 @@ router.get("/allstudents", verifyToken, getAllStudents);
 router.get("/allteachers", verifyToken, getAllTeachers);
 router.get("/allsubjects", verifyToken, getAllSubjects);
 router.get('/subject/:id', verifyToken,getSubjectById);
+// Specific student routes MUST come before /student/:id to avoid pattern matching issues
+router.get("/student/api-usage", verifyToken, getStudentApiUsage);
 router.get('/student/:id', verifyToken,getStudentById);
 router.delete('/student/:id', verifyToken,deleteStudent);
 router.get('/teacher/:id', verifyToken,getTeacherById);
@@ -83,11 +138,37 @@ router.get('/agents', verifyToken,getAllAgents);
 router.get('/entities',getPublicTables);
 router.post("/addagent",verifyToken, addAgent);
 router.get("/homeworkscans",verifyToken, getHomeworks);
+router.get("/student/:id/homeworkscans", verifyToken, async (req, res) => {
+  try {
+    const studentId = req.params.id;
+    console.log("📚 Route /student/:id/homeworkscans called with ID:", studentId);
+    
+    // Directly query for this specific student's homework
+    const homeworks = await HomeworkScan.findAll({
+      where: { student_id: studentId },
+      order: [['created_at', 'DESC']]
+    });
+    
+    console.log("📚 Found", homeworks.length, "homework submissions for student", studentId);
+    res.json(homeworks);
+  } catch (err) {
+    console.error("❌ Error fetching student homework:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
 router.get("/aisettings", verifyToken,getAiAgentSettings);
 router.put("/updateaisettings", verifyToken,updateAiAgentSettings);
 router.put("/updateaiagents", verifyToken,updateAgent);
 router.delete("/agents/:id", verifyToken, deleteAgent);
 router.put("/users/:id", verifyToken,editUser);
+router.post("/users/:id/change-password", verifyToken, changePassword);
+// Test endpoint to verify route works
+router.get("/test-credentials-route", (req, res) => {
+  console.log("✅ TEST: Credentials route is working!");
+  res.json({ message: "Route is working!" });
+});
+
+router.post("/users/:id/admin-update-credentials", verifyToken, adminUpdateCredentials);
 router.put("/subjects/:id", verifyToken,editSubject);
 router.put("/classes/:id", verifyToken,editClass);
 router.put("/products/:id", verifyToken,editProduct);
@@ -96,6 +177,11 @@ router.put("/quizzes/:id", verifyToken,editQuiz);
 router.put("/students/:id", verifyToken,editStudent);
 router.put("/teachers/:id", verifyToken,editTeacher);
 router.put("/parents/:id", verifyToken,editParent);
+
+// PATCH routes (alternative to PUT for partial updates)
+router.patch("/student/:id", verifyToken, editStudent);
+router.patch("/teacher/:id", verifyToken, editTeacher);
+router.patch("/parent/:id", verifyToken, editParent);
 
 // Status update routes
 router.patch("/student/:id/status", verifyToken, updateStudentStatus);
@@ -157,6 +243,66 @@ router.get("/student/:id/assigned-agent", verifyToken, (req, res) => {
     agentName: "Homework Helper",
     studentId: req.params.id 
   });
+});
+
+// API Usage Invoice Routes
+const apiUsageInvoiceService = require("../services/apiUsageInvoice.service");
+
+// Generate/update API usage invoice for a specific parent
+router.post("/parent/:parentId/generate-api-invoice", verifyToken, async (req, res) => {
+  try {
+    const { parentId } = req.params;
+    console.log(`📊 API request: Generate invoice for parent ${parentId}`);
+    
+    const invoice = await apiUsageInvoiceService.generateApiUsageInvoice(parseInt(parentId));
+    
+    res.json({
+      success: true,
+      message: "Invoice generated/updated successfully",
+      invoice: {
+        id: invoice.id,
+        parent_id: invoice.parent_id,
+        status: invoice.status,
+        total_cents: invoice.total_cents,
+        total_amount: (invoice.total_cents / 100).toFixed(2),
+        currency: invoice.currency,
+        lines: invoice.lines,
+        created_at: invoice.created_at
+      }
+    });
+  } catch (error) {
+    console.error("❌ Error generating API usage invoice:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate invoice",
+      error: error.message
+    });
+  }
+});
+
+// Generate API usage invoices for all parents (admin only)
+router.post("/generate-all-api-invoices", verifyToken, async (req, res) => {
+  try {
+    console.log(`📊 API request: Generate invoices for all parents`);
+    
+    const results = await apiUsageInvoiceService.generateAllApiUsageInvoices();
+    
+    const successCount = results.filter(r => r.status === 'success').length;
+    const errorCount = results.filter(r => r.status === 'error').length;
+    
+    res.json({
+      success: true,
+      message: `Generated ${successCount} invoice(s), ${errorCount} error(s)`,
+      results
+    });
+  } catch (error) {
+    console.error("❌ Error generating all API usage invoices:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate invoices",
+      error: error.message
+    });
+  }
 });
 
 module.exports = router;

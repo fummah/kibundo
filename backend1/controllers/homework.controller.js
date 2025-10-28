@@ -131,7 +131,7 @@ async function handleConversation(req, res) {
     if (!convId) {
       const title = `Conversation for ${userId || "guest"} ${new Date().toISOString()}`;
       const r = await pool.query(
-        `INSERT INTO conversations(student_id, scan_id, title)
+        `INSERT INTO conversations(user_id, scan_id, title)
          VALUES($1,$2,$3) RETURNING *`,
         [userId || null, scanId || null, title]
       );

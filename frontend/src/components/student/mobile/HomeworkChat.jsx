@@ -246,11 +246,13 @@ export default function HomeworkChat({
   const fetchBackendMessages = useCallback(async (convId) => {
     if (!convId || loadingBackendMessages) return;
     
+    console.log("📥 FOOTERCHAT: Fetching messages for convId:", convId);
     setLoadingBackendMessages(true);
     try {
-      const response = await api.get(`ai/conversations/${convId}/messages`, {
+      const response = await api.get(`conversations/${convId}/messages`, {
         withCredentials: true,
       });
+      console.log("📦 FOOTERCHAT: Received response:", response?.data?.length, "messages");
       if (response?.data && Array.isArray(response.data)) {
         const formattedMessages = response.data.map(msg => formatMessage(
           msg.content || "",
@@ -262,18 +264,49 @@ export default function HomeworkChat({
             agentName: msg?.agent_name || selectedAgent
           }
         ));
+        console.log("✅ FOOTERCHAT: Formatted", formattedMessages.length, "messages");
         setBackendMessages(formattedMessages);
       }
     } catch (error) {
+      console.error("❌ FOOTERCHAT: Error fetching messages:", error);
       setBackendMessages([]);
     } finally {
       setLoadingBackendMessages(false);
     }
-  }, [loadingBackendMessages]);
+  }, [loadingBackendMessages, selectedAgent]);
+
+  // 🔥 Search for existing conversation by scanId when task is opened
+  useEffect(() => {
+    const loadConversationByScanId = async () => {
+      if (!scanId || conversationId || loadingBackendMessages) return;
+      
+      try {
+        console.log("🔍 FOOTERCHAT: Searching for conversation with scanId:", scanId);
+        const { data } = await api.get('/conversations', {
+          params: { scan_id: scanId },
+          withCredentials: true,
+        });
+        
+        if (data && data.length > 0) {
+          const convId = data[0].id;
+          console.log("✅ FOOTERCHAT: Found existing conversation:", convId);
+          setConversationId(convId);
+          // Message fetching will be triggered by the next useEffect
+        } else {
+          console.log("ℹ️ FOOTERCHAT: No existing conversation found for scanId:", scanId);
+        }
+      } catch (error) {
+        console.error("❌ FOOTERCHAT: Failed to search conversations:", error);
+      }
+    };
+    
+    loadConversationByScanId();
+  }, [scanId, conversationId, loadingBackendMessages]);
 
   // Fetch backend messages when conversationId is available
   useEffect(() => {
     if (conversationId) {
+      console.log("📥 FOOTERCHAT: Fetching messages for conversation:", conversationId);
       fetchBackendMessages(conversationId);
     }
   }, [conversationId, fetchBackendMessages]);
@@ -373,19 +406,30 @@ export default function HomeworkChat({
     const persisted = getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) || [];
     const existingLocal = localMessages || [];
     
+    console.log("📊 FOOTERCHAT: Message merge state:", {
+      backendMessages: backendMessages.length,
+      persisted: persisted.length,
+      existingLocal: existingLocal.length,
+      conversationId,
+      scanId
+    });
+    
     // If we have backend messages, merge them with existing messages
     if (backendMessages.length > 0) {
       const merged = mergeById(backendMessages, [...persisted, ...existingLocal]);
+      console.log("✅ FOOTERCHAT: Merged messages (with backend):", merged.length);
       return merged;
     }
     
     // Fallback to local storage if no backend messages
     const merged = mergeById(persisted, existingLocal);
     if (merged.length === 0 && existingLocal.length > 0) {
+      console.log("⚠️ FOOTERCHAT: Using existingLocal fallback:", existingLocal.length);
       return existingLocal;
     }
+    console.log("📝 FOOTERCHAT: Using merged local messages:", merged.length);
     return merged;
-  }, [controlledMessagesProp, backendMessages, getChatMessages, localMessages]);
+  }, [controlledMessagesProp, backendMessages, getChatMessages, localMessages, conversationId, scanId]);
 
   // never persist transient/base64 previews
   const filterForPersist = useCallback((arr) => {
@@ -536,8 +580,8 @@ export default function HomeworkChat({
         }
 
         const firstUrl = conversationId
-          ? `ai/conversations/${conversationId}/message`
-          : `ai/conversations/message`;
+          ? `conversations/${conversationId}/message`
+          : `conversations/message`;
 
         let resp;
         try {
@@ -563,7 +607,7 @@ export default function HomeworkChat({
             return;
           }
           if (conversationId && (code === 400 || code === 404)) {
-            resp = await api.post(`ai/conversations/message`, { message: t, scanId, agentName: selectedAgent }, {
+            resp = await api.post(`conversations/message`, { message: t, scanId, agentName: selectedAgent }, {
               withCredentials: true,
             });
           } else {
@@ -578,7 +622,7 @@ export default function HomeworkChat({
 
         const cid = j?.conversationId || conversationId;
         if (cid) {
-          const r2 = await api.get(`ai/conversations/${cid}/messages`);
+          const r2 = await api.get(`conversations/${cid}/messages`);
           const serverMessages = mapServerToInternal(r2.data);
           updateMessages((current) => {
             const withoutPending = current.filter((m) => !m?.pending);

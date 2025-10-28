@@ -353,17 +353,37 @@ const created_by = req.user.id;
 
 exports.addstudent = async (req, res) => {
   try {
-    const { user_id, class_id } = req.body;
+    const { user_id, userId, class_id, profile, interests, buddy } = req.body;
 
     // Get created_by from JWT (set in middleware)
     const created_by = req.user.id;
+    
+    // Support both user_id (admin) and userId (student self-registration)
+    const finalUserId = user_id || userId;
+    
+    console.log('📝 Adding student with settings:', {
+      finalUserId,
+      class_id,
+      profile,
+      interests,
+      buddy
+    });
+    
     const newStudent = await Student.create({
-      user_id,
+      user_id: finalUserId,
       class_id,
       created_by,
+      profile: profile || null,
+      interests: interests || null,
+      buddy: buddy || null,
     });
 
-    res.status(201).json({ message: "New student registered", student: newStudent });
+    res.status(201).json({ 
+      message: "New student registered", 
+      student: newStudent,
+      id: newStudent.id,
+      _id: newStudent.id
+    });
   } catch (err) {
     console.error("Student registration error:", err);
     res.status(500).json({ message: "Server error", error:err });
@@ -1568,9 +1588,14 @@ exports.addAgent = async (req, res) => {
   try {
     const { student_id } = req.query; // or req.params depending on your route setup
 
+    console.log("📚 getHomeworks called with student_id:", student_id);
+
     let whereClause = {};
     if (student_id) {
       whereClause.student_id = student_id;
+      console.log("📚 Filtering homework by student_id:", student_id);
+    } else {
+      console.log("⚠️ No student_id filter - fetching all homework");
     }
 
     const homeworks = await HomeworkScan.findAll({
@@ -1578,10 +1603,122 @@ exports.addAgent = async (req, res) => {
       order: [['created_at', 'DESC']]
     });
 
+    console.log("📚 Found", homeworks.length, "homework submissions");
+
     res.json(homeworks);
   } catch (err) {
-    console.error("Error fetching homeworks:", err);
+    console.error("❌ Error fetching homeworks:", err);
     res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getStudentApiUsage = async (req, res) => {
+  try {
+    const { student_id } = req.query;
+
+    console.log("💰 getStudentApiUsage called with student_id:", student_id);
+
+    if (!student_id) {
+      return res.status(400).json({ message: "student_id is required" });
+    }
+
+    // Get API usage statistics using raw SQL
+    const db = require("../models");
+    const { sequelize } = db;
+    
+    // Check if columns exist first
+    console.log("💰 Checking for API usage columns...");
+    try {
+      const [columns] = await sequelize.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'homework_scans' 
+        AND column_name IN ('api_tokens_used', 'api_cost_usd')
+      `);
+      
+      console.log("💰 Columns found:", columns);
+      
+      const hasApiColumns = columns && columns.length === 2;
+      
+      if (!hasApiColumns) {
+        console.warn("⚠️ API usage columns not found in homework_scans table. Please run the migration.");
+        return res.json({
+          studentId: student_id,
+          totalScans: 0,
+          totalTokens: 0,
+          totalCost: 0,
+          avgTokensPerScan: 0,
+          avgCostPerScan: 0,
+          costToday: 0,
+          costThisMonth: 0,
+          lastScanDate: null,
+          needsMigration: true,
+          requiresMigration: true
+        });
+      }
+    } catch (columnCheckErr) {
+      console.error("❌ Error checking columns:", columnCheckErr);
+      throw columnCheckErr;
+    }
+    
+    console.log("💰 Fetching API usage statistics...");
+    const [results] = await sequelize.query(`
+      SELECT 
+        COUNT(*) as total_scans,
+        SUM(COALESCE(api_tokens_used, 0)) as total_tokens,
+        SUM(COALESCE(api_cost_usd, 0)) as total_cost,
+        AVG(COALESCE(api_tokens_used, 0)) as avg_tokens_per_scan,
+        AVG(COALESCE(api_cost_usd, 0)) as avg_cost_per_scan,
+        SUM(CASE WHEN DATE(created_at) = CURRENT_DATE THEN COALESCE(api_cost_usd, 0) ELSE 0 END) as cost_today,
+        SUM(CASE WHEN DATE(created_at) >= DATE_TRUNC('month', CURRENT_DATE) THEN COALESCE(api_cost_usd, 0) ELSE 0 END) as cost_this_month,
+        MAX(created_at) as last_scan_date
+      FROM homework_scans
+      WHERE student_id = :student_id
+    `, {
+      replacements: { student_id },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    console.log("💰 Raw results:", results);
+    console.log("💰 Results type:", typeof results, "Is array?", Array.isArray(results));
+    console.log("💰 Results length:", results?.length);
+    console.log("💰 First element:", results?.[0]);
+
+    const stats = (Array.isArray(results) && results.length > 0) ? results[0] : results || {
+      total_scans: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      avg_tokens_per_scan: 0,
+      avg_cost_per_scan: 0,
+      cost_today: 0,
+      cost_this_month: 0,
+      last_scan_date: null
+    };
+
+    console.log("💰 API usage stats:", stats);
+
+    const response = {
+      studentId: student_id,
+      totalScans: parseInt(stats.total_scans) || 0,
+      totalTokens: parseInt(stats.total_tokens) || 0,
+      totalCost: parseFloat(stats.total_cost) || 0,
+      avgTokensPerScan: parseFloat(stats.avg_tokens_per_scan) || 0,
+      avgCostPerScan: parseFloat(stats.avg_cost_per_scan) || 0,
+      costToday: parseFloat(stats.cost_today) || 0,
+      costThisMonth: parseFloat(stats.cost_this_month) || 0,
+      lastScanDate: stats.last_scan_date,
+    };
+    
+    console.log("💰 Sending response:", response);
+    res.json(response);
+  } catch (err) {
+    console.error("❌ Error fetching API usage:", err);
+    console.error("❌ Error stack:", err.stack);
+    res.status(500).json({ 
+      message: err.message,
+      error: err.toString(),
+      requiresMigration: false
+    });
   }
 };
 
@@ -1682,15 +1819,26 @@ exports.editUser = async (req, res) => {
       contact_number,
       state,
       role_id,
+      avatar,
+      username,
+      plain_pass,
     } = req.body;
+
+    console.log('📝 Edit User Request:', {
+      id,
+      body: req.body
+    });
 
     // 1. Find user by ID
     const user = await User.findByPk(id);
     if (!user) {
+      console.log('❌ User not found:', id);
       return res.status(404).json({ message: "User not found" });
     }
 
-    // 2. If updating password, validate match and hash
+    console.log('✅ User found:', user.email);
+
+    // 2. Build update fields object
     let updatedFields = {
       first_name,
       last_name,
@@ -1698,16 +1846,180 @@ exports.editUser = async (req, res) => {
       contact_number,
       state,
       role_id,
+      avatar,
+      username,
+      plain_pass,
     };
-    // 3. Update user
-    await user.update(updatedFields);
+    
+    // Hash password if plain_pass is being updated (using same method as auth.controller.js)
+    if (plain_pass) {
+      const bcrypt = require('bcryptjs');
+      updatedFields.password = await bcrypt.hash(plain_pass, 10);
+      console.log('🔐 Hashing password for user');
+    }
+    
+    // Remove undefined values to avoid overwriting with null
+    Object.keys(updatedFields).forEach(key => {
+      if (updatedFields[key] === undefined) {
+        delete updatedFields[key];
+      }
+    });
 
-    res.json({ message: "User updated successfully", user });
+    console.log('📋 Fields to update:', updatedFields);
+
+    // 3. Update user
+    const updated = await user.update(updatedFields);
+    
+    console.log('✅ User updated successfully:', {
+      id: updated.id,
+      email: updated.email,
+      first_name: updated.first_name,
+      last_name: updated.last_name,
+      avatar: updated.avatar
+    });
+
+    // Fetch fresh data to ensure we return the latest
+    const freshUser = await User.findByPk(id);
+
+    res.json({ message: "User updated successfully", user: freshUser });
   } catch (err) {
-    console.error("Error updating user:", err);
+    console.error("❌ Error updating user:", err);
     res.status(500).json({ message: err.message });
   }
 };
+
+// Admin: Update user credentials (email, username, password)
+exports.adminUpdateCredentials = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email, username, password } = req.body;
+
+    console.log('🔑 Admin updating credentials for user:', id);
+    console.log('📥 Received payload:', { email, username, password: password ? '***' : undefined });
+
+    // Find user by ID
+    const user = await User.findByPk(id);
+    if (!user) {
+      console.log('❌ User not found:', id);
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    console.log('📋 Current user data:', {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      hasPassword: !!user.password,
+      plain_pass: user.plain_pass
+    });
+
+    const updateFields = {};
+
+    // Update email if provided (and not empty)
+    if (email !== undefined && email !== null && email !== '' && email !== user.email) {
+      // Check if email is already taken by another user
+      const existingUser = await User.findOne({ where: { email } });
+      if (existingUser && existingUser.id !== user.id) {
+        return res.status(400).json({ message: "Email already in use" });
+      }
+      updateFields.email = email;
+      console.log('📧 Updating email to:', email);
+    }
+
+    // Update username (portal login) if provided (and not empty)
+    if (username !== undefined && username !== null && username !== '') {
+      updateFields.username = username;
+      console.log('📝 Updating username to:', username);
+    }
+
+    // Update password if provided (and not empty) - using same method as auth.controller.js
+    if (password && password !== '') {
+      if (password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+      const bcrypt = require('bcryptjs');
+      updateFields.password = await bcrypt.hash(password, 10);
+      updateFields.plain_pass = password; // Store plain password for portal access
+      console.log('🔐 Updating password and plain_pass to:', password);
+    }
+
+    console.log('📤 Fields to update:', Object.keys(updateFields));
+
+    // Update user
+    await user.update(updateFields);
+
+    // Fetch fresh data to confirm
+    const updatedUser = await User.findByPk(id);
+
+    console.log('✅ Credentials updated successfully:', {
+      userId: updatedUser.id,
+      email: updatedUser.email,
+      username: updatedUser.username,
+      plain_pass: updatedUser.plain_pass,
+      hasPassword: !!updatedUser.password
+    });
+
+    res.json({ 
+      message: "Credentials updated successfully", 
+      user: updatedUser 
+    });
+  } catch (err) {
+    console.error("❌ Error updating credentials:", err);
+    console.error("❌ Stack trace:", err.stack);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Change user password
+exports.changePassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { currentPassword, newPassword } = req.body;
+
+    console.log('🔐 Password change request for user:', id);
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Current password and new password are required" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "New password must be at least 6 characters" });
+    }
+
+    // Find user by ID
+    const user = await User.findByPk(id);
+    if (!user) {
+      console.log('❌ User not found:', id);
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Verify current password
+    const bcrypt = require('bcryptjs');
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    
+    if (!isPasswordValid) {
+      console.log('❌ Current password is incorrect');
+      return res.status(401).json({ message: "Current password is incorrect" });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update password
+    await user.update({ 
+      password: hashedPassword,
+      plain_pass: newPassword // Optional: if you want to keep plain text (not recommended for production)
+    });
+
+    console.log('✅ Password changed successfully for user:', user.email);
+
+    res.json({ message: "Password changed successfully" });
+  } catch (err) {
+    console.error("❌ Error changing password:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
 exports.editSubject = async (req, res) => {
   try {
     const { id } = req.params; // Subject ID from URL
@@ -1947,9 +2259,18 @@ exports.editStudent = async (req, res) => {
       parent_id,
       subjects,
       school,
-      grade
+      grade,
+      username,
+      plain_pass
     } = req.body;
     const updated_by = req.user.id; // user performing the edit
+    
+    console.log('📝 Edit Student Request:', {
+      id,
+      username,
+      plain_pass,
+      body: req.body
+    });
     
     // Note: grade from frontend is just display text from class.class_name
     // Don't use grade to update class_id - only use explicit class_id parameter
@@ -1972,7 +2293,22 @@ exports.editStudent = async (req, res) => {
       contact_number,
       state,
       status: status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : undefined,
+      username,
+      plain_pass,
     };
+    
+    console.log('🔍 Before hash - plain_pass value:', plain_pass);
+    console.log('🔍 Before hash - userUpdateFields:', userUpdateFields);
+    
+    // Hash password if plain_pass is being updated (using same method as auth.controller.js)
+    if (plain_pass && plain_pass !== undefined && plain_pass !== null && plain_pass !== '') {
+      const bcrypt = require('bcryptjs');
+      userUpdateFields.password = await bcrypt.hash(plain_pass, 10);
+      console.log('🔐 Hashing password for plain_pass:', plain_pass);
+      console.log('✅ Added hashed password to userUpdateFields');
+    } else {
+      console.log('⚠️ Skipping hash - plain_pass is empty or undefined');
+    }
     
     // Remove undefined values to avoid overwriting with null
     Object.keys(userUpdateFields).forEach(key => {
@@ -1980,8 +2316,15 @@ exports.editStudent = async (req, res) => {
         delete userUpdateFields[key];
       }
     });
+    
+    console.log('📤 Final userUpdateFields to update:', Object.keys(userUpdateFields));
 
     await student.user.update(userUpdateFields);
+    
+    console.log('✅ Student user updated:', {
+      username: student.user.username,
+      plain_pass: student.user.plain_pass
+    });
 
     // 3. Update student fields
     const studentUpdateFields = {};
@@ -1989,12 +2332,47 @@ exports.editStudent = async (req, res) => {
     if (parent_id !== undefined) studentUpdateFields.parent_id = parent_id;
     studentUpdateFields.updated_by = updated_by;
     
+    // Add student settings (profile, interests, buddy)
+    // Always set these fields to ensure JSONB fields are properly updated
+    if (req.body.profile !== undefined) {
+      studentUpdateFields.profile = req.body.profile;
+      console.log('📝 Profile to save:', req.body.profile);
+    }
+    if (req.body.interests !== undefined) {
+      studentUpdateFields.interests = req.body.interests;
+      console.log('📝 Interests to save:', req.body.interests);
+    }
+    if (req.body.buddy !== undefined) {
+      studentUpdateFields.buddy = req.body.buddy;
+      console.log('📝 Buddy to save:', req.body.buddy);
+    }
+    
+    console.log('📝 All student settings to update:', studentUpdateFields);
+    
     // Note: grade is derived from class_id (stored in classes.class_name)
     // school is display-only (computed from class relationship)
     
     // Only update student fields if there are fields to update
     if (Object.keys(studentUpdateFields).length > 0) {
-      await student.update(studentUpdateFields);
+      // Force update of JSONB fields by explicitly setting them
+      const updateOptions = { 
+        fields: Object.keys(studentUpdateFields),
+        returning: true,
+        silent: false
+      };
+      
+      console.log('🔄 Updating with fields:', Object.keys(studentUpdateFields));
+      
+      await student.update(studentUpdateFields, updateOptions);
+      
+      // Reload the student to get fresh data
+      await student.reload();
+      
+      console.log('✅ Student fields updated:', {
+        profile: student.profile,
+        interests: student.interests,
+        buddy: student.buddy
+      });
     }
 
     // 4. If subjects are provided, update them
@@ -2068,7 +2446,9 @@ exports.editTeacher = async (req, res) => {
       contact_number,
       state,
       status,
-      class_id
+      class_id,
+      username,
+      plain_pass
     } = req.body;
     const updated_by = req.user.id; // user performing the edit
 
@@ -2088,7 +2468,16 @@ exports.editTeacher = async (req, res) => {
       contact_number,
       state,
       status: status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : undefined,
+      username,
+      plain_pass,
     };
+    
+    // Hash password if plain_pass is being updated (using same method as auth.controller.js)
+    if (plain_pass) {
+      const bcrypt = require('bcryptjs');
+      userUpdateFields.password = await bcrypt.hash(plain_pass, 10);
+      console.log('🔐 Hashing password for teacher');
+    }
 
     await teacher.user.update(userUpdateFields);
 
@@ -2133,7 +2522,9 @@ exports.editParent = async (req, res) => {
       contact_number,
       state,
       status,
-      is_payer
+      is_payer,
+      username,
+      plain_pass
     } = req.body;
     const updated_by = req.user.id; // user performing the edit
 
@@ -2153,7 +2544,16 @@ exports.editParent = async (req, res) => {
       contact_number,
       state,
       status: status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : undefined,
+      username,
+      plain_pass,
     };
+    
+    // Hash password if plain_pass is being updated (using same method as auth.controller.js)
+    if (plain_pass) {
+      const bcrypt = require('bcryptjs');
+      userUpdateFields.password = await bcrypt.hash(plain_pass, 10);
+      console.log('🔐 Hashing password for parent');
+    }
 
     await parent.user.update(userUpdateFields);
 

@@ -48,6 +48,16 @@ module.exports = (sequelize, DataTypes) => {
     raw_text: {
       type: DataTypes.TEXT,
       allowNull: true
+    },
+    api_tokens_used: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0
+    },
+    api_cost_usd: {
+      type: DataTypes.DECIMAL(10, 6),
+      allowNull: true,
+      defaultValue: 0.000000
     }
     // NOTE: status column doesn't exist in database yet
     // Uncomment this after your backend developer adds this column:

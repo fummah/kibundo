@@ -23,12 +23,15 @@ app.use(cors({
 app.use(express.json({ limit: "200mb" }));
 app.use(express.urlencoded({ extended: true, limit: "200mb" }));
 
+// Serve uploaded files as static assets
+app.use('/uploads', express.static('uploads'));
+
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api", userRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/ai/upload", uploadRoutes);
-app.use("/api/ai/conversations", conversationRoutes);
+app.use("/api/conversations", conversationRoutes); // ✅ Changed from /api/ai/conversations to /api/conversations
 
 // Sync DB and start server
 db.sequelize.sync().then(() => {

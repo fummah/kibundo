@@ -41,6 +41,7 @@ const ReadingQuizFlow   = lazy(() => import("@/pages/student/reading/ReadingQuiz
 import HomeworkLayout from "@/pages/student/homework/HomeworkLayout.jsx";
 const HomeworkList       = lazy(() => import("@/pages/student/homework/HomeworkList.jsx"));
 const HomeworkDoing      = lazy(() => import("@/pages/student/homework/HomeworkDoing.jsx"));
+const HomeworkChat       = lazy(() => import("@/pages/student/homework/HomeworkChat.jsx"));
 const HomeworkFeedback   = lazy(() => import("@/pages/student/homework/HomeworkFeedback.jsx"));
 
 // Progress / Motivation
@@ -176,10 +177,13 @@ export default function StudentRoutes() {
               <Route path="reading/quiz"       element={<ReadingQuizFlow />} />
 
               {/* Homework Flow */}
+              {/* Chat route outside of layout for full-screen experience */}
+              <Route path="homework/chat" element={<HomeworkChat />} />
+              
+              {/* Other homework routes with layout */}
               <Route path="homework" element={<HomeworkLayout />}>
                 <Route index element={<HomeworkList />} />
                 <Route path="doing"      element={<HomeworkDoing />} />
-                <Route path="chat"       element={<Navigate to="/student/homework/doing" replace />} />
                 <Route path="feedback"   element={<HomeworkFeedback />} />
 
                 {/* Legacy fallback routes */}

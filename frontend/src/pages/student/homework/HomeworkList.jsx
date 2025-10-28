@@ -115,7 +115,7 @@ function deriveSubjectFromText(text = "") {
 
 export default function HomeworkList() {
   const navigate = useNavigate();
-  const { openChat, expandChat, getChatMessages } = useChatDock(); // ⬅️ we read analysis from chat
+  const { openChat, expandChat, getChatMessages, closeChat } = useChatDock(); // ⬅️ we read analysis from chat
   const { user: authUser } = useAuthContext();
 
   // derive current student id (scope everything by this)
@@ -300,8 +300,10 @@ export default function HomeworkList() {
     return enhancedRows.slice(start, start + pageSize);
   }, [enhancedRows, page]);
 
-  // Clicking a task → open HomeworkChat at last message (restore history)
+  // Clicking a task → open FooterChat with the task context
   const openTask = (task) => {
+    console.log("📋 Opening homework task in FooterChat:", task.id);
+    
     try {
       localStorage.setItem(
         PROGRESS_KEY_USER,
@@ -311,7 +313,7 @@ export default function HomeworkList() {
 
     const chatKey = `homework:${task.id}::u:${studentId}`;
 
-    // Open scoped chat
+    // 🔥 Open the FooterChat with task context
     openChat?.({
       mode: "homework",
       task: { ...task, userId: studentId },
@@ -321,12 +323,8 @@ export default function HomeworkList() {
       analyzeOnOpen: false,
     });
 
+    // Expand the chat to show it
     expandChat?.(true);
-
-    navigate("/student/homework/doing", {
-      state: { taskId: task.id, openHomeworkChat: true },
-      replace: false,
-    });
   };
 
   // Handle edit task

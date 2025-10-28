@@ -2,16 +2,19 @@
 import React, { useMemo, useCallback, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Tag, Button, Modal, App } from "antd";
+import { KeyOutlined } from "@ant-design/icons";
 import EntityDetail from "@/components/EntityDetail.jsx";
 import BillingTab from "./BillingTab";
+import EditCredentialsModal from "@/components/common/EditCredentialsModal";
 
 export default function ParentDetail() {
   // Freeze any prefill coming via router state so later URL/tab changes don't clobber it
   const location = useLocation();
   const prefillRef = useRef(location.state?.prefill || null);
   const { message } = App.useApp();
-
-
+  
+  const [credentialsModalVisible, setCredentialsModalVisible] = useState(false);
+  const [currentEntity, setCurrentEntity] = useState(null);
 
   // Normalizer: makes sure we always have a top-level `email`, etc.
   const coerceParent = useCallback((src) => {
@@ -117,6 +120,8 @@ export default function ParentDetail() {
         },
         { label: "Phone Number", name: "contact_number" },
         { label: "Bundesland", name: "bundesland" },
+        { label: "Portal Login", name: "username", editable: true },
+        { label: "Portal Password", name: "plain_pass", editable: true, type: "password" },
         { label: "Member Since", name: "member_since", editable: false },
       ],
 
@@ -203,7 +208,31 @@ export default function ParentDetail() {
 
   return (
     <App>
-      <EntityDetail cfg={cfg} />
+      <EntityDetail 
+        cfg={cfg}
+        onEntityLoad={(entity) => setCurrentEntity(entity)}
+        extraHeaderButtons={(entity) => (
+          <Button
+            type="default"
+            icon={<KeyOutlined />}
+            onClick={() => setCredentialsModalVisible(true)}
+            disabled={!entity?.user_id}
+          >
+            Edit Login Credentials
+          </Button>
+        )}
+      />
+      
+      {/* Edit Credentials Modal */}
+      <EditCredentialsModal
+        visible={credentialsModalVisible}
+        onCancel={() => setCredentialsModalVisible(false)}
+        userId={currentEntity?.user_id}
+        userName={currentEntity?.name || 'Parent'}
+        onSuccess={() => {
+          message.success('Credentials updated successfully');
+        }}
+      />
     </App>
   );
 }

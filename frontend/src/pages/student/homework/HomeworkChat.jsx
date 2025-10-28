@@ -111,6 +111,34 @@ export default function HomeworkChat() {
   const [open, setOpen] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
+  
+  // 🔥 Load conversationId from localStorage on mount
+  const studentId = authUser?.id || "anon";
+  const conversationIdKey = `kibundo.convId.homework.${studentId}`;
+  const [conversationId, setConversationId] = useState(() => {
+    try {
+      const saved = localStorage.getItem(conversationIdKey);
+      if (saved) {
+        console.log("🔄 HOMEWORK: Loaded existing conversationId:", saved);
+        return parseInt(saved, 10);
+      }
+    } catch (e) {
+      console.log("❌ HOMEWORK: Failed to load conversationId:", e);
+    }
+    return null;
+  });
+
+  // 🔥 Save conversationId to localStorage whenever it changes
+  useEffect(() => {
+    if (conversationId) {
+      try {
+        localStorage.setItem(conversationIdKey, conversationId.toString());
+        console.log("💾 HOMEWORK: Saved conversationId to localStorage:", conversationId);
+      } catch (e) {
+        console.log("❌ HOMEWORK: Failed to save conversationId:", e);
+      }
+    }
+  }, [conversationId, conversationIdKey]);
 
   // Keep progress at step 2 while chatting
   useEffect(() => {
@@ -119,6 +147,87 @@ export default function HomeworkChat() {
       localStorage.setItem(PROGRESS_KEY, JSON.stringify({ ...prev, step: 2 }));
     } catch {}
   }, []);
+
+  // 🔥 Handle clicking a homework card from the list - load the task context and conversation history
+  useEffect(() => {
+    const task = location.state?.task;
+    const taskId = location.state?.taskId;
+    const scanId = task?.scanId;
+    
+    if (!task && !taskId) return;
+    
+    console.log("📋 HOMEWORK: Opened from task list:", { task, taskId, scanId });
+    
+    // If we have a scanId, try to load the existing conversation
+    if (scanId) {
+      (async () => {
+        try {
+          console.log("🔍 HOMEWORK: Fetching conversation for scanId:", scanId);
+          
+          // Try to fetch conversation by scanId
+          const { data } = await api.get(`/conversations`, {
+            params: { scan_id: scanId },
+          });
+          
+          if (data && data.length > 0) {
+            const conversation = data[0]; // Get the first matching conversation
+            const convId = conversation.id;
+            
+            console.log("✅ HOMEWORK: Found existing conversation:", convId);
+            setConversationId(convId);
+            
+            // Fetch messages for this conversation
+            const { data: messages } = await api.get(`/conversations/${convId}/messages`);
+            
+            if (messages && messages.length > 0) {
+              console.log("✅ HOMEWORK: Loaded", messages.length, "messages from conversation");
+              
+              // Transform backend messages to chat format
+              const formattedMessages = messages.map((msg) => ({
+                id: msg.id || Date.now() + Math.random(),
+                from: msg.sender === "student" ? "student" : "agent",
+                type: "text",
+                content: msg.content,
+                timestamp: msg.created_at || new Date().toISOString(),
+              }));
+              
+              setChatHistory(formattedMessages);
+            } else {
+              // No messages yet, show welcome
+              const welcomeMsg = formatMessage(
+                `I'm here to help you with your ${task?.subject || 'homework'}! ${task?.description ? `Here's what I see: ${task.description}` : 'What would you like to know?'}`,
+                "agent"
+              );
+              setChatHistory([welcomeMsg]);
+            }
+          } else {
+            console.log("ℹ️ HOMEWORK: No existing conversation found, starting fresh");
+            // No conversation yet, show welcome
+            const welcomeMsg = formatMessage(
+              `I'm here to help you with your ${task?.subject || 'homework'}! ${task?.description ? `Here's what I see: ${task.description}` : 'What would you like to know?'}`,
+              "agent"
+            );
+            setChatHistory([welcomeMsg]);
+          }
+        } catch (error) {
+          console.error("❌ HOMEWORK: Failed to load conversation:", error);
+          // On error, just show welcome
+          const welcomeMsg = formatMessage(
+            `I'm here to help you with your ${task?.subject || 'homework'}! What would you like to know?`,
+            "agent"
+          );
+          setChatHistory([welcomeMsg]);
+        }
+      })();
+    } else {
+      // No scanId, just show welcome
+      const welcomeMsg = formatMessage(
+        `I'm here to help you with your ${task?.subject || 'homework'}! ${task?.description ? `Here's what I see: ${task.description}` : 'What would you like to know?'}`,
+        "agent"
+      );
+      setChatHistory([welcomeMsg]);
+    }
+  }, [location.state?.task, location.state?.taskId]);
 
   // If we navigated here with an image (or images) from HomeworkDoing
   useEffect(() => {
@@ -207,11 +316,33 @@ export default function HomeworkChat() {
       } catch (err) {
       }
 
-      // Text → general chat
+      // Text → general chat 🔥 NOW WITH CONVERSATION ID
+      console.log("📤 FRONTEND: Sending to /ai/chat with conversationId:", conversationId);
       const { data } = await api.post("/ai/chat", {
         question: content,
         ai_agent: assignedAgent,
+        conversationId: conversationId, // 🔥 Send conversation ID for memory
+        mode: "homework",
       });
+      
+      console.log("📥 FRONTEND: Received response from backend:", {
+        hasConversationId: !!data?.conversationId,
+        conversationId: data?.conversationId,
+        answer: data?.answer?.substring(0, 50)
+      });
+      
+      // 🔥 Update conversation ID if backend returns a new one (first message)
+      if (data?.conversationId && data.conversationId !== conversationId) {
+        console.log("🔥 HOMEWORK: Updating conversationId from", conversationId, "to", data.conversationId);
+        setConversationId(data.conversationId);
+      } else if (data?.conversationId) {
+        console.log("✅ HOMEWORK: ConversationId already matches:", data.conversationId);
+        // 🔥 Refetch conversation history from backend to sync
+        console.log("🔄 HOMEWORK: Would refetch messages here (not implemented for homework chat)");
+      } else {
+        console.log("❌ HOMEWORK: No conversationId in response!");
+      }
+      
       return { success: true, response: data?.answer || "—" };
     } catch (error) {
       return {
@@ -223,7 +354,7 @@ export default function HomeworkChat() {
     } finally {
       setIsTyping(false);
     }
-  }, [authUser]);
+  }, [conversationId]); // 🔥 Added conversationId to dependencies
 
   const handleSendMessage = useCallback(
     async (content, type = "text") => {

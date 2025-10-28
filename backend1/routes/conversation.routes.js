@@ -1,7 +1,10 @@
 import express from "express";
-import { handleConversation, getChatHistory } from "../controllers/conversationController.js";
+import { handleConversation, getChatHistory, searchConversations } from "../controllers/conversationController.js";
 
 const router = express.Router();
+
+// GET search/filter conversations (must be before /:conversationId to avoid conflicts)
+router.get("/", searchConversations);
 
 // POST a message to a conversation. conversationId is optional
 router.post("/:conversationId/message", handleConversation);

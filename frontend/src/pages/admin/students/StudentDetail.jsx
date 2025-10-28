@@ -2,9 +2,28 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import EntityDetail from "@/components/EntityDetail.jsx";
-import { Button, Tag, Modal, Select, App } from "antd";
-import { PlusOutlined, UnorderedListOutlined } from "@ant-design/icons";
+import { Button, Tag, Modal, Select, App, Input, Space, Switch, Table, Image } from "antd";
+import { PlusOutlined, UnorderedListOutlined, KeyOutlined, EditOutlined, SaveOutlined, CloseOutlined, EyeOutlined } from "@ant-design/icons";
 import api from "@/api/axios";
+import EditCredentialsModal from "@/components/common/EditCredentialsModal";
+
+const BUDDIES = [
+  { id: "m1", name: "Milo", img: "/src/assets/buddies/kibundo-buddy.png" },
+  { id: "m2", name: "Lumi", img: "/src/assets/buddies/kibundo-buddy1.png" },
+  { id: "m3", name: "Zuzu", img: "/src/assets/buddies/monster1.png" },
+  { id: "m4", name: "Kiko", img: "/src/assets/buddies/monster2.png" },
+  { id: "m5", name: "Pipa", img: "/src/assets/buddies/Hausaufgaben.png" },
+  { id: "m6", name: "Nori", img: "/src/assets/buddies/Lernen.png" },
+];
+
+const THEME_OPTIONS = [
+  { label: "Indigo", value: "indigo" },
+  { label: "Sky", value: "sky" },
+  { label: "Emerald", value: "emerald" },
+  { label: "Purple", value: "purple" },
+  { label: "Rose", value: "rose" },
+  { label: "Amber", value: "amber" },
+];
 
 const euro = (cents) => {
   const n = Number(cents);
@@ -12,79 +31,686 @@ const euro = (cents) => {
   return `${(n / 100).toFixed(2)} €`;
 };
 
+// Subjects Tab Component
+const SubjectsTab = ({ student, reload }) => {
+  const { modal } = App.useApp();
+  const [assignSubjectModalVisible, setAssignSubjectModalVisible] = useState(false);
+  const [selectedSubjectToAssign, setSelectedSubjectToAssign] = useState(null);
+  const [allSubjects, setAllSubjects] = useState([]);
+  
+  const studentId = student?.id;
+  const subjects = Array.isArray(student?.raw?.subjects) ? student.raw.subjects : [];
+  const assignedIds = new Set(
+    subjects
+      .map((s) => s?.id ?? s?.subject_id)
+      .filter(Boolean)
+  );
+  const notAssigned = allSubjects.filter((subj) => !assignedIds.has(subj.id));
+  
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      try {
+        const { data } = await api.get("/allsubjects");
+        setAllSubjects(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Error loading subjects:", err);
+      }
+    };
+    fetchSubjects();
+  }, []);
+
+  const handleAssignSubject = async () => {
+    if (!studentId || !selectedSubjectToAssign) return;
+    try {
+      await api.post(`/student/${studentId}/subject/${selectedSubjectToAssign}`);
+      setAssignSubjectModalVisible(false);
+      setSelectedSubjectToAssign(null);
+      reload?.();
+    } catch (err) {
+      console.error("Error assigning subject:", err);
+    }
+  };
+  
+  const handleRemoveSubject = async (studentId, subjectId, reload) => {
+    try {
+      await api.delete(`/student/${studentId}/subject/${subjectId}`);
+      reload?.();
+    } catch (err) {
+      console.error("Error removing subject:", err);
+    }
+  };
+  
+  const onConfirmRemove = (subject) => {
+    const subjectId = subject?.id ?? subject?.subject_id;
+    const subjectName = subject?.subject_name || subject?.name || "this subject";
+    modal.confirm({
+      title: "Remove Subject",
+      content: `Are you sure you want to remove ${subjectName}?`,
+      okText: "Remove",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await handleRemoveSubject(studentId, subjectId, reload);
+      },
+    });
+  };
+  
+  return (
+    <>
+      <div className="p-4">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium">Enrolled Subjects</h3>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setAssignSubjectModalVisible(true)}
+          >
+            Assign Subject
+          </Button>
+        </div>
+
+        {subjects.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {subjects.map((subject, idx) => {
+              const subjectId = subject?.id ?? subject?.subject_id ?? idx;
+              const subjectName =
+                subject?.subject_name || subject?.name || `Subject ${idx + 1}`;
+              return (
+                <Tag
+                  key={subjectId}
+                  color="blue"
+                  className="text-sm py-1 px-3 flex items-center gap-2"
+                  closable
+                  onClose={(e) => {
+                    e.preventDefault();
+                    onConfirmRemove(subject);
+                  }}
+                >
+                  {subjectName}
+                </Tag>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-gray-500">No subjects assigned to this student</div>
+        )}
+      </div>
+
+      {/* Assign Subject Modal */}
+      <Modal
+        title="Assign Subject"
+        open={assignSubjectModalVisible}
+        onOk={handleAssignSubject}
+        onCancel={() => {
+          setAssignSubjectModalVisible(false);
+          setSelectedSubjectToAssign(null);
+        }}
+        okButtonProps={{ disabled: !selectedSubjectToAssign }}
+      >
+        <Select
+          placeholder="Select a subject"
+          style={{ width: "100%" }}
+          value={selectedSubjectToAssign}
+          onChange={setSelectedSubjectToAssign}
+          showSearch
+          filterOption={(input, option) =>
+            (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+          }
+          options={notAssigned.map((s) => ({
+            label: s.subject_name || s.name || `Subject ${s.id}`,
+            value: s.id,
+          }))}
+        />
+      </Modal>
+    </>
+  );
+};
+
+// Interests Tab Component
+const InterestsTab = ({ student, reload }) => {
+  const { message } = App.useApp();
+  const studentData = student?.raw || {};
+  const interests = Array.isArray(studentData?.interests) ? studentData.interests : [];
+  const profile = studentData?.profile || {};
+  const buddy = studentData?.buddy || {};
+  
+  const [editingInterests, setEditingInterests] = useState(false);
+  const [interestsDraft, setInterestsDraft] = useState([]);
+  const [newInterestInput, setNewInterestInput] = useState("");
+  const [savingInterests, setSavingInterests] = useState(false);
+  
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileDraft, setProfileDraft] = useState({ 
+    name: studentData?.firstName || "",
+    theme: profile?.theme || "indigo", 
+    tts: profile?.tts ?? true 
+  });
+  const [buddyDraft, setBuddyDraft] = useState(buddy);
+  const [savingProfile, setSavingProfile] = useState(false);
+  
+  const startEditingInterests = () => {
+    setInterestsDraft([...interests]);
+    setEditingInterests(true);
+  };
+  
+  const cancelEditingInterests = () => {
+    setInterestsDraft([]);
+    setNewInterestInput("");
+    setEditingInterests(false);
+  };
+  
+  const addInterestToDraft = () => {
+    if (newInterestInput.trim()) {
+      setInterestsDraft([...interestsDraft, newInterestInput.trim()]);
+      setNewInterestInput("");
+    }
+  };
+  
+  const removeInterestFromDraft = (index) => {
+    setInterestsDraft(interestsDraft.filter((_, i) => i !== index));
+  };
+  
+  const saveInterests = async () => {
+    setSavingInterests(true);
+    try {
+      await api.patch(`/student/${student.id}`, {
+        interests: interestsDraft,
+      });
+      message.success("Interests updated successfully!");
+      setEditingInterests(false);
+      reload?.();
+    } catch (err) {
+      console.error("Error saving interests:", err);
+      message.error("Failed to save interests");
+    } finally {
+      setSavingInterests(false);
+    }
+  };
+  
+  const startEditingProfile = () => {
+    setProfileDraft({ 
+      name: studentData?.firstName || profile?.name || "",
+      theme: profile?.theme || "indigo", 
+      tts: profile?.tts ?? true 
+    });
+    setBuddyDraft(buddy);
+    setEditingProfile(true);
+  };
+  
+  const cancelEditingProfile = () => {
+    setEditingProfile(false);
+  };
+  
+  const saveProfile = async () => {
+    setSavingProfile(true);
+    try {
+      await api.patch(`/student/${student.id}`, {
+        profile: profileDraft,
+        buddy: buddyDraft,
+      });
+      message.success("Learning profile updated successfully!");
+      setEditingProfile(false);
+      reload?.();
+    } catch (err) {
+      console.error("Error saving profile:", err);
+      message.error("Failed to save learning profile");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+  
+  return (
+    <div className="p-4 space-y-6">
+      {/* Interests Section */}
+      <div>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium">Student Interests</h3>
+          {!editingInterests ? (
+            <Button
+              type="primary"
+              icon={<EditOutlined />}
+              onClick={startEditingInterests}
+            >
+              Edit Interests
+            </Button>
+          ) : (
+            <Space>
+              <Button
+                icon={<CloseOutlined />}
+                onClick={cancelEditingInterests}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                onClick={saveInterests}
+                loading={savingInterests}
+              >
+                Save
+              </Button>
+            </Space>
+          )}
+        </div>
+
+        {editingInterests ? (
+          <div className="space-y-3">
+            <Space.Compact style={{ width: "100%" }}>
+              <Input
+                placeholder="Add new interest"
+                value={newInterestInput}
+                onChange={(e) => setNewInterestInput(e.target.value)}
+                onPressEnter={addInterestToDraft}
+              />
+              <Button type="primary" onClick={addInterestToDraft}>
+                Add
+              </Button>
+            </Space.Compact>
+            <div className="flex flex-wrap gap-2">
+              {interestsDraft.map((interest, idx) => (
+                <Tag
+                  key={idx}
+                  color="blue"
+                  closable
+                  onClose={() => removeInterestFromDraft(idx)}
+                  className="text-sm py-1 px-3"
+                >
+                  {interest}
+                </Tag>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {interests.length > 0 ? (
+              interests.map((interest, idx) => (
+                <Tag key={idx} color="blue" className="text-sm py-1 px-3">
+                  {interest}
+                </Tag>
+              ))
+            ) : (
+              <div className="text-gray-500">No interests recorded</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Learning Profile Section */}
+      <div>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium">Learning Profile</h3>
+          {!editingProfile ? (
+            <Button
+              type="primary"
+              icon={<EditOutlined />}
+              onClick={startEditingProfile}
+            >
+              Edit Profile
+            </Button>
+          ) : (
+            <Space>
+              <Button
+                icon={<CloseOutlined />}
+                onClick={cancelEditingProfile}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                onClick={saveProfile}
+                loading={savingProfile}
+              >
+                Save
+              </Button>
+            </Space>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Display Name</label>
+            {editingProfile ? (
+              <Input
+                value={profileDraft.name}
+                onChange={(e) => setProfileDraft({ ...profileDraft, name: e.target.value })}
+                placeholder="Enter display name"
+              />
+            ) : (
+              <Input
+                value={studentData?.firstName || profile?.name || ""}
+                disabled
+                className="bg-gray-50"
+              />
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Theme</label>
+            {editingProfile ? (
+              <Select
+                value={profileDraft.theme}
+                onChange={(val) => setProfileDraft({ ...profileDraft, theme: val })}
+                style={{ width: "100%" }}
+                options={THEME_OPTIONS}
+              />
+            ) : (
+              <Input value={profile?.theme || "indigo"} disabled className="bg-gray-50" />
+            )}
+          </div>
+
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-gray-700">Text-to-Speech</label>
+            {editingProfile ? (
+              <Switch
+                checked={profileDraft.tts}
+                onChange={(checked) => setProfileDraft({ ...profileDraft, tts: checked })}
+              />
+            ) : (
+              <Tag color={profile?.tts ? "green" : "red"}>
+                {profile?.tts ? "Enabled" : "Disabled"}
+              </Tag>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Learning Buddy</label>
+            {editingProfile ? (
+              <Select
+                value={buddyDraft?.id}
+                onChange={(val) => {
+                  const selected = BUDDIES.find((b) => b.id === val);
+                  setBuddyDraft(selected);
+                }}
+                style={{ width: "100%" }}
+                options={BUDDIES.map((b) => ({ label: b.name, value: b.id }))}
+              />
+            ) : (
+              <Input value={buddy?.name || "Not set"} disabled className="bg-gray-50" />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// API Usage Tab Component
+const ApiUsageTab = ({ student }) => {
+  const { message } = App.useApp();
+  const [apiStats, setApiStats] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!student?.id) return;
+
+    const loadApiStats = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const { data } = await api.get('/student/api-usage', {
+          params: { student_id: student.id },
+        });
+        console.log("✅ API usage data received:", data);
+        
+        // Check if migration is needed
+        if (data.requiresMigration || data.needsMigration) {
+          console.warn("⚠️ API usage columns not found - migration needed");
+          setError("migration");
+          setApiStats(data);
+        } else {
+          setApiStats(data);
+        }
+      } catch (err) {
+        console.error("❌ Failed to load API usage:", err);
+        console.error("❌ Error response:", err.response?.data);
+        
+        if (err.response?.data?.requiresMigration) {
+          setError("migration");
+        } else {
+          message.error(`Failed to load API usage data: ${err.response?.data?.message || err.message}`);
+          setError("error");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadApiStats();
+  }, [student?.id, message]);
+  
+  if (loading) {
+    return <div className="p-4 text-center">Loading API usage data...</div>;
+  }
+  
+  if (error === "migration") {
+    return (
+      <div className="p-4">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <h4 className="text-yellow-800 font-medium mb-2">⚠️ Migration Required</h4>
+          <p className="text-yellow-700 text-sm">
+            The API usage tracking columns need to be added to the database.
+            Please run the migration script:
+            <code className="block mt-2 bg-yellow-100 p-2 rounded">
+              backend1/scripts/add-api-usage-columns.sql
+            </code>
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (error === "error" || !apiStats) {
+    return <div className="p-4 text-center text-red-500">Failed to load API usage data</div>;
+  }
+  
+  return (
+    <div className="p-4 space-y-4">
+      <h3 className="text-lg font-medium mb-4">💰 API Usage Statistics</h3>
+      
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-blue-50 p-4 rounded-lg">
+          <div className="text-sm text-gray-600">Total Scans</div>
+          <div className="text-2xl font-bold text-blue-600">{apiStats.totalScans || 0}</div>
+        </div>
+        
+        <div className="bg-green-50 p-4 rounded-lg">
+          <div className="text-sm text-gray-600">Total Tokens</div>
+          <div className="text-2xl font-bold text-green-600">{apiStats.totalTokens?.toLocaleString() || 0}</div>
+        </div>
+        
+        <div className="bg-purple-50 p-4 rounded-lg">
+          <div className="text-sm text-gray-600">Total Cost</div>
+          <div className="text-2xl font-bold text-purple-600">${apiStats.totalCost?.toFixed(4) || "0.0000"}</div>
+        </div>
+        
+        <div className="bg-amber-50 p-4 rounded-lg">
+          <div className="text-sm text-gray-600">Avg Cost/Scan</div>
+          <div className="text-2xl font-bold text-amber-600">${apiStats.avgCostPerScan?.toFixed(4) || "0.0000"}</div>
+        </div>
+      </div>
+      
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <h4 className="text-sm font-medium text-gray-700 mb-2">Daily Costs (Last 7 Days)</h4>
+        <div className="space-y-1">
+          {apiStats.dailyCosts && apiStats.dailyCosts.length > 0 ? (
+            apiStats.dailyCosts.map((day, idx) => (
+              <div key={idx} className="flex justify-between text-sm">
+                <span>{day.date}</span>
+                <span className="font-medium">${day.cost?.toFixed(4) || "0.0000"}</span>
+              </div>
+            ))
+          ) : (
+            <div className="text-sm text-gray-500">No daily data available</div>
+          )}
+        </div>
+      </div>
+      
+      {apiStats.lastScanDate && (
+        <div className="text-sm text-gray-600">
+          Last scan: {new Date(apiStats.lastScanDate).toLocaleString()}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Homework Tab Component
+const HomeworkTab = ({ student }) => {
+  const { message } = App.useApp();
+  const [homeworkData, setHomeworkData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewImage, setPreviewImage] = useState("");
+  
+  useEffect(() => {
+    if (!student?.id) {
+      console.warn("⚠️ No student ID found for homework tab");
+      return;
+    }
+    
+    const loadHomework = async () => {
+      setLoading(true);
+      try {
+        console.log("📚 Loading homework for student ID:", student.id);
+        const { data } = await api.get(`/student/${student.id}/homeworkscans`);
+        console.log("📚 Homework data received:", data?.length || 0, "submissions");
+        setHomeworkData(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("❌ Failed to load homework:", err);
+        message.error("Failed to load homework submissions");
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadHomework();
+  }, [student?.id, message]);
+  
+  const handlePreview = (fileUrl) => {
+    setPreviewImage(fileUrl);
+    setPreviewVisible(true);
+  };
+  
+  const columns = [
+    { 
+      title: "ID", 
+      dataIndex: "id", 
+      key: "id", 
+      width: 70,
+      render: (v) => v || "-"
+    },
+    { 
+      title: "Date Submitted", 
+      dataIndex: "created_at", 
+      key: "created_at", 
+      width: 180,
+      render: (v) => v ? new Date(v).toLocaleString() : "-"
+    },
+    { 
+      title: "Subject", 
+      dataIndex: "detected_subject", 
+      key: "detected_subject", 
+      width: 120,
+      render: (v) => v ? <Tag color="blue">{v}</Tag> : <Tag>Not detected</Tag>
+    },
+    { 
+      title: "Student Grade", 
+      dataIndex: "grade", 
+      key: "grade", 
+      width: 120,
+      render: (v, record) => {
+        // Show grade from scan if available, otherwise show student's grade
+        const displayGrade = v || student?.grade || student?.user?.grade;
+        return displayGrade ? <Tag color="green">Grade {displayGrade}</Tag> : <Tag>Not set</Tag>;
+      }
+    },
+    { 
+      title: "Publisher", 
+      dataIndex: "publisher", 
+      key: "publisher", 
+      width: 120,
+      render: (v) => v || "-"
+    },
+    { 
+      title: "Text Preview", 
+      dataIndex: "raw_text", 
+      key: "raw_text",
+      width: 250,
+      render: (v) => {
+        if (!v) return <span className="text-gray-400">No text extracted</span>;
+        const preview = v.substring(0, 80);
+        return <span className="text-sm">{preview}{v.length > 80 ? "..." : ""}</span>;
+      }
+    },
+    { 
+      title: "File", 
+      dataIndex: "file_url", 
+      key: "file_url",
+      width: 100,
+      render: (v) => {
+        if (!v) return "-";
+        
+        // Check if it's a base64 string or a URL
+        const isBase64 = v.startsWith("data:") || !v.startsWith("http");
+        const imageUrl = isBase64 ? v : v.startsWith("/") ? `http://localhost:3001${v}` : v;
+        
+        return (
+          <Button 
+            type="link" 
+            size="small" 
+            icon={<EyeOutlined />}
+            onClick={() => handlePreview(imageUrl)}
+          >
+            View
+          </Button>
+        );
+      }
+    },
+  ];
+  
+  return (
+    <div className="p-4">
+      <Table
+        columns={columns}
+        dataSource={homeworkData}
+        loading={loading}
+        rowKey="id"
+        pagination={{ pageSize: 10 }}
+        scroll={{ x: 1000 }}
+        locale={{
+          emptyText: "No homework submissions yet."
+        }}
+      />
+      
+      <Modal
+        open={previewVisible}
+        title="Homework File Preview"
+        footer={null}
+        onCancel={() => setPreviewVisible(false)}
+        width={800}
+        centered
+      >
+        <div className="flex justify-center items-center">
+          <Image
+            src={previewImage}
+            alt="Homework preview"
+            style={{ maxWidth: "100%" }}
+            fallback="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+          />
+        </div>
+      </Modal>
+    </div>
+  );
+};
+
 export default function StudentDetail() {
   // Read location once, but freeze the prefill so later URL/tab changes don't trigger work
   const location = useLocation();
   const prefillRef = useRef(location.state?.prefill || null);
-  const { message, modal } = App.useApp();
 
-  const [availableSubjects, setAvailableSubjects] = useState([]);
-  const [assignSubjectModalVisible, setAssignSubjectModalVisible] = useState(false);
-  const [selectedSubjectId, setSelectedSubjectId] = useState(null);
-  const [assigning, setAssigning] = useState(false);
-
-  // Fetch available subjects once
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await api.get("/allsubjects");
-        setAvailableSubjects(Array.isArray(data) ? data : []);
-      } catch (err) {
-        message.error("Failed to load available subjects");
-      }
-    })();
-  }, []);
-
-  // Helpers for endpoints used by the Subjects tab
-  const apiPaths = useMemo(
-    () => ({
-      getStudent: (id) => `/student/${id}`,
-      assignSubject: (studentId, subjectId) => `/student/${studentId}/subject/${subjectId}`,
-      unlinkSubject: (studentId, subjectId) => `/student/${studentId}/subject/${subjectId}`,
-    }),
-    []
-  );
-
-  // Assign a subject to a student
-  const handleAssignSubject = useCallback(
-    async (studentId, onReload) => {
-      if (!selectedSubjectId) return;
-      setAssigning(true);
-      try {
-        await api.post(apiPaths.assignSubject(studentId, selectedSubjectId));
-        message.success("Subject assigned successfully");
-        setAssignSubjectModalVisible(false);
-        setSelectedSubjectId(null);
-        // Trigger reload if callback provided
-        if (onReload && typeof onReload === 'function') {
-          await onReload();
-        }
-      } catch (err) {
-        message.error(err?.response?.data?.message || "Failed to assign subject");
-      } finally {
-        setAssigning(false);
-      }
-    },
-    [selectedSubjectId, apiPaths, message]
-  );
-
-  // Remove (unlink) subject from student
-  const handleRemoveSubject = useCallback(
-    async (studentId, subjectId, onReload) => {
-      try {
-        await api.delete(apiPaths.unlinkSubject(studentId, subjectId));
-        message.success("Subject removed successfully");
-        // Trigger reload if callback provided
-        if (onReload && typeof onReload === 'function') {
-          await onReload();
-        }
-      } catch (err) {
-        message.error(err?.response?.data?.message || "Failed to remove subject");
-      }
-    },
-    [apiPaths, message]
-  );
-
+  const [credentialsModalVisible, setCredentialsModalVisible] = useState(false);
+  const [currentEntity, setCurrentEntity] = useState(null);
 
   // Stable config object (does not depend on location)
   const cfg = useMemo(() => ({
@@ -221,6 +847,8 @@ export default function StudentDetail() {
       { label: "Grade", name: "grade" },
       { label: "State", name: "state" },
       { label: "Status", name: "status" },
+      { label: "Portal Login", name: "username", editable: true },
+      { label: "Portal Password", name: "plain_pass", editable: true, type: "password" },
       { label: "Date added", name: "createdAt", editable: false },
     ],
 
@@ -238,111 +866,14 @@ export default function StudentDetail() {
       subjects: {
         enabled: true,
         label: "Subjects",
-        render: (student, { reload } = {}) => {
-          const studentId = student?.id;
-          const subjects = Array.isArray(student?.raw?.subjects) ? student.raw.subjects : [];
-          const assignedIds = new Set(
-            subjects
-              .map((s) => s?.id ?? s?.subject_id)
-              .filter((v) => v !== undefined && v !== null)
-          );
+        render: (student, { reload } = {}) => <SubjectsTab student={student} reload={reload} />,
+      },
 
-          const selectableOptions = availableSubjects
-            .filter((subj) => {
-              const id = subj?.id ?? subj?.subject_id;
-              return id !== undefined && !assignedIds.has(id);
-            })
-            .map((subj) => ({
-              label: subj?.name || subj?.subject_name || `Subject #${subj?.id ?? subj?.subject_id}`,
-              value: subj?.id ?? subj?.subject_id,
-            }));
-
-          const onConfirmRemove = async (subject) => {
-            const subjectId = subject?.id ?? subject?.subject_id;
-            modal.confirm({
-              title: "Remove Subject",
-              content: `Are you sure you want to remove ${
-                subject?.subject_name || subject?.name || `Subject #${subjectId}`
-              } from this student?`,
-              okButtonProps: { danger: true },
-              onOk: async () => {
-                await handleRemoveSubject(studentId, subjectId, reload);
-              },
-            });
-          };
-
-          return (
-            <>
-              <div className="p-4">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-medium">Enrolled Subjects</h3>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => setAssignSubjectModalVisible(true)}
-                  >
-                    Assign Subject
-                  </Button>
-                </div>
-
-                {subjects.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {subjects.map((subject, idx) => {
-                      const subjectId = subject?.id ?? subject?.subject_id ?? idx;
-                      const subjectName =
-                        subject?.subject_name || subject?.name || `Subject ${idx + 1}`;
-                      return (
-                        <Tag
-                          key={subjectId}
-                          color="blue"
-                          className="text-sm py-1 px-3 flex items-center gap-2"
-                          closable
-                          onClose={(e) => {
-                            e.preventDefault();
-                            onConfirmRemove(subject);
-                          }}
-                        >
-                          {subjectName}
-                        </Tag>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-gray-500">No subjects assigned to this student</div>
-                )}
-              </div>
-
-              {/* Assign Subject Modal */}
-              <Modal
-                key={`assign-subject-modal-${studentId}`}
-                title="Assign Subject"
-                open={assignSubjectModalVisible}
-                onCancel={() => {
-                  setAssignSubjectModalVisible(false);
-                  setSelectedSubjectId(null);
-                }}
-                onOk={async () => {
-                  await handleAssignSubject(studentId, reload);
-                }}
-                confirmLoading={assigning}
-                okText="Assign"
-                okButtonProps={{ disabled: !selectedSubjectId }}
-                destroyOnHidden
-                maskClosable={false}
-              >
-                <Select
-                  style={{ width: "100%" }}
-                  placeholder="Select a subject to assign"
-                  value={selectedSubjectId}
-                  onChange={setSelectedSubjectId}
-                  options={selectableOptions}
-                  showSearch
-                  optionFilterProp="label"
-                />
-              </Modal>
-            </>
-          );
-        },
+      // Homework tab
+      homework: {
+        enabled: true,
+        label: "Homework",
+        render: (student) => <HomeworkTab student={student} />,
       },
 
       // Parents/Guardians tab
@@ -421,31 +952,22 @@ export default function StudentDetail() {
         empty: "No parent linked to this student.",
       },
 
-      // Activity
-      activity: {
+      // Interests
+      interests: {
         enabled: true,
-        label: "Activity",
-        listPath: (id) => `/student/${id}/activity`,
-        toolbar: () => (
-          <Button
-            size="small"
-            icon={<UnorderedListOutlined />}
-            onClick={() => message.info("Use the Reload button to refresh the activity list.")}
-          >
-            Refresh
-          </Button>
-        ),
-        columns: [
-          { title: "When", dataIndex: "timestamp", key: "timestamp", width: 200, render: (v) => v ?? "-" },
-          { title: "Type", dataIndex: "homework_type", key: "homework_type", width: 160, render: (v) => v ?? "-" },
-          { title: "Scan Info", dataIndex: "scan_info", key: "scan_info", render: (v) => v ?? "-" },
-        ],
-        empty: "No recent activity.",
+        label: "Interests",
+        render: (student, { reload } = {}) => <InterestsTab student={student} reload={reload} />,
+      },
+
+      // API Usage Statistics Tab
+      apiUsage: {
+        enabled: true,
+        label: "API Usage",
+        render: (student) => <ApiUsageTab student={student} />,
       },
 
       audit: { enabled: false, label: "Audit Log" },
-      tasks: { enabled: true, label: "Tasks" },
-      documents: { enabled: true, label: "Documents" },
+      documents: { enabled: false, label: "Documents" },
       communication: {
         enabled: false,
         label: "Comments",
@@ -471,11 +993,36 @@ export default function StudentDetail() {
         },
       },
     },
-  }), [availableSubjects, handleAssignSubject, handleRemoveSubject, assignSubjectModalVisible, selectedSubjectId, assigning, modal]);
+  }), []);
 
   return (
     <App>
-      <EntityDetail cfg={cfg} />
+      <EntityDetail 
+        cfg={cfg}
+        onEntityLoad={(entity) => setCurrentEntity(entity)}
+        extraHeaderButtons={(entity) => (
+          <Button
+            type="default"
+            icon={<KeyOutlined />}
+            onClick={() => setCredentialsModalVisible(true)}
+            disabled={!entity?.raw?.user?.id}
+          >
+            Edit Login Credentials
+          </Button>
+        )}
+      />
+      
+      {/* Edit Credentials Modal */}
+      <EditCredentialsModal
+        visible={credentialsModalVisible}
+        onCancel={() => setCredentialsModalVisible(false)}
+        userId={currentEntity?.raw?.user?.id}
+        userName={currentEntity?.name || 'Student'}
+        onSuccess={() => {
+          message.success('Credentials updated successfully');
+          // Optionally reload the entity
+        }}
+      />
     </App>
   );
 }

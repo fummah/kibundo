@@ -20,6 +20,7 @@ import {
   Alert,
   Statistic,
   Grid,
+  Tabs,
 } from "antd";
 import {
   Wand2,
@@ -153,21 +154,32 @@ export default function StudentSettings() {
     const load = async () => {
       try {
         setLoading(true);
+        
+        console.log("🔍 Loading student settings for userId:", userId);
 
         const allRes = await api.get("/allstudents", {
           validateStatus: (s) => s >= 200 && s < 500,
         });
 
         const all = Array.isArray(allRes?.data) ? allRes.data : [];
+        console.log("📚 Total students found:", all.length);
+        
         const match = all.find(
           (s) =>
             s?.user?.id === userId ||
             s?.user_id === userId ||
             sid(s) === userId
         );
+        
+        console.log("🔍 Student match result:", {
+          userId,
+          found: !!match,
+          studentId: match ? sid(match) : null
+        });
 
         if (!match) {
           if (cancelled) return;
+          console.warn("⚠️ No student record found - settings will be saved locally only");
           setHasServerRecord(false);
           setServerStudentId(null);
           initialRef.current = {
@@ -195,6 +207,14 @@ export default function StudentSettings() {
 
         setHasServerRecord(true);
         setServerStudentId(foundId);
+        
+        console.log("✅ Student record loaded:", {
+          foundId,
+          hasProfile: !!data?.profile,
+          hasInterests: !!data?.interests,
+          hasBuddy: !!data?.buddy,
+          data
+        });
 
         const srvProfile = data?.profile ?? {};
         const srvInterests = Array.isArray(data?.interests) ? data.interests : [];
@@ -265,6 +285,7 @@ export default function StudentSettings() {
       setProfile({ name, ttsEnabled, theme });
 
       if (!hasServerRecord) {
+        // Create new student record
         const created = await createStudentOnServer({
           profile: { name, ttsEnabled, theme },
           interests: interests || [],
@@ -274,30 +295,122 @@ export default function StudentSettings() {
         setServerStudentId(created?.id ?? created?._id ?? userId);
         message.success?.("Student created and settings saved!");
       } else {
-        message.info?.("Settings saved.");
+        // Update existing student record in database
+        const payload = {
+          profile: {
+            name: name ?? "",
+            ttsEnabled: Boolean(ttsEnabled),
+            theme: theme || "indigo",
+          },
+          interests: Array.isArray(interests) ? interests : [],
+          buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
+        };
+        
+        console.log("💾 Saving settings:", { 
+          studentId: serverStudentId, 
+          payload,
+          theme: theme
+        });
+        
+        const response = await api.patch(`/student/${serverStudentId}`, payload);
+        console.log("✅ Settings saved successfully:", response.data);
+        message.success?.(`Settings saved! Theme: ${theme}`);
       }
 
       initialRef.current = { name, ttsEnabled, theme, buddy };
-    } catch {
+    } catch (error) {
+      console.error("❌ Failed to save settings:", error);
       message.error?.("Could not save settings. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
-  const addInterest = () => {
+  const addInterest = async () => {
     const v = interestDraft.trim();
     if (!v) return;
     if ((interests || []).includes(v)) {
       message.info?.("Already added.");
       return;
     }
-    setInterests([...(interests || []), v]);
+    const newInterests = [...(interests || []), v];
+    setInterests(newInterests);
     setInterestDraft("");
+    
+    console.log("📝 Adding interest:", {
+      hasServerRecord,
+      serverStudentId,
+      newInterests
+    });
+    
+    // Auto-save interests to database
+    if (hasServerRecord && serverStudentId) {
+      try {
+        const payload = {
+          profile: { name: name ?? "", ttsEnabled: Boolean(ttsEnabled), theme: theme || "indigo" },
+          interests: newInterests,
+          buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
+        };
+        
+        console.log("📤 Sending interest update to database:", {
+          url: `/student/${serverStudentId}`,
+          payload
+        });
+        
+        const response = await api.patch(`/student/${serverStudentId}`, payload);
+        console.log("✅ Interest added and saved:", { newInterests, response: response.data });
+        message.success?.(`Interest "${v}" saved!`);
+      } catch (error) {
+        console.error("❌ Failed to save interest:", error);
+        message.error?.("Could not save interest. Please try again.");
+      }
+    } else {
+      console.warn("⚠️ Cannot save interest - no server record:", {
+        hasServerRecord,
+        serverStudentId
+      });
+      message.warning?.(`Interest "${v}" added locally. Click Save Settings to persist.`);
+    }
   };
 
-  const removeInterest = (val) => {
-    setInterests((arr) => (arr || []).filter((x) => x !== val));
+  const removeInterest = async (val) => {
+    const newInterests = (interests || []).filter((x) => x !== val);
+    setInterests(newInterests);
+    
+    console.log("🗑️ Removing interest:", {
+      hasServerRecord,
+      serverStudentId,
+      newInterests
+    });
+    
+    // Auto-save interests to database
+    if (hasServerRecord && serverStudentId) {
+      try {
+        const payload = {
+          profile: { name: name ?? "", ttsEnabled: Boolean(ttsEnabled), theme: theme || "indigo" },
+          interests: newInterests,
+          buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
+        };
+        
+        console.log("📤 Sending interest removal to database:", {
+          url: `/student/${serverStudentId}`,
+          payload
+        });
+        
+        const response = await api.patch(`/student/${serverStudentId}`, payload);
+        console.log("✅ Interest removed and saved:", { newInterests, response: response.data });
+        message.success?.(`Interest "${val}" removed!`);
+      } catch (error) {
+        console.error("❌ Failed to save interest removal:", error);
+        message.error?.("Could not remove interest. Please try again.");
+      }
+    } else {
+      console.warn("⚠️ Cannot save interest removal - no server record:", {
+        hasServerRecord,
+        serverStudentId
+      });
+      message.warning?.(`Interest "${val}" removed locally. Click Save Settings to persist.`);
+    }
   };
 
   const confirmBuddy = async () => {
@@ -305,6 +418,7 @@ export default function StudentSettings() {
       setBuddy(pendingBuddy);
 
       if (!hasServerRecord) {
+        // Create new student record with buddy
         const created = await createStudentOnServer({
           profile: { name, ttsEnabled, theme },
           interests: interests || [],
@@ -315,12 +429,30 @@ export default function StudentSettings() {
         setBuddyModal(false);
         message.success?.(`Buddy selected: ${pendingBuddy.name}`);
       } else {
+        // Update existing student record with new buddy
+        const payload = {
+          profile: {
+            name: name ?? "",
+            ttsEnabled: Boolean(ttsEnabled),
+            theme: theme || "indigo",
+          },
+          interests: Array.isArray(interests) ? interests : [],
+          buddy: pendingBuddy ? { id: pendingBuddy.id, name: pendingBuddy.name, img: pendingBuddy.img } : null,
+        };
+        
+        console.log("💾 Updating buddy in database:", { 
+          studentId: serverStudentId, 
+          buddy: pendingBuddy 
+        });
+        
+        await api.patch(`/student/${serverStudentId}`, payload);
         setBuddyModal(false);
-        message.info?.("Buddy changed.");
+        message.success?.(`Buddy updated: ${pendingBuddy.name}`);
       }
 
       initialRef.current = { ...initialRef.current, buddy: pendingBuddy };
-    } catch {
+    } catch (error) {
+      console.error("❌ Failed to update buddy:", error);
       message.error?.("Could not apply buddy. Please try again.");
     }
   };
@@ -364,7 +496,7 @@ export default function StudentSettings() {
   return (
     <div
       className={`
-        relative bg-gradient-to-b from-white to-neutral-50 
+        relative bg-gradient-to-br from-gray-50 to-gray-100
         min-h-[100svh] lg:h-full overflow-y-auto 
         px-3 sm:px-4 md:px-6 py-4 pb-24
       `}
@@ -394,353 +526,420 @@ export default function StudentSettings() {
         </Button>
       </div>
 
-      {/* Profile Overview Card */}
-      <Card className="rounded-2xl mb-6 border-0 shadow-sm" bodyStyle={{ padding: 0 }}>
-        <div className={`p-4 sm:p-6 bg-gradient-to-br ${themePreview} rounded-t-2xl text-white`}>
-          <Row align="middle" gutter={[16, 16]} wrap>
-            <Col xs={6} sm={"auto"}>
-              <Badge dot={isDirty} color="#52c41a">
-                <img
-                  src={displayBuddy?.img || "/src/assets/buddies/kibundo-buddy.png"}
-                  alt={displayBuddy?.name || "Learning Buddy"}
-                  width={avatarSize}
-                  height={avatarSize}
-                  className="border-2 border-white shadow-lg object-contain"
-                  style={{ borderRadius: 0 }}
-                  onError={(e) => {
-                    e.target.src = "/src/assets/buddies/kibundo-buddy.png";
-                  }}
-                />
-              </Badge>
-            </Col>
-            <Col flex="auto">
-              <div>
-                <div className="text-xs sm:text-sm opacity-90 flex items-center gap-1 mb-1">
-                  <Palette className="h-3.5 w-3.5" />
-                  Theme Preview
-                </div>
-                <Title level={3} className="!mb-1 !text-white !text-[clamp(1.1rem,2.2vw,1.6rem)]">
-                  {name || defaultName || "Student"}
-                </Title>
-                <Text className="text-white/90 block truncate">
-                  Student ID: {userId || "N/A"}
-                </Text>
-              </div>
-            </Col>
-            <Col xs={24} sm={"auto"}>
-              <Tooltip title="Profile has unsaved changes">
-                <Button type="text" icon={<Edit className="h-4 w-4" />} className="text-white hover:bg-white/20 w-full sm:w-auto">
-                  Edit Profile
-                </Button>
-              </Tooltip>
-            </Col>
-          </Row>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="p-4 sm:p-6">
-          <Row gutter={[12, 12]}>
-            <Col xs={12} sm={8}>
-              <Statistic
-                title="Class"
-                value={studentData?.class?.class_name || studentData?.class_name || "N/A"}
-                prefix={<GraduationCap className="h-4 w-4" />}
-                valueStyle={{ fontSize: 16, fontWeight: 600, whiteSpace: "nowrap" }}
-              />
-            </Col>
-            <Col xs={12} sm={8}>
-              <Statistic
-                title="Subjects"
-                value={studentData?.subject?.length || 0}
-                prefix={<BookOpen className="h-4 w-4" />}
-                valueStyle={{ fontSize: 16, fontWeight: 600 }}
-              />
-            </Col>
-            <Col xs={24} sm={8}>
-              <Statistic
-                title="Parent"
-                value={
-                  studentData?.parent?.user
-                    ? [studentData.parent.user.first_name, studentData.parent.user.last_name]
-                        .filter(Boolean)
-                        .join(" ") || "Linked"
-                    : "N/A"
-                }
-                prefix={<Users className="h-4 w-4" />}
-                valueStyle={{ fontSize: 16, fontWeight: 600 }}
-              />
-            </Col>
-          </Row>
-        </div>
-      </Card>
-
-      {/* Profile Settings / Theme */}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={16}>
-          <Card
-            title={
-              <Space wrap>
-                <User2 className="h-5 w-5" />
-                <span>Profile Settings</span>
-              </Space>
-            }
-            className="rounded-2xl shadow-sm"
-            extra={
-              isDirty && (
-                <Tag color="orange" icon={<Edit className="h-3 w-3" />}>
-                  Unsaved Changes
-                </Tag>
-              )
-            }
-          >
-            {loading ? (
-              <Skeleton active paragraph={{ rows: 4 }} />
-            ) : (
-              <Row gutter={[12, 12]}>
-                <Col xs={24} sm={12}>
-                  <div className="space-y-2">
-                    <Text strong>Display Name</Text>
-                    <Input
-                      placeholder="Enter your name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="rounded-xl"
-                      size="large"
-                    />
-                  </div>
-                </Col>
-                <Col xs={24} sm={12}>
-                  <div className="space-y-2">
-                    <Text strong>Student ID</Text>
-                    <Input value={userId || "N/A"} disabled className="rounded-xl" size="large" />
-                  </div>
-                </Col>
-                <Col xs={24}>
-                  <Divider className="my-3" />
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <Text strong className="flex items-center gap-2">
-                          <Volume2 className="h-4 w-4" />
-                          Text-to-Speech (Buddy voice)
+      {/* Main Tabs */}
+      <Card className="rounded-2xl shadow-lg border-0">
+        <Tabs
+          defaultActiveKey="profile"
+          size="large"
+          items={[
+            {
+              key: "profile",
+              label: (
+                <span className="flex items-center gap-2">
+                  <User2 className="h-4 w-4" />
+                  Profile
+                </span>
+              ),
+              children: (
+                <div className="py-4">
+                  {/* Profile Overview */}
+                  <div className={`p-6 bg-gradient-to-br ${themePreview} rounded-2xl text-white mb-6`}>
+                    <Row align="middle" gutter={[16, 16]}>
+                      <Col xs={24} sm="auto">
+                        <div className="flex justify-center">
+                          <Badge dot={isDirty} color="#52c41a">
+                            <img
+                              src={displayBuddy?.img || "/src/assets/buddies/kibundo-buddy.png"}
+                              alt={displayBuddy?.name || "Learning Buddy"}
+                              width={avatarSize}
+                              height={avatarSize}
+                              className="border-4 border-white shadow-lg object-contain rounded-2xl"
+                              onError={(e) => {
+                                e.target.src = "/src/assets/buddies/kibundo-buddy.png";
+                              }}
+                            />
+                          </Badge>
+                        </div>
+                      </Col>
+                      <Col flex="auto">
+                        <Title level={2} className="!mb-2 !text-white">
+                          {name || defaultName || "Student"}
+                        </Title>
+                        <Text className="text-white/90 text-lg">
+                          Student ID: {userId || "N/A"}
                         </Text>
-                        <div className="text-sm text-gray-500 mt-1">
-                          Enable voice feedback from your buddy
+                      </Col>
+                    </Row>
+                  </div>
+
+                  {/* Profile Form */}
+                  {loading ? (
+                    <Skeleton active paragraph={{ rows: 4 }} />
+                  ) : (
+                    <div className="space-y-6">
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24} md={12}>
+                          <div className="space-y-2">
+                            <Text strong className="text-base">Display Name</Text>
+                            <Tooltip title="Contact your teacher or admin to change your name">
+                              <Input
+                                placeholder="Enter your name"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                className="rounded-xl"
+                                size="large"
+                                disabled
+                                prefix={<User2 className="h-4 w-4 text-gray-400" />}
+                              />
+                            </Tooltip>
+                          </div>
+                        </Col>
+                        <Col xs={24} md={12}>
+                          <div className="space-y-2">
+                            <Text strong className="text-base">Student ID</Text>
+                            <Input 
+                              value={userId || "N/A"} 
+                              disabled 
+                              className="rounded-xl" 
+                              size="large"
+                            />
+                          </div>
+                        </Col>
+                      </Row>
+
+                      <Divider />
+
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                          <div className="flex-1">
+                            <Text strong className="flex items-center gap-2 text-base">
+                              <Volume2 className="h-5 w-5" />
+                              Text-to-Speech
+                            </Text>
+                            <Text type="secondary" className="block mt-1">
+                              Enable voice feedback from your buddy
+                            </Text>
+                          </div>
+                          <Switch checked={ttsEnabled} onChange={setTTSEnabled} size="large" />
                         </div>
                       </div>
-                      <Switch checked={ttsEnabled} onChange={setTTSEnabled} size="default" />
+                    </div>
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: "appearance",
+              label: (
+                <span className="flex items-center gap-2">
+                  <Palette className="h-4 w-4" />
+                  Appearance
+                </span>
+              ),
+              children: (
+                <div className="py-4 space-y-6">
+                  {/* Theme Selection */}
+                  <div>
+                    <Title level={4} className="!mb-4">Color Theme</Title>
+                    <Segmented
+                      block
+                      value={theme}
+                      onChange={(val) => setTheme(val)}
+                      options={THEMES.map((t) => ({
+                        label: <ThemeOption value={t.value} label={t.label} />,
+                        value: t.value,
+                      }))}
+                      className="!rounded-xl"
+                      size="large"
+                    />
+                    <Alert
+                      message="Theme Preview"
+                      description="Your selected theme will be applied across the entire application."
+                      type="info"
+                      icon={<Info className="h-4 w-4" />}
+                      showIcon
+                      className="rounded-xl mt-4"
+                    />
+                  </div>
+
+                  <Divider />
+
+                  {/* Learning Buddy */}
+                  <div>
+                    <Title level={4} className="!mb-4 flex items-center gap-2">
+                      <Wand2 className="h-5 w-5" />
+                      Learning Buddy
+                    </Title>
+                    <div className="p-6 bg-gray-50 rounded-2xl">
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <img
+                          src={displayBuddy?.img || "/src/assets/buddies/kibundo-buddy.png"}
+                          alt={displayBuddy?.name || "Learning Buddy"}
+                          width={80}
+                          height={80}
+                          className="border-2 border-gray-200 object-contain rounded-xl"
+                          onError={(e) => {
+                            e.target.src = "/src/assets/buddies/kibundo-buddy.png";
+                          }}
+                        />
+                        <div className="flex-1 min-w-[220px]">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Title level={5} className="!mb-0">
+                              {displayBuddy?.name || "No buddy selected"}
+                            </Title>
+                            {isPreviewingBuddy && (
+                              <Tag color="blue">Preview</Tag>
+                            )}
+                          </div>
+                          <Text type="secondary" className="block mb-3">
+                            Pick a friend to guide you through your learning journey
+                          </Text>
+                          <Button 
+                            type="primary" 
+                            className="rounded-xl" 
+                            onClick={() => setBuddyModal(true)} 
+                            icon={<Edit className="h-4 w-4" />}
+                          >
+                            Change Buddy
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </Col>
-              </Row>
-            )}
-          </Card>
-        </Col>
-
-        <Col xs={24} lg={8}>
-          <Card
-            title={
-              <Space wrap>
-                <Palette className="h-5 w-5" />
-                <span>Theme</span>
-              </Space>
-            }
-            className="rounded-2xl shadow-sm"
-          >
-            <div className="space-y-4">
-              <div>
-                <Text strong className="block mb-3">
-                  Color Theme
-                </Text>
-                <Segmented
-                  block
-                  value={theme}
-                  onChange={(val) => setTheme(val)}
-                  options={THEMES.map((t) => ({
-                    label: <ThemeOption value={t.value} label={t.label} />,
-                    value: t.value,
-                  }))}
-                  className="!rounded-xl w-full"
-                  size="large"
-                />
-              </div>
-              <Alert
-                message="Theme Preview"
-                description="Your selected theme will be applied across the entire application."
-                type="info"
-                icon={<Info className="h-4 w-4" />}
-                showIcon
-                className="rounded-xl"
-              />
-            </div>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Buddy & Academic Information */}
-      <Row gutter={[16, 16]} className="mt-4">
-        <Col xs={24} lg={12}>
-          <Card
-            title={
-              <Space wrap>
-                <Wand2 className="h-5 w-5" />
-                <span>Learning Buddy</span>
-              </Space>
-            }
-            className="rounded-2xl shadow-sm"
-            loading={loading}
-          >
-            <div className="flex items-center gap-4 flex-wrap">
-              <img
-                src={displayBuddy?.img || "/src/assets/buddies/kibundo-buddy.png"}
-                alt={displayBuddy?.name || "Learning Buddy"}
-                width={64}
-                height={64}
-                className="border-2 border-gray-100 object-contain"
-                style={{ borderRadius: 0 }}
-                onError={(e) => {
-                  e.target.src = "/src/assets/buddies/kibundo-buddy.png";
-                }}
-              />
-              <div className="flex-1 min-w-[220px]">
-                <div className="flex items-center gap-2">
-                  <Title level={5} className="!mb-1">
-                    {displayBuddy?.name || "No buddy selected yet"}
-                  </Title>
-                  {isPreviewingBuddy && (
-                    <Tag color="blue" className="!mt-[-2px]">Preview</Tag>
-                  )}
                 </div>
-                <Text type="secondary" className="block mb-3">
-                  Pick a monster friend to guide you through your learning journey.
-                </Text>
-                <Button type="primary" className="rounded-xl" onClick={() => setBuddyModal(true)} icon={<Edit className="h-4 w-4" />}>
-                  Change Buddy
-                </Button>
-              </div>
-            </div>
-          </Card>
-        </Col>
-
-        <Col xs={24} lg={12}>
-          <Card
-            title={
-              <Space wrap>
-                <GraduationCap className="h-5 w-5" />
-                <span>Academic Information</span>
-              </Space>
-            }
-            className="rounded-2xl shadow-sm"
-            loading={loading}
-          >
-            <div className="space-y-4">
-              <div>
-                <Text strong className="block mb-2">Class</Text>
-                <Tag color="blue" className="text-sm px-3 py-1 rounded-lg">
-                  {studentData?.class?.class_name || studentData?.class_name || "N/A"}
-                </Tag>
-              </div>
-              <div className="min-w-0">
-                <Text strong className="block mb-2">Parent/Guardian</Text>
-                <Text className="text-gray-600 break-words">
-                  {studentData?.parent?.user
-                    ? [studentData.parent.user.first_name, studentData.parent.user.last_name].filter(Boolean).join(" ") ||
-                      studentData.parent.user.email ||
-                      "N/A"
-                    : "N/A"}
-                </Text>
-              </div>
-              <div>
-                <Text strong className="block mb-2">Enrolled Subjects</Text>
-                <div className="flex flex-wrap gap-2">
-                  {studentData?.subject?.length > 0 ? (
-                    studentData.subject.map((s, index) => (
-                      <Tag key={index} color="green" className="text-sm px-3 py-1 rounded-lg">
-                        {s.subject_name || s.name}
-                      </Tag>
-                    ))
+              ),
+            },
+            {
+              key: "academic",
+              label: (
+                <span className="flex items-center gap-2">
+                  <GraduationCap className="h-4 w-4" />
+                  Academic
+                </span>
+              ),
+              children: (
+                <div className="py-4 space-y-6">
+                  {loading ? (
+                    <Skeleton active paragraph={{ rows: 6 }} />
                   ) : (
-                    <Tag color="default" className="text-sm px-3 py-1 rounded-lg">
-                      No subjects enrolled
-                    </Tag>
+                    <>
+                      {/* Quick Stats */}
+                      <Row gutter={[16, 16]}>
+                        <Col xs={24} sm={8}>
+                          <Card className="text-center rounded-xl border-2 border-blue-100 bg-blue-50">
+                            <Statistic
+                              title={<Text strong className="text-gray-700">Class</Text>}
+                              value={studentData?.class?.class_name || studentData?.class_name || "N/A"}
+                              prefix={<GraduationCap className="h-5 w-5 text-blue-600" />}
+                              valueStyle={{ fontSize: 20, fontWeight: 700, color: "#1890ff" }}
+                            />
+                          </Card>
+                        </Col>
+                        <Col xs={24} sm={8}>
+                          <Card className="text-center rounded-xl border-2 border-green-100 bg-green-50">
+                            <Statistic
+                              title={<Text strong className="text-gray-700">Subjects</Text>}
+                              value={studentData?.subject?.length || 0}
+                              prefix={<BookOpen className="h-5 w-5 text-green-600" />}
+                              valueStyle={{ fontSize: 20, fontWeight: 700, color: "#52c41a" }}
+                            />
+                          </Card>
+                        </Col>
+                        <Col xs={24} sm={8}>
+                          <Card className="text-center rounded-xl border-2 border-purple-100 bg-purple-50">
+                            <Statistic
+                              title={<Text strong className="text-gray-700">Parent</Text>}
+                              value={
+                                studentData?.parent?.user
+                                  ? [studentData.parent.user.first_name, studentData.parent.user.last_name]
+                                      .filter(Boolean)
+                                      .join(" ") || "Linked"
+                                  : "N/A"
+                              }
+                              prefix={<Users className="h-5 w-5 text-purple-600" />}
+                              valueStyle={{ fontSize: 16, fontWeight: 700, color: "#722ed1" }}
+                            />
+                          </Card>
+                        </Col>
+                      </Row>
+
+                      <Divider />
+
+                      {/* Enrolled Subjects */}
+                      <div>
+                        <Title level={4} className="!mb-4">Enrolled Subjects</Title>
+                        <div className="flex flex-wrap gap-2">
+                          {(() => {
+                            const subjects = studentData?.subject || studentData?.subjects || [];
+                            
+                            if (!Array.isArray(subjects) || subjects.length === 0) {
+                              return (
+                                <Tag color="default" className="text-sm px-4 py-2 rounded-xl">
+                                  No subjects enrolled
+                                </Tag>
+                              );
+                            }
+                            
+                            return subjects.map((s, index) => {
+                              const subjectName = 
+                                s?.subject?.subject_name ||
+                                s?.subject?.name || 
+                                s?.Subject?.subject_name ||
+                                s?.Subject?.name ||
+                                s?.subject_name ||
+                                s?.name ||
+                                (typeof s === 'string' ? s : null);
+                              
+                              if (!subjectName) return null;
+                              
+                              return (
+                                <Tag key={s?.id || index} color="green" className="text-base px-4 py-2 rounded-xl">
+                                  {subjectName}
+                                </Tag>
+                              );
+                            }).filter(Boolean);
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* Parent/Guardian Info */}
+                      <div>
+                        <Title level={4} className="!mb-4">Parent/Guardian</Title>
+                        <Card className="rounded-xl bg-gray-50">
+                          <Text className="text-gray-700 text-base">
+                            {studentData?.parent?.user
+                              ? [studentData.parent.user.first_name, studentData.parent.user.last_name].filter(Boolean).join(" ") ||
+                                studentData.parent.user.email ||
+                                "N/A"
+                              : "No parent/guardian linked"}
+                          </Text>
+                        </Card>
+                      </div>
+                    </>
                   )}
                 </div>
-              </div>
-            </div>
-          </Card>
-        </Col>
-      </Row>
+              ),
+            },
+            {
+              key: "interests",
+              label: (
+                <span className="flex items-center gap-2">
+                  <Wand2 className="h-4 w-4" />
+                  Interests
+                </span>
+              ),
+              children: (
+                <div className="py-4 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <Title level={4} className="!mb-0">My Interests</Title>
+                    <Button 
+                      type="primary" 
+                      className="rounded-xl" 
+                      onClick={() => navigate("/student/onboarding/interests")}
+                    >
+                      Run Interests Wizard
+                    </Button>
+                  </div>
 
-      {/* Interests */}
-      <Card className="rounded-2xl mt-4 mb-3" bodyStyle={{ paddingTop: 16, paddingBottom: 16 }} loading={loading}>
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <Title level={5} className="!mb-2 flex items-center gap-2">
-            <Wand2 className="w-4 h-4" /> Interests
-          </Title>
-          <Button type="default" className="rounded-xl w-full sm:w-auto" onClick={() => navigate("/student/onboarding/interests")}>
-            Run Interests Wizard
-          </Button>
-        </div>
+                  <div className="flex flex-wrap gap-3 p-4 bg-gray-50 rounded-2xl min-h-[100px]">
+                    {(interests || []).length === 0 ? (
+                      <Text type="secondary" className="text-base">
+                        No interests yet — add some below to personalize your learning experience
+                      </Text>
+                    ) : (
+                      (interests || []).map((it) => (
+                        <Tag
+                          key={it}
+                          closable
+                          onClose={(e) => {
+                            e.preventDefault();
+                            removeInterest(it);
+                          }}
+                          className="rounded-full px-4 py-2 text-base"
+                          color="blue"
+                        >
+                          {it}
+                        </Tag>
+                      ))
+                    )}
+                  </div>
 
-        <div className="flex flex-wrap gap-2 mb-2">
-          {(interests || []).length === 0 ? (
-            <Text type="secondary">No interests yet — add a few below.</Text>
-          ) : (
-            (interests || []).map((it) => (
-              <Tag
-                key={it}
-                closable
-                onClose={(e) => {
-                  e.preventDefault();
-                  removeInterest(it);
-                }}
-                className="rounded-full px-3 py-1"
-              >
-                {it}
-              </Tag>
-            ))
-          )}
-        </div>
+                  <div>
+                    <Text strong className="block mb-2 text-base">Add New Interest</Text>
+                    <Space.Compact className="w-full" size="large">
+                      <Input
+                        value={interestDraft}
+                        onChange={(e) => setInterestDraft(e.target.value)}
+                        placeholder="E.g., Dinosaurs, Space, Art..."
+                        className="rounded-l-xl"
+                        onPressEnter={addInterest}
+                      />
+                      <Button type="primary" onClick={addInterest} className="rounded-r-xl">
+                        Add
+                      </Button>
+                    </Space.Compact>
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: "account",
+              label: (
+                <span className="flex items-center gap-2">
+                  <Settings className="h-4 w-4" />
+                  Account
+                </span>
+              ),
+              children: (
+                <div className="py-4 space-y-6">
+                  <Alert
+                    message="Account Settings"
+                    description="Manage your account preferences and sign out options"
+                    type="info"
+                    showIcon
+                    className="rounded-xl"
+                  />
 
-        <Space.Compact className="w-full">
-          <Input
-            value={interestDraft}
-            onChange={(e) => setInterestDraft(e.target.value)}
-            placeholder="Add an interest (e.g., Dinosaurs)"
-            className="rounded-l-xl"
-            onPressEnter={addInterest}
-          />
-        <Button type="primary" onClick={addInterest} className="rounded-r-xl">
-            Add
-          </Button>
-        </Space.Compact>
+                  <Card className="rounded-xl bg-red-50 border-red-200">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                      <div>
+                        <Title level={5} className="!mb-1 !text-red-700">Sign Out</Title>
+                        <Text type="secondary">Sign out from this device</Text>
+                      </div>
+                      <Button 
+                        icon={<LogOut className="h-4 w-4" />} 
+                        danger 
+                        onClick={doLogout} 
+                        className="rounded-xl"
+                        size="large"
+                      >
+                        Log Out
+                      </Button>
+                    </div>
+                  </Card>
 
-        <div className="mt-3 flex items-center gap-2">
-          <Button
-            onClick={saveProfileAll}
-            className="rounded-xl w-full sm:w-auto"
-            loading={saving}
-            disabled={saving || (!isDirty && hasServerRecord)}
-          >
-            Save Changes
-          </Button>
-          <Button onClick={resetAll} className="rounded-xl w-full sm:w-auto" danger>
-            Reset Local Data
-          </Button>
-        </div>
-      </Card>
-
-      {/* Account */}
-      <Card className="rounded-2xl mb-3" styles={{ body: { paddingTop: 16, paddingBottom: 16 } }}>
-        <Title level={5} className="!mb-2">
-          Account
-        </Title>
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <Text type="secondary">Sign out from this device.</Text>
-          <Button icon={<LogOut className="h-4 w-4" />} danger onClick={doLogout} className="rounded-xl w-full sm:w-auto">
-            Log out
-          </Button>
-        </div>
+                  <Card className="rounded-xl">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                      <div>
+                        <Title level={5} className="!mb-1">Reset Settings</Title>
+                        <Text type="secondary">Clear all local settings and preferences</Text>
+                      </div>
+                      <Button 
+                        onClick={resetAll} 
+                        className="rounded-xl" 
+                        danger 
+                        type="default"
+                        size="large"
+                      >
+                        Reset Local Data
+                      </Button>
+                    </div>
+                  </Card>
+                </div>
+              ),
+            },
+          ]}
+        />
       </Card>
 
       {/* Sticky mobile save bar */}
