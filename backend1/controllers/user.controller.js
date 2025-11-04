@@ -2273,7 +2273,7 @@ exports.getQuizzes = async (req, res) => {
     const { count, rows } = await db.quiz.findAndCountAll({
       limit,
       offset,
-      order: [['created_at', 'DESC']],
+      order: [['id', 'ASC']],
       include: [
         {
           model: db.quizItem,

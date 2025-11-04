@@ -333,7 +333,15 @@ export default function Quiz() {
   /* ---------------- columns ---------------- */
   const columnDefs = useMemo(
     () => [
-      { title: "ID", dataIndex: "id", key: "id", width: 160, render: (v) => <SafeText value={v} /> },
+      { 
+        title: "ID", 
+        dataIndex: "id", 
+        key: "id", 
+        width: 160, 
+        sorter: (a, b) => a.id - b.id,
+        defaultSortOrder: 'ascend',
+        render: (v) => <SafeText value={v} /> 
+      },
       { title: "Title", dataIndex: "title", key: "title", render: (v) => <SafeText value={v} /> },
       { title: "Subject", dataIndex: "subject", key: "subject", width: 140, render: (v) => <SafeText value={v} /> },
       { 

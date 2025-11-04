@@ -251,19 +251,39 @@ export const handleUpload = async (req, res) => {
       });
     }
 
-    // AI Prompt (grade 1–7 focused) - GERMAN ONLY - STRICT ENFORCEMENT
+    // AI Prompt (grade 1–7 focused) - GERMAN ONLY - ULTRA STRICT ENFORCEMENT
     const systemPrompt = `
       Du bist Kibundo, ein freundlicher und geduldiger Hausaufgabenhelfer für Schüler der Klassen 1–7.
       
-      ⚠️ KRITISCH - ABSOLUTE SPRACHREGELN:
-      - ALLE Antworten, Fragen, Beschreibungen und Texte MÜSSEN ausschließlich auf Deutsch sein
-      - KEINE englischen Wörter, Begriffe, Phrasen oder Sätze verwenden
-      - Wenn du englischen Text siehst, übersetze ihn sofort ins Deutsche
-      - Selbst technische Begriffe müssen auf Deutsch sein oder erklärt werden
-      - Bei gemischten Texten: Übersetze ALLES ins Deutsche
-      - Beispiel: "What is 2+2?" → "Was ist 2+2?"
-      - Beispiel: "Read the text" → "Lies den Text"
-      - Wenn du englische Fragen siehst, formuliere sie auf Deutsch neu
+      ⚠️⚠️⚠️ KRITISCH - ABSOLUTE SPRACHREGELN - KEINE AUSNAHMEN ⚠️⚠️⚠️:
+      - DU MUSST IMMER UND ÜBERALL NUR DEUTSCH VERWENDEN
+      - JEDES Wort, JEDE Frage, JEDE Antwort, JEDE Beschreibung MUSS auf Deutsch sein
+      - KEINE englischen Wörter, KEINE englischen Begriffe, KEINE englischen Phrasen, KEINE englischen Sätze
+      - Wenn du auch nur EIN englisches Wort siehst, übersetze es SOFORT ins Deutsche
+      - Selbst technische Begriffe wie "computer", "internet", "email" → "Computer", "Internet", "E-Mail"
+      - Bei gemischten Texten: Übersetze ALLES ins Deutsche - KEINE AUSNAHMEN
+      - Beispiel: "What is 2+2?" → "Was ist 2+2?" (NIEMALS die englische Version behalten)
+      - Beispiel: "Read the text" → "Lies den Text" (NIEMALS "Read" behalten)
+      - Beispiel: "Choose the correct answer" → "Wähle die richtige Antwort" (NIEMALS "Choose" behalten)
+      - Wenn du englische Fragen siehst, formuliere sie IMMER auf Deutsch neu
+      - Bei Multiple-Choice-Aufgaben: Übersetze ALLE Optionen ins Deutsche
+      - Prüfe JEDE Antwort nochmal: WENN DU EIN ENGLISCHES WORT SIEHST, ÜBERSETZE ES
+      
+      ÜBERSETZUNGSREGELN:
+      - "What" → "Was"
+      - "How" → "Wie"
+      - "Where" → "Wo"
+      - "When" → "Wann"
+      - "Why" → "Warum"
+      - "Choose" → "Wähle"
+      - "Select" → "Wähle aus"
+      - "Answer" → "Antworte" oder "Antwort"
+      - "Question" → "Frage"
+      - "Read" → "Lies"
+      - "Write" → "Schreibe"
+      - "Calculate" → "Berechne"
+      - "Solve" → "Löse"
+      - Übersetze ALLE englischen Wörter konsequent
       
       Identifiziere das FACH mit den folgenden Regeln:
 
@@ -291,10 +311,13 @@ export const handleUpload = async (req, res) => {
         ]
       }
       
-      WICHTIG: 
+      ⚠️ FINALE PRÜFUNG VOR DER AUSGABE:
       - Übersetze ALLE englischen Texte ins Deutsche, bevor du sie in raw_text oder questions einfügst
       - Wenn die Hausaufgabe gemischte Sprachen hat, übersetze ALLES ins Deutsche
       - Prüfe jede Frage und Antwort: KEIN Englisch erlaubt
+      - Wenn du auch nur EIN englisches Wort in deiner Antwort hast, übersetze es SOFORT
+      - Bei Multiple-Choice: Übersetze ALLE Optionen (A, B, C, D) ins Deutsche
+      - KEINE AUSNAHMEN - DEUTSCH IST PFLICHT
     `;
 
     const fileBuffer = fs.readFileSync(filePath);
@@ -307,12 +330,13 @@ export const handleUpload = async (req, res) => {
         {
           role: "user",
           content: [
-            { type: "text", text: "Scanne und beschreibe diese Hausaufgabe für die Klassen 1–7. Alle Fragen und Antworten müssen auf Deutsch sein." },
+            { type: "text", text: "Scanne und beschreibe diese Hausaufgabe für die Klassen 1–7. WICHTIG: Alle Fragen, Antworten, Texte und Beschreibungen MÜSSEN ausschließlich auf Deutsch sein. Übersetze ALLE englischen Wörter, Phrasen und Sätze ins Deutsche. KEINE englischen Begriffe verwenden." },
             { type: "image_url", image_url: { url: `data:${mimeType};base64,${fileBase64}` } },
           ],
         },
       ],
       max_tokens: 1500,
+      temperature: 0.3, // Lower temperature for more consistent German output
     });
 
     // Track API usage and costs
@@ -327,7 +351,55 @@ export const handleUpload = async (req, res) => {
       parsed = null;
     }
 
-    const extractedText = parsed?.raw_text || aiText || "";
+    // Post-processing: Translate any English words that slipped through
+    const translateEnglishToGerman = async (text) => {
+      if (!text || typeof text !== 'string') return text;
+      
+      // Common English question words and phrases that should be translated
+      const translations = {
+        'What': 'Was',
+        'what': 'was',
+        'How': 'Wie',
+        'how': 'wie',
+        'Where': 'Wo',
+        'where': 'wo',
+        'When': 'Wann',
+        'when': 'wann',
+        'Why': 'Warum',
+        'why': 'warum',
+        'Choose': 'Wähle',
+        'choose': 'wähle',
+        'Select': 'Wähle aus',
+        'select': 'wähle aus',
+        'Answer': 'Antworte',
+        'answer': 'antworte',
+        'Question': 'Frage',
+        'question': 'Frage',
+        'Read': 'Lies',
+        'read': 'lies',
+        'Write': 'Schreibe',
+        'write': 'schreibe',
+        'Calculate': 'Berechne',
+        'calculate': 'berechne',
+        'Solve': 'Löse',
+        'solve': 'löse',
+        'the correct': 'die richtige',
+        'correct answer': 'richtige Antwort',
+        'correct': 'richtig',
+      };
+      
+      let translated = text;
+      // Replace common English phrases
+      for (const [english, german] of Object.entries(translations)) {
+        const regex = new RegExp(`\\b${english}\\b`, 'gi');
+        translated = translated.replace(regex, german);
+      }
+      
+      return translated;
+    };
+
+    let extractedText = parsed?.raw_text || aiText || "";
+    extractedText = await translateEnglishToGerman(extractedText);
     let detectedSubject = parsed?.subject || detectSubject(extractedText);
 
     // Update scan with results and API usage stats
@@ -341,13 +413,17 @@ export const handleUpload = async (req, res) => {
 
     if (Array.isArray(parsed?.questions)) {
       await Promise.all(
-        parsed.questions.map((q, i) =>
-          pool.query(
+        parsed.questions.map(async (q, i) => {
+          // Translate question and answer text
+          const translatedQuestion = await translateEnglishToGerman(q.text || '');
+          const translatedAnswer = await translateEnglishToGerman(q.answer || '');
+          
+          return pool.query(
             `INSERT INTO generated_answers(scan_id, question_index, question_text, answer_text, full_response)
              VALUES($1, $2, $3, $4, $5)`,
-            [scan.id, i, q.text, q.answer, JSON.stringify({ response: aiText })]
-          )
-        )
+            [scan.id, i, translatedQuestion, translatedAnswer, JSON.stringify({ response: aiText })]
+          );
+        })
       );
     }
 
