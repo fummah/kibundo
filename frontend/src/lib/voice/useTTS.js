@@ -26,7 +26,7 @@ export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
   }, []);
 
   // Helper to initialize audio context (required for iOS)
-  const initAudioContext = useCallback(() => {
+  const initAudioContext = useCallback(async () => {
     if (typeof window === 'undefined') return;
     
     // Check if we're on iOS
@@ -37,6 +37,12 @@ export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
         // Create AudioContext for iOS compatibility
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioContextRef.current = new AudioContext();
+        
+        // iOS requires user interaction to resume audio context
+        // Resume it if suspended
+        if (audioContextRef.current.state === 'suspended') {
+          await audioContextRef.current.resume();
+        }
       } catch (e) {
         console.warn("⚠️ Could not create AudioContext:", e);
       }
@@ -70,8 +76,13 @@ export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
             const audio = new Audio(audioUrl);
             
             // iOS-specific: Ensure audio context is resumed
-            if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-              await audioContextRef.current.resume();
+            if (audioContextRef.current) {
+              if (audioContextRef.current.state === 'suspended') {
+                await audioContextRef.current.resume();
+              }
+              // Connect audio element to audio context for better iOS compatibility
+              const source = audioContextRef.current.createMediaElementSource(audio);
+              source.connect(audioContextRef.current.destination);
             }
 
             // Set up event handlers
@@ -79,6 +90,9 @@ export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
               setSpeaking(false);
               setLoading(false);
               URL.revokeObjectURL(audioUrl);
+              if (audioRef.current === audio) {
+                audioRef.current = null;
+              }
             };
             
             audio.onerror = (e) => {
@@ -86,14 +100,29 @@ export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
               setSpeaking(false);
               setLoading(false);
               URL.revokeObjectURL(audioUrl);
+              if (audioRef.current === audio) {
+                audioRef.current = null;
+              }
               // Fallback to browser TTS
               fallbackToBrowserTTS(text);
             };
 
             // iOS requires user interaction for autoplay
+            // Set volume to 1.0 explicitly for iOS
+            audio.volume = 1.0;
+            
+            // Preload audio for iOS
+            audio.preload = 'auto';
+            
             // Try to play, if it fails, fallback to browser TTS
             try {
-              await audio.play();
+              const playPromise = audio.play();
+              
+              // Handle promise-based play() return value
+              if (playPromise !== undefined) {
+                await playPromise;
+              }
+              
               audioRef.current = audio;
               return;
             } catch (playError) {
@@ -128,23 +157,32 @@ export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
       setTimeout(() => {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = lang;
-        
-        // iOS-specific: Use a German voice if available
-        if (lang.startsWith('de')) {
-          const voices = window.speechSynthesis.getVoices();
-          const germanVoice = voices.find(v => 
-            v.lang.startsWith('de') || 
-            v.name.toLowerCase().includes('german') ||
-            v.name.toLowerCase().includes('deutsch')
-          );
-          if (germanVoice) {
-            utterance.voice = germanVoice;
-          }
-        }
-        
         utterance.rate = 0.9; // Slightly slower for clarity
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
+        
+        // iOS-specific: Use a German voice if available
+        const selectVoiceAndSpeak = () => {
+          const voices = window.speechSynthesis.getVoices();
+          if (lang.startsWith('de')) {
+            // Prefer German voices
+            const germanVoice = voices.find(v => 
+              v.lang.startsWith('de') || 
+              v.name.toLowerCase().includes('german') ||
+              v.name.toLowerCase().includes('deutsch')
+            );
+            if (germanVoice) {
+              utterance.voice = germanVoice;
+            }
+          }
+          // Fallback to any available voice if no German voice found
+          if (!utterance.voice && voices.length > 0) {
+            utterance.voice = voices[0];
+          }
+          
+          // Speak after voice is selected
+          window.speechSynthesis.speak(utterance);
+        };
         
         utterance.onend = () => {
           setSpeaking(false);
@@ -160,12 +198,12 @@ export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
         // iOS: Load voices if not already loaded
         if (window.speechSynthesis.getVoices().length === 0) {
           window.speechSynthesis.addEventListener('voiceschanged', () => {
-            window.speechSynthesis.speak(utterance);
+            selectVoiceAndSpeak();
           }, { once: true });
         } else {
-          window.speechSynthesis.speak(utterance);
+          selectVoiceAndSpeak();
         }
-      }, 100);
+      }, 150); // Increased delay for iOS
     } catch (error) {
       console.error("❌ Browser TTS also failed:", error);
       setSpeaking(false);

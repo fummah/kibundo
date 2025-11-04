@@ -105,6 +105,27 @@ export default function Success() {
     <ParentShell bgImage={globalBg}>
       <div className="w-full min-h-[100dvh] flex justify-center">
         <div className="w-full max-w-2xl mx-auto px-4 py-8">
+          {/* Breadcrumb Navigation */}
+          <div className="flex items-center gap-2 text-sm text-neutral-600 mb-4">
+            <Button
+              type="link"
+              onClick={() => navigate("/parent/billing/overview")}
+              className="!p-0 !h-auto"
+            >
+              Billing
+            </Button>
+            <span>/</span>
+            <Button
+              type="link"
+              onClick={() => navigate("/parent/billing/subscription")}
+              className="!p-0 !h-auto"
+            >
+              Subscriptions
+            </Button>
+            <span>/</span>
+            <span className="text-neutral-400">Success</span>
+          </div>
+
           <Result
             status="success"
             icon={<CheckCircleOutlined style={{ color: "#52c41a" }} />}

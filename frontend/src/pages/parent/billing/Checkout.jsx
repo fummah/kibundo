@@ -316,8 +316,57 @@ export default function Checkout() {
     <ParentShell bgImage={globalBg}>
       <div className="w-full min-h-[100dvh] flex justify-center">
         <div className="w-full max-w-2xl mx-auto px-4 py-6 space-y-6">
+          {/* Breadcrumb Navigation */}
+          <div className="flex items-center gap-2 text-sm text-neutral-600 mb-4">
+            <Button
+              type="link"
+              onClick={() => navigate("/parent/billing/overview")}
+              className="!p-0 !h-auto"
+            >
+              Billing
+            </Button>
+            <span>/</span>
+            <Button
+              type="link"
+              onClick={() => navigate("/parent/billing/subscription")}
+              className="!p-0 !h-auto"
+            >
+              Subscriptions
+            </Button>
+            <span>/</span>
+            <span className="text-neutral-400">Checkout</span>
+          </div>
+
+          {/* Progress Indicator */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <div className={`flex items-center ${selectedPlan ? 'text-[#6D8F00]' : 'text-neutral-400'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${selectedPlan ? 'bg-[#6D8F00] text-white' : 'bg-neutral-200'}`}>
+                  1
+                </div>
+                <span className="ml-2 font-medium">Select Plan</span>
+              </div>
+              <div className="flex-1 h-0.5 mx-4 bg-neutral-200">
+                <div className={`h-full transition-all ${selectedPlan ? 'bg-[#6D8F00] w-full' : 'w-0'}`} />
+              </div>
+              <div className={`flex items-center ${selectedPlan ? 'text-[#6D8F00]' : 'text-neutral-400'}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${selectedPlan ? 'bg-[#6D8F00] text-white' : 'bg-neutral-200'}`}>
+                  2
+                </div>
+                <span className="ml-2 font-medium">Checkout</span>
+              </div>
+              <div className="flex-1 h-0.5 mx-4 bg-neutral-200" />
+              <div className="flex items-center text-neutral-400">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center bg-neutral-200">
+                  3
+                </div>
+                <span className="ml-2 font-medium">Payment</span>
+              </div>
+            </div>
+          </div>
+
           {/* Header */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 mb-4">
             <Button
               icon={<ArrowLeftOutlined />}
               onClick={() => navigate("/parent/billing/subscription")}

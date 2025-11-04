@@ -461,8 +461,21 @@ export default function Subscription() {
       <div className="w-full min-h-[100dvh]">
         {/* Responsive layout - no frame */}
         <main className="w-full max-w-7xl mx-auto px-4 md:px-8">
-          {/* Page header */}
+          {/* Breadcrumb Navigation */}
           <div className="pt-6">
+            <div className="flex items-center gap-2 text-sm text-neutral-600 mb-4">
+              <Button
+                type="link"
+                onClick={() => navigate("/parent/billing/overview")}
+                className="!p-0 !h-auto"
+              >
+                Billing
+              </Button>
+              <span>/</span>
+              <span className="text-neutral-400">Subscriptions</span>
+            </div>
+
+            {/* Page header */}
             <div className="flex items-center gap-3 mb-2">
               <Button
                 type="text"
@@ -474,8 +487,11 @@ export default function Subscription() {
               </Button>
             </div>
             <h1 className="text-2xl md:text-3xl font-extrabold text-neutral-800 m-0">
-              Subscriptions
+              Choose Your Subscription Plan
             </h1>
+            <p className="text-neutral-600 mt-2">
+              Select a plan that fits your family's needs. You can change or cancel anytime.
+            </p>
           </div>
 
           {/* Active Subscription Alert */}
@@ -501,17 +517,32 @@ export default function Subscription() {
             </div>
           )}
 
+          {/* Information Card */}
+          <div className="mt-4">
+            <Card className="rounded-2xl bg-gradient-to-r from-[#C7D425]/10 to-[#6D8F00]/10 border-[#C7D425]/30">
+              <div className="flex items-start gap-3">
+                <div className="text-2xl">ℹ️</div>
+                <div className="flex-1">
+                  <Text strong className="block mb-1">What's Included?</Text>
+                  <Text type="secondary" className="text-sm">
+                    All plans include full platform access, homework assistance, AI-powered learning support, 
+                    progress tracking, and unlimited access to educational content. Choose the plan that best fits your family size and billing preference.
+                  </Text>
+                </div>
+              </div>
+            </Card>
+          </div>
+
           {/* Hero / Controls */}
           <div>
             <div className="mt-3 rounded-3xl bg-white/80 p-5 shadow">
               <div className="md:flex md:items-center md:justify-between">
                 <div>
                   <h2 className="text-xl md:text-2xl font-extrabold m-0">
-                    Choose Your Subscription
+                    Select Your Plan
                   </h2>
                   <p className="mt-1 text-neutral-600">
-                    Flexible packages for 1 or 2 children. Change or cancel
-                    anytime.
+                    Choose the billing frequency and number of children. All plans include full platform access.
                   </p>
                 </div>
 
