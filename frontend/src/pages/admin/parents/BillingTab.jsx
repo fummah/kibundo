@@ -16,11 +16,14 @@ import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
-const BillingTab = ({ parent, parentId: parentIdProp }) => {
+const BillingTab = ({ parent, parentId: parentIdProp, entity }) => {
   const { message: messageApi, modal } = App.useApp();
   const params = useParams();            // expects a route like /parents/:id
   const routeId = params?.id && Number.isFinite(+params.id) ? +params.id : params?.id;
-  const parentId = parent?.id ?? parentIdProp ?? routeId ?? null;
+  
+  // Use entity prop if provided, otherwise use parent prop
+  const parentData = entity || parent;
+  const parentId = parentData?.id ?? parent?.id ?? parentIdProp ?? routeId ?? null;
   const [activeTab, setActiveTab] = useState('subscriptions');
 
   const [loading, setLoading] = useState({ 
@@ -33,11 +36,28 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
   const [invoices, setInvoices] = useState([]);
   const [fetchErr, setFetchErr] = useState(null);
 
-  const parentName = parent?.name || parent?.full_name || parent?.first_name
-    ? `${parent?.first_name ?? ''} ${parent?.last_name ?? ''}`.trim() || parent?.name || '—'
-    : '—';
-  const parentEmail = parent?.email || parent?.contact_email || null;
-  const isActive = parent?.is_active ?? parent?.active ?? null;
+  // Extract parent name from various possible structures
+  const parentName = parentData?.name || 
+                     (parentData?.first_name || parentData?.last_name 
+                       ? `${parentData?.first_name ?? ''} ${parentData?.last_name ?? ''}`.trim() 
+                       : null) ||
+                     (parentData?.user?.first_name || parentData?.user?.last_name
+                       ? `${parentData?.user?.first_name ?? ''} ${parentData?.user?.last_name ?? ''}`.trim()
+                       : null) ||
+                     parentData?.full_name || '—';
+  
+  // Extract parent email from various possible structures
+  const parentEmail = parentData?.email || 
+                      parentData?.contact_email || 
+                      parentData?.user?.email || 
+                      null;
+  
+  // Extract account status from various possible structures
+  const accountStatus = parentData?.status || 
+                        parentData?.user?.status ||
+                        null;
+  const isActive = (parentData?.is_active ?? parentData?.active) ?? 
+                   (accountStatus?.toLowerCase() === 'active' ? true : null);
 
   const fetchInvoices = useCallback(async () => {
     if (!parentId) return;
@@ -168,12 +188,25 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
     }
   }, [parentId]);
 
+  // Use subscription data from parent entity if available, otherwise fetch
+  useEffect(() => {
+    const subs = parentData?.subscriptions || 
+                 parentData?.raw?.subscriptions ||
+                 parent?.subscriptions || 
+                 [];
+    
+    if (Array.isArray(subs) && subs.length > 0) {
+      setSubscriptions(subs);
+    } else if (parentId) {
+      fetchSubscriptions();
+    }
+  }, [parentData?.subscriptions, parentData?.raw?.subscriptions, parent?.subscriptions, parentId, fetchSubscriptions]);
+
   useEffect(() => {
     if (parentId) {
-      fetchSubscriptions();
       fetchInvoices();
     }
-  }, [parentId, fetchSubscriptions, fetchInvoices]);
+  }, [parentId, fetchInvoices]);
 
   const handleGenerateInvoice = async (subscription) => {
     if (!subscription?.id || !parentId) {
@@ -631,34 +664,6 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
     );
   };
 
-  const renderParentInfo = () => (
-    <div className="mb-6">
-      <Descriptions bordered column={2}>
-        <Descriptions.Item label="Parent">
-          <div>
-            <div className="font-medium">{parentName}</div>
-            {parentEmail && <Text type="secondary" className="text-xs">{parentEmail}</Text>}
-          </div>
-        </Descriptions.Item>
-        <Descriptions.Item label="Account Status">
-          {isActive === null ? (
-            <Badge status="default" text="—" />
-          ) : isActive ? (
-            <Badge status="success" text="Active" />
-          ) : (
-            <Badge status="default" text="Inactive" />
-          )}
-        </Descriptions.Item>
-        <Descriptions.Item label="Subscription Status" span={2}>
-          {subscriptions.some((s) => s.status === 'active') ? (
-            <Badge status="success" text="Active" />
-          ) : (
-            <Badge status="default" text="No active subscription" />
-          )}
-        </Descriptions.Item>
-      </Descriptions>
-    </div>
-  );
 
   return (
     <div className="billing-tab">
@@ -701,20 +706,102 @@ const BillingTab = ({ parent, parentId: parentIdProp }) => {
                 </div>
               </Descriptions.Item>
               <Descriptions.Item label="Account Status">
-                {isActive === null ? (
-                  <Badge status="default" text="—" />
-                ) : isActive ? (
-                  <Badge status="success" text="Active" />
-                ) : (
-                  <Badge status="default" text="Inactive" />
-                )}
+                {(() => {
+                  if (accountStatus) {
+                    const statusLower = accountStatus.toLowerCase();
+                    if (statusLower === 'active') {
+                      return <Badge status="success" text="Active" />;
+                    } else if (statusLower === 'inactive' || statusLower === 'suspended') {
+                      return <Badge status="error" text={accountStatus} />;
+                    } else {
+                      return <Badge status="default" text={accountStatus} />;
+                    }
+                  }
+                  // Fallback to isActive boolean
+                  if (isActive === null || isActive === undefined) {
+                    return <Badge status="default" text="—" />;
+                  }
+                  return isActive ? (
+                    <Badge status="success" text="Active" />
+                  ) : (
+                    <Badge status="default" text="Inactive" />
+                  );
+                })()}
               </Descriptions.Item>
               <Descriptions.Item label="Subscription Status" span={2}>
-                {subscriptions.some((s) => s.status === 'active') ? (
-                  <Badge status="success" text="Active" />
-                ) : (
-                  <Badge status="default" text="No active subscription" />
-                )}
+                {(() => {
+                  // Try to get subscriptions from various sources
+                  const allSubs = subscriptions.length > 0 
+                    ? subscriptions 
+                    : parentData?.subscriptions || 
+                      parentData?.raw?.subscriptions ||
+                      [];
+                  
+                  if (!allSubs || allSubs.length === 0) {
+                    return <Badge status="default" text="No subscription" />;
+                  }
+                  
+                  // Find active subscription first, otherwise show the most recent one
+                  const activeSub = allSubs.find((s) => s.status === 'active' || s.status === 'trialing');
+                  const latestSub = activeSub || allSubs[0];
+                  
+                  // Extract subscription details
+                  const planName = latestSub?.product?.name || 
+                                  latestSub?.plan?.name || 
+                                  latestSub?.price?.nickname || 
+                                  latestSub?.metadata?.plan_name ||
+                                  latestSub?.plan_name ||
+                                  "Unknown Plan";
+                  const status = latestSub?.status || "unknown";
+                  const interval = latestSub?.product?.billing_interval ||
+                                  latestSub?.metadata?.billing_interval ||
+                                  latestSub?.price?.interval ||
+                                  latestSub?.billing_interval ||
+                                  "N/A";
+                  const renewsDate = latestSub?.current_period_end || 
+                                     latestSub?.metadata?.renewal_date ||
+                                     latestSub?.renewal_date ||
+                                     null;
+                  
+                  // Determine status color
+                  let statusColor = 'default';
+                  if (status === 'active' || status === 'trialing') {
+                    statusColor = 'success';
+                  } else if (status === 'incomplete' || status === 'past_due') {
+                    statusColor = 'warning';
+                  } else if (status === 'canceled' || status === 'unpaid') {
+                    statusColor = 'error';
+                  }
+                  
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge status={statusColor} text={status || 'unknown'} />
+                        <Text strong>{planName}</Text>
+                        {interval && interval !== 'N/A' && (
+                          <Tag color={statusColor}>
+                            {interval}
+                          </Tag>
+                        )}
+                      </div>
+                      {renewsDate && (
+                        <Text type="secondary" className="text-xs">
+                          Renews: {dayjs(renewsDate).format('MMM D, YYYY')}
+                        </Text>
+                      )}
+                      {latestSub?.stripe_subscription_id && (
+                        <Text type="secondary" className="text-xs block">
+                          Stripe ID: {latestSub.stripe_subscription_id.substring(0, 20)}...
+                        </Text>
+                      )}
+                      {allSubs.length > 1 && (
+                        <Text type="secondary" className="text-xs">
+                          {allSubs.length} total subscription{allSubs.length > 1 ? 's' : ''}
+                        </Text>
+                      )}
+                    </div>
+                  );
+                })()}
               </Descriptions.Item>
             </Descriptions>
           </div>

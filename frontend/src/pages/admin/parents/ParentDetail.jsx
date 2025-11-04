@@ -66,7 +66,7 @@ export default function ParentDetail() {
   );
 
   const renderBillingTab = useCallback(
-    (entity) => <BillingTab entity={entity} />,
+    (entity) => <BillingTab entity={entity} parent={entity} />,
     []
   );
 

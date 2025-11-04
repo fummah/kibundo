@@ -39,9 +39,9 @@ function computeHomeworkEntryRoute() {
 export default function HomeMobile() {
   const navigate = useNavigate();
 
-  // Desktop Layout - Only shows on large screens (lg and above)
+  // Desktop Layout - Shows starting from iPad (md: 768px and above)
   const DesktopLayout = () => (
-    <div className="hidden lg:flex flex-col min-h-[100dvh] md:min-h-0 md:h-full bg-[#f7f2ec]">
+    <div className="hidden md:flex flex-col min-h-[100dvh] md:min-h-0 md:h-full bg-[#f7f2ec]">
       {/* Sticky settings (safe-area aware) */}
       <div className="sticky top-0 z-50 flex justify-end px-4 pt-[env(safe-area-inset-top)] pointer-events-none">
         <div className="pointer-events-auto">
@@ -93,7 +93,12 @@ export default function HomeMobile() {
               />
             </Col>
 
-            <Col xs={12}>
+            {/* 
+              FEATURE: Learning (Lernen)
+              Status: Temporarily hidden - content not ready
+              TODO: Enable when content is available
+            */}
+            {/* <Col xs={12}>
               <ImageTile
                 title="Lernen"
                 bg={TILE_BG.yellow}
@@ -102,9 +107,14 @@ export default function HomeMobile() {
                 ariaLabel="Zu Lernen"
                 data-testid="tile-learning"
               />
-            </Col>
+            </Col> */}
 
-            <Col xs={12}>
+            {/* 
+              FEATURE: Reading (Lesen)
+              Status: Temporarily hidden - content not ready
+              TODO: Enable when content is available
+            */}
+            {/* <Col xs={12}>
               <ImageTile
                 title="Lesen"
                 bg={TILE_BG.pink}
@@ -113,9 +123,14 @@ export default function HomeMobile() {
                 ariaLabel="Zu Lesen"
                 data-testid="tile-reading"
               />
-            </Col>
+            </Col> */}
 
-            <Col xs={12}>
+            {/* 
+              FEATURE: Treasure Map (Schatzkarte)
+              Status: Temporarily hidden - content not ready
+              TODO: Enable when content is available
+            */}
+            {/* <Col xs={12}>
               <ImageTile
                 title="Schatzkarte"
                 bg={TILE_BG.green}
@@ -123,7 +138,7 @@ export default function HomeMobile() {
                 ariaLabel="Zur Schatzkarte"
                 data-testid="tile-map"
               />
-            </Col>
+            </Col> */}
           </Row>
         </div>
         {/* Footer chat is injected globally */}
@@ -131,9 +146,9 @@ export default function HomeMobile() {
     </div>
   );
 
-  // Mobile/Responsive Layout - Only shows on smaller screens
+  // Mobile Layout - Only shows on screens smaller than iPad (< 768px)
   const MobileLayout = () => (
-    <div className="lg:hidden flex flex-col min-h-[100dvh] bg-[#f7f2ec]">
+    <div className="md:hidden flex flex-col min-h-[100dvh] bg-[#f7f2ec]">
       {/* Sticky settings */}
       <div className="sticky top-0 z-50 flex justify-end px-4 pt-[env(safe-area-inset-top)] pointer-events-none">
         <div className="pointer-events-auto">
@@ -168,7 +183,12 @@ export default function HomeMobile() {
             </div>
           </button>
 
-          <button
+          {/* 
+            FEATURE: Learning (Lernen) - Mobile
+            Status: Temporarily hidden - content not ready
+            TODO: Enable when content is available
+          */}
+          {/* <button
             onClick={() => navigate("/student/learning")}
             className="w-full p-4 rounded-2xl shadow-md transition-transform active:scale-95"
             style={{ backgroundColor: TILE_BG.yellow }}
@@ -179,9 +199,14 @@ export default function HomeMobile() {
               <img src={IMGS.learning} alt="" className="w-16 h-16 object-contain" />
               <span className="text-xl font-bold text-[#2b6a5b]">Lernen</span>
             </div>
-          </button>
+          </button> */}
 
-          <button
+          {/* 
+            FEATURE: Reading (Lesen) - Mobile
+            Status: Temporarily hidden - content not ready
+            TODO: Enable when content is available
+          */}
+          {/* <button
             onClick={() => navigate("/student/reading")}
             className="w-full p-4 rounded-2xl shadow-md transition-transform active:scale-95"
             style={{ backgroundColor: TILE_BG.pink }}
@@ -192,9 +217,14 @@ export default function HomeMobile() {
               <img src={IMGS.reading} alt="" className="w-16 h-16 object-contain" />
               <span className="text-xl font-bold text-[#2b6a5b]">Lesen</span>
             </div>
-          </button>
+          </button> */}
 
-          <button
+          {/* 
+            FEATURE: Treasure Map (Schatzkarte) - Mobile
+            Status: Temporarily hidden - content not ready
+            TODO: Enable when content is available
+          */}
+          {/* <button
             onClick={() => navigate("/student/map")}
             className="w-full p-4 rounded-2xl shadow-md transition-transform active:scale-95"
             style={{ backgroundColor: TILE_BG.green }}
@@ -205,7 +235,7 @@ export default function HomeMobile() {
               <img src={IMGS.map} alt="" className="w-16 h-16 object-contain" />
               <span className="text-xl font-bold text-[#2b6a5b]">Schatzkarte</span>
             </div>
-          </button>
+          </button> */}
         </div>
       </main>
     </div>

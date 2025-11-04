@@ -1,64 +1,92 @@
 // src/App.jsx
 import React from "react";
-import AppRoutes from "./routes/AppRoutes";
 import { useLocation } from "react-router-dom";
+import AppRoutes from "./routes/AppRoutes";
 import { ToastContainer } from "react-toastify";
 import { ChatDockProvider } from "@/context/ChatDockContext";
 import ChatDockContainer from "@/components/chats/ChatDockContainer.jsx";
 import FooterChat from "@/components/student/mobile/FooterChat";
+import { StudentAppProvider } from "@/context/StudentAppContext.jsx";
 
 import "./index.css"; // includes .scroll-y-invisible and global overflow-hidden
 
 export default function App() {
   const { pathname } = useLocation();
-  const isFramed = pathname.startsWith("/student") || pathname.startsWith("/parent");
-
-  const AppContent = () => (
-    <>
-      {/* Chat portal mount point (fills the framed screen and stays clipped) */}
-      <div id="chat-root" className="absolute inset-0 pointer-events-none" />
-      <AppRoutes />
-    </>
-  );
+  const isStudentRoute = pathname.startsWith("/student");
 
   return (
     <ChatDockProvider>
-      {isFramed ? (
-        // Tablet-style frame for student and parent routes
-        <div className="w-full min-h-dvh flex justify-center bg-[#eef1f5] overflow-hidden">
-          <div
-            className="
-              w-full md:max-w-[834px] lg:max-w-[1024px]
-              mx-auto md:my-6
-              md:h-[90svh] lg:h-[88svh]
-              md:rounded-[1.25rem] md:border md:border-neutral-800
-              md:p-3 md:bg-black md:shadow-2xl
-              relative overflow-hidden
-            "
-          >
-            {/* Screen area (scrolls only when needed, invisible scrollbar) */}
-            <div className="relative w-full h-full bg-white md:rounded-[0.875rem] scroll-y-invisible">
-              <AppContent />
-            </div>
-
-            {/* Footer chat pinned to frame shell bottom (sticky within frame) */}
-            <FooterChat
-              includeOnRoutes={["/student/home", "/student/homework"]}
-              hideOnRoutes={["/student/homework/feedback"]}
-            />
-          </div>
-        </div>
-      ) : (
-        // Plain layout for non-student/parent routes (e.g., admin)
-        <AppRoutes />
+      {isStudentRoute && (
+        <StudentAppProvider>
+          <AppContent />
+        </StudentAppProvider>
       )}
+      {!isStudentRoute && <AppContent />}
+    </ChatDockProvider>
+  );
+}
 
-      {/* Global floating chat dock (student routes only, EXCLUDING routes handled by FooterChat) & toasts */}
+function AppContent() {
+  const { pathname } = useLocation();
+  const isStudentRoute = pathname.startsWith("/student");
+
+  return (
+    <>
+      {/* Chat portal mount point */}
+      <div id="chat-root" className="absolute inset-0 pointer-events-none" />
+      
+      {/* Responsive container for all routes */}
+      <div className="min-h-screen w-full">
+        {/* Student routes: full width on mobile, centered container starting from iPad */}
+        {isStudentRoute ? (
+          <div className="w-full min-h-screen flex flex-col">
+            {/* Mobile: full width (< 768px) */}
+            <div className="md:hidden w-full flex-1 relative pb-20">
+              <AppRoutes />
+              
+              {/* Footer chat for mobile - fixed at bottom */}
+              <div className="fixed bottom-0 left-0 right-0 z-20">
+                <FooterChat
+                  includeOnRoutes={["/student/home", "/student/homework"]}
+                  hideOnRoutes={["/student/homework/feedback"]}
+                />
+              </div>
+            </div>
+            
+            {/* iPad and larger: centered container with max-width */}
+            <div className="hidden md:flex md:justify-center md:min-h-screen md:bg-gray-50">
+              <div className="w-full max-w-[1024px] bg-white shadow-lg flex flex-col min-h-screen relative">
+                <div className="flex-1 overflow-y-auto pb-20">
+                  <AppRoutes />
+                </div>
+                
+                {/* Footer chat for student routes - fixed at bottom */}
+                <div className="absolute bottom-0 left-0 right-0 z-20">
+                  <FooterChat
+                    includeOnRoutes={["/student/home", "/student/homework"]}
+                    hideOnRoutes={["/student/homework/feedback"]}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          // Non-student routes: full width
+          <AppRoutes />
+        )}
+      </div>
+
+      {/* Global floating chat dock (student routes + parent viewing student pages, EXCLUDING routes handled by FooterChat) & toasts */}
       <ChatDockContainer 
-        includeOnRoutes={["/student/*"]} 
-        excludeOnRoutes={["/student/home", "/student/homework"]} 
+        includeOnRoutes={["/student/*", "/parent/myfamily/student/*"]} 
+        excludeOnRoutes={[
+          "/student/home", 
+          "/student/homework",
+          "/admin/*",  // Explicitly exclude all admin routes
+          "/admin/students/*",  // Explicitly exclude admin student routes
+        ]} 
       />
       <ToastContainer position="top-center" autoClose={3000} theme="colored" />
-    </ChatDockProvider>
+    </>
   );
 }

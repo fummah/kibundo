@@ -36,19 +36,15 @@ module.exports = (sequelize, DataTypes) => {
     as: 'student'
   });
 
-      Parent.hasMany(models.subscription, {
-    foreignKey: 'parent_id',
-    as: 'parent'
-  });
+    Parent.hasMany(models.subscription, {
+      foreignKey: 'parent_id',
+      as: 'subscriptions'
+    });
 
-     Parent.hasMany(models.invoice, {
-    foreignKey: 'parent_id',
-    as: 'invoice'
-  });
-     Parent.hasMany(models.subscription, {
-    foreignKey: 'parent_id',
-    as: 'subscription'
-  });
+    Parent.hasMany(models.invoice, {
+      foreignKey: 'parent_id',
+      as: 'invoices'
+    });
   };
 
   return Parent;

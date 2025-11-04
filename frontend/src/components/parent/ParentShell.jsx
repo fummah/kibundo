@@ -31,7 +31,7 @@ export default function ParentShell({
     <div className={className}>
       {/* Background + layout that fills the App's framed screen */}
       <div
-        className="min-h-[100svh] md:min-h-0 md:h-full flex flex-col"
+        className="min-h-[100svh] flex flex-col"
         style={{
           backgroundImage: `url(${bgImage})`,
           backgroundSize: "cover",
@@ -39,22 +39,20 @@ export default function ParentShell({
           paddingTop: "env(safe-area-inset-top)",
         }}
       >
-        {/* Content fills available height; the outer screen (App.jsx) provides scrolling */}
-        <main id="parent-shell" className="flex-1 relative">
-          {/* Padded content wrapper */}
-          <div className={contentClassName}>{children}</div>
-
-          {/* Keep content clear of the sticky bottom bar on mobile */}
-          {!hideBottomBar && <ParentSpaceBar />}
-
-          {/* Sticky bottom nav lives inside the same screen; full-width edge-to-edge */}
-          {!hideBottomBar && (
-            <BottomTabBar
-              includeOnRoutes={includeOnRoutes}
-              hideOnRoutes={hideOnRoutes}
-            />
-          )}
+        {/* Content scrolls when needed; padding at bottom for fixed footer */}
+        <main id="parent-shell" className="flex-1 relative overflow-y-auto" style={{ minHeight: 0 }}>
+          <div className={contentClassName} style={{ paddingBottom: hideBottomBar ? 0 : "80px", minHeight: "fit-content" }}>
+            {children}
+          </div>
         </main>
+
+        {/* Fixed bottom nav - always at bottom, outside main content area */}
+        {!hideBottomBar && (
+          <BottomTabBar
+            includeOnRoutes={includeOnRoutes}
+            hideOnRoutes={hideOnRoutes}
+          />
+        )}
       </div>
     </div>
   );

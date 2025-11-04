@@ -307,13 +307,24 @@ export default function HomeworkChat() {
       }
 
       // Get the global child default AI agent setting
-      let assignedAgent = "ChildAgent"; // default fallback
+      let assignedAgent = "Kibundo"; // default fallback
       try {
-        const { data: aiSettings } = await api.get("/aisettings");
-        if (aiSettings?.child_default_ai) {
-          assignedAgent = aiSettings.child_default_ai;
+        // Only fetch if authenticated
+        const token = localStorage.getItem('kibundo_token') || sessionStorage.getItem('kibundo_token');
+        if (token) {
+          try {
+            const { data: aiSettings } = await api.get("/aisettings", {
+              validateStatus: (status) => status < 500,
+            });
+            if (aiSettings?.child_default_ai) {
+              assignedAgent = aiSettings.child_default_ai;
+            }
+          } catch (error) {
+            console.debug("Could not fetch AI settings:", error.message);
+          }
         }
       } catch (err) {
+        console.debug("Error checking authentication for AI settings:", err.message);
       }
 
       // Text → general chat 🔥 NOW WITH CONVERSATION ID

@@ -10,6 +10,7 @@ const Subscription = db.subscription;
 const Product = db.product;
 const Invoice = db.invoice;
 const Parent = db.parent;
+const HomeworkScan = db.homeworkscan;
 
 async function buildContext(req) {
   try {

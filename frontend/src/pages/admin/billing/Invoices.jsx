@@ -125,21 +125,31 @@ const normalizeInvoiceData = (rows) => {
     }
 
     const extractedParentName = (() => {
+      // Priority 1: Check parent.user (from backend include)
+      if (record?.parent?.user?.first_name || record?.parent?.user?.last_name) {
+        return [record.parent.user.first_name, record.parent.user.last_name].filter(Boolean).join(" ").trim();
+      }
+      // Priority 2: Check invoiceuser.user (legacy format)
       if (record?.invoiceuser?.user?.first_name || record?.invoiceuser?.user?.last_name) {
         return [record.invoiceuser.user.first_name, record.invoiceuser.user.last_name].filter(Boolean).join(" ").trim();
       }
+      // Priority 3: Check parent directly (if user is flattened)
       if (record?.parent?.first_name || record?.parent?.last_name) {
         return [record.parent.first_name, record.parent.last_name].filter(Boolean).join(" ").trim();
       }
+      // Priority 4: Check parent.name
       if (record?.parent?.name) return record.parent.name;
+      // Priority 5: Check precomputed parent_name
       if (record?.parent_name) return record.parent_name;
-      if (record?.parent_id) return `Parent ${record.parent_id}`;
+      // Priority 6: Check invoiceuser directly
       if (record?.invoiceuser && typeof record.invoiceuser === "object") {
         if (record.invoiceuser.first_name || record.invoiceuser.last_name) {
           return [record.invoiceuser.first_name, record.invoiceuser.last_name].filter(Boolean).join(" ").trim();
         }
         if (record.invoiceuser.name) return record.invoiceuser.name;
       }
+      // Fallback: Show parent ID
+      if (record?.parent_id) return `Parent ${record.parent_id}`;
       return "";
     })();
 
@@ -738,7 +748,7 @@ export default function Invoices() {
                       </Spin>
                     </Modal>
             
-                    <Drawer title="Invoice" open={viewOpen} onClose={closeView} width={drawerWidth} style={{ top: HEADER_OFFSET }} maskStyle={{ top: HEADER_OFFSET }} extra={viewRec ? (<Space><Button icon={<SendOutlined />} onClick={() => resend(viewRec.id || viewRec.stripe_invoice_id)}>Resend</Button>{viewRec?.pdf_url && (<Button icon={<FilePdfOutlined />} onClick={() => window.open(viewRec.pdf_url, "_blank", "noopener,noreferrer")}>PDF</Button>)}<Button icon={<EditOutlined />} onClick={() => openEdit(viewRec)}>Edit</Button><Button danger icon={<DeleteOutlined />} onClick={() => askDelete(viewRec)}>Delete</Button></Space>) : null}>
+                    <Drawer title="Invoice" open={viewOpen} onClose={closeView} width={drawerWidth} style={{ top: HEADER_OFFSET }} styles={{ mask: { top: HEADER_OFFSET } }} extra={viewRec ? (<Space><Button icon={<SendOutlined />} onClick={() => resend(viewRec.id || viewRec.stripe_invoice_id)}>Resend</Button>{viewRec?.pdf_url && (<Button icon={<FilePdfOutlined />} onClick={() => window.open(viewRec.pdf_url, "_blank", "noopener,noreferrer")}>PDF</Button>)}<Button icon={<EditOutlined />} onClick={() => openEdit(viewRec)}>Edit</Button><Button danger icon={<DeleteOutlined />} onClick={() => askDelete(viewRec)}>Delete</Button></Space>) : null}>
                       {viewRec ? (
                         <Descriptions bordered column={1} size="middle">
                           <Descriptions.Item label="Invoice ID">{viewRec.id || "—"}</Descriptions.Item>

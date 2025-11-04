@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useAuthContext } from "@/context/AuthContext.jsx";
+import api from "@/api/axios";
 import ParentShell from "@/components/parent/ParentShell.jsx";
 import BuddyAvatar from "@/components/student/BuddyAvatar";
 import globalBg from "@/assets/backgrounds/global-bg.png";
@@ -15,6 +17,7 @@ import {
   Space,
   Empty,
   message,
+  Spin,
 } from "antd";
 import {
   PlusOutlined,
@@ -24,15 +27,10 @@ import {
 
 const { Title, Text } = Typography;
 
-/** Replace with backend fetch */
-const MOCK_STUDENTS = [
-  { id: 1, first_name: "Sophia", last_name: "", status: "Active", avatar: "https://i.pravatar.cc/120?img=5" },
-  { id: 2, first_name: "Ethan", last_name: "", status: "Active", avatar: "https://i.pravatar.cc/120?img=12" },
-];
-
 export default function AddStudentFlow() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { user } = useAuthContext();
   const [params] = useSearchParams();
 
   // 0:intro, 1:list, 2:form, 3:success
@@ -40,6 +38,62 @@ export default function AddStudentFlow() {
   const initialStep = Number.isFinite(urlStep) ? Math.max(0, Math.min(3, urlStep)) : 0;
   const [step, setStep] = useState(initialStep);
   const [submitting, setSubmitting] = useState(false);
+  const [students, setStudents] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [parentId, setParentId] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch parent ID and students
+  useEffect(() => {
+    const fetchData = async () => {
+      if (step === 1) {
+        setLoading(true);
+        try {
+          // Get current user to find parent_id
+          const currentUserRes = await api.get("/current-user");
+          const currentUser = currentUserRes.data;
+          
+          // Get parent_id from user's parent relationship
+          let foundParentId = null;
+          if (currentUser?.parent && Array.isArray(currentUser.parent) && currentUser.parent.length > 0) {
+            foundParentId = currentUser.parent[0].id;
+          } else if (currentUser?.parent?.id) {
+            foundParentId = currentUser.parent.id;
+          } else if (currentUser?.parent_id) {
+            foundParentId = currentUser.parent_id;
+          }
+          
+          setParentId(foundParentId);
+          
+          // Fetch all students and filter by parent_id
+          if (foundParentId) {
+            const studentsRes = await api.get("/allstudents");
+            const allStudents = Array.isArray(studentsRes.data) 
+              ? studentsRes.data 
+              : (studentsRes.data?.data || []);
+            
+            // Filter students by parent_id
+            const parentStudents = allStudents.filter(s => s.parent_id === foundParentId);
+            setStudents(parentStudents);
+          }
+          
+          // Fetch classes for grade mapping
+          const classesRes = await api.get("/allclasses");
+          const allClasses = Array.isArray(classesRes.data) 
+            ? classesRes.data 
+            : (classesRes.data?.data || []);
+          setClasses(allClasses);
+        } catch (error) {
+          console.error("❌ Error fetching data:", error);
+          message.error(t("parent.addStudent.fetchError", "Failed to load students."));
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    
+    fetchData();
+  }, [step, t]);
 
   const goBack = () => setStep((s) => Math.max(0, s - 1));
   const goNext = () => setStep((s) => Math.min(3, s + 1));
@@ -47,12 +101,122 @@ export default function AddStudentFlow() {
   const onCreate = async (values) => {
     setSubmitting(true);
     try {
-      // TODO: call your backend API here
-      await new Promise((r) => setTimeout(r, 600));
-      message.success(t("parent.addStudent.toast.created", "Student created."));
+      if (!user?.id) {
+        throw new Error("Not authenticated");
+      }
+
+      // Get parent_id if not already set
+      let finalParentId = parentId;
+      if (!finalParentId) {
+        const currentUserRes = await api.get("/current-user");
+        const currentUser = currentUserRes.data;
+        if (currentUser?.parent && Array.isArray(currentUser.parent) && currentUser.parent.length > 0) {
+          finalParentId = currentUser.parent[0].id;
+        } else if (currentUser?.parent?.id) {
+          finalParentId = currentUser.parent.id;
+        } else if (currentUser?.parent_id) {
+          finalParentId = currentUser.parent_id;
+        }
+      }
+      
+      if (!finalParentId) {
+        throw new Error("Parent ID not found. Please ensure you are logged in as a parent.");
+      }
+      
+      // Find class_id from grade number
+      // Try to match by class_name containing the grade number
+      const gradeNum = Number(values.grade);
+      let classId = null;
+      
+      // Try to find a class that matches the grade
+      const matchingClass = classes.find(c => {
+        const className = (c.class_name || "").toLowerCase();
+        return className.includes(`grade ${gradeNum}`) || 
+               className.includes(`grade${gradeNum}`) ||
+               className === `grade ${gradeNum}` ||
+               className === `grade${gradeNum}`;
+      });
+      
+      if (matchingClass) {
+        classId = matchingClass.id;
+      } else {
+        // Fallback: use grade number as class_id if class exists with that ID
+        const classExists = classes.find(c => c.id === gradeNum);
+        if (classExists) {
+          classId = gradeNum;
+        } else {
+          // Last resort: use grade number as class_id (may need backend to create it)
+          classId = gradeNum;
+        }
+      }
+      
+      // Generate temporary email for student (backend requires email)
+      const tempEmail = `student_${Date.now()}_${Math.random().toString(36).substring(2, 9)}@temp.kibundo.local`;
+      
+      // Create User account with role_id = 1 (Student)
+      // The backend should automatically create a Student record when role_id=1
+      const userBody = {
+        role_id: 1, // Student role
+        first_name: values.first_name,
+        last_name: values.last_name || "",
+        email: tempEmail,
+        state: values.city || "",
+        class_id: classId,
+        parent_id: finalParentId, // Set parent_id so student is linked to parent
+      };
+
+      console.log("📤 Creating student user:", userBody);
+      
+      const userRes = await api.post("/adduser", userBody);
+      const createdUser = userRes?.data?.user || userRes?.data;
+      
+      if (!createdUser?.id) {
+        throw new Error("Failed to create user account");
+      }
+
+      console.log("✅ User created:", createdUser.id);
+
+      // Wait a bit for backend to create student record, then update it
+      // Fetch students to find the newly created one
+      await new Promise(resolve => setTimeout(resolve, 500)); // Small delay
+      
+      const studentRes = await api.get(`/allstudents`);
+      const allStudents = Array.isArray(studentRes.data) 
+        ? studentRes.data 
+        : (studentRes.data?.data || []);
+      const newStudent = allStudents.find(s => s.user_id === createdUser.id);
+      
+      if (newStudent) {
+        // Update student with additional profile info
+        try {
+          await api.put(`/students/${newStudent.id}`, {
+            age: Number(values.age),
+            school_type: values.school_type,
+            city: values.city,
+            school_name: values.school_name,
+          });
+        } catch (updateError) {
+          console.warn("⚠️ Could not update student profile:", updateError);
+          // Continue anyway - student was created successfully
+        }
+      }
+      
+      // Refresh students list
+      const updatedStudentsRes = await api.get("/allstudents");
+      const updatedAllStudents = Array.isArray(updatedStudentsRes.data) 
+        ? updatedStudentsRes.data 
+        : (updatedStudentsRes.data?.data || []);
+      const updatedParentStudents = updatedAllStudents.filter(s => s.parent_id === finalParentId);
+      setStudents(updatedParentStudents);
+      
+      message.success(t("parent.addStudent.toast.created", "Student created successfully!"));
       setStep(3);
     } catch (e) {
-      message.error(t("parent.addStudent.toast.createFailed", "Could not create student."));
+      console.error("❌ Error creating student:", e);
+      message.error(
+        t("parent.addStudent.toast.createFailed", "Could not create student.") + 
+        (e?.response?.data?.message ? `: ${e.response.data.message}` : "")
+      );
     } finally {
       setSubmitting(false);
     }
@@ -107,22 +271,34 @@ export default function AddStudentFlow() {
               </Space>
             }
           >
-            {MOCK_STUDENTS.length > 0 ? (
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <Spin size="large" />
+              </div>
+            ) : students.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {MOCK_STUDENTS.map((s) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center gap-3 rounded-2xl border border-neutral-200 p-3"
-                  >
-                    <BuddyAvatar src={s.avatar} size={56} />
-                    <div className="leading-tight">
-                      <div className="font-semibold">
-                        {s.first_name} {s.last_name}
+                {students.map((s) => {
+                  const studentUser = s.user || {};
+                  const firstName = studentUser.first_name || "";
+                  const lastName = studentUser.last_name || "";
+                  const fullName = `${firstName} ${lastName}`.trim() || `Student #${s.id}`;
+                  const avatar = studentUser.avatar || `/buddies/monster${(s.id % 3) + 1}.png`;
+                  
+                  return (
+                    <div
+                      key={s.id}
+                      className="flex items-center gap-3 rounded-2xl border border-neutral-200 p-3"
+                    >
+                      <BuddyAvatar src={avatar} size={56} />
+                      <div className="leading-tight">
+                        <div className="font-semibold">{fullName}</div>
+                        <Text type="secondary">
+                          {s.status || (s.user?.status || "Active")}
+                        </Text>
                       </div>
-                      <Text type="secondary">{s.status}</Text>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <Empty description={t("parent.addStudent.noStudents", "No students yet.")} />
@@ -170,6 +346,16 @@ export default function AddStudentFlow() {
               </Form.Item>
 
               <Form.Item
+                label={t("parent.addStudent.lastName", "Last name")}
+                name="last_name"
+                rules={[
+                  { min: 2, message: t("errors.minChars", { n: 2 }) },
+                ]}
+              >
+                <Input placeholder={t("parent.addStudent.lastName_ph", "Enter last name (optional)")} />
+              </Form.Item>
+
+              <Form.Item
                 label={t("parent.addStudent.age", "Age")}
                 name="age"
                 rules={[
@@ -193,7 +379,13 @@ export default function AddStudentFlow() {
                 name="grade"
                 rules={[{ required: true, message: t("errors.required") }]}
               >
-                <Input placeholder="3" />
+                <Select
+                  placeholder={t("parent.addStudent.grade_ph", "Select grade")}
+                  options={Array.from({ length: 13 }, (_, i) => i + 1).map(grade => ({
+                    value: grade,
+                    label: `Grade ${grade}`
+                  }))}
+                />
               </Form.Item>
 
               <Form.Item

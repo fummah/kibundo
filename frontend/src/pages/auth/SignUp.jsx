@@ -99,10 +99,33 @@ export default function SignUp() {
     } = values;
 
     // UI role -> backend role_id
-    const roleMap = { parent: ROLES.PARENT, teacher: ROLES.TEACHER };
-    const role_id = roleMap[String(role)];
+    const roleMap = { 
+      parent: ROLES.PARENT,  // 2
+      teacher: ROLES.TEACHER // 3
+    };
+    
+    // Debug: Log actual values
+    console.log("🔍 Frontend signup - Role selection:", role);
+    console.log("🔍 Role type:", typeof role);
+    console.log("🔍 ROLES.PARENT =", ROLES.PARENT);
+    console.log("🔍 ROLES.TEACHER =", ROLES.TEACHER);
+    console.log("🔍 Role map:", roleMap);
+    
+    // Normalize role to lowercase string
+    const normalizedRole = String(role || "").toLowerCase().trim();
+    console.log("🔍 Normalized role:", normalizedRole);
+    
+    const role_id = roleMap[normalizedRole];
+    
+    console.log("🎯 Frontend signup - Mapped role_id:", role_id);
+    console.log("🎯 Selected role string:", normalizedRole);
+    console.log("🎯 Expected for 'parent':", ROLES.PARENT);
+    console.log("🎯 Expected for 'teacher':", ROLES.TEACHER);
+    
     if (!role_id) {
-      toast.error("Invalid role selected.");
+      console.error("❌ Invalid role selected. Role value:", role, "Normalized:", normalizedRole);
+      console.error("❌ Available roles in map:", Object.keys(roleMap));
+      toast.error(`Invalid role selected: ${role}`);
       return;
     }
 
@@ -116,6 +139,13 @@ export default function SignUp() {
       role_id,
       bundesland,
     };
+    
+    console.log("📤 Frontend signup - Sending payload:");
+    console.log("  - first_name:", first_name);
+    console.log("  - email:", email);
+    console.log("  - role_id:", role_id, "(type:", typeof role_id, ")");
+    console.log("  - original role value:", role);
+    console.log("  - bundesland:", bundesland);
 
     try {
       setLoading(true);
@@ -132,6 +162,22 @@ export default function SignUp() {
 
       // Log user into context (persists tiny summary and sets axios header/token)
       login(user, token);
+      
+      // Verify the user role matches what we expected
+      const userRoleId = normalizeRoleId(user, role_id);
+      console.log("✅ Signup response received");
+      console.log("  - Expected role_id:", role_id);
+      console.log("  - User role_id from response:", userRoleId);
+      console.log("  - User object role_id:", user?.role_id);
+      console.log("  - User object:", user);
+      
+      if (userRoleId !== role_id) {
+        console.error("⚠️ ERROR: User role_id doesn't match expected role_id!");
+        console.error("  - Expected:", role_id);
+        console.error("  - Actual:", userRoleId);
+        toast.error(`Role mismatch! Expected ${role_id} but got ${userRoleId}`);
+      }
+      
       toast.success("Account created!");
 
       // Student onboarding (force fresh intro/tour)
@@ -145,9 +191,26 @@ export default function SignUp() {
       }
 
       // Non-students → role landing
+      // Use the role_id we sent (not the user's role_id from response, in case of mismatch)
       const resolvedRoleId = normalizeRoleId(user, role_id);
-      const rolePath = ROLE_PATHS[resolvedRoleId] || "/dashboard";
-      navigate(rolePath, { replace: true });
+      const rolePath = ROLE_PATHS[resolvedRoleId] || ROLE_PATHS[role_id] || "/dashboard";
+      
+      console.log("🚀 Navigation details:");
+      console.log("  - Expected role_id:", role_id);
+      console.log("  - User role_id from response:", userRoleId);
+      console.log("  - Resolved role_id:", resolvedRoleId);
+      console.log("  - Role path for resolvedRoleId:", ROLE_PATHS[resolvedRoleId]);
+      console.log("  - Role path for role_id:", ROLE_PATHS[role_id]);
+      console.log("  - Final navigation path:", rolePath);
+      
+      // Double-check: if there's a mismatch, use the expected role_id
+      const finalRoleId = userRoleId === role_id ? resolvedRoleId : role_id;
+      const finalPath = ROLE_PATHS[finalRoleId] || "/dashboard";
+      
+      console.log("  - Using final role_id:", finalRoleId);
+      console.log("  - Using final path:", finalPath);
+      
+      navigate(finalPath, { replace: true });
     } catch (err) {
       const status = err?.response?.status;
 
@@ -275,8 +338,16 @@ export default function SignUp() {
             name="role"
             label="Role"
             rules={[{ required: true, message: "Please select a role" }]}
+            initialValue={null}
           >
-            <Select placeholder="Select Role" disabled={loading}>
+            <Select 
+              placeholder="Select Role" 
+              disabled={loading}
+              onChange={(value) => {
+                console.log("🎯 Role Select onChange - Selected value:", value);
+                console.log("🎯 Role Select onChange - Value type:", typeof value);
+              }}
+            >
               <Option value="parent">Parent</Option>
               <Option value="teacher">Teacher</Option>
             </Select>

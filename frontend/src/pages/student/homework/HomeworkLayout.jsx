@@ -83,16 +83,8 @@ export default function HomeworkLayout() {
         </div>
       </div>
 
-      {/* MAIN — curved bottom background behind content */}
-      <main
-        className="relative mt-2"
-        style={{
-          backgroundImage: `url(${bottomBg})`,
-          backgroundRepeat: "no-repeat",
-          backgroundSize: "contain",
-          backgroundPosition: "top center",
-        }}
-      >
+      {/* MAIN — content area */}
+      <main className="relative mt-2">
         {/* Extra bottom padding to clear the docked chat when minimized */}
         <section className="w-full mx-auto px-4 pt-6 pb-[calc(var(--chat-dock-h,96px)+env(safe-area-inset-bottom)+24px)]">
           {/* Only show the subtitle on non-success steps */}

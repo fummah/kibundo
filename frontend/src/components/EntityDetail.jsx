@@ -325,11 +325,14 @@ export default function EntityDetail({ cfg, extraHeaderButtons, onEntityLoad }) 
         prevEntityRef.current = defaultEntity;
       }
       const s = err?.response?.status;
-      if (s === 404) {
-        messageApi.error("Record not found (404)");
-      } else {
-        messageApi.warning("Could not load details. Showing cached row.");
-      }
+      // Defer message calls to avoid React 18 concurrent mode warnings
+      setTimeout(() => {
+        if (s === 404) {
+          messageApi.error("Record not found (404)");
+        } else {
+          messageApi.warning("Could not load details. Showing cached row.");
+        }
+      }, 0);
       setInitialLoadDone(true);
       formManuallyUpdatedRef.current = false; // Reset manual update flag on error load
     } finally {
@@ -705,10 +708,6 @@ export default function EntityDetail({ cfg, extraHeaderButtons, onEntityLoad }) 
       delete transformedValues.grade;
 
       if (typeof apiObj.updatePath === "function") {
-        console.log("🚀 Frontend sending to backend:", {
-          ...transformedValues,
-          plain_pass: transformedValues.plain_pass ? '***' : undefined
-        });
         await api.put(apiObj.updatePath(id), transformedValues, { withCredentials: true });
         messageApi.success("Saved");
         await load();
@@ -2025,7 +2024,7 @@ export default function EntityDetail({ cfg, extraHeaderButtons, onEntityLoad }) 
       const keys = Object.keys(t)
         .filter((k) => !BUILTIN_KEYS.includes(k))
         .filter((k) => t[k]?.enabled && typeof t[k]?.render === "function");
-      console.log("customTabKeys computed:", keys);
+      // console.log("customTabKeys computed:", keys); // Debug logging disabled
       return keys;
     } catch (error) {
       console.error("Error computing customTabKeys:", error);
@@ -2039,13 +2038,13 @@ export default function EntityDetail({ cfg, extraHeaderButtons, onEntityLoad }) 
       const order2 = Array.isArray(safeCfg.tabs?.order) ? safeCfg.tabs.order : null;
       const base = order1 || order2;
       if (Array.isArray(base) && base.length > 0) {
-        console.log("explicitOrder using base:", base);
+        // console.log("explicitOrder using base:", base); // Debug logging disabled
         return base;
       }
       
       // Safety check for customTabKeys
       const safeCustomKeys = Array.isArray(customTabKeys) ? customTabKeys : [];
-      console.log("explicitOrder custom keys:", safeCustomKeys);
+      // console.log("explicitOrder custom keys:", safeCustomKeys); // Debug logging disabled
       
       const result = [
         "information",
@@ -2058,7 +2057,7 @@ export default function EntityDetail({ cfg, extraHeaderButtons, onEntityLoad }) 
         "billing",
         "audit",
       ];
-      console.log("explicitOrder result:", result);
+      // console.log("explicitOrder result:", result); // Debug logging disabled
       return result;
     } catch (error) {
       console.error("Error computing explicitOrder:", error);
@@ -2165,7 +2164,7 @@ export default function EntityDetail({ cfg, extraHeaderButtons, onEntityLoad }) 
 
       // Safety check for explicitOrder
       const safeOrder = Array.isArray(explicitOrder) ? explicitOrder : [];
-      console.log("tabItems - processing order:", safeOrder);
+      // console.log("tabItems - processing order:", safeOrder); // Debug logging disabled
       
       safeOrder.forEach((key) => {
         const panel = panelByKey[key];
@@ -2193,7 +2192,7 @@ export default function EntityDetail({ cfg, extraHeaderButtons, onEntityLoad }) 
         });
       }
 
-      console.log("tabItems generated:", items.map(i => i.key));
+      // console.log("tabItems generated:", items.map(i => i.key)); // Debug logging disabled
       return items;
     } catch (error) {
       console.error("Error generating tabItems:", error);

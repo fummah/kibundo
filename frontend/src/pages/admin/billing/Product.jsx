@@ -34,7 +34,6 @@ import {
 import api from "@/api/axios";
 
 import BillingEntityList from "@/components/billing/BillingEntityList";
-import ConfirmDrawer from "@/components/common/ConfirmDrawer";
 import StatusTag from "@/components/common/StatusTag";
 import MoneyText from "@/components/common/MoneyText";
 import useResponsiveDrawerWidth from "@/hooks/useResponsiveDrawerWidth";
@@ -89,6 +88,8 @@ function toFormValues(apiProduct) {
           ? Number(apiProduct.amountCents) / 100
           : undefined;
 
+  const metadata = apiProduct.metadata || {};
+  
   return {
     name: apiProduct.name || apiProduct.nickname || "",
     description: apiProduct.description || "",
@@ -103,10 +104,22 @@ function toFormValues(apiProduct) {
       apiProduct.trialOncePerUser != null
         ? !!apiProduct.trialOncePerUser
         : true,
+    // Metadata fields
+    billing_interval: metadata.billing_interval || "month",
+    child_count: metadata.child_count || 1,
+    sort_order: metadata.sort_order || 999,
+    is_best_value: metadata.is_best_value || false,
   };
 }
 
 function toApiPayload(form, id) {
+  const metadata = {
+    billing_interval: form.billing_interval || "month",
+    child_count: form.child_count || 1,
+    sort_order: form.sort_order || 999,
+    is_best_value: form.is_best_value || false,
+  };
+  
   const payload = {
     id,
     name: form.name?.trim(),
@@ -114,12 +127,12 @@ function toApiPayload(form, id) {
     description: form.description || "",
     active: Boolean(form.active),
     currency: form.currency || "EUR",
-    priceCents:
-      form.price != null ? Math.round(Number(form.price) * 100) : undefined,
+    price: form.price != null ? Number(form.price) : undefined,
     trial_period_days:
       form.trial_period_days != null ? Number(form.trial_period_days) : 0,
     trialOncePerUser:
       form.trialOncePerUser != null ? !!form.trialOncePerUser : true,
+    metadata,
   };
   Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
   return payload;
@@ -137,6 +150,7 @@ export default function Product() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [q, setQ] = useState("");
   const [loadingTable, setLoadingTable] = useState(false);
+  const [showTestProducts, setShowTestProducts] = useState(false); // Filter out test/admin products by default
 
   // Add/Edit modal
   const [open, setOpen] = useState(false);
@@ -155,12 +169,7 @@ export default function Product() {
   const [viewRec, setViewRec] = useState(null);
 
   // Confirm drawers (single & bulk)
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmTarget, setConfirmTarget] = useState(null);
-  const [confirmLoading, setConfirmLoading] = useState(false);
 
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkLoading, setBulkLoading] = useState(false);
 
   const fetchProducts = async () => {
     try {
@@ -217,13 +226,27 @@ export default function Product() {
   const debouncedSetQ = useMemo(() => debounce(setQ, 250), []);
   const filteredProducts = useMemo(() => {
     const query = q.trim().toLowerCase();
-    return (products || []).filter((p) => {
+    const filtered = (products || []).filter((p) => {
+      // Filter by status
       if (statusFilter !== "all" && getStatusKey(p) !== statusFilter) return false;
+      
+      // Filter out test/admin products unless explicitly shown
+      if (!showTestProducts) {
+        const name = (p?.name || "").toLowerCase().trim();
+        if (name.includes("test") || name.includes("admin") || name === "admin") {
+          return false;
+        }
+      }
+      
+      // Filter by search query
       if (!query) return true;
       const hay = `${p?.name || ""} ${p?.description || ""}`.toLowerCase();
       return hay.includes(query);
     });
-  }, [products, statusFilter, q]);
+    
+    // Sort by ID ascending (oldest first)
+    return filtered.sort((a, b) => (a.id || 0) - (b.id || 0));
+  }, [products, statusFilter, q, showTestProducts]);
 
   /* ------------------------------ View logic ------------------------------ */
   const openView = useCallback(async (idOrRecord) => {
@@ -260,8 +283,12 @@ export default function Product() {
       active: true,
       currency: "EUR",
       price: undefined,
-      trial_period_days: 0,
+      trial_period_days: 5,
       trialOncePerUser: true,
+      billing_interval: "month",
+      child_count: 1,
+      sort_order: 999,
+      is_best_value: false,
     });
   };
 
@@ -289,23 +316,27 @@ export default function Product() {
 const onSave = async () => {
   try {
     const values = await form.validateFields();
-
-    // Keep payload generation for a future 'update' API if needed
-    // const payload = toApiPayload(values, editingId || undefined);
-
     setSaving(true);
 
-    // Create payload expected by backend /addproduct
-    const createPayload = {
-      name: values.name?.trim(),
-      description: values.description || "",
-      price: values.price != null ? Number(values.price) : undefined,
-      trial_period_days: values.trial_period_days != null ? Number(values.trial_period_days) : 0,
-    };
+    const payload = toApiPayload(values, editingId || undefined);
 
-    await api.post("/addproduct", createPayload);
+    if (editingId) {
+      // Update existing product
+      await api.put(`/products/${editingId}`, payload);
+      messageApi.success("Product updated successfully.");
+    } else {
+      // Create new product
+      const createPayload = {
+        name: payload.name,
+        description: payload.description || "",
+        price: payload.price,
+        trial_period_days: payload.trial_period_days || 0,
+        metadata: payload.metadata,
+      };
+      await api.post("/addproduct", createPayload);
+      messageApi.success("Product created successfully.");
+    }
 
-    messageApi.success(editingId ? "Product saved." : "Product created.");
     setOpen(false);
     fetchProducts();
 
@@ -361,30 +392,48 @@ const onSave = async () => {
   };
 
   const askDelete = (record) => {
-    setConfirmTarget(record);
-    setConfirmOpen(true);
+    Modal.confirm({
+      title: "Delete product?",
+      content: (
+        <>
+          This will permanently delete product{" "}
+          <Text strong>#{record.id ?? "—"}</Text>. This action cannot be undone.
+        </>
+      ),
+      okText: "Delete",
+      okButtonProps: { danger: true },
+      cancelText: "Cancel",
+      onOk: async () => {
+        try {
+          await onDelete(record.id);
+        } catch (error) {
+          // Error is already handled in onDelete
+        }
+      },
+    });
   };
 
-  const handleConfirmDelete = async () => {
-    if (!confirmTarget?.id) return;
-    try {
-      setConfirmLoading(true);
-      await onDelete(confirmTarget.id);
-      setConfirmOpen(false);
-      setConfirmTarget(null);
-    } finally {
-      setConfirmLoading(false);
-    }
-  };
-
-  const handleConfirmBulk = async () => {
-    try {
-      setBulkLoading(true);
-      await onBulkDelete();
-      setBulkOpen(false);
-    } finally {
-      setBulkLoading(false);
-    }
+  const handleBulkDelete = () => {
+    if (!selectedRowKeys.length) return;
+    Modal.confirm({
+      title: "Delete selected products?",
+      content: (
+        <>
+          You are about to delete <Text strong>{selectedRowKeys.length}</Text>{" "}
+          product{selectedRowKeys.length === 1 ? "" : "s"}. This action cannot be undone.
+        </>
+      ),
+      okText: "Delete all",
+      okButtonProps: { danger: true },
+      cancelText: "Cancel",
+      onOk: async () => {
+        try {
+          await onBulkDelete();
+        } catch (error) {
+          // Error is already handled in onBulkDelete
+        }
+      },
+    });
   };
 
   const resetFilters = () => {
@@ -468,13 +517,65 @@ const onSave = async () => {
       width: 170,
       render: (_, record) => <StatusTag value={getStatusKey(record)} />,
     };
+    const currencyCol = {
+      title: "Currency",
+      key: "currency",
+      width: 100,
+      render: (_, record) => {
+        const f = toFormValues(record);
+        return <Text>{f.currency || "EUR"}</Text>;
+      },
+      responsive: ["lg"],
+    };
+    const billingIntervalCol = {
+      title: "Billing Interval",
+      key: "billing_interval",
+      width: 140,
+      render: (_, record) => {
+        const f = toFormValues(record);
+        return f.billing_interval ? (
+          <Text strong>{f.billing_interval.charAt(0).toUpperCase() + f.billing_interval.slice(1)}</Text>
+        ) : (
+          <Text type="secondary">—</Text>
+        );
+      },
+      responsive: ["lg"],
+    };
+    const childCountCol = {
+      title: "Child Count",
+      key: "child_count",
+      width: 120,
+      render: (_, record) => {
+        const f = toFormValues(record);
+        return f.child_count ? (
+          <Text>{f.child_count} {f.child_count === 1 ? "child" : "children"}</Text>
+        ) : (
+          <Text type="secondary">—</Text>
+        );
+      },
+      responsive: ["xl"],
+    };
+    const bestValueCol = {
+      title: "Best Value",
+      key: "best_value",
+      width: 120,
+      render: (_, record) => {
+        const f = toFormValues(record);
+        return <StatusTag value={f.is_best_value ? "active" : "inactive"} />;
+      },
+      responsive: ["xl"],
+    };
 
     return {
       id: idCol,
       name: nameCol,
       description: descCol,
+      currency: currencyCol,
       pricing: pricingCol,
       trial: trialCol,
+      billing_interval: billingIntervalCol,
+      child_count: childCountCol,
+      best_value: bestValueCol,
       status: statusCol,
     };
   }, [openView]);
@@ -516,6 +617,15 @@ const onSave = async () => {
         onChange={setStatusFilter}
         size={isMdUp ? "middle" : "small"}
       />
+      <Tooltip title="Show test/admin products">
+        <Switch
+          checked={showTestProducts}
+          onChange={setShowTestProducts}
+          checkedChildren="Show test"
+          unCheckedChildren="Hide test"
+          size="small"
+        />
+      </Tooltip>
     </Space>
   );
 
@@ -524,7 +634,7 @@ const onSave = async () => {
       {selectedRowKeys.length > 0 && (
         <Button
           danger
-          onClick={() => setBulkOpen(true)}
+          onClick={handleBulkDelete}
           icon={<DeleteOutlined />}
         >
           Delete selected
@@ -575,7 +685,7 @@ const onSave = async () => {
         loading={loadingTable}
         columnsMap={COLUMNS_MAP}
         storageKey="products.visibleCols.v2"
-        defaultVisible={["id", "name", "description", "pricing", "trial", "status"]}
+        defaultVisible={["id", "name", "status", "currency", "pricing", "trial", "billing_interval", "child_count", "best_value", "description"]}
         actionsRender={actionsRender}
         onRefresh={resetFilters}
         toolbarLeft={toolbarLeft}
@@ -616,8 +726,12 @@ const onSave = async () => {
               active: true,
               currency: "EUR",
               price: undefined,
-              trial_period_days: 0,
+              trial_period_days: 5,
               trialOncePerUser: true,
+              billing_interval: "month",
+              child_count: 1,
+              sort_order: 999,
+              is_best_value: false,
             }}
           >
             <Row gutter={[16, 8]}>
@@ -651,14 +765,20 @@ const onSave = async () => {
                   label="Price"
                   name="price"
                   rules={[{ required: true, message: "Price is required" }]}
+                  tooltip="Set to 0 for free plans with trial periods"
                 >
-                  <InputNumber min={0} step={0.01} style={{ width: "100%" }} placeholder="e.g., 99.00" />
+                  <InputNumber min={0} step={0.01} style={{ width: "100%" }} placeholder="e.g., 0.00 or 99.00" />
                 </Form.Item>
               </Col>
 
               <Col xs={24} md={12}>
-                <Form.Item label="Trial Period Days" name="trial_period_days" tooltip="Length of the trial period in days">
-                  <InputNumber min={0} max={60} style={{ width: "100%" }} placeholder="e.g., 14" />
+                <Form.Item 
+                  label="Trial Period Days" 
+                  name="trial_period_days" 
+                  tooltip="Length of the trial period in days"
+                  rules={[{ required: true, message: "Trial period is required" }]}
+                >
+                  <InputNumber min={0} max={60} style={{ width: "100%" }} placeholder="e.g., 5" />
                 </Form.Item>
               </Col>
               <Col xs={24} md={12}>
@@ -669,6 +789,56 @@ const onSave = async () => {
                   valuePropName="checked"
                 >
                   <Switch defaultChecked />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label="Billing Interval"
+                  name="billing_interval"
+                  rules={[{ required: true, message: "Billing interval is required" }]}
+                  tooltip="How often the subscription is billed"
+                >
+                  <Select>
+                    <Select.Option value="week">Weekly</Select.Option>
+                    <Select.Option value="month">Monthly</Select.Option>
+                    <Select.Option value="year">Yearly</Select.Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label="Child Count"
+                  name="child_count"
+                  rules={[{ required: true, message: "Child count is required" }]}
+                  tooltip="Number of children this plan supports"
+                >
+                  <Select>
+                    <Select.Option value={1}>1 child (Starter)</Select.Option>
+                    <Select.Option value={2}>2 children (Family)</Select.Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label="Sort Order"
+                  name="sort_order"
+                  tooltip="Lower numbers appear first (10 = best value, 20 = regular)"
+                >
+                  <InputNumber min={0} max={999} style={{ width: "100%" }} placeholder="e.g., 10" />
+                </Form.Item>
+              </Col>
+
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label="Best Value"
+                  name="is_best_value"
+                  tooltip="Mark this plan as 'Best Value'"
+                  valuePropName="checked"
+                >
+                  <Switch />
                 </Form.Item>
               </Col>
 
@@ -689,12 +859,25 @@ const onSave = async () => {
         onClose={closeView}
         width={drawerWidth}
         style={{ top: HEADER_OFFSET }}
-        maskStyle={{ top: HEADER_OFFSET }}
+        styles={{ mask: { top: HEADER_OFFSET } }}
         extra={
           viewRec ? (
             <Space>
               <Button onClick={() => openEdit(viewRec.id)} icon={<EditOutlined />}>Edit</Button>
-              <Button danger onClick={() => askDelete(viewRec)} icon={<DeleteOutlined />}>Delete</Button>
+            </Space>
+          ) : null
+        }
+        footer={
+          viewRec ? (
+            <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+              <Button onClick={closeView}>Cancel</Button>
+              <Button 
+                danger 
+                onClick={() => askDelete(viewRec)} 
+                icon={<DeleteOutlined />}
+              >
+                Delete Product
+              </Button>
             </Space>
           ) : null
         }
@@ -724,6 +907,26 @@ const onSave = async () => {
                     </Space>
                   ) : "—"}
                 </Descriptions.Item>
+                <Descriptions.Item label="Billing Interval">
+                  {f.billing_interval ? (
+                    <Text strong>{f.billing_interval.charAt(0).toUpperCase() + f.billing_interval.slice(1)}</Text>
+                  ) : "—"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Child Count">
+                  {f.child_count ? (
+                    <Text strong>{f.child_count} {f.child_count === 1 ? "child" : "children"}</Text>
+                  ) : "—"}
+                </Descriptions.Item>
+                {f.sort_order !== undefined && (
+                  <Descriptions.Item label="Sort Order">
+                    <Text>{f.sort_order}</Text>
+                  </Descriptions.Item>
+                )}
+                {f.is_best_value !== undefined && (
+                  <Descriptions.Item label="Best Value">
+                    <StatusTag value={f.is_best_value ? "active" : "inactive"} />
+                  </Descriptions.Item>
+                )}
                 <Descriptions.Item label="Description">
                   <Paragraph className="!mb-0">{viewRec.description || "—"}</Paragraph>
                 </Descriptions.Item>
@@ -735,47 +938,7 @@ const onSave = async () => {
         )}
       </Drawer>
 
-      {/* Confirm Drawer: Single delete (header Close; footer cancel hidden) */}
-      <ConfirmDrawer
-        open={confirmOpen}
-        title="Delete product?"
-        description={
-          <>
-            This will permanently delete product{" "}
-            <Text strong>#{confirmTarget?.id ?? "—"}</Text>. This action cannot be undone.
-          </>
-        }
-        loading={confirmLoading}
-        confirmText="Delete"
-        showCloseButton
-        cancelText=""
-        topOffset={HEADER_OFFSET}
-        onConfirm={handleConfirmDelete}
-        onClose={() => {
-          setConfirmOpen(false);
-          setConfirmTarget(null);
-        }}
-      />
 
-      {/* Confirm Drawer: Bulk delete (header Close; footer cancel hidden) */}
-      <ConfirmDrawer
-        open={bulkOpen}
-        title="Delete selected products?"
-        description={
-          <>
-            You are about to delete{" "}
-            <Text strong>{selectedRowKeys.length}</Text>{" "}
-            product{selectedRowKeys.length === 1 ? "" : "s"}. This action cannot be undone.
-          </>
-        }
-        loading={bulkLoading}
-        confirmText="Delete all"
-        showCloseButton
-        cancelText=""
-        topOffset={HEADER_OFFSET}
-        onConfirm={handleConfirmBulk}
-        onClose={() => setBulkOpen(false)}
-      />
     </div>
   );
 }

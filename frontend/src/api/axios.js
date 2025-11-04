@@ -267,6 +267,12 @@ api.interceptors.response.use(
     const meta = getMeta(cfg);
     const status = error?.response?.status;
 
+    // Ignore hCaptcha errors from external sources
+    const url = error?.config?.url || error?.request?.responseURL || "";
+    if (url.includes("api.hcaptcha.com") || url.includes("hcaptcha")) {
+      return Promise.reject(error); // Silently reject without logging
+    }
+
     if (isCanceled(error)) return Promise.reject(error);
 
     if (!error.response) {

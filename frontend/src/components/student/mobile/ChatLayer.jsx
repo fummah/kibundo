@@ -131,20 +131,19 @@ export default function ChatLayer({
     try {
       const saved = localStorage.getItem(conversationIdKey);
       if (saved) {
-        console.log("🔄 CHATLAYER: Loaded existing conversationId:", saved);
         return parseInt(saved, 10);
       }
     } catch (e) {
-      console.log("❌ CHATLAYER: Failed to load conversationId:", e);
+      // Failed to load conversationId
     }
     return null;
   });
 
   // AI agent state - MOVED BEFORE fetchBackendMessages to fix initialization order
   const [assignedAgent, setAssignedAgent] = useState({
-    type: "ChildAgent",
+    type: "Kibundo",
     id: null,
-    name: "ChildAgent",
+    name: "Kibundo",
   });
 
   // Track which conversations we've already fetched
@@ -156,11 +155,9 @@ export default function ChatLayer({
     
     // Prevent duplicate fetches for the same conversation
     if (fetchedConversationsRef.current.has(convId)) {
-      console.log("⏭️ CHATLAYER: Already fetched conversation", convId, "- skipping");
       return;
     }
     
-    console.log("🔍 CHATLAYER: Fetching messages for conversation", convId);
     fetchedConversationsRef.current.add(convId);
     
     setLoadingBackendMessages(true);
@@ -169,11 +166,9 @@ export default function ChatLayer({
         withCredentials: true,
       });
       if (response?.data && Array.isArray(response.data)) {
-        console.log("✅ CHATLAYER: Fetched", response.data.length, "messages");
         const formattedMessages = response.data.map(msg => {
           // 🔥 Extract agent name from meta field (stored by backend)
-          const agentName = msg?.meta?.agentName || msg?.agent_name || assignedAgent.name || "ChildAgent";
-          console.log("📝 Message from:", msg.sender, "agentName:", agentName, "meta:", msg?.meta);
+          const agentName = msg?.meta?.agentName || msg?.agent_name || assignedAgent.name || "Kibundo";
           
           return formatMessage(
             msg.content || "",
@@ -189,7 +184,7 @@ export default function ChatLayer({
         setBackendMessages(formattedMessages);
       }
     } catch (error) {
-      console.log("❌ CHATLAYER: Error fetching messages:", error.message);
+      console.error("❌ CHATLAYER: Error fetching messages:", error.message);
       setBackendMessages([]);
       // Remove from fetched set so we can retry later
       fetchedConversationsRef.current.delete(convId);
@@ -245,9 +240,8 @@ export default function ChatLayer({
     if (conversationId) {
       try {
         localStorage.setItem(conversationIdKey, conversationId.toString());
-        console.log("💾 CHATLAYER: Saved conversationId to localStorage:", conversationId);
       } catch (e) {
-        console.log("❌ CHATLAYER: Failed to save conversationId:", e);
+        // Failed to save conversationId
       }
     }
   }, [conversationId, conversationIdKey]);
@@ -256,7 +250,6 @@ export default function ChatLayer({
   useEffect(() => {
     // 🔥 Don't fetch if in controlled mode (parent manages messages)
     if (controlledMessagesProp) {
-      console.log("⏭️ CHATLAYER: Controlled mode - skipping backend fetch");
       return;
     }
     
@@ -272,20 +265,23 @@ export default function ChatLayer({
   useEffect(() => {
     const fetchSelectedAgent = async () => {
       try {
-        console.log("🤖 CHATLAYER: Fetching AI agent settings...");
+        // Only fetch if authenticated
+        const token = localStorage.getItem('kibundo_token') || sessionStorage.getItem('kibundo_token');
+        if (!token) {
+          return;
+        }
+        
         const { data } = await api.get('/aisettings', {
+          validateStatus: (status) => status < 500, // Don't throw on 403/404
           withCredentials: true,
         });
         if (data?.child_default_ai) {
           const selectedAgent = data.child_default_ai;
-          console.log("✅ CHATLAYER: AI agent loaded:", selectedAgent);
           setAssignedAgent({
             type: selectedAgent,
             id: null,
             name: selectedAgent,
           });
-        } else {
-          console.log("⚠️ CHATLAYER: No child_default_ai found, using ChildAgent");
         }
       } catch (err) {
         console.error("❌ CHATLAYER: Failed to fetch AI agent:", err);
@@ -352,22 +348,14 @@ export default function ChatLayer({
       return controlledMessagesProp;
     }
     
-    console.log("🔍 MSGS DEBUG:", {
-      backendCount: backendMessages.length,
-      localCount: localMessages.length,
-      scopedTaskKey
-    });
-    
     // 🔥 If we have backend messages, USE ONLY THEM - they are the complete source of truth
     if (backendMessages.length > 0) {
-      console.log("✅ USING backend messages (source of truth):", backendMessages.length, "messages");
       return backendMessages; // Don't merge - backend is complete conversation history
     }
     
     // 🔥 Otherwise, use localStorage OR local state (when backend not yet loaded)
     const persisted = getChatMessages?.(stableModeRef.current, scopedTaskKey) || [];
     const merged = mergeById(persisted, localMessages);
-    console.log("✅ USING localStorage:", merged.length, "messages");
     return merged;
   }, [controlledMessagesProp, backendMessages, getChatMessages, localMessages, scopedTaskKey]);
 
@@ -449,13 +437,11 @@ export default function ChatLayer({
     async (text) => {
       const t = (text || "").trim();
       if (!t || sending || sendingInProgressRef.current) {
-        console.log("⏭️ CHATLAYER: Skipping send - empty or already sending");
         return;
       }
       
       // 🔥 LOCK: Prevent any concurrent sends
       sendingInProgressRef.current = true;
-      console.log("📝 CHATLAYER: Starting to send message:", t.substring(0, 30));
 
       // Prevent duplicate messages within 2 seconds
       const now = Date.now();
@@ -500,9 +486,6 @@ export default function ChatLayer({
         if (onSendText) {
           await onSendText(t);
         } else {
-          console.log("📤 CHATLAYER: Sending to /ai/chat with conversationId:", conversationId);
-          console.log("🤖 CHATLAYER: Using AI agent:", assignedAgent.type, assignedAgent);
-          
           const { data } = await api.post("ai/chat", {
             question: t,
             ai_agent: assignedAgent.type,
@@ -514,24 +497,13 @@ export default function ChatLayer({
             withCredentials: true,
           });
           
-          console.log("📥 CHATLAYER: Received response from backend:", {
-            hasConversationId: !!data?.conversationId,
-            conversationId: data?.conversationId,
-            answer: data?.answer?.substring(0, 50)
-          });
-          
           // 🔥 Update conversation ID if backend returns a new one (first message)
           if (data?.conversationId && data.conversationId !== conversationId) {
-            console.log("🔥 CHATLAYER: Updating conversationId from", conversationId, "to", data.conversationId);
             setConversationId(data.conversationId);
           } else if (data?.conversationId) {
-            console.log("✅ CHATLAYER: ConversationId already matches:", data.conversationId);
             // 🔥 Refetch messages to get the latest from backend
-            console.log("🔄 CHATLAYER: Refetching messages after send...");
             fetchedConversationsRef.current.delete(data.conversationId); // Clear cache
             fetchBackendMessages(data.conversationId); // Refetch
-          } else {
-            console.log("❌ CHATLAYER: No conversationId in response!");
           }
           
           const aiMessage = formatMessage(
@@ -539,7 +511,7 @@ export default function ChatLayer({
               "Entschuldigung, ich konnte keine Antwort generieren.",
             "agent",
             "text",
-            { agentName: data?.agentName || assignedAgent.name || "ChildAgent" }
+            { agentName: data?.agentName || assignedAgent.name || "Kibundo" }
           );
           updateMessages((m) => [...m, aiMessage]);
         }
@@ -551,7 +523,7 @@ export default function ChatLayer({
             "Es gab ein Problem beim Senden deiner Nachricht. Bitte versuche es später erneut.",
             "agent",
             "text",
-            { agentName: assignedAgent.name || "ChildAgent" }
+            { agentName: assignedAgent.name || "Kibundo" }
           ),
         ]);
         antdMessage.error(
@@ -587,9 +559,8 @@ export default function ChatLayer({
     setBackendMessages([]);
     try {
       localStorage.removeItem(conversationIdKey);
-      console.log("🗑️ CHATLAYER: Cleared conversationId, starting new chat");
     } catch (e) {
-      console.log("❌ CHATLAYER: Failed to clear conversationId:", e);
+      // Failed to clear conversationId
     }
     
     clearChatMessages?.(stableModeRef.current, stableTaskIdRef.current);
@@ -734,10 +705,10 @@ export default function ChatLayer({
         }
       />
 
-      {/* Messages */}
+      {/* Messages - Responsive padding */}
       <div
         ref={listRef}
-        className="relative px-3 pt-4 pb-28 overflow-y-auto bg-[#f3f7eb]"
+        className="relative px-2 sm:px-3 pt-3 sm:pt-4 pb-24 sm:pb-28 overflow-y-auto bg-[#f3f7eb]"
         style={{ height: `calc(100% - ${minimiseHeight}px)` }}
         aria-live="polite"
       >
@@ -825,18 +796,19 @@ export default function ChatLayer({
         )}
       </div>
 
-      {/* Composer (text only) */}
+      {/* Composer (text only) - Responsive */}
       <div
         className="absolute left-0 right-0 bottom-0 z-40"
         style={{
           backgroundColor: "#b2c10a",
-          paddingBottom: "env(safe-area-inset-bottom)",
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          paddingTop: "0.5rem",
         }}
         role="form"
         aria-label="Nachrichten-Eingabe"
       >
-        <div className="mx-auto max-w-[900px] px-3 py-2 flex items-center gap-3">
-          <div className="flex-1 h-10 flex items-center px-3 bg-white rounded-full">
+        <div className="mx-auto max-w-[900px] px-2 sm:px-3 py-2 flex items-center gap-2 sm:gap-3">
+          <div className="flex-1 h-10 sm:h-11 flex items-center px-2 sm:px-3 bg-white rounded-full">
             <input
               ref={inputRef}
               value={draft}
@@ -853,7 +825,7 @@ export default function ChatLayer({
                 }
               }}
               placeholder="Schreibe eine Nachricht…"
-              className="w-full bg-transparent outline-none text-[15px]"
+              className="w-full bg-transparent outline-none text-sm sm:text-[15px]"
               aria-label="Nachricht eingeben"
               disabled={sending}
             />
@@ -867,8 +839,8 @@ export default function ChatLayer({
                 startNewChat();
               }
             }}
-            className={`w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm ${
-              sending ? "opacity-70" : "hover:brightness-95"
+            className={`w-10 h-10 sm:w-11 sm:h-11 grid place-items-center rounded-full transition-colors shadow-sm ${
+              sending ? "opacity-70" : "hover:brightness-95 active:scale-95"
             }`}
             style={{ backgroundColor: "#ff7a00" }}
             aria-label={

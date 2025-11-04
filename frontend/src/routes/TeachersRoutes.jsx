@@ -89,8 +89,8 @@ function TeacherSsoReceiver({ redirectTo = "/teacher/dashboard" }) {
 }
 
 export default function TeacherRoutes() {
-  // Allow legacy teacher role id 2 during transition
-  const TEACHER_ROLES = [ROLES.TEACHER, 2];
+  // Teacher role is 3
+  const TEACHER_ROLES = [ROLES.TEACHER];
 
   return (
     <>

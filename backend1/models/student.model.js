@@ -26,6 +26,10 @@ module.exports = (sequelize, DataTypes) => {
         parent_id: {
       type: DataTypes.INTEGER
     },
+    age: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
     profile: {
       type: DataTypes.JSONB,
       allowNull: true,

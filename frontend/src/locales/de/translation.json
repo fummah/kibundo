@@ -14,7 +14,35 @@
     "saveChanges": "Änderungen speichern",
     "edit": "Bearbeiten",
     "delete": "Löschen",
-    "moreActions": "Weitere Aktionen"
+    "moreActions": "Weitere Aktionen",
+    "back": "Zurück",
+    "upload": "Hochladen",
+    "download": "Herunterladen",
+    "create": "Erstellen",
+    "add": "Hinzufügen",
+    "remove": "Entfernen",
+    "submit": "Absenden",
+    "reset": "Zurücksetzen",
+    "search": "Suchen",
+    "filter": "Filtern",
+    "sort": "Sortieren",
+    "view": "Ansehen",
+    "show": "Anzeigen",
+    "hide": "Ausblenden",
+    "close": "Schließen",
+    "open": "Öffnen",
+    "next": "Weiter",
+    "previous": "Zurück",
+    "continue": "Fortfahren",
+    "finish": "Beenden",
+    "complete": "Abgeschlossen",
+    "start": "Start",
+    "stop": "Stopp",
+    "pause": "Pause",
+    "resume": "Fortsetzen",
+    "confirm": "Bestätigen",
+    "options": "Optionen",
+    "language": "Sprache"
   },
   "rolesList": {
     "accessControl": {
@@ -198,7 +226,7 @@
       "addChild": "Kind hinzufügen",
       "news": "Neuigkeiten",
       "chat": "Chat",
-      "feedback": "Feedback",
+      "chats": "Chats",
       "settings": "Einstellungen"
     },
     "addChild": {
@@ -235,7 +263,53 @@
       "progress": {
         "title": "Fortschrittsübersicht"
       }
+    },
+    "billing": {
+      "coupons": {
+        "title": "Gutscheine",
+        "subtitle": "Durchsuchen und einlösen verfügbarer Rabattcodes und Sonderangebote.",
+        "refreshed": "Gutscheine aktualisiert",
+        "empty": "Keine Gutscheine verfügbar",
+        "searchPh": "Gutscheine suchen...",
+        "off": "Rabatt",
+        "minSpend": "Mindestbetrag: {{amount}}",
+        "validUntil": "Gültig bis {{date}}",
+        "applyNavigating": "Gutschein kopiert! Weiterleitung zur Abo-Seite...",
+        "activeSubNoDiscount": "Sie haben bereits ein aktives Abonnement. Gutscheine können nicht auf bestehende Abonnements angewendet werden.",
+        "rules": {
+          "oneActiveOnly": "Sie können nur einen Gutschein gleichzeitig verwenden."
+        },
+        "kpi": {
+          "active": "Aktiv",
+          "upcoming": "Bevorstehend",
+          "expired": "Abgelaufen"
+        },
+        "errors": {
+          "notActive": "Dieser Gutschein ist derzeit nicht aktiv.",
+          "hasActiveCoupon": "Sie haben bereits einen aktiven Gutschein."
+        },
+        "externalOffers": {
+          "title": "Externe Angebote",
+          "tag": "Partner",
+          "empty": "Keine externen Angebote verfügbar"
+        }
+      }
     }
+  },
+  "filters": {
+    "active": "Aktiv",
+    "upcoming": "Bevorstehend",
+    "expired": "Abgelaufen",
+    "used": "Verwendet",
+    "all": "Alle"
+  },
+  "actions": {
+    "refresh": "Aktualisieren",
+    "copy": "Kopieren",
+    "useNow": "Jetzt verwenden",
+    "getOffer": "Angebot erhalten",
+    "copiedCode": "Code {{code}} in die Zwischenablage kopiert",
+    "copyFailed": "Code konnte nicht kopiert werden"
   },
   "auth": {
     "signIn": "Anmelden",
@@ -253,40 +327,6 @@
     },
     "ticketSubmitted": "Ticket eingereicht",
     "minCharacters": "Bitte geben Sie mindestens {{count}} Zeichen ein."
-  },
-  "common": {
-    "upload": "Hochladen",
-    "download": "Herunterladen",
-    "save": "Speichern",
-    "cancel": "Abbrechen",
-    "delete": "Löschen",
-    "edit": "Bearbeiten",
-    "create": "Erstellen",
-    "add": "Hinzufügen",
-    "remove": "Entfernen",
-    "submit": "Absenden",
-    "reset": "Zurücksetzen",
-    "search": "Suchen",
-    "filter": "Filtern",
-    "sort": "Sortieren",
-    "view": "Ansehen",
-    "show": "Anzeigen",
-    "hide": "Ausblenden",
-    "close": "Schließen",
-    "open": "Öffnen",
-    "next": "Weiter",
-    "previous": "Zurück",
-    "back": "Zurück",
-    "continue": "Fortfahren",
-    "finish": "Beenden",
-    "complete": "Abgeschlossen",
-    "start": "Start",
-    "stop": "Stopp",
-    "pause": "Pause",
-    "resume": "Fortsetzen",
-    "confirm": "Bestätigen",
-    "options": "Optionen",
-    "language": "Sprache"
   },
   "teacher": {
     "noPendingWorksheets": "Keine ausstehenden Arbeitsblätter",

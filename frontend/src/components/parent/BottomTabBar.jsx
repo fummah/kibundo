@@ -38,13 +38,14 @@ export default function BottomTabBar({
   unread = {
     news: 0,
     chat: 0,
-    feedback: 0,
   },
 }) {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { openChat, expandChat } = useChatDock();
+  const chatDock = useChatDock();
+  const openChat = chatDock?.openChat;
+  const expandChat = chatDock?.expandChat;
 
   const isHidden = hideOnRoutes?.some((r) => pathname.startsWith(r));
   const isIncluded =
@@ -54,8 +55,8 @@ export default function BottomTabBar({
 
   const base =
     "flex flex-col items-center justify-center gap-1 flex-1 py-2 text-[12px] font-semibold";
-  const item = "text-lime-900/90 hover:text-lime-950 transition-colors";
-  const active = "text-lime-950";
+  const item = "text-neutral-800 hover:text-neutral-900 transition-colors";
+  const active = "text-neutral-900 bg-lime-400 rounded-t-lg";
 
   const TABS = [
     {
@@ -68,7 +69,7 @@ export default function BottomTabBar({
       key: "addChild",
       to: "/parent/myfamily/family?add-student=1",
       icon: <PlusCircleOutlined className="text-xl" />,
-      label: t("parent.nav.addChild", "Add child"),
+      label: t("parent.nav.addChild", "Kind anlegen"),
     },
     {
       key: "news",
@@ -77,32 +78,18 @@ export default function BottomTabBar({
       label: t("parent.nav.news", "News"),
       badge: unread?.news || 0,
     },
-    // Chat for real-time messaging
+    // Chats for messaging
     {
-      key: "chat",
+      key: "chats",
       to: "/parent/chat",
-      icon: <CustomerServiceOutlined className="text-xl" />,
-      label: t("parent.nav.chat", "Chat"),
+      icon: <MessageOutlined className="text-xl" />,
+      label: t("parent.nav.chats", "Chats"),
       badge: unread?.chat || 0,
       onClick: (e) => {
-        if (!openChatInline) return; // fall back to normal route nav
         e.preventDefault();
-        try {
-          openChat({ mode: "general" });
-          expandChat();
-        } catch {
-          // if context not ready, gracefully navigate
-          navigate("/parent/chat");
-        }
+        e.stopPropagation();
+        navigate("/parent/chat");
       },
-    },
-    // Feedback for tickets/support
-    {
-      key: "feedback",
-      to: "/parent/feedback/tickets",
-      icon: <MessageOutlined className="text-xl" />,
-      label: t("parent.nav.feedback", "Feedback"),
-      badge: unread?.feedback || 0,
     },
     {
       key: "settings",
@@ -121,7 +108,7 @@ export default function BottomTabBar({
 
   const renderTabs = () => (
     <div
-      className="w-full flex bg-lime-400/90 backdrop-blur border-t border-lime-500/30 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] rounded-none pointer-events-auto"
+      className="w-full flex bg-lime-500 border-t border-lime-600 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] rounded-none pointer-events-auto"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       role="navigation"
       aria-label="Parent bottom navigation"
@@ -136,8 +123,8 @@ export default function BottomTabBar({
           onClick: tab.onClick,
         };
         return (
-          <NavLink key={tab.key} to={tab.to} {...commonProps} end={false}>
-            <div className="relative flex flex-col items-center">
+          <NavLink key={tab.key} to={tab.to} {...commonProps} end={false} style={{ pointerEvents: "auto" }}>
+            <div className="relative flex flex-col items-center cursor-pointer">
               {tab.icon}
               <span className="flex items-center">
                 {tab.label}
@@ -152,23 +139,12 @@ export default function BottomTabBar({
 
   return (
     <>
-      {/* Mobile: fixed full-width */}
+      {/* Fixed at bottom - always visible on all screen sizes */}
       <div
         className={[
-          "fixed bottom-0 left-0 right-0 z-40 md:hidden pointer-events-none",
+          "fixed bottom-0 left-0 right-0 z-50",
           className,
         ].join(" ")}
-      >
-        {renderTabs()}
-      </div>
-
-      {/* Desktop/tablet: sticky inside the framed screen */}
-      <div
-        className={[
-          "hidden md:block sticky bottom-0 left-0 right-0 w-full z-40 pointer-events-none",
-          className,
-        ].join(" ")}
-        style={{ marginBottom: "-1px" }}
       >
         {renderTabs()}
       </div>

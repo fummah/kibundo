@@ -451,7 +451,6 @@ const ApiUsageTab = ({ student }) => {
         const { data } = await api.get('/student/api-usage', {
           params: { student_id: student.id },
         });
-        console.log("✅ API usage data received:", data);
         
         // Check if migration is needed
         if (data.requiresMigration || data.needsMigration) {
@@ -459,7 +458,63 @@ const ApiUsageTab = ({ student }) => {
           setError("migration");
           setApiStats(data);
         } else {
-          setApiStats(data);
+          // Transform backend response to match frontend expectations
+          const transformed = {
+            // Overview stats
+            totalScans: data.overview?.total_scans || 0,
+            totalTokens: data.overview?.total_tokens || 0,
+            totalCost: data.overview?.total_cost_usd || 0,
+            avgCostPerScan: data.overview?.average_cost_per_scan || 0,
+            avgTokensPerScan: data.overview?.average_tokens_per_scan || 0,
+            
+            // Period breakdowns
+            last7Days: {
+              scans: data.periods?.last_7_days?.scans || 0,
+              tokens: data.periods?.last_7_days?.tokens || 0,
+              cost: data.periods?.last_7_days?.cost_usd || 0,
+            },
+            last30Days: {
+              scans: data.periods?.last_30_days?.scans || 0,
+              tokens: data.periods?.last_30_days?.tokens || 0,
+              cost: data.periods?.last_30_days?.cost_usd || 0,
+            },
+            allTime: {
+              scans: data.periods?.all_time?.scans || 0,
+              tokens: data.periods?.all_time?.tokens || 0,
+              cost: data.periods?.all_time?.cost_usd || 0,
+            },
+            
+            // By subject
+            bySubject: data.by_subject || [],
+            
+            // Recent scans
+            recentScans: data.recent_scans || [],
+            
+            // Last scan date
+            lastScanDate: data.recent_scans?.[0]?.date || null,
+            
+            // Daily costs (generate from recent_scans)
+            dailyCosts: (() => {
+              const recent = data.recent_scans || [];
+              const dailyMap = {};
+              recent.forEach(scan => {
+                const date = new Date(scan.date).toLocaleDateString();
+                if (!dailyMap[date]) {
+                  dailyMap[date] = 0;
+                }
+                dailyMap[date] += scan.cost_usd || 0;
+              });
+              return Object.entries(dailyMap)
+                .map(([date, cost]) => ({ date, cost }))
+                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                .slice(0, 7);
+            })(),
+            
+            // Raw data for reference
+            raw: data,
+          };
+          
+          setApiStats(transformed);
         }
       } catch (err) {
         console.error("❌ Failed to load API usage:", err);
@@ -508,6 +563,7 @@ const ApiUsageTab = ({ student }) => {
     <div className="p-4 space-y-4">
       <h3 className="text-lg font-medium mb-4">💰 API Usage Statistics</h3>
       
+      {/* Overview Cards */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-blue-50 p-4 rounded-lg">
           <div className="text-sm text-gray-600">Total Scans</div>
@@ -521,30 +577,94 @@ const ApiUsageTab = ({ student }) => {
         
         <div className="bg-purple-50 p-4 rounded-lg">
           <div className="text-sm text-gray-600">Total Cost</div>
-          <div className="text-2xl font-bold text-purple-600">${apiStats.totalCost?.toFixed(4) || "0.0000"}</div>
+          <div className="text-2xl font-bold text-purple-600">${(apiStats.totalCost || 0).toFixed(4)}</div>
         </div>
         
         <div className="bg-amber-50 p-4 rounded-lg">
           <div className="text-sm text-gray-600">Avg Cost/Scan</div>
-          <div className="text-2xl font-bold text-amber-600">${apiStats.avgCostPerScan?.toFixed(4) || "0.0000"}</div>
+          <div className="text-2xl font-bold text-amber-600">${(apiStats.avgCostPerScan || 0).toFixed(4)}</div>
         </div>
       </div>
       
+      {/* Period Breakdown */}
       <div className="bg-gray-50 p-4 rounded-lg">
-        <h4 className="text-sm font-medium text-gray-700 mb-2">Daily Costs (Last 7 Days)</h4>
-        <div className="space-y-1">
-          {apiStats.dailyCosts && apiStats.dailyCosts.length > 0 ? (
-            apiStats.dailyCosts.map((day, idx) => (
-              <div key={idx} className="flex justify-between text-sm">
-                <span>{day.date}</span>
-                <span className="font-medium">${day.cost?.toFixed(4) || "0.0000"}</span>
-              </div>
-            ))
-          ) : (
-            <div className="text-sm text-gray-500">No daily data available</div>
-          )}
+        <h4 className="text-sm font-medium text-gray-700 mb-3">Usage by Period</h4>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Last 7 Days</div>
+            <div className="text-sm font-semibold">{apiStats.last7Days?.scans || 0} scans</div>
+            <div className="text-xs text-gray-600">${(apiStats.last7Days?.cost || 0).toFixed(4)}</div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Last 30 Days</div>
+            <div className="text-sm font-semibold">{apiStats.last30Days?.scans || 0} scans</div>
+            <div className="text-xs text-gray-600">${(apiStats.last30Days?.cost || 0).toFixed(4)}</div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500 mb-1">All Time</div>
+            <div className="text-sm font-semibold">{apiStats.allTime?.scans || 0} scans</div>
+            <div className="text-xs text-gray-600">${(apiStats.allTime?.cost || 0).toFixed(4)}</div>
+          </div>
         </div>
       </div>
+      
+      {/* Usage by Subject */}
+      {apiStats.bySubject && apiStats.bySubject.length > 0 && (
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="text-sm font-medium text-gray-700 mb-3">Usage by Subject</h4>
+          <div className="space-y-2">
+            {apiStats.bySubject.map((subject, idx) => (
+              <div key={idx} className="flex justify-between items-center text-sm">
+                <span className="font-medium">{subject.subject}</span>
+                <div className="text-right">
+                  <div>{subject.scan_count} scans</div>
+                  <div className="text-xs text-gray-600">
+                    ${(subject.cost_usd || 0).toFixed(4)} | {subject.tokens?.toLocaleString() || 0} tokens
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* Daily Costs */}
+      {apiStats.dailyCosts && apiStats.dailyCosts.length > 0 && (
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Daily Costs (Last 7 Days)</h4>
+          <div className="space-y-1">
+            {apiStats.dailyCosts.map((day, idx) => (
+              <div key={idx} className="flex justify-between text-sm">
+                <span>{day.date}</span>
+                <span className="font-medium">${(day.cost || 0).toFixed(4)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* Recent Scans */}
+      {apiStats.recentScans && apiStats.recentScans.length > 0 && (
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Recent Scans (Last 5)</h4>
+          <div className="space-y-1">
+            {apiStats.recentScans.slice(0, 5).map((scan, idx) => (
+              <div key={idx} className="flex justify-between text-sm">
+                <div>
+                  <span className="font-medium">{scan.subject || 'Unknown'}</span>
+                  <span className="text-xs text-gray-500 ml-2">
+                    {new Date(scan.date).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <div>${(scan.cost_usd || 0).toFixed(4)}</div>
+                  <div className="text-xs text-gray-500">{scan.tokens?.toLocaleString() || 0} tokens</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       
       {apiStats.lastScanDate && (
         <div className="text-sm text-gray-600">
@@ -572,9 +692,7 @@ const HomeworkTab = ({ student }) => {
     const loadHomework = async () => {
       setLoading(true);
       try {
-        console.log("📚 Loading homework for student ID:", student.id);
         const { data } = await api.get(`/student/${student.id}/homeworkscans`);
-        console.log("📚 Homework data received:", data?.length || 0, "submissions");
         setHomeworkData(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error("❌ Failed to load homework:", err);
@@ -894,7 +1012,7 @@ export default function StudentDetail() {
                 `Parent #${student.parent.id}`,
               email: parentUser.email || "-",
               is_payer: student.parent.is_payer || false,
-              phone: parentUser.phone || "-",
+              phone: parentUser.contact_number || parentUser.phone || "-",
               status: parentUser.status || "active",
             },
           ];

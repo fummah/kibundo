@@ -13,16 +13,14 @@ export const toRoleId = (v) => Number(v);
 
 // Map role → base path
 export const ROLE_PATHS = {
-  [ROLES.STUDENT]: "/student",
-  [ROLES.PARENT]: "/parent",
-  [ROLES.TEACHER]: "/teacher",
-  [ROLES.SCHOOL]: "/school",
-  [ROLES.PARTNER]: "/partner",
-  [ROLES.ADMIN]: "/admin",
-  // Legacy role mappings for backward compatibility
-  2: "/teacher", // Legacy teacher role
-  3: "/student", // Legacy student role
-  4: "/parent",  // Legacy parent role
+  [ROLES.STUDENT]: "/student",   // 1
+  [ROLES.PARENT]: "/parent",     // 2
+  [ROLES.TEACHER]: "/teacher",   // 3
+  [ROLES.SCHOOL]: "/school",     // 4
+  [ROLES.PARTNER]: "/partner",   // 5
+  [ROLES.ADMIN]: "/admin",       // 10
+  // Note: Legacy mappings removed to prevent conflicts
+  // The correct mappings are above using ROLES constants
 };
 
 // Helper for guards

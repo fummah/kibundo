@@ -383,7 +383,7 @@ export default function SettingsPage() {
           defaultActiveKey="account" 
           items={tabs} 
           tabBarGutter={40}
-          destroyInactiveTabPane={true}
+          destroyOnHidden={true}
         />
       </Card>
 

@@ -1,5 +1,5 @@
 // src/pages/parent/billing/Coupons.jsx
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   Badge,
   Button,
@@ -16,6 +16,7 @@ import {
   message,
   Alert,
   Tooltip,
+  Spin,
 } from "antd";
 import {
   GiftOutlined,
@@ -29,20 +30,23 @@ import {
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
+import api from "@/api/axios";
 
-import DeviceFrame from "@/components/student/mobile/DeviceFrame";
-import BottomTabBar, { ParentTabSpacer } from "@/components/parent/BottomTabBar";
+import ParentShell from "@/components/parent/ParentShell";
 import globalBg from "@/assets/backgrounds/global-bg.png";
 
 const { Title, Text } = Typography;
 
 /* ---------------- helpers ---------------- */
-const money = (v, currency = "EUR") =>
-  new Intl.NumberFormat("en-ZA", {
+const money = (v, currency = "EUR") => {
+  // Ensure currency is always a valid string, default to EUR
+  const validCurrency = currency && typeof currency === 'string' ? currency : "EUR";
+  return new Intl.NumberFormat("en-ZA", {
     style: "currency",
-    currency,
+    currency: validCurrency,
     maximumFractionDigits: 2,
   }).format(Number(v) || 0);
+};
 
 const fmtDate = (v) => (v ? dayjs(v).format("MMM D, YYYY") : "—");
 
@@ -62,9 +66,13 @@ const now = () => dayjs();
 
 /* derive status from dates + used flag (end date inclusive through end of day) */
 const deriveStatus = (c) => {
+  // If coupon is marked as invalid in backend, mark as expired
+  if (c.valid === false) return "expired";
   if (c.used) return "used";
   if (c.start_at && now().isBefore(dayjs(c.start_at))) return "upcoming";
   if (c.end_at && now().isAfter(dayjs(c.end_at).endOf("day"))) return "expired";
+  // If coupon is valid and within date range, it's active
+  if (c.valid === true || c.valid === undefined) return "active";
   return "active";
 };
 
@@ -75,74 +83,32 @@ const track = (name, props = {}) => {
   } catch {}
 };
 
-/* ---------------- dummy coupons ---------------- */
-const DUMMY_COUPONS = [
-  {
-    id: "c1",
-    code: "WELCOME20",
-    title: "Welcome 20%",
-    description: "New families get 20% off the first billing cycle.",
-    type: "percent",
-    value: 20,
-    currency: "EUR",
-    start_at: dayjs().subtract(15, "day").toISOString(),
-    end_at: dayjs().add(30, "day").toISOString(),
-    min_spend: 0,
-    used: false,
-  },
-  {
-    id: "c2",
-    code: "SPRING10",
-    title: "Spring Special",
-    description: "€10 off on monthly or yearly plans.",
-    type: "fixed",
-    value: 10,
-    currency: "EUR",
-    start_at: dayjs().subtract(3, "day").toISOString(),
-    end_at: dayjs().add(10, "day").toISOString(),
-    min_spend: 19,
-    used: false,
-  },
-  {
-    id: "c3",
-    code: "SUMMER25",
-    title: "Summer Early Bird",
-    description: "25% off yearly plans only.",
-    type: "percent",
-    value: 25,
-    currency: "EUR",
-    start_at: dayjs().add(7, "day").toISOString(),
-    end_at: dayjs().add(60, "day").toISOString(),
-    min_spend: 0,
-    used: false,
-  },
-  {
-    id: "c4",
-    code: "PAST5",
-    title: "Past Promo",
-    description: "This one is over — for demo purposes.",
-    type: "fixed",
-    value: 5,
-    currency: "EUR",
-    start_at: dayjs().subtract(60, "day").toISOString(),
-    end_at: dayjs().subtract(20, "day").toISOString(),
-    min_spend: 0,
-    used: false,
-  },
-  {
-    id: "c5",
-    code: "USED15",
-    title: "Already Used",
-    description: "You’ve redeemed this before (demo).",
-    type: "percent",
-    value: 15,
-    currency: "EUR",
-    start_at: dayjs().subtract(10, "day").toISOString(),
-    end_at: dayjs().add(10, "day").toISOString(),
-    min_spend: 0,
-    used: true,
-  },
-];
+// Helper function to transform backend coupon to frontend format
+const transformCoupon = (backendCoupon) => {
+  const metadata = backendCoupon.metadata || {};
+  const isPercent = !!backendCoupon.percent_off;
+  const value = isPercent 
+    ? parseFloat(backendCoupon.percent_off) 
+    : (backendCoupon.amount_off_cents ? backendCoupon.amount_off_cents / 100 : 0);
+  
+  // Ensure currency is always a valid string, default to EUR
+  const currency = backendCoupon.currency || "EUR";
+  
+  return {
+    id: backendCoupon.id,
+    code: backendCoupon.name || `COUPON-${backendCoupon.id}`,
+    title: metadata.title || backendCoupon.name || "Special Offer",
+    description: metadata.description || `${isPercent ? value + "%" : money(value, currency)} off your subscription`,
+    type: isPercent ? "percent" : "fixed",
+    value: value,
+    currency: currency,
+    start_at: metadata.start_at || backendCoupon.created_at || dayjs().subtract(1, "day").toISOString(),
+    end_at: metadata.end_at || metadata.expires_at || dayjs().add(90, "day").toISOString(),
+    min_spend: metadata.min_spend || 0,
+    used: false, // TODO: Track if user has used this coupon
+    valid: backendCoupon.valid !== false, // Backend valid field
+  };
+};
 
 /* ---------------- dummy external offers ---------------- */
 const DUMMY_OFFERS = [
@@ -171,24 +137,75 @@ export default function Coupons() {
 
   const [query, setQuery] = useState("");
   const [seg, setSeg] = useState("active"); // active | upcoming | expired | used | all
+  const [coupons, setCoupons] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [hasActiveSub, setHasActiveSub] = useState(false);
+  const [hasActiveCoupon, setHasActiveCoupon] = useState(false);
 
-  // TODO: wire to your backend profile/subscription endpoints
-  const hasActiveSub = false; // active subscriptions cannot be discounted
-  const hasActiveCoupon = false; // only one active coupon at a time
+  // Fetch coupons and subscription status
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      // Fetch coupons
+      const couponsRes = await api.get("/coupons");
+      const backendCoupons = Array.isArray(couponsRes.data) ? couponsRes.data : [];
+      
+      // Transform backend coupons to frontend format
+      const transformed = backendCoupons
+        .filter(c => c.valid !== false) // Only show valid coupons
+        .map(transformCoupon);
+      
+      setCoupons(transformed);
+
+      // Check if user has active subscription
+      try {
+        const userRes = await api.get("/current-user");
+        const userId = userRes.data?.id;
+        
+        if (userId) {
+          const parentRes = await api.get("/parents", { params: { user_id: userId } });
+          const parents = Array.isArray(parentRes.data) ? parentRes.data : (parentRes.data?.data || []);
+          const parent = parents.find(p => p.user_id === userId) || parents[0];
+          
+          if (parent?.id) {
+            const parentDetailRes = await api.get(`/parent/${parent.id}`);
+            const parentData = parentDetailRes.data?.data || parentDetailRes.data || parent;
+            const subs = Array.isArray(parentData.subscription) ? parentData.subscription : [];
+            const activeSub = subs.find(s => s.status === "active" || s.status === "Active");
+            setHasActiveSub(!!activeSub);
+          }
+        }
+      } catch (err) {
+        console.error("Error checking subscription:", err);
+        // Continue without subscription check
+      }
+
+    } catch (err) {
+      console.error("Failed to load coupons:", err);
+      message.error("Failed to load coupons. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const refresh = () => {
+    fetchData();
     message.success(t("parent.billing.coupons.refreshed"));
     track("coupon_list_refreshed");
   };
 
   const decorated = useMemo(
     () =>
-      DUMMY_COUPONS.map((c) => ({
+      coupons.map((c) => ({
         ...c,
         code: String(c.code || "").toUpperCase(),
         status: deriveStatus(c),
       })),
-    []
+    [coupons]
   );
 
   const filtered = useMemo(() => {
@@ -256,19 +273,10 @@ export default function Coupons() {
   };
 
   return (
-    <DeviceFrame showFooterChat={false} className="bg-neutral-100">
-      <div
-        className="min-h-screen flex flex-col"
-        style={{
-          backgroundImage: `url(${globalBg})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          paddingTop: "env(safe-area-inset-top)",
-        }}
-      >
-        {/* Scrollable content — bottom bar lives inside this element */}
-        <main className="flex-1 overflow-y-auto px-5">
-          <div className="w-full max-w-[520px] mx-auto pt-6 space-y-6">
+    <ParentShell bgImage={globalBg}>
+      <div className="w-full min-h-[100dvh]">
+        {/* Responsive layout - no frame */}
+        <main className="w-full max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
             {/* header with back + refresh */}
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -301,19 +309,19 @@ export default function Coupons() {
             {/* KPIs */}
             <Row gutter={[12, 12]}>
               <Col xs={8}>
-                <Card className="rounded-2xl shadow-sm text-center">
+                <Card className="rounded-2xl shadow-sm text-center" loading={loading}>
                   <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.active")}</div>
                   <div className="text-xl font-extrabold text-green-600">{kpis.actives}</div>
                 </Card>
               </Col>
               <Col xs={8}>
-                <Card className="rounded-2xl shadow-sm text-center">
+                <Card className="rounded-2xl shadow-sm text-center" loading={loading}>
                   <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.upcoming")}</div>
                   <div className="text-xl font-extrabold text-blue-600">{kpis.upcoming}</div>
                 </Card>
               </Col>
               <Col xs={8}>
-                <Card className="rounded-2xl shadow-sm text-center">
+                <Card className="rounded-2xl shadow-sm text-center" loading={loading}>
                   <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.expired")}</div>
                   <div className="text-xl font-extrabold text-red-500">{kpis.expired}</div>
                 </Card>
@@ -355,14 +363,17 @@ export default function Coupons() {
             </Card>
 
             {/* internal coupons list */}
-            {filtered.length === 0 ? (
-              <Card className="rounded-2xl shadow-sm">
+            <Card className="rounded-2xl shadow-sm" loading={loading}>
+              {loading ? (
+                <div className="py-8 text-center">
+                  <Spin size="large" />
+                </div>
+              ) : filtered.length === 0 ? (
                 <Empty description={t("parent.billing.coupons.empty")} />
-              </Card>
-            ) : (
-              <List
-                dataSource={filtered}
-                renderItem={(c) => (
+              ) : (
+                <List
+                  dataSource={filtered}
+                  renderItem={(c) => (
                   <Card className="rounded-2xl shadow-sm mb-3" key={c.id}>
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 rounded-xl bg-lime-200 grid place-items-center text-lime-800">
@@ -412,9 +423,10 @@ export default function Coupons() {
                       </div>
                     </div>
                   </Card>
-                )}
-              />
-            )}
+                  )}
+                />
+              )}
+            </Card>
 
             {/* External offers */}
             <Card className="rounded-2xl shadow-sm">
@@ -454,13 +466,8 @@ export default function Coupons() {
                 />
               )}
             </Card>
-
-            {/* Spacer + Bottom Tab Bar inside scroll container */}
-            <ParentTabSpacer />
-            <BottomTabBar />
-          </div>
         </main>
       </div>
-    </DeviceFrame>
+    </ParentShell>
   );
 }

@@ -19,22 +19,25 @@ import unkCat from "@/assets/parent/unkcat.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
 import studentIcon from "@/assets/mobile/icons/stud-icon.png";
 
-/* ---------------- Dummy content ---------------- */
-const CHILDREN = [
-  { id: 1, name: "Name Child one", meta: "Age X, Grade 3", avatar: childOne },
-  { id: 2, name: "Name Child two", meta: "Age X, Grade 1", avatar: childTwo },
-];
+/* ---------------- Helper Functions ---------------- */
+const formatStudentName = (student) => {
+  const user = student?.user || {};
+  const firstName = user.first_name || "";
+  const lastName = user.last_name || "";
+  return `${firstName} ${lastName}`.trim() || `Student #${student?.id || ""}`;
+};
 
-const ACTIVITIES = [
-  { id: 1, childId: 1, child: "Name Child one", text: "Completed a math lesson for homework", when: "Today 14:20", tag: "Math", avatar: childOne },
-  { id: 2, childId: 2, child: "Name Child two", text: "Started a reading exercise", when: "Yesterday 17:05", tag: "Reading", avatar: childTwo },
-];
-
-const NEWS = [
-  { id: 1, tag: "Blog Post", title: "Tips for Encouraging Reading", desc: "Learn how to foster a love for reading in your child.", image: blogNews },
-  { id: 2, tag: "Platform update", title: "New Math Games Added", desc: "Explore the latest math games designed to make learning fun.", image: platNews },
-  { id: 3, tag: "Unknown Category", title: "Further Chapter Headline", desc: "Explore the latest math games designed to make learning fun.", image: unkCat },
-];
+const formatStudentMeta = (student) => {
+  // Age can be stored in students.age (direct column) or profile.age (legacy JSONB)
+  // Check both locations with fallback
+  const ageValue = student?.age ?? 
+                  student?.profile?.age ?? 
+                  student?.student?.age ?? 
+                  student?.student?.profile?.age;
+  const age = ageValue ? `Age ${ageValue}` : "Age X";
+  const grade = student?.class?.class_name || student?.student?.class?.class_name || `Grade ${student?.class_id || student?.student?.class_id || "N/A"}`;
+  return `${age}, ${grade}`;
+};
 
 /* ---------------- Small mobile cards ---------------- */
 function ActivityCard({ to, avatar, name, text, bg = "bg-cyan-200" }) {
@@ -58,13 +61,13 @@ function ChildBubble({ to, avatar, name, meta }) {
   return (
     <Link
       to={to}
-      className="shrink-0 flex flex-col items-center text-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-2xl"
+      className="flex flex-col items-center text-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-2xl w-[90px] sm:w-[100px] flex-shrink-0"
     >
       <div className="w-20 h-20 rounded-full overflow-hidden shadow-[0_6px_18px_rgba(0,0,0,0.12)] ring-4 ring-white/60 transition hover:-translate-y-0.5 hover:shadow-lg">
         <img src={avatar} alt={name} className="w-full h-full object-cover" />
       </div>
-      <div className="text-sm font-semibold text-neutral-800 leading-tight">{name}</div>
-      <div className="text-xs text-neutral-500">{meta}</div>
+      <div className="text-sm font-semibold text-neutral-800 leading-tight max-w-full truncate px-1">{name}</div>
+      <div className="text-xs text-neutral-500 max-w-full truncate px-1">{meta}</div>
     </Link>
   );
 }
@@ -87,6 +90,209 @@ export default function ParentHome() {
   // Current user from context (small, safe summary)
   const { user } = useAuthContext();
   const parentName = user?.first_name || user?.name || 'there';
+  
+  // State for real data
+  const [children, setChildren] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [news, setNews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedAgent, setSelectedAgent] = useState("ParentAgent"); // Default fallback
+
+  // Fetch selected agent from admin AI settings
+  useEffect(() => {
+    const fetchSelectedAgent = async () => {
+      try {
+        // Only fetch if authenticated
+        const token = localStorage.getItem('kibundo_token') || sessionStorage.getItem('kibundo_token');
+        if (!token) {
+          console.log("⚠️ ParentHome: Not authenticated, using default agent");
+          return;
+        }
+        
+        const response = await api.get('/aisettings', {
+          validateStatus: (status) => status < 500, // Don't throw on 403/404
+          withCredentials: true,
+        });
+        
+        if (response?.data?.parent_default_ai) {
+          const fetchedAgent = response.data.parent_default_ai;
+          console.log("✅ ParentHome: Using admin-selected agent:", fetchedAgent);
+          setSelectedAgent(fetchedAgent);
+        } else {
+          console.log("ℹ️ ParentHome: No parent_default_ai found, using default");
+        }
+      } catch (error) {
+        console.error("❌ ParentHome: Error fetching AI settings:", error);
+        // Continue with default agent on error
+      }
+    };
+    
+    fetchSelectedAgent();
+  }, []);
+
+  // Fetch parent's students and data
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!user?.id) return;
+      
+      setLoading(true);
+      try {
+        // Get current user's parent record to get students
+        const parentRes = await api.get("/parents", { params: { user_id: user.id } });
+        const parents = Array.isArray(parentRes.data) ? parentRes.data : (parentRes.data?.data || []);
+        const parent = parents.find(p => p.user_id === user.id) || parents[0];
+        
+        if (parent?.id) {
+          // Get parent details with students
+          const parentDetailRes = await api.get(`/parent/${parent.id}`);
+          const parentData = parentDetailRes.data?.data || parentDetailRes.data || parent;
+          const students = Array.isArray(parentData.student) ? parentData.student : [];
+          
+          // Debug: Log full student objects to see structure
+          console.log('📊 Full students data:', students);
+          students.forEach(s => {
+            console.log(`📊 Student ${s.id} (${s?.user?.first_name}):`, {
+              id: s.id,
+              age: s.age,
+              profile: s.profile,
+              profileAge: s.profile?.age,
+              allKeys: Object.keys(s),
+              rawStudent: s
+            });
+          });
+          
+          // Format students for display with actual avatars
+          const formattedStudents = students.map((s, idx) => {
+            const user = s?.user || {};
+            
+            // Determine default avatar based on gender
+            const getDefaultAvatar = () => {
+              if (user.gender === 'male') return childOne;
+              if (user.gender === 'female') return childTwo;
+              // If no gender specified, alternate based on index as fallback
+              return [childOne, childTwo][idx % 2];
+            };
+            
+            // Try to get avatar from user.avatar, profile.buddy, or profile.avatar
+            // If none found, use gender-based default
+            let avatarSrc = user.avatar || 
+                           s?.profile?.buddy?.avatar || 
+                           s?.profile?.avatar ||
+                           getDefaultAvatar();
+            
+            // If avatar is a relative path, make it absolute
+            if (avatarSrc && !avatarSrc.startsWith('http') && !avatarSrc.startsWith('/') && !avatarSrc.includes('assets')) {
+              avatarSrc = `/${avatarSrc}`;
+            }
+            
+            return {
+              id: s.id,
+              name: formatStudentName(s),
+              meta: formatStudentMeta(s),
+              avatar: avatarSrc,
+              student: s, // Keep full data
+            };
+          });
+          setChildren(formattedStudents);
+          
+          // Fetch recent activities (homework scans) with student avatars
+          const activitiesList = [];
+          students.forEach((student, studentIdx) => {
+            const user = student?.user || {};
+            const scans = Array.isArray(student.homeworkscan) ? student.homeworkscan : [];
+            scans.slice(0, 2).forEach(scan => {
+              // Determine default avatar based on gender
+              const getDefaultAvatar = () => {
+                if (user.gender === 'male') return childOne;
+                if (user.gender === 'female') return childTwo;
+                // If no gender specified, alternate based on index as fallback
+                return [childOne, childTwo][studentIdx % 2];
+              };
+              
+              // Get avatar for activity card
+              let avatarSrc = user.avatar || 
+                             student?.profile?.buddy?.avatar || 
+                             student?.profile?.avatar ||
+                             getDefaultAvatar();
+              
+              if (avatarSrc && !avatarSrc.startsWith('http') && !avatarSrc.startsWith('/') && !avatarSrc.includes('assets')) {
+                avatarSrc = `/${avatarSrc}`;
+              }
+              
+              // Generate activity text based on scan content to match design
+              const scanText = scan.raw_text || "";
+              let activityText = "Completed a math lesson for homework";
+              if (scanText.toLowerCase().includes("reading") || scanText.toLowerCase().includes("lesen")) {
+                activityText = "Started a reading exercise";
+              } else if (scanText.toLowerCase().includes("math") || scanText.toLowerCase().includes("mathe")) {
+                activityText = "Completed a math lesson for homework";
+              } else if (scanText.length > 0) {
+                activityText = scanText.substring(0, 40) + "...";
+              }
+              
+              activitiesList.push({
+                id: scan.id,
+                childId: student.id,
+                child: formatStudentName(student),
+                text: activityText,
+                when: new Date(scan.created_at).toLocaleDateString(),
+                tag: "Homework",
+                avatar: avatarSrc,
+              });
+            });
+          });
+          setActivities(activitiesList.slice(0, 2));
+        }
+        
+          // Fetch news/blog posts
+        try {
+          const newsRes = await api.get("/blogposts");
+          const blogPosts = Array.isArray(newsRes.data) ? newsRes.data : (newsRes.data?.data || []);
+          const formattedNews = blogPosts.slice(0, 3).map((post, idx) => {
+            // Map categories to match design
+            let badge = post.category || "Blog Post";
+            let badgeColor = "#69b06b"; // green for Blog Post
+            if (badge.toLowerCase().includes("platform") || badge.toLowerCase().includes("update")) {
+              badge = "Plattform update";
+              badgeColor = "#6b7280"; // dark gray
+            } else if (!badge.toLowerCase().includes("blog")) {
+              badge = "Unknown Category";
+              badgeColor = "#6b7280"; // dark gray
+            } else {
+              badge = "Blog Post";
+            }
+            
+            return {
+              id: post.id,
+              tag: badge,
+              title: post.title || "News Article",
+              desc: post.content?.substring(0, 80) + "..." || "Read more...",
+              image: [blogNews, platNews, unkCat][idx % 3],
+              badgeColor: badgeColor,
+            };
+          });
+          setNews(formattedNews);
+        } catch (newsErr) {
+          console.error("Failed to load news:", newsErr);
+          // Fallback to dummy news matching the design exactly
+          setNews([
+            { id: 1, tag: "Blog Post", title: "Tips for Encouraging Reading", desc: "Learn how to foster a love for reading in your child.", image: blogNews, badgeColor: "#69b06b" },
+            { id: 2, tag: "Plattform update", title: "New Math Games Added", desc: "Explore the latest math games designed to make learning fun.", image: platNews, badgeColor: "#6b7280" },
+            { id: 3, tag: "Unknown Category", title: "Further Chapter Headline", desc: "Explore the latest math games designed to make learning fun.", image: unkCat, badgeColor: "#6b7280" },
+          ]);
+        }
+      } catch (err) {
+        console.error("Failed to load parent data:", err);
+        // Fallback to empty arrays or dummy data if needed
+        setChildren([]);
+        setActivities([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchData();
+  }, [user?.id]);
 
   // Prevent background scroll when chat is open
   React.useEffect(() => {
@@ -168,6 +374,25 @@ export default function ParentHome() {
     };
   }, []);
 
+  // 🔥 Load conversationId for parent home chat
+  const conversationIdKey = `kibundo.parent.home.convId.${user?.id || 'anon'}`;
+  const [homeConversationId, setHomeConversationId] = useState(() => {
+    try {
+      const saved = localStorage.getItem(conversationIdKey);
+      if (saved) return parseInt(saved, 10);
+    } catch (e) {}
+    return null;
+  });
+
+  // 🔥 Save conversationId when it changes
+  useEffect(() => {
+    if (homeConversationId) {
+      try {
+        localStorage.setItem(conversationIdKey, homeConversationId.toString());
+      } catch (e) {}
+    }
+  }, [homeConversationId, conversationIdKey]);
+
   const sendChat = async () => {
     const q = chatInput.trim();
     if (!q || sending || cooldownSec > 0) return;
@@ -175,10 +400,25 @@ export default function ParentHome() {
     setMessages((prev) => [...prev, { role: "user", content: q }]);
     setChatInput("");
     try {
-      const payload = { question: q, context: "User", ai_agent: "ParentAgent" };
+      // Use the fetched agent from admin settings, fallback to "ParentAgent"
+      const agentToUse = selectedAgent || "ParentAgent";
+      console.log("📤 ParentHome: Sending message with agent:", agentToUse, "conversationId:", homeConversationId);
+      const payload = { 
+        question: q, 
+        context: "User", 
+        ai_agent: agentToUse,
+        conversationId: homeConversationId, // 🔥 Send conversation ID for memory
+        mode: "parent" // Identify as parent chat
+      };
       const res = await api.post("/ai/chat", payload);
       const answer = res?.data?.answer || res?.data?.data?.answer || res?.data?.message || "";
       const agentName = res?.data?.agentName || "Parent Assistant";
+      
+      // 🔥 Update conversation ID if backend returns a new one
+      if (res?.data?.conversationId && res.data.conversationId !== homeConversationId) {
+        setHomeConversationId(res.data.conversationId);
+      }
+      
       setMessages((prev) => [...prev, { role: "assistant", content: String(answer || "No response"), agentName }]);
     } catch (err) {
       const backendMsg = err?.response?.data?.error;
@@ -206,10 +446,10 @@ export default function ParentHome() {
   };
 
   return (
-    <ParentShell title={t("parent.home.title", "Home")} showBack={false} bgImage={globalBg}>
-      <div className="w-full flex justify-center">
-        <section className="relative w-full max-w-[520px] px-4 pt-6 mx-auto space-y-6">
-          <h1 className="text-3xl font-extrabold text-neutral-800 text-center">
+    <ParentShell title={t("parent.home.title", "Home")} showBack={false} bgImage={globalBg} contentClassName="px-0">
+      <div className="w-full flex justify-center pb-0">
+        <section className="relative w-full max-w-[520px] px-4 pt-4 pb-2 mx-auto space-y-6">
+          <h1 className="text-3xl font-extrabold text-neutral-800 text-center mb-0">
             {t("parent.home.title", "Home")}
           </h1>
 
@@ -219,30 +459,46 @@ export default function ParentHome() {
               {t("parent.home.activities", "Aktivitäten")}
             </h2>
             <div className="space-y-3">
-              {ACTIVITIES.slice(0, 2).map((a, i) => (
-                <ActivityCard
-                  key={a.id}
-                  to={`/parent/myfamily/student/${a.childId}`}
-                  avatar={a.avatar}
-                  name={a.child}
-                  text={a.text}
-                  bg={i === 0 ? "bg-[#A7EEF0]" : "bg-[#F6CFE0]"}
-                />
-              ))}
+              {loading ? (
+                <div className="text-center text-neutral-500 py-4">Loading activities...</div>
+              ) : activities.length > 0 ? (
+                activities.map((a, i) => (
+                  <ActivityCard
+                    key={a.id}
+                    to={`/parent/myfamily/student/${a.childId}`}
+                    avatar={a.avatar}
+                    name={a.child}
+                    text={a.text}
+                    bg={i === 0 ? "bg-[#A7EEF0]" : "bg-[#F6CFE0]"}
+                  />
+                ))
+              ) : (
+                <div className="text-center text-neutral-500 py-4">No recent activities</div>
+              )}
             </div>
           </section>
 
-          {/* My Family */}
+          {/* Your Childs */}
           <section>
             <h2 className="text-xl font-extrabold text-neutral-800 mb-4">
-              {t("parent.home.myFamily", "Meine Familie")}
+              {t("parent.home.yourChilds", "Your Childs")}
             </h2>
-            <div className="flex items-start justify-center gap-8">
-              {CHILDREN.map((c) => (
-                <ChildBubble key={c.id} to={`/parent/myfamily/student/${c.id}`} avatar={c.avatar} name={c.name} meta={c.meta} />
-              ))}
+            <div className="flex flex-wrap items-start justify-center gap-6 sm:gap-8">
+              {loading ? (
+                <div className="text-center text-neutral-500 py-4 w-full">Loading...</div>
+              ) : children.length > 0 ? (
+                children.map((c) => (
+                  <ChildBubble key={c.id} to={`/parent/myfamily/student/${c.id}`} avatar={c.avatar} name={c.name} meta={c.meta} />
+                ))
+              ) : (
+                <div className="text-center text-neutral-500 py-4 w-full">
+                  <p>No students yet.</p>
+                  <Link to="/parent/myfamily/add-student-flow" className="text-emerald-600 hover:underline">
+                    Add your first student
+                  </Link>
+                </div>
+              )}
             </div>
-            <hr className="mt-6 border-0 h-px bg-neutral-300/60" />
           </section>
 
           {/* News & Insights */}
@@ -250,16 +506,23 @@ export default function ParentHome() {
             <h2 className="text-xl font-extrabold text-neutral-800">
               {t("parent.home.newsInsights", "Neuigkeiten & Einblicke")}
             </h2>
-            {NEWS.map((n) => (
-              <ParentNewsCard
-                key={n.id}
-                to="/parent/communications/news"
-                badge={n.tag}
-                title={n.title}
-                excerpt={n.desc}
-                image={n.image}
-              />
-            ))}
+            {loading ? (
+              <div className="text-center text-neutral-500 py-4">Loading news...</div>
+            ) : news.length > 0 ? (
+              news.map((n) => (
+                <ParentNewsCard
+                  key={n.id}
+                  to={`/parent/communications/news/${n.id}`}
+                  badge={n.tag}
+                  badgeColor={n.badgeColor || "#69b06b"}
+                  title={n.title}
+                  excerpt={n.desc}
+                  image={n.image}
+                />
+              ))
+            ) : (
+              <div className="text-center text-neutral-500 py-4">No news available</div>
+            )}
           </section>
         </section>
       </div>

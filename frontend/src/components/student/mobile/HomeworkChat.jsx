@@ -6,6 +6,8 @@ import { useNavigate } from "react-router-dom";
 import api from "@/api/axios";
 import { useChatDock, TASKS_KEY } from "@/context/ChatDockContext";
 import { useAuthContext } from "@/context/AuthContext";
+import { useStudentApp } from "@/context/StudentAppContext";
+import useTTS from "@/lib/voice/useTTS";
 
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
@@ -212,7 +214,12 @@ export default function HomeworkChat({
   }, [dockState?.task?.conversationId]);
 
   const [scanId, setScanId] = useState(() => dockState?.task?.scanId ?? null);
-  const [selectedAgent, setSelectedAgent] = useState("ChildAgent"); // Default fallback
+  const [selectedAgent, setSelectedAgent] = useState("Kibundo"); // Default fallback
+  
+  // TTS integration
+  const { profile } = useStudentApp();
+  const ttsEnabled = profile?.ttsEnabled !== false; // Default to true if not set
+  const { speak, stop: stopTTS } = useTTS({ lang: "de-DE", enabled: ttsEnabled });
   
   // Update scanId when dockState changes
   useEffect(() => {
@@ -225,14 +232,22 @@ export default function HomeworkChat({
   useEffect(() => {
     const fetchSelectedAgent = async () => {
       try {
+        // Only fetch if authenticated
+        const token = localStorage.getItem('kibundo_token') || sessionStorage.getItem('kibundo_token');
+        if (!token) {
+          return;
+        }
+        
         const response = await api.get('/aisettings', {
+          validateStatus: (status) => status < 500,
           withCredentials: true,
         });
         if (response?.data?.child_default_ai) {
+          // Use the agent name from settings
           setSelectedAgent(response.data.child_default_ai);
         }
       } catch (error) {
-        // Using default ChildAgent
+        // Keep default "Kibundo" if fetch fails
       }
     };
     
@@ -246,13 +261,11 @@ export default function HomeworkChat({
   const fetchBackendMessages = useCallback(async (convId) => {
     if (!convId || loadingBackendMessages) return;
     
-    console.log("📥 FOOTERCHAT: Fetching messages for convId:", convId);
     setLoadingBackendMessages(true);
     try {
       const response = await api.get(`conversations/${convId}/messages`, {
         withCredentials: true,
       });
-      console.log("📦 FOOTERCHAT: Received response:", response?.data?.length, "messages");
       if (response?.data && Array.isArray(response.data)) {
         const formattedMessages = response.data.map(msg => formatMessage(
           msg.content || "",
@@ -264,7 +277,6 @@ export default function HomeworkChat({
             agentName: msg?.agent_name || selectedAgent
           }
         ));
-        console.log("✅ FOOTERCHAT: Formatted", formattedMessages.length, "messages");
         setBackendMessages(formattedMessages);
       }
     } catch (error) {
@@ -281,7 +293,6 @@ export default function HomeworkChat({
       if (!scanId || conversationId || loadingBackendMessages) return;
       
       try {
-        console.log("🔍 FOOTERCHAT: Searching for conversation with scanId:", scanId);
         const { data } = await api.get('/conversations', {
           params: { scan_id: scanId },
           withCredentials: true,
@@ -289,11 +300,8 @@ export default function HomeworkChat({
         
         if (data && data.length > 0) {
           const convId = data[0].id;
-          console.log("✅ FOOTERCHAT: Found existing conversation:", convId);
           setConversationId(convId);
           // Message fetching will be triggered by the next useEffect
-        } else {
-          console.log("ℹ️ FOOTERCHAT: No existing conversation found for scanId:", scanId);
         }
       } catch (error) {
         console.error("❌ FOOTERCHAT: Failed to search conversations:", error);
@@ -306,7 +314,6 @@ export default function HomeworkChat({
   // Fetch backend messages when conversationId is available
   useEffect(() => {
     if (conversationId) {
-      console.log("📥 FOOTERCHAT: Fetching messages for conversation:", conversationId);
       fetchBackendMessages(conversationId);
     }
   }, [conversationId, fetchBackendMessages]);
@@ -406,28 +413,17 @@ export default function HomeworkChat({
     const persisted = getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) || [];
     const existingLocal = localMessages || [];
     
-    console.log("📊 FOOTERCHAT: Message merge state:", {
-      backendMessages: backendMessages.length,
-      persisted: persisted.length,
-      existingLocal: existingLocal.length,
-      conversationId,
-      scanId
-    });
-    
     // If we have backend messages, merge them with existing messages
     if (backendMessages.length > 0) {
       const merged = mergeById(backendMessages, [...persisted, ...existingLocal]);
-      console.log("✅ FOOTERCHAT: Merged messages (with backend):", merged.length);
       return merged;
     }
     
     // Fallback to local storage if no backend messages
     const merged = mergeById(persisted, existingLocal);
     if (merged.length === 0 && existingLocal.length > 0) {
-      console.log("⚠️ FOOTERCHAT: Using existingLocal fallback:", existingLocal.length);
       return existingLocal;
     }
-    console.log("📝 FOOTERCHAT: Using merged local messages:", merged.length);
     return merged;
   }, [controlledMessagesProp, backendMessages, getChatMessages, localMessages, conversationId, scanId]);
 
@@ -521,7 +517,7 @@ export default function HomeworkChat({
         { 
           id: m.id,
           timestamp: m.created_at || m.timestamp,
-          agentName: m?.agent_name || "Homework Assistant" // Include agent name from server
+          agentName: m?.agent_name || "Kibundo" // Include agent name from server
         }
       )
     );
@@ -600,10 +596,16 @@ export default function HomeworkChat({
             }, {
               withCredentials: true,
             });
+            const agentMessage = formatMessage(r?.data?.answer || "Okay!", "agent", "text", { agentName: r?.data?.agentName || selectedAgent });
             updateMessages((m) => [
               ...m.filter((x) => !x?.pending),
-              formatMessage(r?.data?.answer || "Okay!", "agent", "text", { agentName: r?.data?.agentName || selectedAgent }),
+              agentMessage,
             ]);
+            
+            // Speak agent response if TTS is enabled
+            if (ttsEnabled && r?.data?.answer) {
+              speak(r.data.answer);
+            }
             return;
           }
           if (conversationId && (code === 400 || code === 404)) {
@@ -629,13 +631,30 @@ export default function HomeworkChat({
             
             // Merge server messages with local messages to avoid duplicates
             const merged = mergeById(serverMessages, withoutPending);
+            
+            // Speak the latest agent message if TTS is enabled
+            if (ttsEnabled && serverMessages.length > 0) {
+              const latestAgentMessage = [...serverMessages]
+                .reverse()
+                .find(msg => msg.from === "agent" || msg.sender === "agent");
+              if (latestAgentMessage && typeof latestAgentMessage.content === "string") {
+                speak(latestAgentMessage.content);
+              }
+            }
+            
             return merged;
           });
         } else if (j?.answer) {
+          const agentMessage = formatMessage(j.answer, "agent", "text", { agentName: j?.agentName || selectedAgent });
           updateMessages((current) => [
             ...current.filter((m) => !m?.pending),
-            formatMessage(j.answer, "agent", "text", { agentName: j?.agentName || selectedAgent }),
+            agentMessage,
           ]);
+          
+          // Speak agent response if TTS is enabled
+          if (ttsEnabled && j.answer) {
+            speak(j.answer);
+          }
         }
       } catch (err) {
         const status = err?.response?.status;
@@ -1072,7 +1091,7 @@ export default function HomeworkChat({
       {/* Messages */}
       <div
         ref={listRef}
-        className="relative px-3 pt-2 pb-28 overflow-y-auto bg-[#f3f7eb]"
+        className="relative px-3 pt-2 pb-32 md:pb-28 overflow-y-auto bg-[#f3f7eb]"
         style={{ height: `calc(100% - ${minimiseHeight}px)` }}
         aria-live="polite"
       >
@@ -1138,92 +1157,117 @@ export default function HomeworkChat({
         role="form"
         aria-label="Nachrichten-Eingabe"
       >
-        <div className="mx-auto max-w-[900px] px-3 py-2 flex items-center gap-3">
-          <button
-            onClick={() => cameraInputRef.current?.click()}
-            className="w-10 h-10 grid place-items-center rounded-full bg-white/30"
-            aria-label="Kamera öffnen"
-            type="button"
-            disabled={sending || uploading}
-          >
-            <img src={cameraIcon} alt="" className="w-6 h-6" />
-          </button>
-          <button
-            onClick={() => galleryInputRef.current?.click()}
-            className="w-10 h-10 grid place-items-center rounded-full bg-white/30"
-            aria-label="Galerie öffnen"
-            type="button"
-            disabled={sending || uploading}
-          >
-            <img src={galleryIcon} alt="" className="w-6 h-6" />
-          </button>
-
-          <div className="flex-1 h-10 flex items-center px-3 bg-white rounded-full">
-            <input
-              ref={inputRef}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (
-                  e.key === "Enter" &&
-                  !e.shiftKey &&
-                  !e.nativeEvent.isComposing &&
-                  !sendingRef.current &&
-                  !sending &&
-                  draft.trim()
-                ) {
-                  e.preventDefault();
-                  sendText();
-                }
-              }}
-              placeholder="Frag etwas zur Aufgabe oder lade ein Bild über die Kamera/Galerie hoch…"
-              className="w-full bg-transparent outline-none text-[15px]"
-              aria-label="Nachricht eingeben"
-              disabled={sending || uploading}
-            />
-          </div>
-
-          <button
-            onClick={() => {
-              if (draft.trim()) {
-                sendText();
-              } else {
-                startNewChat();
-              }
-            }}
-            className={`w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm ${
-              sending || uploading ? "opacity-70" : "hover:brightness-95"
-            }`}
-            style={{ backgroundColor: "#ff7a00" }}
-            aria-label={sending ? "Wird gesendet..." : draft.trim() ? "Nachricht senden" : "Neuen Chat starten"}
-            type="button"
-            disabled={sending || uploading}
-          >
-            {sending || uploading ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : draft.trim() ? (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
-                <path d="M21.44 2.56a1 1 0 0 0-1.05-.22L3.6 9.06a1 1 0 0 0 .04 1.87l6.9 2.28 2.3 6.91a1 1 0 0 0 1.86.03l6.74-16.78a1 1 0 0 0-.99-1.81ZM11.8 13.18l-4.18-1.38 9.68-4.04-5.5 5.42Z" />
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
-                <path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z" />
-              </svg>
-            )}
-          </button>
-
-          {dockState?.mode === "homework" && (
+        <div className="mx-auto max-w-[900px] px-3 py-2 flex flex-col gap-2">
+          {/* Top row: Input and action buttons */}
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => markHomeworkDone?.()}
-              className="w-11 h-11 grid place-items-center rounded-full"
-              style={{ backgroundColor: "#8fd85d" }}
-              aria-label="Aufgabe abschließen"
+              onClick={() => cameraInputRef.current?.click()}
+              className="w-10 h-10 grid place-items-center rounded-full bg-white/30 hidden md:grid"
+              aria-label="Kamera öffnen"
               type="button"
               disabled={sending || uploading}
             >
-              <CheckOutlined style={{ color: "#fff", fontSize: 16 }} />
+              <img src={cameraIcon} alt="" className="w-6 h-6" />
             </button>
-          )}
+            <button
+              onClick={() => galleryInputRef.current?.click()}
+              className="w-10 h-10 grid place-items-center rounded-full bg-white/30 hidden md:grid"
+              aria-label="Galerie öffnen"
+              type="button"
+              disabled={sending || uploading}
+            >
+              <img src={galleryIcon} alt="" className="w-6 h-6" />
+            </button>
+
+            <div className="flex-1 h-10 flex items-center px-3 bg-white rounded-full">
+              <input
+                ref={inputRef}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !e.nativeEvent.isComposing &&
+                    !sendingRef.current &&
+                    !sending &&
+                    draft.trim()
+                  ) {
+                    e.preventDefault();
+                    sendText();
+                  }
+                }}
+                placeholder="Frag etwas zur Aufgabe oder lade ein Bild über die Kamera/Galerie hoch…"
+                className="w-full bg-transparent outline-none text-[15px]"
+                aria-label="Nachricht eingeben"
+                disabled={sending || uploading}
+              />
+            </div>
+
+            <button
+              onClick={() => {
+                if (draft.trim()) {
+                  sendText();
+                } else {
+                  startNewChat();
+                }
+              }}
+              className={`w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm ${
+                sending || uploading ? "opacity-70" : "hover:brightness-95"
+              }`}
+              style={{ backgroundColor: "#ff7a00" }}
+              aria-label={sending ? "Wird gesendet..." : draft.trim() ? "Nachricht senden" : "Neuen Chat starten"}
+              type="button"
+              disabled={sending || uploading}
+            >
+              {sending || uploading ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : draft.trim() ? (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
+                  <path d="M21.44 2.56a1 1 0 0 0-1.05-.22L3.6 9.06a1 1 0 0 0 .04 1.87l6.9 2.28 2.3 6.91a1 1 0 0 0 1.86.03l6.74-16.78a1 1 0 0 0-.99-1.81ZM11.8 13.18l-4.18-1.38 9.68-4.04-5.5 5.42Z" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
+                  <path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z" />
+                </svg>
+              )}
+            </button>
+
+            {dockState?.mode === "homework" && (
+              <button
+                onClick={() => markHomeworkDone?.()}
+                className="w-11 h-11 grid place-items-center rounded-full"
+                style={{ backgroundColor: "#8fd85d" }}
+                aria-label="Aufgabe abschließen"
+                type="button"
+                disabled={sending || uploading}
+              >
+                <CheckOutlined style={{ color: "#fff", fontSize: 16 }} />
+              </button>
+            )}
+          </div>
+
+          {/* Bottom row: Scan buttons (mobile only) */}
+          <div className="flex items-center justify-center gap-3 md:hidden">
+            <button
+              onClick={() => cameraInputRef.current?.click()}
+              className="w-12 h-12 grid place-items-center rounded-full bg-white/30"
+              aria-label="Kamera öffnen"
+              type="button"
+              disabled={sending || uploading}
+            >
+              <img src={cameraIcon} alt="" className="w-7 h-7" />
+            </button>
+            <button
+              onClick={() => galleryInputRef.current?.click()}
+              className="w-12 h-12 grid place-items-center rounded-full bg-white/30"
+              aria-label="Galerie öffnen"
+              type="button"
+              disabled={sending || uploading}
+            >
+              <img src={galleryIcon} alt="" className="w-7 h-7" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

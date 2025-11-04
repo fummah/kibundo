@@ -31,17 +31,19 @@ async function mcontext({ model, id, options = {} }) {
 
 // Exported function
 exports.buildCustomAgentContext = async (obj) => {
-    const myalldata = []; // use array to push results
+  const { fetchEntityData } = require('./entityDataFetcher');
+  
+  // Fetch all data from entity tables (not just one record)
+  const entityData = await fetchEntityData(obj.entities || [], {
+    class: obj.class,
+    state: obj.state
+  });
 
-  for (const entity of obj.entities) { // iterate over entities array
-    const ghh = await mcontext({
-      model: db[entity],   // db[entity] should reference your Sequelize model
-      id: 5,               // replace 5 with a dynamic ID if needed
-      options: { depth: 4, exclude: ['password'] },
-    });
-
-    myalldata.push(ghh);
-  }
-
-  console.log(JSON.stringify(myalldata, null, 2));
+  return {
+    entity_data: entityData,
+    entities_summary: Object.keys(entityData).map(entityName => {
+      const data = entityData[entityName];
+      return `${entityName}: ${data.count} records`;
+    }).join(', ')
+  };
 };

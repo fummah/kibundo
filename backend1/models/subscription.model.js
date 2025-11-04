@@ -42,26 +42,16 @@ module.exports = (sequelize, DataTypes) => {
     timestamps: false
   });
 
-    Subscription.associate = (models) => {
+  Subscription.associate = (models) => {
     Subscription.belongsTo(models.product, {
       foreignKey: 'plan_id',
       as: 'product'
     });
-
     
-  };
-
-      Subscription.associate = (models) => {
-
-    Subscription.belongsTo(models.product, {
-      foreignKey: 'plan_id',
-      as: 'product'
-    });
-       Subscription.belongsTo(models.parent, {
+    Subscription.belongsTo(models.parent, {
       foreignKey: 'parent_id',
-      as: 'subscription'
+      as: 'parent'
     });
-
   };
   return Subscription;
 };

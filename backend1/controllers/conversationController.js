@@ -44,7 +44,7 @@ export const handleConversation = async (req, res) => {
       console.log("🔍 Fetching homework context for scanId:", scanId);
       const s = await pool.query(`SELECT raw_text FROM homework_scans WHERE id=$1`, [scanId]);
       if (s.rows[0]) {
-        grounding = `HOMEWORK CONTEXT - This is the scanned homework the student is working on:\n\n${s.rows[0].raw_text}\n\nIMPORTANT: Always answer questions based on this homework content. Never say you don't have homework context - you always have the context above.\n\n`;
+        grounding = `HAUSAUFGABEN-KONTEXT - Dies ist die gescannte Hausaufgabe, an der der Schüler arbeitet:\n\n${s.rows[0].raw_text}\n\nWICHTIG: Beantworte Fragen immer basierend auf diesem Hausaufgabeninhalt. Sage niemals, dass du keinen Hausaufgabenkontext hast - du hast immer den oben genannten Kontext.\n\n`;
         console.log("✅ Homework context found:", s.rows[0].raw_text?.substring(0, 100) + "...");
       } else {
         console.log("❌ No homework context found for scanId:", scanId);
@@ -54,25 +54,36 @@ export const handleConversation = async (req, res) => {
     }
 
     const systemPrompt = `
-      You are a patient, grade-appropriate tutoring assistant for a Grade 1 student.
+      Du bist Kibundo, ein geduldiger und freundlicher Hausaufgabenhelfer für Schüler der Klassen 1-7.
       
       ${grounding}
       
-      CRITICAL: You must ALWAYS respond based on the homework context provided above. 
-      - If homework context is provided, answer questions specifically about that homework
-      - Never say "I don't have homework context" or "no specific homework provided"
-      - Always relate your answers to the scanned homework content
-      - Provide step-by-step help for the specific problems shown in the homework
-      - Use simple, encouraging language appropriate for a 6-year-old
-      - Remember previous questions and answers in this conversation to provide contextual help
+      ⚠️ KRITISCH - ABSOLUTE SPRACHREGELN:
+      - Du MUSST IMMER ausschließlich auf Deutsch antworten
+      - KEINE englischen Wörter, Begriffe, Phrasen oder Sätze verwenden
+      - Selbst technische Begriffe müssen auf Deutsch sein oder erklärt werden
+      - Wenn der Schüler auf Englisch fragt, antworte auf Deutsch (aber übersetze seine Frage in deiner Antwort)
+      - Beispiel Schülerfrage: "What is 2+2?" → Deine Antwort: "Du fragst 'Was ist 2+2?'. Das ist eine Matheaufgabe. Lass uns das zusammen lösen..."
+      - Wenn die Hausaufgabe englische Texte enthält, übersetze sie in deinen Antworten ins Deutsche
+      - Prüfe jede Antwort: KEIN Englisch erlaubt
       
-      If the student asks about something not in the homework, guide them back to the homework tasks.
+      WICHTIGE FUNKTIONSREGELN:
+      - Wenn Hausaufgabenkontext vorhanden ist, beantworte Fragen spezifisch zu diesen Hausaufgaben
+      - Sage niemals "Ich habe keinen Hausaufgabenkontext" oder "keine spezifischen Hausaufgaben bereitgestellt"
+      - Beziehe deine Antworten immer auf den gescannten Hausaufgabeninhalt
+      - Biete schrittweise Hilfe für die spezifischen Aufgaben in den Hausaufgaben
+      - Verwende einfache, ermutigende Sprache, die für einen 6-13-jährigen Schüler geeignet ist
+      - Erinnere dich an vorherige Fragen und Antworten in dieser Unterhaltung, um kontextbezogene Hilfe zu bieten
+      - Bei Mathematikaufgaben mit Mehrfachauswahl: Erkläre ALLE Optionen auf Deutsch und helfe dem Schüler zu verstehen, welche richtig ist und warum. Übersetze alle englischen Optionen ins Deutsche.
+      - Bei gemischten Sprachen in Aufgaben: Übersetze ALLES ins Deutsche, bevor du antwortest
+      
+      Wenn der Schüler nach etwas fragt, das nicht in den Hausaufgaben steht, leite ihn zu den Hausaufgabenaufgaben zurück.
     `;
 
     // 🔥 SEND FULL CONVERSATION HISTORY TO OPENAI
     const { text: aiReply, raw } = await askOpenAI(systemPrompt, conversationHistory, { max_tokens: 800 });
 
-    const displayAgentName = agentName || "Homework Assistant";
+    const displayAgentName = agentName || "Kibundo";
     console.log("🎯 Backend storing agentName:", displayAgentName);
     
     await pool.query(
@@ -110,7 +121,7 @@ export const getChatHistory = async (req, res) => {
           meta = {};
         }
         
-        const agentName = meta.agentName || "ChildAgent";
+        const agentName = meta.agentName || "Kibundo";
         console.log("🎯 Backend retrieving agentName:", agentName, "from meta:", meta);
         return {
           ...msg,
@@ -120,7 +131,7 @@ export const getChatHistory = async (req, res) => {
         console.log("🎯 Backend error parsing meta for agentName, falling back to ChildAgent:", e);
         return {
           ...msg,
-          agent_name: "ChildAgent"
+          agent_name: "Kibundo"
         };
       }
     });

@@ -143,7 +143,7 @@
       "addChild": "Add Child",
       "news": "News",
       "chat": "Chat",
-      "feedback": "Feedback",
+      "chats": "Chats",
       "settings": "Settings"
     },
     "addChild": {
@@ -180,7 +180,56 @@
       "progress": {
         "title": "Progress Overview"
       }
+    },
+    "billing": {
+      "coupons": {
+        "title": "Coupons",
+        "subtitle": "Browse and redeem available discount codes and special offers.",
+        "refreshed": "Coupons refreshed",
+        "empty": "No coupons available",
+        "searchPh": "Search coupons...",
+        "off": "off",
+        "minSpend": "Min. spend: {{amount}}",
+        "validUntil": "Valid until {{date}}",
+        "applyNavigating": "Coupon copied! Redirecting to subscription page...",
+        "activeSubNoDiscount": "You already have an active subscription. Coupons cannot be applied to existing subscriptions.",
+        "rules": {
+          "oneActiveOnly": "You can only use one coupon at a time."
+        },
+        "kpi": {
+          "active": "Active",
+          "upcoming": "Upcoming",
+          "expired": "Expired"
+        },
+        "errors": {
+          "notActive": "This coupon is not currently active.",
+          "hasActiveCoupon": "You already have an active coupon."
+        },
+        "externalOffers": {
+          "title": "External Offers",
+          "tag": "Partners",
+          "empty": "No external offers available"
+        }
+      }
     }
+  },
+  "filters": {
+    "active": "Active",
+    "upcoming": "Upcoming",
+    "expired": "Expired",
+    "used": "Used",
+    "all": "All"
+  },
+  "actions": {
+    "refresh": "Refresh",
+    "copy": "Copy",
+    "useNow": "Use Now",
+    "getOffer": "Get Offer",
+    "copiedCode": "Code {{code}} copied to clipboard",
+    "copyFailed": "Failed to copy code"
+  },
+  "common": {
+    "back": "Back"
   },
   "admin": {
     "dashboard": {

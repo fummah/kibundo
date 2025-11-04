@@ -19,12 +19,10 @@ module.exports = (sequelize, DataTypes) => {
     timestamps: false
   });
   Invoice.associate = (models) => {
-
     Invoice.belongsTo(models.parent, {
       foreignKey: 'parent_id',
-      as: 'invoice'
+      as: 'parent'
     });
-    
   };
 
   return Invoice;

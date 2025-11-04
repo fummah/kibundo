@@ -302,8 +302,6 @@ export default function HomeworkList() {
 
   // Clicking a task → open FooterChat with the task context
   const openTask = (task) => {
-    console.log("📋 Opening homework task in FooterChat:", task.id);
-    
     try {
       localStorage.setItem(
         PROGRESS_KEY_USER,
@@ -350,6 +348,29 @@ export default function HomeworkList() {
         {/* Cards Grid */}
         {rows.length ? (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
+            {/* Add New Scan Button - First card in grid */}
+            <button
+              onClick={() =>
+                navigate("/student/homework/doing", {
+                  state: { openHomeworkChat: true },
+                })
+              }
+              className="min-h-[200px] rounded-xl border-2 border-dashed border-[#2b6a5b] bg-white hover:bg-[#f0f7f5] transition-all duration-200 flex flex-col items-center justify-center gap-3 p-6 group hover:border-[#1f4f43] hover:shadow-lg"
+              aria-label="Neue Aufgabe scannen"
+            >
+              <div className="w-16 h-16 rounded-full bg-[#2b6a5b] flex items-center justify-center group-hover:bg-[#1f4f43] transition-colors">
+                <PlusOutlined className="text-3xl text-white" />
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-semibold text-[#2b6a5b] group-hover:text-[#1f4f43]">
+                  Neue Aufgabe
+                </div>
+                <div className="text-sm text-gray-500 mt-1">
+                  Scannen oder hinzufügen
+                </div>
+              </div>
+            </button>
+
             {rows.map((r) => (
               <HomeworkCard
                 key={r.id || `${r.subject}-${r.what}`}
@@ -410,23 +431,6 @@ export default function HomeworkList() {
           </div>
         )}
 
-        {/* FAB */}
-        <div className="flex justify-end mt-6">
-          <button
-            onClick={() =>
-              navigate("/student/homework/doing", {
-                state: { openHomeworkChat: true },
-              })
-            }
-            className="w-16 h-16 rounded-full bg-[#2b6a5b] text-white shadow-xl
-                   flex items-center justify-center hover:bg-[#1f4f43] transition-all duration-200
-                   focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2b6a5b]
-                   hover:shadow-2xl hover:scale-105 transform"
-            aria-label="Neue Aufgabe scannen"
-          >
-            <PlusOutlined className="text-2xl" />
-          </button>
-        </div>
       </section>
 
       <ChatStripSpacer />

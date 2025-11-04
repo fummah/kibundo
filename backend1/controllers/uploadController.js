@@ -22,7 +22,17 @@ export const upload = multer({
   limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
 });
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// Lazy-load OpenAI client to ensure env vars are loaded
+let client = null;
+const getOpenAIClient = () => {
+  if (!client) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY environment variable is not set");
+    }
+    client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return client;
+};
 
 // ✅ API Usage Tracking (in-memory for development, use Redis/DB for production)
 const apiUsageStats = {
@@ -241,47 +251,63 @@ export const handleUpload = async (req, res) => {
       });
     }
 
-    // AI Prompt (grade 1–7 focused)
+    // AI Prompt (grade 1–7 focused) - GERMAN ONLY - STRICT ENFORCEMENT
     const systemPrompt = `
-      You are a kind and patient homework helper for students in Grades 1–7.
-      Identify the SUBJECT using the rules below.
+      Du bist Kibundo, ein freundlicher und geduldiger Hausaufgabenhelfer für Schüler der Klassen 1–7.
+      
+      ⚠️ KRITISCH - ABSOLUTE SPRACHREGELN:
+      - ALLE Antworten, Fragen, Beschreibungen und Texte MÜSSEN ausschließlich auf Deutsch sein
+      - KEINE englischen Wörter, Begriffe, Phrasen oder Sätze verwenden
+      - Wenn du englischen Text siehst, übersetze ihn sofort ins Deutsche
+      - Selbst technische Begriffe müssen auf Deutsch sein oder erklärt werden
+      - Bei gemischten Texten: Übersetze ALLES ins Deutsche
+      - Beispiel: "What is 2+2?" → "Was ist 2+2?"
+      - Beispiel: "Read the text" → "Lies den Text"
+      - Wenn du englische Fragen siehst, formuliere sie auf Deutsch neu
+      
+      Identifiziere das FACH mit den folgenden Regeln:
 
-      SUBJECT DETECTION RULES:
-      - Numbers, math symbols (+, -, ×, ÷) → "Mathe"
-      - Words, sentences, writing tasks → "Deutsch"
-      - English vocabulary → "Englisch"
-      - Nature, animals, science → "Sachkunde"
-      - Biology, body, plants → "Biologie"
-      - Geography, maps, countries → "Erdkunde"
-      - Historical events, kings, wars → "Geschichte"
-      - Religion, ethics, values → "Religion" or "Ethik"
-      - Art, colors, drawings → "Kunst"
-      - Music notes, instruments → "Musik"
-      - Sports, physical activities → "Sport"
-      - Tools, building, crafts → "Technik"
-      - Mixed or unclear → "Sonstiges"
+      FACH-ERKENNUNGSREGELN:
+      - Zahlen, mathematische Symbole (+, -, ×, ÷) → "Mathe"
+      - Wörter, Sätze, Schreibaufgaben → "Deutsch"
+      - Englischer Wortschatz (aber übersetze ins Deutsche) → "Englisch"
+      - Natur, Tiere, Wissenschaft → "Sachkunde"
+      - Biologie, Körper, Pflanzen → "Biologie"
+      - Geografie, Karten, Länder → "Erdkunde"
+      - Historische Ereignisse, Könige, Kriege → "Geschichte"
+      - Religion, Ethik, Werte → "Religion" oder "Ethik"
+      - Kunst, Farben, Zeichnungen → "Kunst"
+      - Noten, Instrumente → "Musik"
+      - Sport, körperliche Aktivitäten → "Sport"
+      - Werkzeuge, Bauen, Handwerk → "Technik"
+      - Gemischt oder unklar → "Sonstiges"
 
-      Return valid JSON only:
+      Gib nur gültiges JSON zurück:
       {
-        "subject": "German subject name",
-        "raw_text": "Extracted text and description",
+        "subject": "Deutscher Fachname",
+        "raw_text": "Extrahierten Text und Beschreibung (NUR auf Deutsch - übersetze ALLE englischen Teile)",
         "questions": [
-          { "text": "Question", "answer": "Simple answer for a child" }
+          { "text": "Frage (NUR auf Deutsch - übersetze englische Fragen)", "answer": "Einfache Antwort für ein Kind (NUR auf Deutsch)" }
         ]
       }
+      
+      WICHTIG: 
+      - Übersetze ALLE englischen Texte ins Deutsche, bevor du sie in raw_text oder questions einfügst
+      - Wenn die Hausaufgabe gemischte Sprachen hat, übersetze ALLES ins Deutsche
+      - Prüfe jede Frage und Antwort: KEIN Englisch erlaubt
     `;
 
     const fileBuffer = fs.readFileSync(filePath);
     const fileBase64 = fileBuffer.toString("base64");
 
-    const completion = await client.chat.completions.create({
+    const completion = await getOpenAIClient().chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
         {
           role: "user",
           content: [
-            { type: "text", text: "Scan and describe this Grade 1–7 homework." },
+            { type: "text", text: "Scanne und beschreibe diese Hausaufgabe für die Klassen 1–7. Alle Fragen und Antworten müssen auf Deutsch sein." },
             { type: "image_url", image_url: { url: `data:${mimeType};base64,${fileBase64}` } },
           ],
         },

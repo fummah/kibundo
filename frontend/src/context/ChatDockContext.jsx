@@ -155,21 +155,30 @@ export function ChatDockProvider({ children }) {
     analyzeOnOpen: false,
   }));
   
-  const [selectedAgent, setSelectedAgent] = useState("ChildAgent"); // Default fallback
+  const [selectedAgent, setSelectedAgent] = useState("Kibundo"); // Default fallback
 
-  // Fetch selected agent from backend
+  // Fetch selected agent from backend (only if authenticated)
   useEffect(() => {
     const fetchSelectedAgent = async () => {
       try {
+        // Check if user is authenticated before making request
+        const token = localStorage.getItem('kibundo_token') || sessionStorage.getItem('kibundo_token');
+        if (!token) {
+          // Not authenticated, skip API call
+          return;
+        }
+        
         const { default: api } = await import("@/api/axios");
         const response = await api.get('/aisettings', {
           withCredentials: true,
+          validateStatus: (status) => status < 500, // Don't throw on 403/404
         });
-        if (response?.data?.child_default_ai) {
+        if (response?.status === 200 && response?.data?.child_default_ai) {
           setSelectedAgent(response.data.child_default_ai);
         }
       } catch (error) {
-        // Using default ChildAgent
+        // Silently fail - use default Kibundo
+        console.debug("Could not fetch AI settings (user may not be authenticated):", error.message);
       }
     };
     
@@ -389,17 +398,17 @@ export function ChatDockProvider({ children }) {
             msg.content === "Ich analysiere dein Bild …" && msg.from === "system"
           );
           if (loadingIndex !== -1) {
-            newMessages[loadingIndex] = fmt("✅ Analyse abgeschlossen!", "agent", "text", { agentName: selectedAgent || "ChildAgent" || "ChildAgent" });
+            newMessages[loadingIndex] = fmt("✅ Analyse abgeschlossen!", "agent", "text", { agentName: selectedAgent || "Kibundo" || "ChildAgent" });
           }
           
           // Add analysis results - be more flexible about what we show
           if (extracted || qa.length > 0) {
-            newMessages.push(fmt({ extractedText: extracted, qa }, "agent", "table", { agentName: selectedAgent || "ChildAgent" }));
+            newMessages.push(fmt({ extractedText: extracted, qa }, "agent", "table", { agentName: selectedAgent || "Kibundo" }));
             // Add follow-up message to encourage interaction
-            newMessages.push(fmt("Wie kann ich dir bei deiner Aufgabe helfen? Du kannst mir Fragen stellen oder um Erklärungen bitten!", "agent", "text", { agentName: selectedAgent || "ChildAgent" }));
+            newMessages.push(fmt("Wie kann ich dir bei deiner Aufgabe helfen? Du kannst mir Fragen stellen oder um Erklärungen bitten!", "agent", "text", { agentName: selectedAgent || "Kibundo" }));
           } else {
             // Even if no structured data, show that we got the image and offer help
-            newMessages.push(fmt("Ich habe dein Bild erhalten! Du kannst mir trotzdem Fragen stellen. Beschreibe mir einfach, womit ich dir helfen kann.", "agent", "text", { agentName: selectedAgent || "ChildAgent" }));
+            newMessages.push(fmt("Ich habe dein Bild erhalten! Du kannst mir trotzdem Fragen stellen. Beschreibe mir einfach, womit ich dir helfen kann.", "agent", "text", { agentName: selectedAgent || "Kibundo" }));
           }
           
           return newMessages;
@@ -450,13 +459,13 @@ export function ChatDockProvider({ children }) {
             msg.content === "Ich analysiere dein Bild …" && msg.from === "system"
           );
           if (loadingIndex !== -1) {
-            newMessages[loadingIndex] = fmt(userMessage, "agent", "text", { agentName: selectedAgent || "ChildAgent" });
+            newMessages[loadingIndex] = fmt(userMessage, "agent", "text", { agentName: selectedAgent || "Kibundo" });
           } else {
-            newMessages.push(fmt(userMessage, "agent", "text", { agentName: selectedAgent || "ChildAgent" }));
+            newMessages.push(fmt(userMessage, "agent", "text", { agentName: selectedAgent || "Kibundo" }));
           }
           
           // Add helpful suggestion
-          newMessages.push(fmt("Du kannst mir Fragen zu deiner Aufgabe stellen, auch ohne Bildanalyse. Was möchtest du wissen?", "agent", "text", { agentName: selectedAgent || "ChildAgent" }));
+          newMessages.push(fmt("Du kannst mir Fragen zu deiner Aufgabe stellen, auch ohne Bildanalyse. Was möchtest du wissen?", "agent", "text", { agentName: selectedAgent || "Kibundo" }));
           
           return newMessages;
         });

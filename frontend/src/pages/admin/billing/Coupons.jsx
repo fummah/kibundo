@@ -727,7 +727,7 @@ export default function Coupons() {
         onClose={closeView}
         width={drawerWidth}
         style={{ top: HEADER_OFFSET }}
-        maskStyle={{ top: HEADER_OFFSET }}
+        styles={{ mask: { top: HEADER_OFFSET } }}
         extra={
           viewRec ? (
             <Space>

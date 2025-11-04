@@ -27,13 +27,28 @@ export function ChatStripSpacer({ className = "" }) {
 
 export default function FooterChat({
   includeOnRoutes = ["/student/home", "/student/homework"],
-  hideOnRoutes = ["/student/chat", "/student/homework/chat", "/student/homework/doing"],
+  hideOnRoutes = ["/student/homework/feedback"],
   className = "",
-  sheetHeight = "75%", // bottom sheet height
+  sheetHeight = "75%", // bottom sheet height (fallback)
 }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
   const { state: dockState, closeChat, expandChat } = useChatDock();
+
+  // Track window width for responsive sheet height
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    handleResize(); // Initial call
+    
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Route helpers
   const isOnHomework = useMemo(
@@ -77,10 +92,10 @@ export default function FooterChat({
 
   return (
     <>
-      {/* Mobile trigger: absolute inside shell (NOT fixed to viewport) */}
+      {/* Mobile trigger: fixed to viewport bottom */}
       <div
         className={[
-          "absolute bottom-0 left-0 right-0 z-20 md:hidden pointer-events-none",
+          "fixed bottom-0 left-0 right-0 z-20 md:hidden pointer-events-none",
           className,
         ].join(" ")}
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
@@ -103,12 +118,15 @@ export default function FooterChat({
         </button>
       </div>
 
-      {/* Desktop trigger: absolute inside shell */}
+      {/* Desktop trigger: absolute inside container with bottom offset to avoid taskbar */}
       <div
         className={[
-          "hidden md:block absolute inset-x-0 bottom-0 z-20 pointer-events-none",
+          "hidden md:block absolute left-0 right-0 z-20 pointer-events-none",
           className,
         ].join(" ")}
+        style={{
+          bottom: windowWidth >= 1024 ? "8px" : "4px", // Small offset on desktop to avoid taskbar overlap
+        }}
       >
         <button
           type="button"
@@ -128,15 +146,20 @@ export default function FooterChat({
         </button>
       </div>
 
-      {/* In-shell bottom sheet (absolute; clipped by #parent-shell overflow) */}
+      {/* Bottom sheet overlay (fixed to viewport) */}
       {open && (
         <div
-          className="absolute inset-0 z-40"
+          className="fixed z-40"
+          style={{
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: windowWidth >= 1024 ? "8px" : windowWidth >= 768 ? "4px" : 0, // Offset on desktop/tablet to avoid taskbar
+            overscrollBehavior: "contain",
+          }}
           aria-modal="true"
           role="dialog"
           aria-label="Chat"
-          // contain scroll within the shell
-          style={{ overscrollBehavior: "contain" }}
         >
           {/* Mask */}
           <button
@@ -149,15 +172,27 @@ export default function FooterChat({
             }}
           />
 
-          {/* Sheet panel */}
+          {/* Sheet panel - responsive height with bottom offset to avoid taskbar */}
           <div
-            className="absolute left-0 right-0 bottom-0"
+            className="absolute left-0 right-0 flex flex-col"
             style={{
-              height: sheetHeight,
+              bottom: windowWidth >= 1024 ? "8px" : windowWidth >= 768 ? "4px" : "0px", // Offset on desktop/tablet to avoid taskbar
+              height: windowWidth < 768 
+                ? `calc(85vh - env(safe-area-inset-bottom, 0px))` // Mobile: 85% minus safe area
+                : windowWidth < 1024
+                ? "calc(75vh - 4px)" // Tablet/iPad: 75% minus offset
+                : "calc(70vh - 8px)", // Desktop: 70% minus offset
+              maxHeight: windowWidth < 768 
+                ? `calc(90vh - env(safe-area-inset-bottom, 0px))`
+                : windowWidth >= 1024
+                ? "calc(90vh - 8px)" // Desktop: subtract offset
+                : "calc(90vh - 4px)", // Tablet: subtract offset
+              minHeight: windowWidth < 768 ? "50vh" : "40vh", // Minimum height for usability
               borderTopLeftRadius: "1rem",
               borderTopRightRadius: "1rem",
               overflow: "hidden",
               background: "white",
+              paddingBottom: windowWidth < 768 ? "env(safe-area-inset-bottom, 0px)" : "0px",
             }}
           >
             {/* IMPORTANT:

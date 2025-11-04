@@ -855,7 +855,7 @@ export default function Quiz() {
         <Tabs
           activeKey={activeDrawerTab}
           onChange={setActiveDrawerTab}
-          destroyInactiveTabPane={false}  // keep Quill mounted
+          destroyOnHidden={false}  // keep Quill mounted
           items={[
             {
               key: "details",

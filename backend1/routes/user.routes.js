@@ -11,9 +11,9 @@ deleteProduct, addsubscription, getAllSubscriptions, getSubscriptionById, delete
 getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice, addcoupon, 
 getAllCoupons, getCouponById,deleteCoupon, addrole, updateRole, deleteRole, adduser,addquiz,  getQuizzes, getQuizById,  deleteQuiz, 
 addcurriculum, getAllCurriculum,getCurriculumById, deleteCurriculum, addWorksheet, getAllWorksheets, getWorksheetById, deleteWorksheet,
-getAllStates, getAllAgents,getPublicTables,addAgent, getHomeworks, getStudentApiUsage, getAiAgentSettings,updateAiAgentSettings,updateAgent, 
+getAllStates, getAllAgents,getPublicTables,addAgent, getHomeworks, getStudentApiUsage, getStudentUsageStats, getAiAgentSettings,updateAiAgentSettings,updateAgent, 
 getCurrentUser, debugUser, deleteAgent, editUser,editSubject,editClass,editProduct,editSubscription, editQuiz, editStudent, editTeacher, editParent, 
-updateStudentStatus, updateTeacherStatus, updateParentStatus, changePassword, adminUpdateCredentials } = require("../controllers/user.controller");
+updateStudentStatus, updateTeacherStatus, updateParentStatus, changePassword, adminUpdateCredentials, deleteUser } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
 
@@ -92,6 +92,7 @@ router.get("/allsubjects", verifyToken, getAllSubjects);
 router.get('/subject/:id', verifyToken,getSubjectById);
 // Specific student routes MUST come before /student/:id to avoid pattern matching issues
 router.get("/student/api-usage", verifyToken, getStudentApiUsage);
+router.get("/student/:id/usage-stats", verifyToken, getStudentUsageStats);
 router.get('/student/:id', verifyToken,getStudentById);
 router.delete('/student/:id', verifyToken,deleteStudent);
 router.get('/teacher/:id', verifyToken,getTeacherById);
@@ -136,6 +137,14 @@ router.delete('/worksheet/:id', verifyToken,deleteWorksheet);
 router.get("/states", verifyToken, getAllStates);
 router.get('/agents', verifyToken,getAllAgents);
 router.get('/entities',getPublicTables);
+router.get('/scans', verifyToken, (req, res) => {
+  // Placeholder for scans endpoint - returns empty array for now
+  res.json([]);
+});
+router.get('/games', verifyToken, (req, res) => {
+  // Placeholder for games endpoint - returns empty array for now
+  res.json([]);
+});
 router.post("/addagent",verifyToken, addAgent);
 router.get("/homeworkscans",verifyToken, getHomeworks);
 router.get("/student/:id/homeworkscans", verifyToken, async (req, res) => {
@@ -160,7 +169,8 @@ router.get("/aisettings", verifyToken,getAiAgentSettings);
 router.put("/updateaisettings", verifyToken,updateAiAgentSettings);
 router.put("/updateaiagents", verifyToken,updateAgent);
 router.delete("/agents/:id", verifyToken, deleteAgent);
-router.put("/users/:id", verifyToken,editUser);
+router.put("/users/:id", verifyToken, editUser);
+router.delete("/users/:id", verifyToken, deleteUser);
 router.post("/users/:id/change-password", verifyToken, changePassword);
 // Test endpoint to verify route works
 router.get("/test-credentials-route", (req, res) => {
@@ -304,5 +314,17 @@ router.post("/generate-all-api-invoices", verifyToken, async (req, res) => {
     });
   }
 });
+
+// Payment routes
+const paymentController = require("../controllers/payment.controller");
+router.post("/payment/create-checkout-session", verifyToken, paymentController.createCheckoutSession);
+router.get("/payment/checkout-session", verifyToken, paymentController.getCheckoutSession);
+router.get("/payment/subscription-from-stripe", verifyToken, paymentController.getSubscriptionFromStripe);
+router.post("/subscriptions/:id/sync", verifyToken, paymentController.syncSubscriptionFromStripe);
+router.post("/payment/upgrade-subscription", verifyToken, paymentController.upgradeSubscription);
+
+// Stripe webhook (must be before verifyToken middleware - uses raw body)
+// Note: Raw body parsing is handled at server level for this route
+router.post("/payment/webhook", paymentController.handleWebhook);
 
 module.exports = router;

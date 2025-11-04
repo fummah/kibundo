@@ -44,12 +44,14 @@ export default function ConfirmDrawer({
         mask: { top: topOffset }
       }}
       extra={
-        <Space>
-          {showCloseButton && (
-            <Button icon={<CloseOutlined />} onClick={onClose}>
-              {closeText}
-            </Button>
-          )}
+        showCloseButton ? (
+          <Button icon={<CloseOutlined />} onClick={onClose}>
+            {closeText}
+          </Button>
+        ) : null
+      }
+      footer={
+        <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
           {showCancel && <Button onClick={onClose}>{cancelText}</Button>}
           <Button danger={danger} loading={loading} onClick={onConfirm}>
             {confirmText}

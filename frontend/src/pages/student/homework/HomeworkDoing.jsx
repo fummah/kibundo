@@ -56,13 +56,20 @@ export default function HomeworkDoing() {
   const initialLoad = useRef(true);
 
   const [uploading, setUploading] = useState(false);   // controls centered overlay
-  const [selectedAgent, setSelectedAgent] = useState("ChildAgent"); // Default fallback
+  const [selectedAgent, setSelectedAgent] = useState("Kibundo"); // Default fallback
 
   // Fetch selected agent from backend
   useEffect(() => {
     const fetchSelectedAgent = async () => {
       try {
+        // Only fetch if authenticated
+        const token = localStorage.getItem('kibundo_token') || sessionStorage.getItem('kibundo_token');
+        if (!token) {
+          return;
+        }
+        
         const response = await api.get('/aisettings', {
+          validateStatus: (status) => status < 500,
           withCredentials: true,
         });
         if (response?.data?.child_default_ai) {
@@ -115,14 +122,15 @@ export default function HomeworkDoing() {
     if (taskId) {
       const existing = loadTasks().find((t) => t.id === taskId);
       if (existing) {
-        console.log("📝 HOMEWORK: Opening task chat from ID:", taskId);
-        // 🔥 Close the FooterChat before navigating
-        closeChat?.();
-        // Navigate directly to chat with the task context
-        navigate("/student/homework/chat", { 
-          replace: true,
-          state: { task: existing, taskId: taskId }
+        // Open chat instead of navigating away
+        openChat?.({
+          mode: "homework",
+          task: existing,
+          key: `homework:${taskId}::u:${studentId}`,
+          restore: true,
+          focus: "last",
         });
+        expandChat?.(true);
         return;
       }
     }
@@ -134,12 +142,15 @@ export default function HomeworkDoing() {
       const t = existing || taskFromState;
 
       console.log("📝 HOMEWORK: Opening task chat from object:", t.id);
-      // 🔥 Close the FooterChat before navigating
-      closeChat?.();
-      navigate("/student/homework/chat", { 
-        replace: true,
-        state: { task: t, taskId: t.id }
+      // Open chat instead of navigating away
+      openChat?.({
+        mode: "homework",
+        task: t,
+        key: `homework:${t.id}::u:${studentId}`,
+        restore: true,
+        focus: "last",
       });
+      expandChat?.(true);
       return;
     }
 
@@ -147,8 +158,7 @@ export default function HomeworkDoing() {
     if (location.state?.openHomeworkChat) {
       console.log("📝 HOMEWORK: Ready to add new homework on HomeworkDoing page");
       // Stay on this page - user will scan/upload homework here
-      // Don't redirect to chat - let them use camera/gallery buttons
-      closeChat?.(); // Close any existing chat
+      // Footer chat will be available for when they upload
       return;
     }
   }, [openChat, expandChat, closeChat, location.state, studentId, navigate]);
@@ -282,7 +292,7 @@ export default function HomeworkDoing() {
     if (file) {
       // status bubble with spinner (rendered by HomeworkChat for type="status")
       const fileType = file.type?.startsWith("image/") ? "Bild" : "Datei";
-      loadingMsg = fmt(`Ich analysiere deine ${fileType}…`, "agent", "status", { transient: true, agentName: selectedAgent || "ChildAgent" });
+      loadingMsg = fmt(`Ich analysiere deine ${fileType}…`, "agent", "status", { transient: true, agentName: selectedAgent || "Kibundo" });
 
       // Push only loader message (no image preview), then open & expand the dock right away
       appendToChat(mode, scopedKey, [loadingMsg]);
@@ -327,7 +337,7 @@ export default function HomeworkDoing() {
         
         if (loadingMsg) {
           replaceMessageInChat(mode, scopedKey, loadingMsg.id, () =>
-            fmt(userMessage, "agent", "text", { agentName: selectedAgent || "ChildAgent" })
+            fmt(userMessage, "agent", "text", { agentName: selectedAgent || "Kibundo" })
           );
         }
         
@@ -336,7 +346,7 @@ export default function HomeworkDoing() {
           setTimeout(() => {
             setChatMessages(mode, scopedKey, (prev) => [
               ...prev,
-              fmt("Du kannst mir Fragen zu deiner Aufgabe stellen, auch ohne Bildanalyse. Was möchtest du wissen?", "agent", "text", { agentName: selectedAgent || "ChildAgent" })
+              fmt("Du kannst mir Fragen zu deiner Aufgabe stellen, auch ohne Bildanalyse. Was möchtest du wissen?", "agent", "text", { agentName: selectedAgent || "Kibundo" })
             ]);
           }, 1000);
         }
@@ -483,7 +493,7 @@ export default function HomeworkDoing() {
       // Replace loader status
       if (loadingMsg) {
         replaceMessageInChat(mode, scopedKey, loadingMsg.id, () =>
-          fmt("Analyse abgeschlossen.", "agent", "status", { transient: true, agentName: selectedAgent || "ChildAgent" })
+          fmt("Analyse abgeschlossen.", "agent", "status", { transient: true, agentName: selectedAgent || "Kibundo" })
         );
       }
       // Append extraction/table or fallback
@@ -518,7 +528,7 @@ export default function HomeworkDoing() {
             `${subjectEmoji} Fach erkannt: ${aiDetectedSubject}`,
             "agent",
             "text",
-            { agentName: selectedAgent || "ChildAgent" }
+            { agentName: selectedAgent || "Kibundo" }
           )
         );
       }
@@ -526,12 +536,12 @@ export default function HomeworkDoing() {
       // Add extraction result
       const resultMsg =
         extracted || qa.length
-          ? fmt({ extractedText: extracted, qa }, "agent", "table", { agentName: selectedAgent || "ChildAgent" })
+          ? fmt({ extractedText: extracted, qa }, "agent", "table", { agentName: selectedAgent || "Kibundo" })
           : fmt(
               "Ich habe das Dokument erhalten, konnte aber nichts Brauchbares extrahieren.",
               "agent",
               "text",
-              { agentName: selectedAgent || "ChildAgent" }
+              { agentName: selectedAgent || "Kibundo" }
             );
       
       messagesToAppend.push(resultMsg);

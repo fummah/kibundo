@@ -203,27 +203,29 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
       icon: DashboardOutlined,
       children: [{ href: "/student/home", label: "Home", icon: DashboardOutlined }],
     },
-    {
-      label: "Learning",
-      icon: ReadOutlined,
-      children: [
-        { href: "/student/learning", label: "Overview", icon: ReadOutlined },
-        { href: "/student/learning/subject/math", label: "Math Practice", icon: BookOutlined },
-        { href: "/student/learning/subject/science", label: "Science Practice", icon: ExperimentOutlined },
-        { href: "/student/learning/subject/tech", label: "Technology Practice", icon: RobotOutlined },
-        { href: "/student/learning/subject/german", label: "German Practice", icon: ReadOutlined },
-      ],
-    },
-    {
-      label: "Reading",
-      icon: BookOutlined,
-      children: [
-        { href: "/student/reading", label: "Overview", icon: BookOutlined },
-        { href: "/student/reading/read-aloud", label: "Read Aloud", icon: FileTextOutlined },
-        { href: "/student/reading/ai-text", label: "AI Reading Text", icon: RobotOutlined },
-        { href: "/student/reading/quiz", label: "Reading Quiz", icon: ExperimentOutlined },
-      ],
-    },
+    // Learning - Temporarily hidden per feedback
+    // {
+    //   label: "Learning",
+    //   icon: ReadOutlined,
+    //   children: [
+    //     { href: "/student/learning", label: "Overview", icon: ReadOutlined },
+    //     { href: "/student/learning/subject/math", label: "Math Practice", icon: BookOutlined },
+    //     { href: "/student/learning/subject/science", label: "Science Practice", icon: ExperimentOutlined },
+    //     { href: "/student/learning/subject/tech", label: "Technology Practice", icon: RobotOutlined },
+    //     { href: "/student/learning/subject/german", label: "German Practice", icon: ReadOutlined },
+    //   ],
+    // },
+    // Reading - Temporarily hidden per feedback
+    // {
+    //   label: "Reading",
+    //   icon: BookOutlined,
+    //   children: [
+    //     { href: "/student/reading", label: "Overview", icon: BookOutlined },
+    //     { href: "/student/reading/read-aloud", label: "Read Aloud", icon: FileTextOutlined },
+    //     { href: "/student/reading/ai-text", label: "AI Reading Text", icon: RobotOutlined },
+    //     { href: "/student/reading/quiz", label: "Reading Quiz", icon: ExperimentOutlined },
+    //   ],
+    // },
     {
       label: "Homework",
       icon: FileSearchOutlined,
@@ -238,7 +240,8 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
       label: "Progress",
       icon: ProjectOutlined,
       children: [
-        { href: "/student/map", label: "Treasure Map", icon: ProjectOutlined },
+        // Treasure Map - Temporarily hidden per feedback
+        // { href: "/student/map", label: "Treasure Map", icon: ProjectOutlined },
         { href: "/student/motivation", label: "Motivation Timer", icon: ExperimentOutlined },
       ],
     },

@@ -18,6 +18,8 @@ import BillingOverview from "@/pages/parent/billing/BillingOverview.jsx";
 import Subscriptions from "@/pages/parent/billing/Subscriptions.jsx";
 import Invoices from "@/pages/parent/billing/Invoices.jsx";
 import Coupons from "@/pages/parent/billing/Coupons.jsx";
+import Checkout from "@/pages/parent/billing/Checkout.jsx";
+import Success from "@/pages/parent/billing/Success.jsx";
 import NewsFeed from "@/pages/parent/communications/NewsFeed.jsx";
 import NewsArticle from "@/pages/parent/communications/NewsArticle.jsx";
 import Newsletter from "@/pages/parent/communications/Newsletter.jsx";
@@ -74,12 +76,23 @@ function ParentSsoReceiver({ redirectTo = "/parent/home" }) {
 
 export default function ParentRoutes() {
   // Allow legacy parent role id 4 during transition, remove after migration
-  const PARENT_ROLES = [ROLES.PARENT, 4];
+  // Parent role is 2
+  const PARENT_ROLES = [ROLES.PARENT];
 
   return (
     <>
       {/* Public SSO landing — no guard */}
       <Route path="/parent/sso" element={<ParentSsoReceiver redirectTo="/parent/home" />} />
+      
+      {/* Public success page - Stripe redirects here directly */}
+      <Route 
+        path="/parent/billing/success" 
+        element={
+          <ParentAppProvider>
+            <Success />
+          </ParentAppProvider>
+        } 
+      />
 
       {/* Parent tree: allow via portal token OR via normal auth + roles */}
       <Route element={<ParentAccessGate allowedRoles={PARENT_ROLES} />}>
@@ -125,6 +138,8 @@ export default function ParentRoutes() {
           {/* Billing */}
           <Route path="billing/overview" element={<BillingOverview />} />
           <Route path="billing/subscription" element={<Subscriptions />} />
+          <Route path="billing/checkout" element={<Checkout />} />
+          {/* Success route is handled above as public route */}
           <Route path="billing/invoices" element={<Invoices />} />
           <Route path="billing/coupons" element={<Coupons />} />
 

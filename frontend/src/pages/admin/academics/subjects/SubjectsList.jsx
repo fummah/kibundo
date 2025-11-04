@@ -5,8 +5,8 @@ import { BookOutlined, UserSwitchOutlined } from "@ant-design/icons";
 import { Tag } from "antd";
 
 const classLabel = (rec) =>
-  rec?.class?.name ||
   rec?.class?.class_name ||
+  rec?.class?.name ||
   rec?.class_name ||
   (rec?.class_id ? `Class #${rec.class_id}` : "-");
 
