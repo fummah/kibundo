@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import api from "@/api/axios";
 
 export default function ChatBot({ conversationId, userId, scanId }) {
   const [messages, setMessages] = useState([]);
@@ -8,35 +9,33 @@ export default function ChatBot({ conversationId, userId, scanId }) {
   async function sendMessage() {
     if (!text.trim()) return;
 
-    const resp = await fetch(
-      `http://localhost:3001/api/conversations/${convId || ""}/message`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, message: text, scanId }),
-      }
-    );
+    try {
+      const resp = await api.post(
+        `/conversations/${convId || ""}/message`,
+        { userId, message: text, scanId }
+      );
 
-    const j = await resp.json();
-    setConvId(j.conversationId);
+      const j = resp.data;
+      setConvId(j.conversationId);
 
-    // fetch messages
-    const r2 = await fetch(
-      `http://localhost:3001/api/conversations/${j.conversationId}/messages`
-    );
-    const msgs = await r2.json();
-    setMessages(msgs);
-    setText("");
+      // fetch messages
+      const r2 = await api.get(`/conversations/${j.conversationId}/messages`);
+      setMessages(r2.data);
+      setText("");
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
   }
 
   useEffect(() => {
     if (!convId) return;
     (async () => {
-      const r = await fetch(
-        `http://localhost:3001/api/conversations/${convId}/messages`
-      );
-      const msgs = await r.json();
-      setMessages(msgs);
+      try {
+        const r = await api.get(`/conversations/${convId}/messages`);
+        setMessages(r.data);
+      } catch (error) {
+        console.error("Error fetching messages:", error);
+      }
     })();
   }, [convId]);
 

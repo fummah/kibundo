@@ -606,9 +606,12 @@ const BillingTab = ({ parent, parentId: parentIdProp, entity }) => {
       
       let root = null;
       
+      const isDev = import.meta.env.DEV;
+      
       try {
-        console.log('📄 Starting PDF generation for invoice:', invoiceData.id);
-        console.log('📄 Invoice data:', invoiceData);
+        if (isDev) {
+          console.log('📄 Starting PDF generation for invoice:', invoiceData.id);
+        }
         
         // Render the invoice component
         if (!ReactDOM || !ReactDOM.createRoot) {
@@ -616,34 +619,30 @@ const BillingTab = ({ parent, parentId: parentIdProp, entity }) => {
         }
         
         root = ReactDOM.createRoot(container);
-        console.log('📄 Rendering invoice template...');
         
         root.render(
           React.createElement(InvoiceTemplate, { invoice: invoiceData })
         );
         
         // Wait for rendering to complete - increase wait time for better rendering
-        console.log('📄 Waiting for React to render...');
         await new Promise(resolve => setTimeout(resolve, 1500));
         
         // Ensure container has content
         if (!container.firstChild || container.children.length === 0) {
-          console.error('❌ Container after render:', {
-            hasFirstChild: !!container.firstChild,
-            childrenCount: container.children.length,
-            innerHTML: container.innerHTML.substring(0, 200)
-          });
+          if (isDev) {
+            console.error('❌ Container after render:', {
+              hasFirstChild: !!container.firstChild,
+              childrenCount: container.children.length,
+              innerHTML: container.innerHTML.substring(0, 200)
+            });
+          }
           throw new Error('Invoice template did not render - no content found');
         }
-        
-        console.log('✅ Invoice template rendered successfully');
-        console.log('📄 Container content length:', container.innerHTML.length);
         
         // Additional wait for images/fonts to load
         await new Promise(resolve => setTimeout(resolve, 500));
         
         // Generate PDF with improved error handling
-        console.log('📄 Starting PDF generation with html2canvas...');
         await generatePdfFromComponent(container, {
           filename: fileName,
           margin: 10,
@@ -665,34 +664,37 @@ const BillingTab = ({ parent, parentId: parentIdProp, entity }) => {
             }
           }
         });
-        console.log('✅ PDF generated successfully');
       } catch (pdfError) {
-        console.error('❌ PDF generation failed:', pdfError);
-        console.error('❌ Error stack:', pdfError.stack);
-        console.error('❌ Container state:', {
-          exists: !!container,
-          hasParent: !!container?.parentElement,
-          childrenCount: container?.children?.length,
-          innerHTML: container?.innerHTML?.substring(0, 100)
-        });
+        console.error('PDF generation failed:', pdfError);
+        if (isDev) {
+          console.error('Error stack:', pdfError.stack);
+          console.error('Container state:', {
+            exists: !!container,
+            hasParent: !!container?.parentElement,
+            childrenCount: container?.children?.length,
+            innerHTML: container?.innerHTML?.substring(0, 100)
+          });
+        }
         throw pdfError;
       } finally {
         // Clean up
         try {
           if (root) {
             root.unmount();
-            console.log('✅ React root unmounted');
           }
         } catch (unmountError) {
-          console.warn('⚠️ Error unmounting React root:', unmountError);
+          if (isDev) {
+            console.warn('Error unmounting React root:', unmountError);
+          }
         }
         try {
           if (container && container.parentElement) {
             document.body.removeChild(container);
-            console.log('✅ Container removed from DOM');
           }
         } catch (removeError) {
-          console.warn('⚠️ Error removing container:', removeError);
+          if (isDev) {
+            console.warn('Error removing container:', removeError);
+          }
         }
       }
       
