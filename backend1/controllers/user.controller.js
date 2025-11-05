@@ -2746,7 +2746,35 @@ exports.updateAiAgentSettings = async (req, res) => {
     res.status(500).json({ message: error.message || "Failed to update AI agent settings" });
   }
 };
-exports.getHomeworks = async (req, res) => { res.status(501).json({ message: 'Not implemented' }); };
+exports.getHomeworks = async (req, res) => {
+  try {
+    const { student_id } = req.query;
+    
+    if (!student_id) {
+      return res.status(400).json({ message: 'student_id query parameter is required' });
+    }
+    
+    // Convert to integer if it's a string
+    const studentId = parseInt(student_id, 10);
+    if (isNaN(studentId)) {
+      return res.status(400).json({ message: 'student_id must be a valid number' });
+    }
+    
+    console.log("📚 Route /homeworkscans called with student_id:", studentId);
+    
+    // Query homework scans for the specified student
+    const homeworks = await db.homeworkScan.findAll({
+      where: { student_id: studentId },
+      order: [['created_at', 'DESC']]
+    });
+    
+    console.log("📚 Found", homeworks.length, "homework submissions for student", studentId);
+    res.json(homeworks);
+  } catch (err) {
+    console.error("❌ Error fetching homework scans:", err);
+    res.status(500).json({ message: err.message || 'Internal server error' });
+  }
+};
 exports.getStudentApiUsage = async (req, res) => {
   try {
     const { student_id } = req.query;

@@ -59,6 +59,10 @@ export default function FooterChat({
     () => pathname.startsWith("/student/home"),
     [pathname]
   );
+  const isOnOnboarding = useMemo(
+    () => pathname.startsWith("/student/onboarding"),
+    [pathname]
+  );
 
   // Extract taskId from common homework routes:
   // /student/homework/doing/:taskId
@@ -80,8 +84,28 @@ export default function FooterChat({
   // Which component should the sheet show?
   const SheetContent = isOnHomework ? HomeworkChat : ChatLayer;
 
+  // Close chat when on onboarding routes
+  useEffect(() => {
+    if (isOnOnboarding) {
+      closeChat?.();
+      setOpen(false);
+    }
+  }, [isOnOnboarding, closeChat]);
+
+  // Close chat when navigating to home screen (unless explicitly opened with task)
+  useEffect(() => {
+    if (isOnHome && !isOnHomework) {
+      // Only close if we're on home screen (not homework routes) and there's no active task
+      if (!dockState?.task || !dockState?.visible) {
+        closeChat?.();
+        setOpen(false);
+      }
+    }
+  }, [isOnHome, isOnHomework, dockState?.task, dockState?.visible, closeChat]);
+
   // Sync the bottom sheet with global chat dock visibility/expansion and task changes
   useEffect(() => {
+    // Only open on homework routes when dock is explicitly set to visible/expanded
     const shouldOpen = isOnHomework && (dockState?.visible || dockState?.expanded);
     if (shouldOpen) setOpen(true);
     if (!dockState?.visible && !dockState?.expanded) setOpen(false);
