@@ -58,6 +58,17 @@ export default function HomeworkDoing() {
   const [uploading, setUploading] = useState(false);   // controls centered overlay
   const [selectedAgent, setSelectedAgent] = useState("Kibundo"); // Default fallback
 
+  // Close chat immediately on mount if no state is provided (for "Add New Scan" navigation)
+  // This must run BEFORE any other effects to prevent FooterChat from auto-opening
+  useEffect(() => {
+    // Only close if we don't have any task-related state
+    const hasNoTaskState = !location.state?.taskId && !location.state?.task && !location.state?.openHomeworkChat;
+    if (hasNoTaskState) {
+      closeChat?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount - location.state is intentionally not in deps
+
   // Fetch selected agent from backend
   useEffect(() => {
     const fetchSelectedAgent = async () => {
@@ -161,6 +172,11 @@ export default function HomeworkDoing() {
       // Footer chat will be available for when they upload
       return;
     }
+
+    // No state provided - ensure chat is closed
+    // This happens when navigating via "Add New Scan" button
+    // Chat should already be closed by the earlier useEffect, but double-check
+    closeChat?.();
   }, [openChat, expandChat, closeChat, location.state, studentId, navigate]);
 
   /* ---------------- upload via API ---------------- */

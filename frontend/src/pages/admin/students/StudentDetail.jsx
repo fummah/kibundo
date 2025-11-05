@@ -47,10 +47,32 @@ const SubjectsTab = ({ student, reload }) => {
   const [allSubjects, setAllSubjects] = useState([]);
   
   const studentId = student?.id;
-  const subjects = Array.isArray(student?.raw?.subjects) ? student.raw.subjects : [];
+  // Debug: Log what we're getting
+  console.log('📚 [SubjectsTab] Student data:', {
+    studentId,
+    hasRaw: !!student?.raw,
+    rawSubjects: student?.raw?.subjects,
+    rawSubject: student?.raw?.subject,
+    directSubjects: student?.subjects,
+    directSubject: student?.subject,
+  });
+  
+  // Try multiple paths to find subjects
+  const subjects = Array.isArray(student?.raw?.subjects) 
+    ? student.raw.subjects 
+    : Array.isArray(student?.raw?.subject)
+    ? student.raw.subject
+    : Array.isArray(student?.subjects)
+    ? student.subjects
+    : Array.isArray(student?.subject)
+    ? student.subject
+    : [];
   const assignedIds = new Set(
     subjects
-      .map((s) => s?.id ?? s?.subject_id)
+      .map((s) => {
+        // Try multiple possible ID fields
+        return s?.id ?? s?.subject_id ?? s?.subject?.id ?? null;
+      })
       .filter(Boolean)
   );
   const notAssigned = allSubjects.filter((subj) => !assignedIds.has(subj.id));
@@ -119,9 +141,9 @@ const SubjectsTab = ({ student, reload }) => {
         {subjects.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {subjects.map((subject, idx) => {
-              const subjectId = subject?.id ?? subject?.subject_id ?? idx;
+              const subjectId = subject?.id ?? subject?.subject_id ?? subject?.subject?.id ?? idx;
               const subjectName =
-                subject?.subject_name || subject?.name || `Subject ${idx + 1}`;
+                subject?.subject_name || subject?.name || subject?.subject?.subject_name || `Subject ${idx + 1}`;
               return (
                 <Tag
                   key={subjectId}
@@ -882,18 +904,46 @@ export default function StudentDetail() {
         const email = fb(user.email);
         const grade = fb(s.grade || s.class?.class_name || s.class_name);
         const state = fb(user.state || s.state);
+        const age = s.age !== undefined && s.age !== null ? String(s.age) : "-";
 
         // Subjects: accept either array of subjects or array of links containing subject
+        // Backend returns student_subjects as 'subject' array with nested subject data
         const rawSubjects = Array.isArray(s.subjects)
           ? s.subjects
           : Array.isArray(s.subject)
           ? s.subject
           : [];
         
-        const subjectsArray = rawSubjects.map((it) => {
-          if (it?.subject) return it.subject; // link { subject: {...} }
-          return it; // already subject
+        console.log('📚 [parseEntity] Raw subjects data:', {
+          hasSubjects: Array.isArray(s.subjects) && s.subjects.length > 0,
+          hasSubject: Array.isArray(s.subject) && s.subject.length > 0,
+          subjectCount: rawSubjects.length,
+          firstSubject: rawSubjects[0],
         });
+        
+        const subjectsArray = rawSubjects.map((it) => {
+          // Handle student_subjects structure: { id, subject_id, subject: { id, subject_name } }
+          if (it?.subject) {
+            return {
+              id: it.subject.id,
+              subject_id: it.subject.id,
+              subject_name: it.subject.subject_name,
+              name: it.subject.subject_name,
+              ...it.subject
+            };
+          }
+          // If it's already a subject object
+          if (it?.subject_name || it?.name) {
+            return {
+              id: it.id,
+              subject_id: it.id,
+              subject_name: it.subject_name || it.name,
+              name: it.subject_name || it.name,
+              ...it
+            };
+          }
+          return it;
+        }).filter(Boolean); // Remove any null/undefined entries
 
         const subjectsText =
           subjectsArray.length > 0
@@ -941,6 +991,15 @@ export default function StudentDetail() {
         // Extract class_id from student or class relationship
         const class_id = s.class_id || s.class?.id || null;
 
+        // Build full parent object for tabs
+        const fullParent = parent
+          ? {
+              ...parent,
+              user: parentUser,
+              ...(parentSummary ? { ...parentSummary } : {}),
+            }
+          : null;
+
         return {
           id: s.id,
           firstName,
@@ -948,12 +1007,15 @@ export default function StudentDetail() {
           name,
           email,
           grade,
+          age,
           class_id, // Add class_id for backend updates
           subjectsText,
           parent_name: parentName,
           parent_email: parentEmail,
           parent_id: parentId,
           parentSummary,
+          // Add parent at top level for easy access in tabs
+          parent: fullParent,
           state,
           status,
           createdAt,
@@ -964,12 +1026,8 @@ export default function StudentDetail() {
             ...s,
             subjects: subjectsArray, // normalized for tabs
             user,
-            parent: parentSummary
-              ? {
-                  ...parent,
-                  user: parentUser,
-                }
-              : null,
+            // Preserve full parent structure for tabs that need it
+            parent: fullParent,
           },
         };
       },
@@ -981,6 +1039,7 @@ export default function StudentDetail() {
     infoFields: [
       { label: "First Name", name: "firstName" },
       { label: "Last Name", name: "lastName" },
+      { label: "Age", name: "age" },
       { label: "Grade", name: "grade" },
       { label: "State", name: "state" },
       { label: "Status", name: "status" },
@@ -1019,18 +1078,28 @@ export default function StudentDetail() {
         label: "Parents / Guardians",
         showAddButton: false,
         idField: "id",
-        refetchPath: (studentId) => `/student/${studentId}?include=parent`,
-        extractList: (student) => {
-          if (!student?.parent) return [];
-          const parentUser = student.parent.user || {};
+        // Use prefetchRowsFromEntity to get data from parsed entity instead of refetching
+        prefetchRowsFromEntity: (student) => {
+          // Check both student.parent (top level) and student.raw.parent
+          const parent = student?.parent || student?.raw?.parent;
+          console.log('👨‍👩‍👧 [Parent Tab] Extracting parent from entity:', {
+            hasStudent: !!student,
+            hasParent: !!student?.parent,
+            hasRawParent: !!student?.raw?.parent,
+            parent: parent,
+            parentUser: parent?.user,
+          });
+          
+          if (!parent) return [];
+          const parentUser = parent.user || {};
           return [
             {
-              id: student.parent.id,
+              id: parent.id,
               name:
                 [parentUser.first_name, parentUser.last_name].filter(Boolean).join(" ") ||
-                `Parent #${student.parent.id}`,
+                `Parent #${parent.id}`,
               email: parentUser.email || "-",
-              is_payer: student.parent.is_payer || false,
+              is_payer: parent.is_payer || false,
               phone: parentUser.contact_number || parentUser.phone || "-",
               status: parentUser.status || "active",
             },

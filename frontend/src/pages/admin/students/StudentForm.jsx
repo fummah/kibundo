@@ -72,6 +72,11 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
           // Format: student_{timestamp}_{random}@temp.kibundo.local
           const tempEmail = `student_${Date.now()}_${Math.random().toString(36).substring(2, 9)}@temp.kibundo.local`;
 
+          // Ensure subjects is a valid array of numbers
+          const subjectsArray = Array.isArray(payload.subjects) 
+            ? payload.subjects.map(id => Number(id)).filter(id => !isNaN(id) && id > 0)
+            : [];
+
           const userBody = {
             role_id: 1, // Student role
             first_name: payload.first_name,
@@ -80,17 +85,101 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
             state: payload.state,
             class_id: payload.class_id,
             parent_id: payload.parent_id ?? null,
-            subjects: Array.isArray(payload.subjects) ? payload.subjects : [],
+            subjects: subjectsArray, // Array of subject IDs to be saved in student_subjects table
           };
 
+          console.log('📤 [StudentForm] Creating student with subjects:', {
+            subjectsCount: subjectsArray.length,
+            subjects: subjectsArray,
+            userBody: { ...userBody, subjects: subjectsArray }
+          });
+
           // POST /adduser; backend will create associated Student when role_id===1
-          return await api.post("/adduser", userBody);
+          // The backend's adduser endpoint already handles creating student_subjects entries
+          // when subjects array is provided in the request body (see backend adduser controller)
+          const userRes = await api.post("/adduser", userBody);
+          
+          // Wait a bit for backend to create student record and student_subjects entries
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Find the newly created student
+          const studentsRes = await api.get("/allstudents");
+          const allStudents = Array.isArray(studentsRes.data) 
+            ? studentsRes.data 
+            : (studentsRes.data?.data || []);
+          const createdUser = userRes?.data?.user || userRes?.data;
+          const newStudent = allStudents.find(s => s.user_id === createdUser?.id);
+          
+          if (newStudent) {
+            // Update student record with age and school if provided
+            if (payload.age || payload.school) {
+              try {
+                const updatePayload = {};
+                if (payload.age) {
+                  updatePayload.age = Number(payload.age);
+                }
+                if (payload.school) {
+                  updatePayload.school = payload.school;
+                }
+                
+                if (Object.keys(updatePayload).length > 0) {
+                  await api.put(`/students/${newStudent.id}`, updatePayload);
+                }
+              } catch (updateError) {
+                console.warn("⚠️ Could not update student age/school:", updateError);
+                // Continue anyway - student was created successfully
+              }
+            }
+            
+            // Verify subjects were created in student_subjects table
+            if (subjectsArray.length > 0) {
+              try {
+                // Wait a bit more for the backend to finish creating student_subjects entries
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                // Fetch the student again to verify subjects were created
+                const verifyRes = await api.get(`/student/${newStudent.id}`);
+                const verifyStudent = verifyRes?.data?.data || verifyRes?.data || {};
+                const createdSubjects = Array.isArray(verifyStudent.subject) ? verifyStudent.subject : [];
+                
+                console.log(`✅ [StudentForm] Verification - Student created with ${createdSubjects.length} subjects:`, 
+                  createdSubjects.map(s => ({ id: s?.subject?.id, name: s?.subject?.subject_name }))
+                );
+              } catch (verifyError) {
+                console.warn('⚠️ [StudentForm] Could not verify subjects creation:', verifyError);
+                // Continue anyway - subjects should have been created by backend
+              }
+            }
+          }
+          
+          return userRes;
         },
       }}
       fields={[
         // Basic
         { name: "first_name", label: "First Name", placeholder: "Enter student's first name", rules: [{ required: true }] },
         { name: "last_name",  label: "Last Name", placeholder: "Enter student's last name", rules: [{ required: true }] },
+        { 
+          name: "age", 
+          label: "Age", 
+          placeholder: "Enter student's age", 
+          input: "number",
+          props: { min: 4, max: 18 },
+          rules: [
+            { required: true, message: "Age is required" },
+            {
+              validator: (_, v) => {
+                if (v === undefined || v === null || v === "") {
+                  return Promise.reject(new Error("Age is required"));
+                }
+                const n = Number(v);
+                return n >= 4 && n <= 18
+                  ? Promise.resolve()
+                  : Promise.reject(new Error("Age must be between 4 and 18"));
+              },
+            },
+          ]
+        },
 
         // Class (IMPORTANT: backend wants class_id)
         {
@@ -177,6 +266,14 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
         },
       ]}
       transformSubmit={(values) => {
+        // Debug: Log all form values to see what's being submitted
+        console.log('📝 [StudentForm] transformSubmit received values:', {
+          allValues: values,
+          subjectsValue: values.subjects,
+          subjectsType: typeof values.subjects,
+          isArray: Array.isArray(values.subjects),
+        });
+        
         // Map to what /adduser expects; student is created server-side
         const payload = {
           first_name: values.first_name?.trim(),
@@ -184,11 +281,15 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
           // No email for students - will be linked to parent's email
           state: values.state || null,
           class_id: values.class_id,
-          subjects: Array.isArray(values.subjects) ? values.subjects : [],
+          subjects: Array.isArray(values.subjects) ? values.subjects : (values.subjects ? [values.subjects] : []),
           // Use baseInitials.parent_id (the actual ID) if parent was pre-filled, otherwise use selected value
           parent_id: baseInitials.parent_id || values.parent_id || null,
           school: values.school || null,
+          age: values.age ? Number(values.age) : null,
         };
+        
+        console.log('📤 [StudentForm] transformSubmit payload:', payload);
+        
         Object.keys(payload).forEach((k) => payload[k] == null && delete payload[k]);
         return payload;
       }}

@@ -126,10 +126,10 @@ const temppass = generateRandomPassword();
       created_by,
     });
 
-      // ✅ Generate username
+      // ✅ Generate username using student ID instead of user ID
   const username =
     (first_name.substring(0, 2) + last_name.substring(0, 1)).toLowerCase() +
-    newUser.id;
+    newStudent.id;
 
   // ✅ Update the username field in users table
       await db.user.update(
@@ -141,13 +141,30 @@ const temppass = generateRandomPassword();
   newUser.username = username;
 
        if (subjects && Array.isArray(subjects) && subjects.length > 0) {
-        const subjectMappings = subjects.map(subject_id => ({
-          student_id: newStudent.id,
-          subject_id: subject_id,
-          created_by
-        }));
+        // Ensure all subject IDs are valid numbers
+        const validSubjectIds = subjects
+          .map(id => Number(id))
+          .filter(id => !isNaN(id) && id > 0);
+        
+        if (validSubjectIds.length > 0) {
+          const subjectMappings = validSubjectIds.map(subject_id => ({
+            student_id: newStudent.id,
+            subject_id: subject_id,
+            created_by: String(created_by)
+          }));
 
-        await db.student_subjects.bulkCreate(subjectMappings);
+          try {
+            const created = await db.student_subjects.bulkCreate(subjectMappings);
+            console.log(`✅ [adduser] Created ${created.length} student_subjects entries for student ${newStudent.id}:`, validSubjectIds);
+          } catch (subjectError) {
+            console.error(`❌ [adduser] Error creating student_subjects:`, subjectError);
+            // Don't fail the entire user creation if subjects fail
+          }
+        } else {
+          console.warn(`⚠️ [adduser] No valid subject IDs provided for student ${newStudent.id}. Subjects array:`, subjects);
+        }
+      } else {
+        console.log(`ℹ️ [adduser] No subjects provided for student ${newStudent.id}`);
       }
     } else if (role_id == 2) {
       const newParent = await db.parent.create({
@@ -1337,16 +1354,28 @@ exports.getStudentById = async (req, res) => {
     // Convert to plain object to ensure associations are serialized
     const studentData = student.get({ plain: true });
     
-    // Debug: Log parent data to help diagnose issues
-    console.log('📊 [getStudentById] Student parent data:', {
+    // Debug: Log parent and subjects data to help diagnose issues
+    const subjectsArray = Array.isArray(studentData.subject) ? studentData.subject : [];
+    const subjectsDetails = subjectsArray.map(s => ({
+      studentSubjectId: s?.id,
+      subjectId: s?.subject?.id,
+      subjectName: s?.subject?.subject_name,
+      hasNestedSubject: !!s?.subject
+    }));
+    
+    console.log('📊 [getStudentById] Student data:', {
       studentId: studentData.id,
       hasParent: !!studentData.parent,
       parentId: studentData.parent?.id,
       parentUserId: studentData.parent?.user?.id,
       parentUserName: studentData.parent?.user ? `${studentData.parent.user.first_name} ${studentData.parent.user.last_name}` : 'N/A',
-      parentUserEmail: studentData.parent?.user?.email || 'N/A'
+      parentUserEmail: studentData.parent?.user?.email || 'N/A',
+      subjectsCount: subjectsArray.length,
+      subjectsDetails: subjectsDetails,
+      rawSubjectArray: subjectsArray.length > 0 ? subjectsArray[0] : null
     });
     
+    // Return data directly - frontend parseEntity handles both formats: payload?.data ?? payload
     res.json(studentData);
   } catch (error) {
     console.error('❌ Error fetching student:', error);

@@ -40,8 +40,48 @@ export default function AddStudentFlow() {
   const [submitting, setSubmitting] = useState(false);
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [subjects, setSubjects] = useState([]);
+  const [states, setStates] = useState([]);
   const [parentId, setParentId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingDropdowns, setLoadingDropdowns] = useState(false);
+
+  // Fetch dropdown options (classes, subjects, states) when on step 2
+  useEffect(() => {
+    const fetchDropdowns = async () => {
+      if (step === 2) {
+        setLoadingDropdowns(true);
+        try {
+          const [classesRes, subjectsRes, statesRes] = await Promise.all([
+            api.get("/allclasses"),
+            api.get("/allsubjects"),
+            api.get("/states")
+          ]);
+          
+          const allClasses = Array.isArray(classesRes.data) 
+            ? classesRes.data 
+            : (classesRes.data?.data || []);
+          setClasses(allClasses);
+          
+          const allSubjects = Array.isArray(subjectsRes.data) 
+            ? subjectsRes.data 
+            : (subjectsRes.data?.data || []);
+          setSubjects(allSubjects);
+          
+          const allStates = Array.isArray(statesRes.data) 
+            ? statesRes.data 
+            : (statesRes.data?.data || []);
+          setStates(allStates);
+        } catch (error) {
+          console.error("❌ Error fetching dropdown options:", error);
+        } finally {
+          setLoadingDropdowns(false);
+        }
+      }
+    };
+    
+    fetchDropdowns();
+  }, [step]);
 
   // Fetch parent ID and students
   useEffect(() => {
@@ -77,7 +117,7 @@ export default function AddStudentFlow() {
             setStudents(parentStudents);
           }
           
-          // Fetch classes for grade mapping
+          // Fetch classes for display in step 1 (if needed)
           const classesRes = await api.get("/allclasses");
           const allClasses = Array.isArray(classesRes.data) 
             ? classesRes.data 
@@ -123,33 +163,6 @@ export default function AddStudentFlow() {
         throw new Error("Parent ID not found. Please ensure you are logged in as a parent.");
       }
       
-      // Find class_id from grade number
-      // Try to match by class_name containing the grade number
-      const gradeNum = Number(values.grade);
-      let classId = null;
-      
-      // Try to find a class that matches the grade
-      const matchingClass = classes.find(c => {
-        const className = (c.class_name || "").toLowerCase();
-        return className.includes(`grade ${gradeNum}`) || 
-               className.includes(`grade${gradeNum}`) ||
-               className === `grade ${gradeNum}` ||
-               className === `grade${gradeNum}`;
-      });
-      
-      if (matchingClass) {
-        classId = matchingClass.id;
-      } else {
-        // Fallback: use grade number as class_id if class exists with that ID
-        const classExists = classes.find(c => c.id === gradeNum);
-        if (classExists) {
-          classId = gradeNum;
-        } else {
-          // Last resort: use grade number as class_id (may need backend to create it)
-          classId = gradeNum;
-        }
-      }
-      
       // Generate temporary email for student (backend requires email)
       const tempEmail = `student_${Date.now()}_${Math.random().toString(36).substring(2, 9)}@temp.kibundo.local`;
       
@@ -160,9 +173,10 @@ export default function AddStudentFlow() {
         first_name: values.first_name,
         last_name: values.last_name || "",
         email: tempEmail,
-        state: values.city || "",
-        class_id: classId,
+        state: values.state || "",
+        class_id: values.class_id,
         parent_id: finalParentId, // Set parent_id so student is linked to parent
+        subjects: Array.isArray(values.subjects) ? values.subjects : [],
       };
 
       console.log("📤 Creating student user:", userBody);
@@ -187,14 +201,18 @@ export default function AddStudentFlow() {
       const newStudent = allStudents.find(s => s.user_id === createdUser.id);
       
       if (newStudent) {
-        // Update student with additional profile info
+        // Update student with additional profile info (age and school)
         try {
-          await api.put(`/students/${newStudent.id}`, {
-            age: Number(values.age),
-            school_type: values.school_type,
-            city: values.city,
-            school_name: values.school_name,
-          });
+          const updatePayload = {};
+          if (values.age) {
+            updatePayload.age = Number(values.age);
+          }
+          if (values.school) {
+            updatePayload.school = values.school;
+          }
+          if (Object.keys(updatePayload).length > 0) {
+            await api.put(`/students/${newStudent.id}`, updatePayload);
+          }
         } catch (updateError) {
           console.warn("⚠️ Could not update student profile:", updateError);
           // Continue anyway - student was created successfully
@@ -349,20 +367,21 @@ export default function AddStudentFlow() {
                 label={t("parent.addStudent.lastName", "Last name")}
                 name="last_name"
                 rules={[
+                  { required: true, message: t("errors.required", "This field is required.") },
                   { min: 2, message: t("errors.minChars", { n: 2 }) },
                 ]}
               >
-                <Input placeholder={t("parent.addStudent.lastName_ph", "Enter last name (optional)")} />
+                <Input placeholder={t("parent.addStudent.lastName_ph", "Enter last name")} />
               </Form.Item>
 
               <Form.Item
                 label={t("parent.addStudent.age", "Age")}
                 name="age"
                 rules={[
-                  { required: true, message: t("errors.required") },
+                  { required: true, message: t("errors.required", "This field is required.") },
                   {
                     validator: (_, v) => {
-                      if (v === undefined || v === null || v === "") return Promise.reject();
+                      if (v === undefined || v === null || v === "") return Promise.reject(new Error(t("errors.required", "This field is required.")));
                       const n = Number(v);
                       return n >= 4 && n <= 18
                         ? Promise.resolve()
@@ -371,58 +390,72 @@ export default function AddStudentFlow() {
                   },
                 ]}
               >
-                <Input type="number" placeholder="8" />
+                <Input type="number" placeholder="8" min={4} max={18} />
               </Form.Item>
 
               <Form.Item
-                label={t("parent.addStudent.grade", "Grade")}
-                name="grade"
-                rules={[{ required: true, message: t("errors.required") }]}
+                label="Class"
+                name="class_id"
+                rules={[{ required: true, message: t("errors.required", "This field is required.") }]}
               >
                 <Select
-                  placeholder={t("parent.addStudent.grade_ph", "Select grade")}
-                  options={Array.from({ length: 13 }, (_, i) => i + 1).map(grade => ({
-                    value: grade,
-                    label: `Grade ${grade}`
+                  placeholder="Select class"
+                  showSearch
+                  filterOption={(input, option) =>
+                    (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                  }
+                  options={classes.map((c) => ({
+                    value: c.id,
+                    label: c.class_name || `Class ${c.id}`,
                   }))}
+                  loading={loadingDropdowns}
                 />
               </Form.Item>
 
               <Form.Item
-                label={t("parent.addStudent.schoolType", "School type")}
-                name="school_type"
-                rules={[{ required: true, message: t("errors.required") }]}
+                label="Subjects"
+                name="subjects"
+                rules={[{ required: true, message: t("errors.required", "This field is required.") }]}
               >
                 <Select
-                  placeholder={t("parent.addStudent.schoolType_ph", "Select school type")}
-                  options={[
-                    { value: "primary", label: t("school.primary", "Primary") },
-                    { value: "secondary", label: t("school.secondary", "Secondary") },
-                    { value: "other", label: t("school.other", "Other") },
-                  ]}
+                  mode="multiple"
+                  placeholder="Select subjects"
+                  showSearch
+                  filterOption={(input, option) =>
+                    (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                  }
+                  options={subjects.map((s) => ({
+                    value: s.id,
+                    label: s.subject_name || s.name || `Subject ${s.id}`,
+                  }))}
+                  loading={loadingDropdowns}
                 />
               </Form.Item>
 
               <Form.Item
-                label={t("parent.addStudent.city", "City")}
-                name="city"
-                rules={[
-                  { required: true, message: t("errors.required") },
-                  { min: 2, message: t("errors.minChars", { n: 2 }) },
-                ]}
+                label="State"
+                name="state"
+                rules={[{ required: true, message: t("errors.required", "This field is required.") }]}
               >
-                <Input placeholder={t("parent.addStudent.city_ph", "Enter city")} />
+                <Select
+                  placeholder="Select state"
+                  showSearch
+                  filterOption={(input, option) =>
+                    (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                  }
+                  options={states.map((s) => ({
+                    value: s.state_name || s.name || String(s),
+                    label: s.state_name || s.name || String(s),
+                  }))}
+                  loading={loadingDropdowns}
+                />
               </Form.Item>
 
               <Form.Item
-                label={t("parent.addStudent.schoolName", "Name of your school")}
-                name="school_name"
-                rules={[
-                  { required: true, message: t("errors.required") },
-                  { min: 2, message: t("errors.minChars", { n: 2 }) },
-                ]}
+                label="School (Optional)"
+                name="school"
               >
-                <Input placeholder={t("parent.addStudent.schoolName_ph", "Enter school name")} />
+                <Input placeholder="Enter school name (optional)" />
               </Form.Item>
 
               <div className="flex items-center justify-end gap-2">

@@ -356,9 +356,11 @@ export default function EntityForm({
       const opts = Array.isArray(f.options) ? f.options : (selectOptions[key] || []);
       const loading = !!selectLoading[key];
       const isRemote = !!(f.optionsUrl || f.optionsLoader);
+      const isMultiple = f.mode === "multiple" || f.mode === "tags";
       return (
         <Form.Item key={key} {...common}>
           <Select
+            mode={isMultiple ? "multiple" : undefined}
             options={opts}
             loading={loading}
             showSearch={!!(f.search || f.serverSearch)}

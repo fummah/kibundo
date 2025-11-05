@@ -1,5 +1,5 @@
 // src/pages/student/homework/HomeworkList.jsx
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChatStripSpacer } from "@/components/student/mobile/FooterChat.jsx";
 import {
@@ -135,6 +135,30 @@ export default function HomeworkList() {
   const [localStorageTasks, setLocalStorageTasks] = useState(() => loadTasksFromKeys(FALLBACK_KEYS));
   const [apiTasks, setApiTasks] = useState([]);
   const [loading, setLoading] = useState(false);
+  
+  // Cache to remember if endpoint is not implemented (501) - use sessionStorage to persist across remounts
+  const ENDPOINT_CACHE_KEY = 'homeworkscans_endpoint_status';
+  const fetchingRef = useRef(false); // Prevent concurrent requests
+  
+  // Check if endpoint is not implemented (persisted in sessionStorage)
+  const isEndpointNotImplemented = () => {
+    try {
+      return sessionStorage.getItem(ENDPOINT_CACHE_KEY) === '501';
+    } catch {
+      return false;
+    }
+  };
+  
+  // Set endpoint status in sessionStorage
+  const setEndpointNotImplemented = (value) => {
+    try {
+      if (value) {
+        sessionStorage.setItem(ENDPOINT_CACHE_KEY, '501');
+      } else {
+        sessionStorage.removeItem(ENDPOINT_CACHE_KEY);
+      }
+    } catch {}
+  };
 
   // Merge and deduplicate tasks from both sources
   const tasks = useMemo(() => {
@@ -165,12 +189,36 @@ export default function HomeworkList() {
   const fetchHomeworkScans = useCallback(async () => {
     if (studentId === "anon") return; // Skip if not authenticated
     
+    // Skip request if we already know endpoint is not implemented (persisted in sessionStorage)
+    if (isEndpointNotImplemented()) {
+      return;
+    }
+    
+    // Prevent concurrent requests
+    if (fetchingRef.current) {
+      return;
+    }
+    
+    fetchingRef.current = true;
+    
     try {
       setLoading(true);
-      const { data } = await api.get('/homeworkscans', {
+      const { data, status } = await api.get('/homeworkscans', {
         params: { student_id: studentId },
         withCredentials: true, // Include auth headers
+        validateStatus: (status) => status < 600, // Accept all status codes (including 501)
       });
+      
+      // Check if endpoint is not implemented (501)
+      if (status === 501 || !data) {
+        // Endpoint not implemented yet - cache this in sessionStorage and skip future requests
+        setEndpointNotImplemented(true);
+        setApiTasks([]);
+        return;
+      }
+      
+      // Endpoint works - reset the flag in case it was set before
+      setEndpointNotImplemented(false);
       
       const transformedTasks = Array.isArray(data) 
         ? data.map(transformHomeworkScanToTask)
@@ -178,10 +226,18 @@ export default function HomeworkList() {
       
       setApiTasks(transformedTasks);
     } catch (error) {
-      // Silently fail - localStorage data will still be available
+      // Check if it's a 501 error
+      if (error?.response?.status === 501) {
+        // Cache that endpoint is not implemented in sessionStorage
+        setEndpointNotImplemented(true);
+      } else {
+        // Only log non-501 errors
+        console.warn('Failed to fetch homework scans:', error?.message || 'Unknown error');
+      }
       setApiTasks([]); // Set empty array on error
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
   }, [studentId]);
 
@@ -355,11 +411,7 @@ export default function HomeworkList() {
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
             {/* Add New Scan Button - First card in grid */}
             <button
-              onClick={() =>
-                navigate("/student/homework/doing", {
-                  state: { openHomeworkChat: true },
-                })
-              }
+              onClick={() => navigate("/student/homework/doing")}
               className="min-h-[200px] rounded-xl border-2 border-dashed border-[#2b6a5b] bg-white hover:bg-[#f0f7f5] transition-all duration-200 flex flex-col items-center justify-center gap-3 p-6 group hover:border-[#1f4f43] hover:shadow-lg"
               aria-label="Neue Aufgabe scannen"
             >
@@ -397,11 +449,7 @@ export default function HomeworkList() {
               </div>
               <button
                 type="button"
-                onClick={() =>
-                  navigate("/student/homework/doing", {
-                    state: { openHomeworkChat: true },
-                  })
-                }
+                onClick={() => navigate("/student/homework/doing")}
                 className="px-8 py-4 rounded-full bg-[#2b6a5b] text-white hover:bg-[#1f4d3f] transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
                 <PlusOutlined className="mr-2" />
