@@ -6,6 +6,7 @@ import { ROLES } from "@/utils/roleMapper";
 import { StudentAppProvider } from "@/context/StudentAppContext.jsx";
 import MobileShell from "@/components/student/mobile/MobileShell.jsx";
 import IntroGate from "@/routes/IntroGate.jsx";
+import { useAuthContext } from "@/context/AuthContext.jsx";
 import { hasSeenIntro, hasDoneTour } from "@/pages/student/onboarding/introFlags";
 
 // --- Optional helpers from api (safe if missing) ---
@@ -56,8 +57,12 @@ const Fallback = <div className="p-4">Loading…</div>;
 
 // Onboarding gate (for /student/home)
 function HomeGate() {
-  if (!hasSeenIntro()) return <Navigate to="/student/onboarding/welcome-intro" replace />;
-  if (!hasDoneTour())  return <Navigate to="/student/onboarding/welcome-tour" replace />;
+  // Get user ID from auth context
+  const { user } = useAuthContext();
+  const studentId = user?.id || user?.user_id || null;
+  
+  if (!hasSeenIntro(studentId)) return <Navigate to="/student/onboarding/welcome-intro" replace />;
+  if (!hasDoneTour(studentId))  return <Navigate to="/student/onboarding/welcome-tour" replace />;
   return <StudentHome />;
 }
 

@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
+import { useAuthContext } from "@/context/AuthContext.jsx";
 import { markIntroSeen, markTourDone } from "./introFlags";
 
 import globalBg from "@/assets/backgrounds/global-bg.png";
@@ -20,11 +21,14 @@ const { Text } = Typography;
 export default function WelcomeIntro() {
   const navigate = useNavigate();
   const { buddy } = useStudentApp();
+  const { user } = useAuthContext();
   const [speaking, setSpeaking] = useState(false);
+  
+  const studentId = user?.id || user?.user_id || null;
 
   useEffect(() => {
-    markIntroSeen();
-  }, []);
+    markIntroSeen(studentId);
+  }, [studentId]);
 
   const speak = () => {
     try {
@@ -44,8 +48,8 @@ export default function WelcomeIntro() {
   const next = () => navigate("/student/onboarding/welcome-tour");
 
   const skip = () => {
-    markIntroSeen();
-    markTourDone();
+    markIntroSeen(studentId);
+    markTourDone(studentId);
     navigate("/student/home");
   };
 

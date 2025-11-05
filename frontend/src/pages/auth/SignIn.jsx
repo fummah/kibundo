@@ -95,13 +95,14 @@ CloseSquareFilled
       login(user, token);
       toast.success("Login successful!");
 
-      // ✅ Student onboarding flow
+      // ✅ Student onboarding flow - check user-specific flags
       if (roleId === ROLES.STUDENT) {
-        if (!hasSeenIntro()) {
+        const studentId = user?.id || user?.user_id || null;
+        if (!hasSeenIntro(studentId)) {
           navigate("/student/onboarding/welcome-intro", { replace: true });
           return;
         }
-        if (!hasDoneTour()) {
+        if (!hasDoneTour(studentId)) {
           navigate("/student/onboarding/welcome-tour", { replace: true });
           return;
         }

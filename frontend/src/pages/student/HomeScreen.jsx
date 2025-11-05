@@ -14,28 +14,6 @@ import { IMGS } from "@/assets/mobile";
 import topBg from "@/assets/backgrounds/top.png";
 import bottomBg from "@/assets/backgrounds/int-back.png";
 
-/* ---- Homework entry route (supports resume) ---- */
-function computeHomeworkEntryRoute() {
-  // Expecting: localStorage.setItem('kibundo.homework.progress.v1', JSON.stringify({ step: 0|1|2|3 }))
-  try {
-    const raw = localStorage.getItem("kibundo.homework.progress.v1");
-    if (raw) {
-      const { step } = JSON.parse(raw) ?? {};
-      switch (step) {
-        case 1:
-          return "/student/homework/doing";
-        case 2:
-          return "/student/homework/chat";
-        case 3:
-          return "/student/homework/feedback";
-        default:
-          return "/student/homework"; // 0 or unknown → HomeworkList
-      }
-    }
-  } catch {}
-  return "/student/homework";
-}
-
 export default function HomeMobile() {
   const navigate = useNavigate();
 

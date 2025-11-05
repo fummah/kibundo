@@ -5,6 +5,7 @@ import { ArrowLeft, Home } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
+import { useAuthContext } from "@/context/AuthContext.jsx";
 import { markIntroSeen, markTourDone } from "./introFlags";
 
 /* Backgrounds like HomeworkStart */
@@ -29,6 +30,9 @@ const Halo = ({ children, active }) => (
 export default function WelcomeTour() {
   const navigate = useNavigate();
   const { buddy } = useStudentApp();
+  const { user } = useAuthContext();
+  
+  const studentId = user?.id || user?.user_id || null;
 
   const micRef = useRef(null);
   const chatRef = useRef(null);
@@ -38,11 +42,11 @@ export default function WelcomeTour() {
 
   const steps = useMemo(
     () => [
-      { id: "welcome", text: "Welcome! I'm your learning buddy. I'll briefly show you how everything works." },
-      { id: "voice",   text: "Tap the microphone to talk to me and tell me what you need help with.", anchor: "mic" },
-      { id: "chat",    text: "This is the chat. We can write and exchange pictures here.", anchor: "chat" },
-      { id: "home",    text: "This takes you home where you start tasks and adventures.", anchor: "home" },
-      { id: "done",    text: "All set! Let’s go 🎉" },
+      { id: "welcome", text: "Willkommen! Ich bin dein Lernbuddy. Ich zeige dir kurz, wie alles funktioniert." },
+      { id: "voice",   text: "Tippe auf das Mikrofon, um mit mir zu sprechen und mir zu sagen, womit du Hilfe brauchst.", anchor: "mic" },
+      { id: "chat",    text: "Das ist der Chat. Hier können wir schreiben und Bilder austauschen.", anchor: "chat" },
+      { id: "home",    text: "Das bringt dich nach Hause, wo du Aufgaben und Abenteuer startest.", anchor: "home" },
+      { id: "done",    text: "Alles fertig! Los geht's 🎉" },
     ],
     []
   );
@@ -52,26 +56,26 @@ export default function WelcomeTour() {
   const speak = () => {
     try {
       const u = new SpeechSynthesisUtterance(current.text);
-      u.lang = "en-US";
+      u.lang = "de-DE";
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(u);
     } catch {}
   };
 
   useEffect(() => {
-    markIntroSeen();
+    markIntroSeen(studentId);
     speak();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
+  }, [step, studentId]);
 
   const onSkip = () => {
-    markTourDone();
+    markTourDone(studentId);
     navigate("/student/home");
   };
   const onNext = () => {
     if (step < steps.length - 1) setStep((s) => s + 1);
     else {
-      markTourDone();
+      markTourDone(studentId);
       navigate("/student/onboarding/buddy");
     }
   };
@@ -135,7 +139,7 @@ export default function WelcomeTour() {
 
         <div className="ml-auto flex items-center gap-2">
           <button className="px-2 py-1 text-sm rounded-full hover:bg-neutral-100" onClick={onSkip}>
-            Skip Intro
+            Überspringen
           </button>
           <button className="p-2 rounded-full hover:bg-neutral-100" onClick={speak} aria-label="Read aloud">
             <img src={speakerIcon} alt="Read" className="w-5 h-5 object-contain" />
@@ -235,7 +239,7 @@ export default function WelcomeTour() {
           onClick={onNext}
           className="rounded-full flex-1 !bg-[#ff4d4f] !border-none !h-[48px] font-semibold"
         >
-          {step < steps.length - 1 ? "Further" : "Let’s start"}
+          {step < steps.length - 1 ? "Weiter" : "Los geht's"}
         </Button>
       </div>
     </div>

@@ -44,15 +44,23 @@ import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import api from "@/api/axios";
 
+// Import buddy images
+import buddyMilo from "@/assets/buddies/kibundo-buddy.png";
+import buddyLumi from "@/assets/buddies/kibundo-buddy1.png";
+import buddyZuzu from "@/assets/buddies/monster1.png";
+import buddyKiko from "@/assets/buddies/monster2.png";
+import buddyPipa from "@/assets/buddies/Hausaufgaben.png";
+import buddyNori from "@/assets/buddies/Lernen.png";
+
 const { Title, Text } = Typography;
 
 const BUDDIES = [
-  { id: "m1", name: "Milo", img: "/src/assets/buddies/kibundo-buddy.png" },
-  { id: "m2", name: "Lumi", img: "/src/assets/buddies/kibundo-buddy1.png" },
-  { id: "m3", name: "Zuzu", img: "/src/assets/buddies/monster1.png" },
-  { id: "m4", name: "Kiko", img: "/src/assets/buddies/monster2.png" },
-  { id: "m5", name: "Pipa", img: "/src/assets/buddies/Hausaufgaben.png" },
-  { id: "m6", name: "Nori", img: "/src/assets/buddies/Lernen.png" },
+  { id: "m1", name: "Milo", img: buddyMilo },
+  { id: "m2", name: "Lumi", img: buddyLumi },
+  { id: "m3", name: "Zuzu", img: buddyZuzu },
+  { id: "m4", name: "Kiko", img: buddyKiko },
+  { id: "m5", name: "Pipa", img: buddyPipa },
+  { id: "m6", name: "Nori", img: buddyNori },
 ];
 
 const THEMES = [
@@ -85,7 +93,7 @@ export default function StudentSettings() {
   const { message } =
     App.useApp?.() ?? { message: { success: () => {}, error: () => {}, info: () => {} } };
 
-  const { buddy, setBuddy, interests, setInterests, profile, setProfile } = useStudentApp();
+  const { buddy, setBuddy, interests, setInterests, profile, setProfile, setTtsEnabled } = useStudentApp();
   const auth = useAuthContext?.();
   const { user, logout, signOut } = auth || {};
   const userId = user?.id ?? user?._id ?? user?.user_id ?? null;
@@ -109,6 +117,13 @@ export default function StudentSettings() {
   const [name, setName] = useState(defaultName);
   const [ttsEnabled, setTTSEnabled] = useState(Boolean(profile?.ttsEnabled));
   const [theme, setTheme] = useState(profile?.theme || "indigo");
+
+  // Sync TTS state when profile changes
+  useEffect(() => {
+    if (profile?.ttsEnabled !== undefined) {
+      setTTSEnabled(Boolean(profile.ttsEnabled));
+    }
+  }, [profile?.ttsEnabled]);
   const [interestDraft, setInterestDraft] = useState("");
   const [buddyModal, setBuddyModal] = useState(false);
   const [pendingBuddy, setPendingBuddy] = useState(buddy || BUDDIES[0]);
@@ -549,13 +564,13 @@ export default function StudentSettings() {
                         <div className="flex justify-center">
                           <Badge dot={isDirty} color="#52c41a">
                             <img
-                              src={displayBuddy?.img || "/src/assets/buddies/kibundo-buddy.png"}
+                              src={displayBuddy?.img || buddyMilo}
                               alt={displayBuddy?.name || "Learning Buddy"}
                               width={avatarSize}
                               height={avatarSize}
                               className="border-4 border-white shadow-lg object-contain rounded-2xl"
                               onError={(e) => {
-                                e.target.src = "/src/assets/buddies/kibundo-buddy.png";
+                                e.target.src = buddyMilo;
                               }}
                             />
                           </Badge>
@@ -620,7 +635,56 @@ export default function StudentSettings() {
                               Enable voice feedback from your buddy
                             </Text>
                           </div>
-                          <Switch checked={ttsEnabled} onChange={setTTSEnabled} size="large" />
+                          <Switch 
+                            checked={ttsEnabled} 
+                            onChange={async (checked) => {
+                              // Update local state immediately
+                              setTTSEnabled(checked);
+                              
+                              // Update context immediately so TTS works right away
+                              setTtsEnabled(checked);
+                              setProfile({ ...profile, ttsEnabled: checked });
+                              
+                              // Always save to database
+                              try {
+                                if (hasServerRecord && serverStudentId) {
+                                  // Update existing student record
+                                  const payload = {
+                                    profile: {
+                                      name: name ?? "",
+                                      ttsEnabled: checked,
+                                      theme: theme || "indigo",
+                                    },
+                                    interests: Array.isArray(interests) ? interests : [],
+                                    buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
+                                  };
+                                  
+                                  await api.patch(`/student/${serverStudentId}`, payload);
+                                  message.success?.(checked ? "Text-to-Speech enabled" : "Text-to-Speech disabled");
+                                  
+                                  // Update initial ref so dirty check works correctly
+                                  initialRef.current = { ...initialRef.current, ttsEnabled: checked };
+                                } else if (userId) {
+                                  // Create new student record if it doesn't exist
+                                  const created = await createStudentOnServer({
+                                    profile: { name: name ?? "", ttsEnabled: checked, theme: theme || "indigo" },
+                                    interests: interests || [],
+                                    buddy: buddy || null,
+                                  });
+                                  setHasServerRecord(true);
+                                  setServerStudentId(created?.id ?? created?._id ?? userId);
+                                  message.success?.(checked ? "Text-to-Speech enabled and saved" : "Text-to-Speech disabled and saved");
+                                  
+                                  // Update initial ref
+                                  initialRef.current = { name: name ?? "", ttsEnabled: checked, theme: theme || "indigo", buddy: buddy || null };
+                                }
+                              } catch (error) {
+                                console.error("❌ Failed to save TTS setting to database:", error);
+                                message.error?.("Could not save TTS setting to database. Please try again.");
+                              }
+                            }} 
+                            size="large" 
+                          />
                         </div>
                       </div>
                     </div>
@@ -673,13 +737,13 @@ export default function StudentSettings() {
                     <div className="p-6 bg-gray-50 rounded-2xl">
                       <div className="flex items-center gap-4 flex-wrap">
                         <img
-                          src={displayBuddy?.img || "/src/assets/buddies/kibundo-buddy.png"}
+                          src={displayBuddy?.img || buddyMilo}
                           alt={displayBuddy?.name || "Learning Buddy"}
                           width={80}
                           height={80}
                           className="border-2 border-gray-200 object-contain rounded-xl"
                           onError={(e) => {
-                            e.target.src = "/src/assets/buddies/kibundo-buddy.png";
+                            e.target.src = buddyMilo;
                           }}
                         />
                         <div className="flex-1 min-w-[220px]">
@@ -974,7 +1038,7 @@ export default function StudentSettings() {
 
         {/* Live preview in modal */}
         <div className="mb-4 flex items-center gap-3">
-          <Avatar size={72} src={(pendingBuddy || buddy)?.img || "https://placekitten.com/200/207"} />
+          <Avatar size={72} src={(pendingBuddy || buddy)?.img || buddyMilo} />
           <div>
             <div className="font-semibold text-base">
               {(pendingBuddy || buddy)?.name || "Select a buddy"}

@@ -223,7 +223,7 @@ export default function InterestsWizard() {
         {/* Buddy + question */}
         <div className="flex items-start gap-3 mb-4">
           <BuddyAvatar
-            src={buddy?.img || "https://placekitten.com/200/201"}
+            src={buddy?.img || buddyMascot}
             size={96}
           />
           <div className="flex-1">

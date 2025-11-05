@@ -6,6 +6,7 @@ import { ArrowLeft, Wand2 } from "lucide-react";
 import { getSubjectPlan } from "@/api/learning.js";
 import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
+import defaultBuddy from "@/assets/buddies/kibundo-buddy.png";
 
 const { Title, Text } = Typography;
 
@@ -45,7 +46,7 @@ export default function SubjectDetail() {
 
       <Card className="rounded-2xl mb-3">
         <div className="flex items-start gap-3">
-          <BuddyAvatar src={buddy?.img || "https://placekitten.com/200/220"} size={72} />
+          <BuddyAvatar src={buddy?.img || defaultBuddy} size={72} />
           <div className="flex-1">
             <Title level={5} className="!mb-1">Personalized plan</Title>
             <Text type="secondary">

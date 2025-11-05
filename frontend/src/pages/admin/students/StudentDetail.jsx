@@ -7,13 +7,21 @@ import { PlusOutlined, UnorderedListOutlined, KeyOutlined, EditOutlined, SaveOut
 import api from "@/api/axios";
 import EditCredentialsModal from "@/components/common/EditCredentialsModal";
 
+// Import buddy images
+import buddyMilo from "@/assets/buddies/kibundo-buddy.png";
+import buddyLumi from "@/assets/buddies/kibundo-buddy1.png";
+import buddyZuzu from "@/assets/buddies/monster1.png";
+import buddyKiko from "@/assets/buddies/monster2.png";
+import buddyPipa from "@/assets/buddies/Hausaufgaben.png";
+import buddyNori from "@/assets/buddies/Lernen.png";
+
 const BUDDIES = [
-  { id: "m1", name: "Milo", img: "/src/assets/buddies/kibundo-buddy.png" },
-  { id: "m2", name: "Lumi", img: "/src/assets/buddies/kibundo-buddy1.png" },
-  { id: "m3", name: "Zuzu", img: "/src/assets/buddies/monster1.png" },
-  { id: "m4", name: "Kiko", img: "/src/assets/buddies/monster2.png" },
-  { id: "m5", name: "Pipa", img: "/src/assets/buddies/Hausaufgaben.png" },
-  { id: "m6", name: "Nori", img: "/src/assets/buddies/Lernen.png" },
+  { id: "m1", name: "Milo", img: buddyMilo },
+  { id: "m2", name: "Lumi", img: buddyLumi },
+  { id: "m3", name: "Zuzu", img: buddyZuzu },
+  { id: "m4", name: "Kiko", img: buddyKiko },
+  { id: "m5", name: "Pipa", img: buddyPipa },
+  { id: "m6", name: "Nori", img: buddyNori },
 ];
 
 const THEME_OPTIONS = [
@@ -180,9 +188,9 @@ const InterestsTab = ({ student, reload }) => {
   
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileDraft, setProfileDraft] = useState({ 
-    name: studentData?.firstName || "",
+    name: studentData?.firstName || profile?.name || "",
     theme: profile?.theme || "indigo", 
-    tts: profile?.tts ?? true 
+    ttsEnabled: profile?.ttsEnabled !== undefined ? Boolean(profile.ttsEnabled) : (profile?.tts !== undefined ? Boolean(profile.tts) : true)
   });
   const [buddyDraft, setBuddyDraft] = useState(buddy);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -230,7 +238,7 @@ const InterestsTab = ({ student, reload }) => {
     setProfileDraft({ 
       name: studentData?.firstName || profile?.name || "",
       theme: profile?.theme || "indigo", 
-      tts: profile?.tts ?? true 
+      ttsEnabled: profile?.ttsEnabled !== undefined ? Boolean(profile.ttsEnabled) : (profile?.tts !== undefined ? Boolean(profile.tts) : true)
     });
     setBuddyDraft(buddy);
     setEditingProfile(true);
@@ -244,7 +252,11 @@ const InterestsTab = ({ student, reload }) => {
     setSavingProfile(true);
     try {
       await api.patch(`/student/${student.id}`, {
-        profile: profileDraft,
+        profile: {
+          name: profileDraft.name || "",
+          theme: profileDraft.theme || "indigo",
+          ttsEnabled: Boolean(profileDraft.ttsEnabled),
+        },
         buddy: buddyDraft,
       });
       message.success("Learning profile updated successfully!");
@@ -399,15 +411,19 @@ const InterestsTab = ({ student, reload }) => {
           </div>
 
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700">Text-to-Speech</label>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Text-to-Speech</label>
+              <span className="text-xs text-gray-500">Enable voice feedback from the learning buddy</span>
+            </div>
             {editingProfile ? (
               <Switch
-                checked={profileDraft.tts}
-                onChange={(checked) => setProfileDraft({ ...profileDraft, tts: checked })}
+                checked={profileDraft.ttsEnabled}
+                onChange={(checked) => setProfileDraft({ ...profileDraft, ttsEnabled: checked })}
+                size="default"
               />
             ) : (
-              <Tag color={profile?.tts ? "green" : "red"}>
-                {profile?.tts ? "Enabled" : "Disabled"}
+              <Tag color={(profile?.ttsEnabled !== undefined ? Boolean(profile.ttsEnabled) : (profile?.tts !== undefined ? Boolean(profile.tts) : true)) ? "green" : "red"}>
+                {(profile?.ttsEnabled !== undefined ? Boolean(profile.ttsEnabled) : (profile?.tts !== undefined ? Boolean(profile.tts) : true)) ? "Enabled" : "Disabled"}
               </Tag>
             )}
           </div>
@@ -770,8 +786,11 @@ const HomeworkTab = ({ student }) => {
         if (!v) return "-";
         
         // Check if it's a base64 string or a URL
-        const isBase64 = v.startsWith("data:") || !v.startsWith("http");
-        const imageUrl = isBase64 ? v : v.startsWith("/") ? `http://localhost:3001${v}` : v;
+        const isBase64 = v.startsWith("data:");
+        // If it's a relative path starting with /, use it as-is (will be resolved by the server)
+        // If it's an absolute URL, use it as-is
+        // If it's base64, use it as-is
+        const imageUrl = isBase64 ? v : (v.startsWith("/") ? v : (v.startsWith("http") ? v : `/${v}`));
         
         return (
           <Button 

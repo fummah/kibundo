@@ -190,6 +190,11 @@ export default function HomeworkList() {
     setLocalStorageTasks(loadTasksFromKeys(FALLBACK_KEYS));
   }, [FALLBACK_KEYS]);
 
+  // Close any open chat when navigating to the list page
+  useEffect(() => {
+    closeChat?.();
+  }, [closeChat]);
+
   // Fetch on mount and when studentId changes
   useEffect(() => {
     fetchHomeworkScans();

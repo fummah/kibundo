@@ -6,6 +6,8 @@ import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
 /* ✅ Backgrounds */
 import globalBg from "../../../assets/backgrounds/global-bg.png";
 import intBack from "../../../assets/backgrounds/int-back.png";
+/* ✅ Default buddy image */
+import defaultBuddy from "../../../assets/buddies/kibundo-buddy.png";
 
 const { Title, Text } = Typography;
 
@@ -64,7 +66,7 @@ export default function WelcomeSuccess() {
   
   {/* Centered BuddyAvatar */}
   <div className="flex justify-center mt-4">
-    <BuddyAvatar src={buddy?.img || "https://placekitten.com/200/202"} size={180} />
+    <BuddyAvatar src={buddy?.img || defaultBuddy} size={180} />
   </div>
 
   <Title level={3} className="!mt-6 !mb-2 text-[#82B400] font-extrabold">
