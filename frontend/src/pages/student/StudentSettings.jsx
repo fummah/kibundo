@@ -134,6 +134,8 @@ export default function StudentSettings() {
 
   const [hasServerRecord, setHasServerRecord] = useState(false);
   const [serverStudentId, setServerStudentId] = useState(null);
+  const [justUpdatedBuddy, setJustUpdatedBuddy] = useState(false);
+  const [buddyImageKey, setBuddyImageKey] = useState(0);
 
   // baseline
   const initialRef = useRef({
@@ -157,7 +159,9 @@ export default function StudentSettings() {
   const themePreview = useMemo(() => THEME_GRADIENT[theme] || THEME_GRADIENT.indigo, [theme]);
 
   // ----- Live buddy preview -----
-  const displayBuddy = buddyModal ? (pendingBuddy || buddy) : buddy;
+  const displayBuddy = useMemo(() => {
+    return buddyModal ? (pendingBuddy || buddy) : buddy;
+  }, [buddyModal, pendingBuddy, buddy]);
   const isPreviewingBuddy = buddyModal && (pendingBuddy?.id !== buddy?.id);
 
   // ---------- Load settings without 404s ----------
@@ -169,15 +173,12 @@ export default function StudentSettings() {
     const load = async () => {
       try {
         setLoading(true);
-        
-        console.log("🔍 Loading student settings for userId:", userId);
 
         const allRes = await api.get("/allstudents", {
           validateStatus: (s) => s >= 200 && s < 500,
         });
 
         const all = Array.isArray(allRes?.data) ? allRes.data : [];
-        console.log("📚 Total students found:", all.length);
         
         const match = all.find(
           (s) =>
@@ -185,16 +186,9 @@ export default function StudentSettings() {
             s?.user_id === userId ||
             sid(s) === userId
         );
-        
-        console.log("🔍 Student match result:", {
-          userId,
-          found: !!match,
-          studentId: match ? sid(match) : null
-        });
 
         if (!match) {
           if (cancelled) return;
-          console.warn("⚠️ No student record found - settings will be saved locally only");
           setHasServerRecord(false);
           setServerStudentId(null);
           initialRef.current = {
@@ -222,17 +216,11 @@ export default function StudentSettings() {
 
         setHasServerRecord(true);
         setServerStudentId(foundId);
-        
-        console.log("✅ Student record loaded:", {
-          foundId,
-          hasProfile: !!data?.profile,
-          hasInterests: !!data?.interests,
-          hasBuddy: !!data?.buddy,
-          data
-        });
 
         const srvProfile = data?.profile ?? {};
         const srvInterests = Array.isArray(data?.interests) ? data.interests : [];
+        // Only update buddy from server if we haven't just updated it locally
+        // This prevents overwriting the newly selected buddy
         const srvBuddy = data?.buddy ?? null;
 
         setStudentData(data);
@@ -243,7 +231,10 @@ export default function StudentSettings() {
           theme: srvProfile.theme || "indigo",
         });
         setInterests(srvInterests);
-        setBuddy(srvBuddy);
+        // Only set buddy from server if we haven't just updated it
+        if (!justUpdatedBuddy) {
+          setBuddy(srvBuddy);
+        }
 
         const serverName = srvProfile.name ?? "";
         const apiUser = data?.user ?? {};
@@ -321,20 +312,12 @@ export default function StudentSettings() {
           buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
         };
         
-        console.log("💾 Saving settings:", { 
-          studentId: serverStudentId, 
-          payload,
-          theme: theme
-        });
-        
-        const response = await api.patch(`/student/${serverStudentId}`, payload);
-        console.log("✅ Settings saved successfully:", response.data);
+        await api.patch(`/student/${serverStudentId}`, payload);
         message.success?.(`Settings saved! Theme: ${theme}`);
       }
 
       initialRef.current = { name, ttsEnabled, theme, buddy };
     } catch (error) {
-      console.error("❌ Failed to save settings:", error);
       message.error?.("Could not save settings. Please try again.");
     } finally {
       setSaving(false);
@@ -352,12 +335,6 @@ export default function StudentSettings() {
     setInterests(newInterests);
     setInterestDraft("");
     
-    console.log("📝 Adding interest:", {
-      hasServerRecord,
-      serverStudentId,
-      newInterests
-    });
-    
     // Auto-save interests to database
     if (hasServerRecord && serverStudentId) {
       try {
@@ -367,23 +344,12 @@ export default function StudentSettings() {
           buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
         };
         
-        console.log("📤 Sending interest update to database:", {
-          url: `/student/${serverStudentId}`,
-          payload
-        });
-        
-        const response = await api.patch(`/student/${serverStudentId}`, payload);
-        console.log("✅ Interest added and saved:", { newInterests, response: response.data });
+        await api.patch(`/student/${serverStudentId}`, payload);
         message.success?.(`Interest "${v}" saved!`);
       } catch (error) {
-        console.error("❌ Failed to save interest:", error);
         message.error?.("Could not save interest. Please try again.");
       }
     } else {
-      console.warn("⚠️ Cannot save interest - no server record:", {
-        hasServerRecord,
-        serverStudentId
-      });
       message.warning?.(`Interest "${v}" added locally. Click Save Settings to persist.`);
     }
   };
@@ -392,12 +358,6 @@ export default function StudentSettings() {
     const newInterests = (interests || []).filter((x) => x !== val);
     setInterests(newInterests);
     
-    console.log("🗑️ Removing interest:", {
-      hasServerRecord,
-      serverStudentId,
-      newInterests
-    });
-    
     // Auto-save interests to database
     if (hasServerRecord && serverStudentId) {
       try {
@@ -407,30 +367,25 @@ export default function StudentSettings() {
           buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
         };
         
-        console.log("📤 Sending interest removal to database:", {
-          url: `/student/${serverStudentId}`,
-          payload
-        });
-        
-        const response = await api.patch(`/student/${serverStudentId}`, payload);
-        console.log("✅ Interest removed and saved:", { newInterests, response: response.data });
+        await api.patch(`/student/${serverStudentId}`, payload);
         message.success?.(`Interest "${val}" removed!`);
       } catch (error) {
-        console.error("❌ Failed to save interest removal:", error);
         message.error?.("Could not remove interest. Please try again.");
       }
     } else {
-      console.warn("⚠️ Cannot save interest removal - no server record:", {
-        hasServerRecord,
-        serverStudentId
-      });
       message.warning?.(`Interest "${val}" removed locally. Click Save Settings to persist.`);
     }
   };
 
   const confirmBuddy = async () => {
     try {
+      // Set flag to prevent useEffect from overwriting the buddy
+      setJustUpdatedBuddy(true);
+      
+      // Update buddy immediately in context and local state
       setBuddy(pendingBuddy);
+      // Force image re-render by updating the key
+      setBuddyImageKey(prev => prev + 1);
 
       if (!hasServerRecord) {
         // Create new student record with buddy
@@ -443,6 +398,11 @@ export default function StudentSettings() {
         setServerStudentId(created?.id ?? created?._id ?? userId);
         setBuddyModal(false);
         message.success?.(`Buddy selected: ${pendingBuddy.name}`);
+        
+        // Update studentData with the new buddy
+        if (studentData) {
+          setStudentData({ ...studentData, buddy: pendingBuddy });
+        }
       } else {
         // Update existing student record with new buddy
         const payload = {
@@ -455,19 +415,27 @@ export default function StudentSettings() {
           buddy: pendingBuddy ? { id: pendingBuddy.id, name: pendingBuddy.name, img: pendingBuddy.img } : null,
         };
         
-        console.log("💾 Updating buddy in database:", { 
-          studentId: serverStudentId, 
-          buddy: pendingBuddy 
-        });
-        
         await api.patch(`/student/${serverStudentId}`, payload);
         setBuddyModal(false);
         message.success?.(`Buddy updated: ${pendingBuddy.name}`);
+        
+        // Update studentData with the new buddy to ensure UI reflects the change
+        if (studentData) {
+          setStudentData({ ...studentData, buddy: pendingBuddy });
+        }
       }
 
       initialRef.current = { ...initialRef.current, buddy: pendingBuddy };
+      
+      // Ensure pendingBuddy matches the updated buddy
+      setPendingBuddy(pendingBuddy);
+      
+      // Reset the flag after a short delay to allow future server updates
+      setTimeout(() => {
+        setJustUpdatedBuddy(false);
+      }, 2000);
     } catch (error) {
-      console.error("❌ Failed to update buddy:", error);
+      setJustUpdatedBuddy(false);
       message.error?.("Could not apply buddy. Please try again.");
     }
   };
@@ -564,6 +532,7 @@ export default function StudentSettings() {
                         <div className="flex justify-center">
                           <Badge dot={isDirty} color="#52c41a">
                             <img
+                              key={`buddy-profile-${displayBuddy?.id || "default"}-${buddyImageKey}`}
                               src={displayBuddy?.img || buddyMilo}
                               alt={displayBuddy?.name || "Learning Buddy"}
                               width={avatarSize}
@@ -614,6 +583,17 @@ export default function StudentSettings() {
                             <Text strong className="text-base">Student ID</Text>
                             <Input 
                               value={userId || "N/A"} 
+                              disabled 
+                              className="rounded-xl" 
+                              size="large"
+                            />
+                          </div>
+                        </Col>
+                        <Col xs={24} md={12}>
+                          <div className="space-y-2">
+                            <Text strong className="text-base">Age</Text>
+                            <Input 
+                              value={studentData?.age !== undefined && studentData?.age !== null ? String(studentData.age) : "N/A"} 
                               disabled 
                               className="rounded-xl" 
                               size="large"
@@ -679,7 +659,6 @@ export default function StudentSettings() {
                                   initialRef.current = { name: name ?? "", ttsEnabled: checked, theme: theme || "indigo", buddy: buddy || null };
                                 }
                               } catch (error) {
-                                console.error("❌ Failed to save TTS setting to database:", error);
                                 message.error?.("Could not save TTS setting to database. Please try again.");
                               }
                             }} 
@@ -737,6 +716,7 @@ export default function StudentSettings() {
                     <div className="p-6 bg-gray-50 rounded-2xl">
                       <div className="flex items-center gap-4 flex-wrap">
                         <img
+                          key={`buddy-appearance-${displayBuddy?.id || "default"}-${buddyImageKey}`}
                           src={displayBuddy?.img || buddyMilo}
                           alt={displayBuddy?.name || "Learning Buddy"}
                           width={80}
@@ -761,7 +741,11 @@ export default function StudentSettings() {
                           <Button 
                             type="primary" 
                             className="rounded-xl" 
-                            onClick={() => setBuddyModal(true)} 
+                            onClick={() => {
+                              // Set pending buddy to current buddy when opening modal
+                              setPendingBuddy(buddy || BUDDIES[0]);
+                              setBuddyModal(true);
+                            }} 
                             icon={<Edit className="h-4 w-4" />}
                           >
                             Change Buddy
@@ -1026,7 +1010,11 @@ export default function StudentSettings() {
       {/* Buddy modal with live preview */}
       <Modal
         open={buddyModal}
-        onCancel={() => setBuddyModal(false)}
+        onCancel={() => {
+          setBuddyModal(false);
+          // Reset pending buddy to current buddy when canceling
+          setPendingBuddy(buddy || BUDDIES[0]);
+        }}
         onOk={confirmBuddy}
         okText="Choose"
         className="rounded-2xl"
@@ -1038,7 +1026,11 @@ export default function StudentSettings() {
 
         {/* Live preview in modal */}
         <div className="mb-4 flex items-center gap-3">
-          <Avatar size={72} src={(pendingBuddy || buddy)?.img || buddyMilo} />
+          <Avatar 
+            key={`buddy-modal-${(pendingBuddy || buddy)?.id || "default"}-${buddyImageKey}`}
+            size={72} 
+            src={(pendingBuddy || buddy)?.img || buddyMilo} 
+          />
           <div>
             <div className="font-semibold text-base">
               {(pendingBuddy || buddy)?.name || "Select a buddy"}
@@ -1053,7 +1045,11 @@ export default function StudentSettings() {
           {BUDDIES.map((b) => (
             <button
               key={b.id}
-              onClick={() => setPendingBuddy(b)}
+              onClick={() => {
+                setPendingBuddy(b);
+                // Force preview update
+                setBuddyImageKey(prev => prev + 1);
+              }}
               className={`text-left rounded-xl border-2 p-2 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-300 ${
                 pendingBuddy?.id === b.id ? "border-blue-500" : "border-transparent hover:border-neutral-200"
               }`}

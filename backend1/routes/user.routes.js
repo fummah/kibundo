@@ -117,6 +117,8 @@ router.delete('/blogpost/:id', verifyToken,deleteBlogPost);
 router.post("/addinvoice", verifyToken, addinvoice);
 router.get("/invoices", verifyToken, getAllInvoices);
 router.get('/invoice/:id', verifyToken,getInvoiceById);
+router.get('/invoices/:id/download', verifyToken, getInvoiceById);
+router.get('/parents/:parentId/invoices/:id/download', verifyToken, getInvoiceById);
 router.delete('/invoice/:id', verifyToken,deleteInvoice);
 router.post("/addcoupon", verifyToken, addcoupon);
 router.get("/coupons", verifyToken, getAllCoupons);

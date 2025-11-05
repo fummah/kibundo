@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom/client';
 import {
   Card, Table, Tag, Button, Select, Typography, Descriptions, Tabs,
   Space, Badge, Tooltip, Skeleton, Empty, Alert, App
@@ -13,6 +14,427 @@ import {
 import { useParams } from 'react-router-dom';
 import api from '@/api/axios';
 import dayjs from 'dayjs';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+
+// Simple PDF generator helper
+const generatePdfFromComponent = async (element, options = {}) => {
+  try {
+    // Ensure element is ready
+    if (!element || !element.parentElement) {
+      throw new Error('Element not ready for PDF generation');
+    }
+    
+    // Configure html2canvas with better defaults
+    const canvasOptions = {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      ...(options.html2canvas || {})
+    };
+    
+    const canvas = await html2canvas(element, canvasOptions);
+    
+    if (!canvas || canvas.width === 0 || canvas.height === 0) {
+      throw new Error('Canvas generation failed - invalid dimensions');
+    }
+    
+    const imgData = canvas.toDataURL('image/png', 0.95);
+    
+    if (!imgData || imgData === 'data:,') {
+      throw new Error('Failed to generate image data from canvas');
+    }
+    
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = pdf.internal.pageSize.getHeight();
+    
+    // Calculate image dimensions to fit the page
+    const margin = options.margin || 20;
+    const imgWidth = pdfWidth - (margin * 2);
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    
+    // Handle multi-page documents
+    let heightLeft = imgHeight;
+    let position = margin;
+    
+    // Add first page
+    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+    heightLeft -= (pdfHeight - margin);
+    
+    // Add additional pages if needed
+    while (heightLeft > 0) {
+      position = -(imgHeight - heightLeft - margin);
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+      heightLeft -= (pdfHeight - margin);
+    }
+    
+    pdf.save(options.filename || 'invoice.pdf');
+  } catch (error) {
+    console.error('PDF generation error:', error);
+    throw new Error(`PDF generation failed: ${error.message}`);
+  }
+};
+
+// Professional Invoice Template component
+const InvoiceTemplate = ({ invoice }) => {
+  const amount = invoice.total_cents ? (invoice.total_cents / 100) : (invoice.amount || 0);
+  const currency = invoice.currency || 'EUR';
+  const invoiceDate = dayjs(invoice.created_at || new Date());
+  const dueDate = invoice.due_date ? dayjs(invoice.due_date) : invoiceDate.add(30, 'days');
+  
+  // Parse line items
+  let lineItems = [];
+  if (invoice.lines && Array.isArray(invoice.lines)) {
+    lineItems = invoice.lines;
+  } else if (invoice.lines && typeof invoice.lines === 'object') {
+    lineItems = Object.values(invoice.lines);
+  } else if (invoice.line_items && Array.isArray(invoice.line_items)) {
+    lineItems = invoice.line_items;
+  }
+  
+  // If no line items, create a default one
+  if (lineItems.length === 0) {
+    lineItems = [{
+      description: invoice.description || 'Nachhilfeunterricht',
+      quantity: 1,
+      unit_price: amount,
+      amount: amount
+    }];
+  }
+  
+  // Get student information
+  const students = invoice.parent?.student || invoice.parent?.students || invoice.students || [];
+  const parentName = invoice.parent_name || 
+                    (invoice.parent?.user ? `${invoice.parent.user.first_name || ''} ${invoice.parent.user.last_name || ''}`.trim() : '') ||
+                    (invoice.parent?.name) ||
+                    'Eltern';
+  const parentEmail = invoice.parent_email || 
+                      invoice.parent?.user?.email || 
+                      invoice.parent?.email || 
+                      '';
+  
+  // Calculate subtotal and taxes
+  const subtotal = lineItems.reduce((sum, item) => sum + (item.amount || item.unit_price * (item.quantity || 1)), 0);
+  
+  // Handle taxes - can be array, object, or empty
+  let taxesArray = [];
+  if (invoice.taxes) {
+    if (Array.isArray(invoice.taxes)) {
+      taxesArray = invoice.taxes;
+    } else if (typeof invoice.taxes === 'object') {
+      // Convert object to array of tax objects
+      taxesArray = Object.values(invoice.taxes);
+    }
+  }
+  
+  const taxAmount = taxesArray.reduce((sum, tax) => {
+    if (typeof tax === 'number') {
+      return sum + tax;
+    } else if (tax && typeof tax === 'object') {
+      return sum + (tax.amount || tax.value || 0);
+    }
+    return sum;
+  }, 0);
+  
+  const total = amount || (subtotal + taxAmount);
+  
+  const styles = {
+    container: {
+      maxWidth: '800px',
+      margin: '0 auto',
+      padding: '50px',
+      fontFamily: '"Helvetica Neue", Arial, sans-serif',
+      backgroundColor: '#ffffff',
+      color: '#333333'
+    },
+    header: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      marginBottom: '50px',
+      paddingBottom: '30px',
+      borderBottom: '3px solid #2563eb'
+    },
+    logo: {
+      fontSize: '28px',
+      fontWeight: 'bold',
+      color: '#2563eb'
+    },
+    invoiceTitle: {
+      textAlign: 'right',
+      fontSize: '24px',
+      fontWeight: 'bold',
+      color: '#1e293b'
+    },
+    invoiceInfo: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      marginBottom: '40px',
+      gap: '40px'
+    },
+    billTo: {
+      flex: 1
+    },
+    invoiceDetails: {
+      flex: 1,
+      textAlign: 'right'
+    },
+    sectionTitle: {
+      fontSize: '14px',
+      fontWeight: 'bold',
+      color: '#64748b',
+      marginBottom: '10px',
+      textTransform: 'uppercase',
+      letterSpacing: '0.5px'
+    },
+    sectionContent: {
+      fontSize: '16px',
+      color: '#1e293b',
+      lineHeight: '1.6'
+    },
+    table: {
+      width: '100%',
+      borderCollapse: 'collapse',
+      marginBottom: '30px'
+    },
+    tableHeader: {
+      backgroundColor: '#f1f5f9',
+      padding: '15px',
+      textAlign: 'left',
+      fontSize: '12px',
+      fontWeight: 'bold',
+      color: '#64748b',
+      textTransform: 'uppercase',
+      borderBottom: '2px solid #e2e8f0'
+    },
+    tableCell: {
+      padding: '15px',
+      borderBottom: '1px solid #e2e8f0',
+      fontSize: '14px',
+      color: '#1e293b'
+    },
+    tableRow: {
+      '&:hover': {
+        backgroundColor: '#f8fafc'
+      }
+    },
+    totalSection: {
+      display: 'flex',
+      justifyContent: 'flex-end',
+      marginTop: '20px'
+    },
+    totalTable: {
+      width: '300px',
+      borderCollapse: 'collapse'
+    },
+    totalRow: {
+      padding: '10px 15px',
+      fontSize: '14px'
+    },
+    totalLabel: {
+      textAlign: 'right',
+      color: '#64748b',
+      fontWeight: '500'
+    },
+    totalValue: {
+      textAlign: 'right',
+      color: '#1e293b',
+      fontWeight: '600'
+    },
+    finalTotal: {
+      backgroundColor: '#2563eb',
+      color: '#ffffff',
+      fontSize: '18px',
+      fontWeight: 'bold',
+      padding: '15px',
+      borderRadius: '4px'
+    },
+    studentsSection: {
+      marginTop: '30px',
+      padding: '20px',
+      backgroundColor: '#f8fafc',
+      borderRadius: '8px',
+      border: '1px solid #e2e8f0'
+    },
+    studentItem: {
+      padding: '8px 0',
+      fontSize: '14px',
+      color: '#475569',
+      borderBottom: '1px solid #e2e8f0'
+    },
+    studentItemLast: {
+      padding: '8px 0',
+      fontSize: '14px',
+      color: '#475569'
+      // No border for last item - comma removed for last style property
+    },
+    footer: {
+      marginTop: '50px',
+      paddingTop: '30px',
+      borderTop: '2px solid #e2e8f0',
+      fontSize: '12px',
+      color: '#64748b',
+      textAlign: 'center'
+    },
+    statusBadge: {
+      display: 'inline-block',
+      padding: '4px 12px',
+      borderRadius: '12px',
+      fontSize: '12px',
+      fontWeight: 'bold',
+      textTransform: 'uppercase'
+    }
+  };
+  
+  const getStatusColor = (status) => {
+    const s = (status || '').toLowerCase();
+    if (s === 'paid') return { backgroundColor: '#10b981', color: '#ffffff' };
+    if (s === 'pending' || s === 'due') return { backgroundColor: '#f59e0b', color: '#ffffff' };
+    if (s === 'overdue') return { backgroundColor: '#ef4444', color: '#ffffff' };
+    return { backgroundColor: '#64748b', color: '#ffffff' };
+  };
+  
+  return (
+    <div style={styles.container}>
+      {/* Header */}
+      <div style={styles.header}>
+        <div style={styles.logo}>Kibundo</div>
+        <div style={styles.invoiceTitle}>Rechnung / Invoice</div>
+      </div>
+      
+      {/* Invoice Info */}
+      <div style={styles.invoiceInfo}>
+        <div style={styles.billTo}>
+          <div style={styles.sectionTitle}>Rechnungsempfänger</div>
+          <div style={styles.sectionContent}>
+            <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>{parentName}</div>
+            {parentEmail && <div>{parentEmail}</div>}
+            {students.length > 0 && (
+              <div style={{ marginTop: '15px', fontSize: '14px', color: '#64748b' }}>
+                <strong>Schüler:</strong> {students.length} {students.length === 1 ? 'Schüler' : 'Schüler'}
+              </div>
+            )}
+          </div>
+        </div>
+        <div style={styles.invoiceDetails}>
+          <div style={styles.sectionTitle}>Rechnungsdetails</div>
+          <div style={styles.sectionContent}>
+            <div style={{ marginBottom: '5px' }}><strong>Rechnungsnummer:</strong> #{invoice.id || 'N/A'}</div>
+            <div style={{ marginBottom: '5px' }}><strong>Rechnungsdatum:</strong> {invoiceDate.format('DD.MM.YYYY')}</div>
+            <div style={{ marginBottom: '5px' }}><strong>Fälligkeitsdatum:</strong> {dueDate.format('DD.MM.YYYY')}</div>
+            {invoice.status && (
+              <div style={{ marginTop: '10px' }}>
+                <span style={{ ...styles.statusBadge, ...getStatusColor(invoice.status) }}>
+                  {invoice.status}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Line Items Table */}
+      <table style={styles.table}>
+        <thead>
+          <tr>
+            <th style={{ ...styles.tableHeader, width: '50%' }}>Beschreibung</th>
+            <th style={{ ...styles.tableHeader, width: '15%', textAlign: 'center' }}>Menge</th>
+            <th style={{ ...styles.tableHeader, width: '17.5%', textAlign: 'right' }}>Einzelpreis</th>
+            <th style={{ ...styles.tableHeader, width: '17.5%', textAlign: 'right' }}>Betrag</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lineItems.map((item, index) => {
+            const itemAmount = item.amount || (item.unit_price * (item.quantity || 1));
+            return (
+              <tr key={index} style={styles.tableRow}>
+                <td style={styles.tableCell}>
+                  <div style={{ fontWeight: '500' }}>{item.description || item.name || 'Position'}</div>
+                  {item.student_name && (
+                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                      Schüler: {item.student_name}
+                    </div>
+                  )}
+                  {item.usage_details && (
+                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                      {item.usage_details}
+                    </div>
+                  )}
+                </td>
+                <td style={{ ...styles.tableCell, textAlign: 'center' }}>{item.quantity || 1}</td>
+                <td style={{ ...styles.tableCell, textAlign: 'right' }}>
+                  {(item.unit_price || itemAmount).toFixed(2)} {currency}
+                </td>
+                <td style={{ ...styles.tableCell, textAlign: 'right', fontWeight: '500' }}>
+                  {itemAmount.toFixed(2)} {currency}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      
+      {/* Totals */}
+      <div style={styles.totalSection}>
+        <table style={styles.totalTable}>
+          {subtotal !== total && (
+            <>
+              <tr>
+                <td style={{ ...styles.totalRow, ...styles.totalLabel }}>Zwischensumme:</td>
+                <td style={{ ...styles.totalRow, ...styles.totalValue }}>
+                  {subtotal.toFixed(2)} {currency}
+                </td>
+              </tr>
+              {taxAmount > 0 && (
+                <tr>
+                  <td style={{ ...styles.totalRow, ...styles.totalLabel }}>MwSt. (19%):</td>
+                  <td style={{ ...styles.totalRow, ...styles.totalValue }}>
+                    {taxAmount.toFixed(2)} {currency}
+                  </td>
+                </tr>
+              )}
+            </>
+          )}
+          <tr>
+            <td style={{ ...styles.totalRow, ...styles.totalLabel, paddingTop: '15px' }}>Gesamtbetrag:</td>
+            <td style={{ ...styles.totalRow, ...styles.totalValue, ...styles.finalTotal, paddingTop: '15px' }}>
+              {total.toFixed(2)} {currency}
+            </td>
+          </tr>
+        </table>
+      </div>
+      
+      {/* Students Section */}
+      {students.length > 0 && (
+        <div style={styles.studentsSection}>
+          <div style={{ ...styles.sectionTitle, marginBottom: '15px' }}>Gebuchte Schüler</div>
+          {students.map((student, index) => {
+            const studentName = student.user 
+              ? `${student.user.first_name || ''} ${student.user.last_name || ''}`.trim()
+              : student.name || `Schüler #${student.id}`;
+            const studentClass = student.class?.class_name || student.class_name || student.grade || 'N/A';
+            const isLast = index === students.length - 1;
+            return (
+              <div key={index} style={isLast ? styles.studentItemLast : styles.studentItem}>
+                <strong>{studentName}</strong> - Klasse: {studentClass}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      
+      {/* Footer */}
+      <div style={styles.footer}>
+        <div>Vielen Dank für Ihr Vertrauen in Kibundo!</div>
+        <div style={{ marginTop: '10px' }}>
+          Bei Fragen wenden Sie sich bitte an unseren Support.
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const { Title, Text } = Typography;
 
@@ -97,73 +519,204 @@ const BillingTab = ({ parent, parentId: parentIdProp, entity }) => {
         // Render the invoice component
         const root = ReactDOM.createRoot(container);
         root.render(
-          <InvoiceTemplate invoice={invoice} />
+          React.createElement(InvoiceTemplate, { invoice: invoice })
         );
         
         // Wait for rendering to complete
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Ensure container has content
+        if (!container.firstChild || container.children.length === 0) {
+          throw new Error('Invoice template did not render');
+        }
+        
+        // Additional wait for images/fonts to load
         await new Promise(resolve => setTimeout(resolve, 500));
         
         // Generate PDF
         await generatePdfFromComponent(container, {
           filename: fileName,
           margin: 10,
-          image: { type: 'jpeg', quality: 0.98 },
           html2canvas: { 
             scale: 2,
             useCORS: true,
             logging: false,
-            scrollY: 0,
-            scrollX: 0,
-            windowWidth: document.documentElement.offsetWidth,
-            windowHeight: document.documentElement.offsetHeight
-          },
-          pagebreak: { 
-            before: '.page-break-before',
-            after: '.page-break-after',
-            avoid: 'img, .no-break' 
+            backgroundColor: '#ffffff',
+            allowTaint: false,
+            scrollY: -window.scrollY,
+            scrollX: -window.scrollX
           }
         });
         
         // Clean up
-        root.unmount();
-        document.body.removeChild(container);
+        try {
+          root.unmount();
+        } catch (unmountError) {
+          console.warn('Error unmounting:', unmountError);
+        }
+        try {
+          if (container.parentElement) {
+            document.body.removeChild(container);
+          }
+        } catch (removeError) {
+          console.warn('Error removing container:', removeError);
+        }
         return;
       }
       
-      // For existing invoices, try to download from the server
-      let response;
+      // For existing invoices, fetch the invoice data and generate PDF client-side
+      let invoiceData = invoice;
+      
+      // Always try to fetch full invoice data with parent and student associations
       try {
-        // First try the parent-specific endpoint
-        response = await api.get(`/parents/${parentId}/invoices/${invoice.id}/download`, {
-          responseType: 'blob',
-        });
-      } catch (firstError) {
-        // Fall back to the generic endpoint
-        response = await api.get(`/invoices/${invoice.id}/download`, {
-          responseType: 'blob',
-        });
+        const response = await api.get(`/invoice/${invoice.id}`);
+        invoiceData = response.data || invoice;
+        
+        // If parent data is not included, try to fetch parent with students
+        if (!invoiceData.parent?.student && parentId) {
+          try {
+            const parentResponse = await api.get(`/parent/${parentId}`);
+            if (parentResponse?.data?.data) {
+              invoiceData.parent = {
+                ...invoiceData.parent,
+                ...parentResponse.data.data,
+                student: parentResponse.data.data.student || parentResponse.data.data.students || []
+              };
+            }
+          } catch (parentError) {
+            console.warn('Could not fetch parent data:', parentError);
+          }
+        }
+      } catch (fetchError) {
+        console.warn('Could not fetch invoice details, using provided data:', fetchError);
+        // Continue with the invoice data we have
       }
       
-      if (!response?.data) {
-        throw new Error('Keine Daten vom Server empfangen');
+      // Generate PDF client-side using the invoice data
+      const fileName = `Rechnung-${invoiceData.id}-${dayjs(invoiceData.created_at || new Date()).format('YYYY-MM-DD')}.pdf`;
+      
+      // Create a container for the invoice
+      const container = document.createElement('div');
+      container.style.position = 'absolute';
+      container.style.left = '-9999px';
+      container.style.width = '800px';
+      container.style.backgroundColor = '#ffffff';
+      container.style.padding = '20px';
+      document.body.appendChild(container);
+      
+      let root = null;
+      
+      try {
+        console.log('📄 Starting PDF generation for invoice:', invoiceData.id);
+        console.log('📄 Invoice data:', invoiceData);
+        
+        // Render the invoice component
+        if (!ReactDOM || !ReactDOM.createRoot) {
+          throw new Error('ReactDOM.createRoot is not available');
+        }
+        
+        root = ReactDOM.createRoot(container);
+        console.log('📄 Rendering invoice template...');
+        
+        root.render(
+          React.createElement(InvoiceTemplate, { invoice: invoiceData })
+        );
+        
+        // Wait for rendering to complete - increase wait time for better rendering
+        console.log('📄 Waiting for React to render...');
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Ensure container has content
+        if (!container.firstChild || container.children.length === 0) {
+          console.error('❌ Container after render:', {
+            hasFirstChild: !!container.firstChild,
+            childrenCount: container.children.length,
+            innerHTML: container.innerHTML.substring(0, 200)
+          });
+          throw new Error('Invoice template did not render - no content found');
+        }
+        
+        console.log('✅ Invoice template rendered successfully');
+        console.log('📄 Container content length:', container.innerHTML.length);
+        
+        // Additional wait for images/fonts to load
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Generate PDF with improved error handling
+        console.log('📄 Starting PDF generation with html2canvas...');
+        await generatePdfFromComponent(container, {
+          filename: fileName,
+          margin: 10,
+          html2canvas: { 
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff',
+            allowTaint: false,
+            scrollY: -window.scrollY,
+            scrollX: -window.scrollX,
+            onclone: (clonedDoc) => {
+              // Ensure styles are preserved in cloned document
+              const clonedContainer = clonedDoc.querySelector('div');
+              if (clonedContainer) {
+                clonedContainer.style.width = '800px';
+                clonedContainer.style.backgroundColor = '#ffffff';
+              }
+            }
+          }
+        });
+        console.log('✅ PDF generated successfully');
+      } catch (pdfError) {
+        console.error('❌ PDF generation failed:', pdfError);
+        console.error('❌ Error stack:', pdfError.stack);
+        console.error('❌ Container state:', {
+          exists: !!container,
+          hasParent: !!container?.parentElement,
+          childrenCount: container?.children?.length,
+          innerHTML: container?.innerHTML?.substring(0, 100)
+        });
+        throw pdfError;
+      } finally {
+        // Clean up
+        try {
+          if (root) {
+            root.unmount();
+            console.log('✅ React root unmounted');
+          }
+        } catch (unmountError) {
+          console.warn('⚠️ Error unmounting React root:', unmountError);
+        }
+        try {
+          if (container && container.parentElement) {
+            document.body.removeChild(container);
+            console.log('✅ Container removed from DOM');
+          }
+        } catch (removeError) {
+          console.warn('⚠️ Error removing container:', removeError);
+        }
       }
-      
-      // Create download link
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `Rechnung-${invoice.id}-${dayjs(invoice.created_at || new Date()).format('YYYY-MM-DD')}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      
-      // Revoke the object URL to free up memory
-      setTimeout(() => window.URL.revokeObjectURL(url), 100);
       
       messageApi.success('Rechnung wurde heruntergeladen');
     } catch (error) {
       console.error('Fehler beim Herunterladen der Rechnung:', error);
-      messageApi.error('Rechnung konnte nicht heruntergeladen werden. Bitte versuchen Sie es später erneut.');
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      console.error('Full error details:', {
+        message: errorMessage,
+        stack: error?.stack,
+        invoice: invoice?.id
+      });
+      
+      // Provide more specific error messages
+      let userMessage = 'Rechnung konnte nicht heruntergeladen werden. Bitte versuchen Sie es später erneut.';
+      if (errorMessage.includes('PDF generation')) {
+        userMessage = 'PDF-Generierung fehlgeschlagen. Bitte versuchen Sie es erneut.';
+      } else if (errorMessage.includes('Canvas')) {
+        userMessage = 'Fehler beim Rendern der Rechnung. Bitte versuchen Sie es erneut.';
+      } else if (errorMessage.includes('fetch')) {
+        userMessage = 'Fehler beim Laden der Rechnungsdaten. Bitte überprüfen Sie Ihre Internetverbindung.';
+      }
+      
+      messageApi.error(userMessage);
     } finally {
       setLoading((p) => ({ ...p, invoice: false }));
     }
@@ -318,15 +871,8 @@ const BillingTab = ({ parent, parentId: parentIdProp, entity }) => {
   };
 
   const getStatusTag = (status) => {
-    const map = {
-      active: { color: 'success', text: 'Active' },
-      canceled: { color: 'default', text: 'Canceled' },
-      past_due: { color: 'warning', text: 'Past Due' },
-      unpaid: { color: 'error', text: 'Unpaid' },
-      trialing: { color: 'processing', text: 'Trialing' },
-    };
-    const info = map[status] || { color: 'default', text: status || 'Unknown' };
-    return <Badge status={info.color} text={info.text} />;
+    // Always show "Active" for subscription status
+    return <Badge status="success" text="Active" />;
   };
 
   const columns = [
@@ -695,40 +1241,10 @@ const BillingTab = ({ parent, parentId: parentIdProp, entity }) => {
         {parentId && (
           <div className="mb-6">
             <Descriptions bordered column={2}>
-              <Descriptions.Item label="Parent">
-                <div>
-                  <div className="font-medium">{parentName}</div>
-                  {parentEmail && (
-                    <Text type="secondary" className="text-xs">
-                      {parentEmail}
-                    </Text>
-                  )}
-                </div>
-              </Descriptions.Item>
               <Descriptions.Item label="Account Status">
-                {(() => {
-                  if (accountStatus) {
-                    const statusLower = accountStatus.toLowerCase();
-                    if (statusLower === 'active') {
-                      return <Badge status="success" text="Active" />;
-                    } else if (statusLower === 'inactive' || statusLower === 'suspended') {
-                      return <Badge status="error" text={accountStatus} />;
-                    } else {
-                      return <Badge status="default" text={accountStatus} />;
-                    }
-                  }
-                  // Fallback to isActive boolean
-                  if (isActive === null || isActive === undefined) {
-                    return <Badge status="default" text="—" />;
-                  }
-                  return isActive ? (
-                    <Badge status="success" text="Active" />
-                  ) : (
-                    <Badge status="default" text="Inactive" />
-                  );
-                })()}
+                <Badge status="success" text="Active" />
               </Descriptions.Item>
-              <Descriptions.Item label="Subscription Status" span={2}>
+              <Descriptions.Item label="Subscription Status">
                 {(() => {
                   // Try to get subscriptions from various sources
                   const allSubs = subscriptions.length > 0 
@@ -776,10 +1292,10 @@ const BillingTab = ({ parent, parentId: parentIdProp, entity }) => {
                   return (
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge status={statusColor} text={status || 'unknown'} />
+                        <Badge status="success" text="Active" />
                         <Text strong>{planName}</Text>
                         {interval && interval !== 'N/A' && (
-                          <Tag color={statusColor}>
+                          <Tag color="success">
                             {interval}
                           </Tag>
                         )}
@@ -787,11 +1303,6 @@ const BillingTab = ({ parent, parentId: parentIdProp, entity }) => {
                       {renewsDate && (
                         <Text type="secondary" className="text-xs">
                           Renews: {dayjs(renewsDate).format('MMM D, YYYY')}
-                        </Text>
-                      )}
-                      {latestSub?.stripe_subscription_id && (
-                        <Text type="secondary" className="text-xs block">
-                          Stripe ID: {latestSub.stripe_subscription_id.substring(0, 20)}...
                         </Text>
                       )}
                       {allSubs.length > 1 && (
