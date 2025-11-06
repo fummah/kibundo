@@ -121,7 +121,6 @@ export default function ParentHome() {
         // Only fetch if authenticated
         const token = localStorage.getItem('kibundo_token') || sessionStorage.getItem('kibundo_token');
         if (!token) {
-          console.log("⚠️ ParentHome: Not authenticated, using default agent");
           return;
         }
         
@@ -132,13 +131,9 @@ export default function ParentHome() {
         
         if (response?.data?.parent_default_ai) {
           const fetchedAgent = response.data.parent_default_ai;
-          console.log("✅ ParentHome: Using admin-selected agent:", fetchedAgent);
           setSelectedAgent(fetchedAgent);
-        } else {
-          console.log("ℹ️ ParentHome: No parent_default_ai found, using default");
         }
       } catch (error) {
-        console.error("❌ ParentHome: Error fetching AI settings:", error);
         // Continue with default agent on error
       }
     };
@@ -163,19 +158,6 @@ export default function ParentHome() {
           const parentDetailRes = await api.get(`/parent/${parent.id}`);
           const parentData = parentDetailRes.data?.data || parentDetailRes.data || parent;
           const students = Array.isArray(parentData.student) ? parentData.student : [];
-          
-          // Debug: Log full student objects to see structure
-          console.log('📊 Full students data:', students);
-          students.forEach(s => {
-            console.log(`📊 Student ${s.id} (${s?.user?.first_name}):`, {
-              id: s.id,
-              age: s.age,
-              profile: s.profile,
-              profileAge: s.profile?.age,
-              allKeys: Object.keys(s),
-              rawStudent: s
-            });
-          });
           
           // Format students for display with actual avatars
           const formattedStudents = students.map((s, idx) => {
@@ -289,7 +271,6 @@ export default function ParentHome() {
           });
           setNews(formattedNews);
         } catch (newsErr) {
-          console.error("Failed to load news:", newsErr);
           // Fallback to dummy news matching the design exactly
           setNews([
             { id: 1, tag: "Blog Post", title: "Tips for Encouraging Reading", desc: "Learn how to foster a love for reading in your child.", image: blogNews, badgeColor: "#69b06b" },
@@ -298,7 +279,6 @@ export default function ParentHome() {
           ]);
         }
       } catch (err) {
-        console.error("Failed to load parent data:", err);
         // Fallback to empty arrays or dummy data if needed
         setChildren([]);
         setActivities([]);
@@ -427,7 +407,6 @@ export default function ParentHome() {
     try {
       // Use the fetched agent from admin settings, fallback to "ParentAgent"
       const agentToUse = selectedAgent || "ParentAgent";
-      console.log("📤 ParentHome: Sending message with agent:", agentToUse, "conversationId:", homeConversationId);
       const payload = { 
         question: q, 
         context: "User", 
@@ -455,7 +434,6 @@ export default function ParentHome() {
         ...prev,
         { role: "assistant", content: backendMsg || "Sorry, I couldn't process that right now.", agentName: "Parent Assistant" },
       ]);
-      // Optionally log: console.error(err);
     } finally {
       setSending(false);
     }

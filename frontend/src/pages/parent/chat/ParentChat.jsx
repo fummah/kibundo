@@ -79,7 +79,6 @@ export default function ParentChat() {
         // Only fetch if authenticated
         const token = localStorage.getItem('kibundo_token') || sessionStorage.getItem('kibundo_token');
         if (!token) {
-          console.log("⚠️ ParentChat: Not authenticated, using default agent");
           return;
         }
         
@@ -90,14 +89,10 @@ export default function ParentChat() {
         
         if (response?.data?.parent_default_ai) {
           const fetchedAgent = response.data.parent_default_ai;
-          console.log("✅ ParentChat: Using admin-selected agent:", fetchedAgent);
           setSelectedAgent(fetchedAgent);
           setAgentName(fetchedAgent || "Parent Assistant");
-        } else {
-          console.log("ℹ️ ParentChat: No parent_default_ai found, using default");
         }
       } catch (error) {
-        console.error("❌ ParentChat: Error fetching AI settings:", error);
         // Continue with default agent on error
       }
     };
@@ -121,11 +116,10 @@ export default function ParentChat() {
     try {
       const saved = localStorage.getItem(conversationIdKey);
       if (saved) {
-        console.log("🔄 ParentChat: Loaded existing conversationId:", saved);
         return parseInt(saved, 10);
       }
     } catch (e) {
-      console.log("❌ ParentChat: Failed to load conversationId:", e);
+      // Failed to load conversationId
     }
     return null;
   });
@@ -135,9 +129,8 @@ export default function ParentChat() {
     if (conversationId) {
       try {
         localStorage.setItem(conversationIdKey, conversationId.toString());
-        console.log("💾 ParentChat: Saved conversationId:", conversationId);
       } catch (e) {
-        console.log("❌ ParentChat: Failed to save conversationId:", e);
+        // Failed to save conversationId
       }
     }
   }, [conversationId, conversationIdKey]);
@@ -152,12 +145,9 @@ export default function ParentChat() {
       }
 
       try {
-        console.log("🔍 ParentChat: Loading conversation history for ID:", conversationId);
         const response = await api.get(`/conversations/${conversationId}/messages`);
         
         if (response?.data && Array.isArray(response.data)) {
-          console.log("✅ ParentChat: Loaded", response.data.length, "messages from history");
-          
           const formattedMessages = response.data.map(msg => {
             // Determine if this is a parent message or agent message
             // Backend stores: "parent" for parent messages, "bot" or "agent" for AI messages
@@ -170,14 +160,6 @@ export default function ParentChat() {
             
             const messageType = isParentMessage ? "sent" : (isBotMessage ? "received" : "received");
             
-            console.log("📝 ParentChat: Loading message:", {
-              id: msg.id,
-              sender: msg.sender,
-              isParentMessage,
-              isBotMessage,
-              messageType
-            });
-            
             // Safely parse timestamp
             let timestamp = new Date();
             if (msg.created_at || msg.timestamp) {
@@ -187,7 +169,7 @@ export default function ParentChat() {
                   timestamp = parsed;
                 }
               } catch (e) {
-                console.warn("Invalid timestamp in message:", msg.created_at || msg.timestamp);
+                // Invalid timestamp
               }
             }
             
@@ -207,7 +189,6 @@ export default function ParentChat() {
           }
         }
       } catch (error) {
-        console.error("❌ ParentChat: Failed to load conversation history:", error);
         // On error, show welcome message
         setMessages([makeMsg({ type: "received", content: welcomeMessage, sender: agentName })]);
       }
@@ -282,12 +263,10 @@ export default function ParentChat() {
     try {
       const dateObj = date instanceof Date ? date : new Date(date);
       if (isNaN(dateObj.getTime())) {
-        console.warn("Invalid date value:", date);
         return '';
       }
       return new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }).format(dateObj);
     } catch (error) {
-      console.error("Error formatting time:", error, date);
       return '';
     }
   };
@@ -298,7 +277,6 @@ export default function ParentChat() {
     try {
       // Use the fetched agent from admin settings, fallback to "ParentAgent"
       const agentToUse = selectedAgent || "ParentAgent";
-      console.log("📤 ParentChat: Sending message with agent:", agentToUse, "conversationId:", conversationId);
       
       const { data } = await api.post("/ai/chat", { 
         question: text, 
@@ -309,7 +287,6 @@ export default function ParentChat() {
       
       // 🔥 Update conversation ID if backend returns a new one (first message)
       if (data?.conversationId && data.conversationId !== conversationId) {
-        console.log("🔥 ParentChat: Updating conversationId from", conversationId, "to", data.conversationId);
         setConversationId(data.conversationId);
       }
       
@@ -320,7 +297,6 @@ export default function ParentChat() {
         conversationId: data?.conversationId || conversationId
       };
     } catch (err) {
-      console.error("❌ ParentChat: API error:", err);
       return { ok: false, error: err };
     }
   }, [selectedAgent, agentName, conversationId]);
@@ -399,7 +375,6 @@ export default function ParentChat() {
         try {
           // Clear conversationId from localStorage
           localStorage.removeItem(conversationIdKey);
-          console.log("🗑️ ParentChat: Cleared conversationId from localStorage");
           
           // Reset conversationId state
           setConversationId(null);
@@ -412,7 +387,6 @@ export default function ParentChat() {
           
           message.success("New chat started");
         } catch (e) {
-          console.error("❌ ParentChat: Failed to start new chat:", e);
           message.error("Failed to start new chat. Please try again.");
         }
       },
@@ -504,18 +478,6 @@ export default function ParentChat() {
                 {messages.map((msg, idx) => {
                   const isParent = msg.type === 'sent';
                   const isAgent = msg.type === 'received' || msg.type === 'error';
-                  
-                  // Debug log for first few messages
-                  if (idx < 3) {
-                    console.log("🎨 ParentChat: Rendering message:", {
-                      idx,
-                      id: msg.id,
-                      type: msg.type,
-                      isParent,
-                      isAgent,
-                      sender: msg.sender
-                    });
-                  }
                   
                   return (
                     <div
