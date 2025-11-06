@@ -471,6 +471,7 @@ export default function ChatLayer({
       lastSentTimeRef.current = now;
 
       setSending(true);
+      setTyping(true); // Show thinking indicator in chat area
       const userMessage = formatMessage(t, "student");
 
       // Only append immediately if it doesn't already exist
@@ -533,6 +534,7 @@ export default function ChatLayer({
         );
       } finally {
         setSending(false);
+        setTyping(false); // Hide thinking indicator when done
         sendingInProgressRef.current = false; // 🔥 UNLOCK
       }
     },
@@ -774,20 +776,25 @@ export default function ChatLayer({
 
         {(typing || externalTyping) && (
           <div className="w-full flex justify-start mb-3">
-            <img
-              src={agentIcon}
-              alt="Kibundo"
-              className="w-7 h-7 rounded-full mr-2 self-end"
-            />
-            <div className="max-w-[78%] px-3 py-2 rounded-2xl shadow-sm bg-[#aee17b] text-[#1b3a1b]">
+            <div className="flex flex-col mr-2 self-end">
+              <img
+                src={agentIcon}
+                alt={assignedAgent.name || "Kibundo"}
+                className="w-7 h-7 rounded-full"
+              />
+              <div className="text-xs text-gray-600 mt-1 text-center max-w-[60px] break-words">
+                {assignedAgent.name || "Kibundo"}
+              </div>
+            </div>
+            <div className="max-w-[78%] px-3 py-2 rounded-2xl shadow-sm bg-white border border-gray-200">
               <div className="flex gap-1">
-                <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" />
+                <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" />
                 <div
-                  className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce"
+                  className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"
                   style={{ animationDelay: "0.1s" }}
                 />
                 <div
-                  className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce"
+                  className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"
                   style={{ animationDelay: "0.2s" }}
                 />
               </div>

@@ -26,20 +26,10 @@ exports.chatWithAgent = async (req, res) => {
     // Use entities from request body if provided, otherwise use agent's entities
     const entitiesToFetch = entities || agentEntities || [];
     
-    // 🔥 STEP 2: Fetch data from entity tables
-    let entityData = {};
-    if (entitiesToFetch.length > 0) {
-      console.log(`📊 Fetching data from entities:`, entitiesToFetch);
-      entityData = await fetchEntityData(entitiesToFetch, {
-        class: classFilter,
-        state: state
-      });
-      console.log(`✅ Fetched entity data counts:`, Object.keys(entityData).map(k => `${k}: ${entityData[k].count}`).join(', '));
-    }
-
     // Build structured context
     let contextObj = {};
     let trimmedContext = {};
+    let entityData = {}; // 🔥 Declare entityData at top level so it's accessible in system prompt
     
     // Determine agent type based on naming convention
     let agentType = "child"; // Default to child agent
@@ -53,13 +43,73 @@ exports.chatWithAgent = async (req, res) => {
     
     if(agentType === "parent" || ai_agent == "ParentAgent")
       {
-       contextObj = await buildContext(req);  
-       trimmedContext = summarizeContextParent(contextObj);
+       // 🔥 DEBUG: Log req.user before building context
+       console.log(`🔍 AI Controller (Parent): req.user=`, req.user ? { id: req.user.id, email: req.user.email, role_id: req.user.role_id } : 'null/undefined');
+       console.log(`🔍 AI Controller (Parent): req.body.user=`, req.body?.user ? { id: req.body.user.id, email: req.body.user.email } : 'null/undefined');
+       
+       contextObj = await buildContext(req);
+       console.log(`🔍 AI Controller: contextObj keys=`, Object.keys(contextObj));
+       console.log(`🔍 AI Controller: contextObj.user=`, contextObj.user ? { id: contextObj.user.id, email: contextObj.user.email } : contextObj.user);
+       console.log(`🔍 AI Controller: contextObj.parent length=${Array.isArray(contextObj.parent) ? contextObj.parent.length : 'not array'}`);
+       console.log(`🔍 AI Controller: contextObj.children length=${contextObj.children?.length || 0}`);
+       if (contextObj.error) {
+         console.log(`❌ AI Controller: buildContext returned error: ${contextObj.error}`);
+       }
+       trimmedContext = summarizeContextParent(contextObj, req);
+       console.log(`🔍 AI Controller: trimmedContext.children_count=${trimmedContext.children_count}`);
+       
+       // 🔥 STEP 2: Fetch data from entity tables WITH parent context
+       // Extract parent ID from context for filtering
+       const parentId = contextObj.parent?.[0]?.id || null;
+       const userId = req.user?.id || null;
+       
+       if (entitiesToFetch.length > 0) {
+         console.log(`📊 Fetching data from entities for parent:`, entitiesToFetch, `parentId: ${parentId}, userId: ${userId}`);
+         entityData = await fetchEntityData(entitiesToFetch, {
+           class: classFilter,
+           state: state,
+           userId: userId,
+           parentId: parentId
+         });
+         console.log(`✅ Fetched entity data counts:`, Object.keys(entityData).map(k => `${k}: ${entityData[k].count}`).join(', '));
+       }
+       
+       // Add entity data to trimmed context
+       if (Object.keys(entityData).length > 0) {
+         trimmedContext.entity_data = entityData;
+         trimmedContext.entities_summary = Object.keys(entityData).map(entityName => {
+           const data = entityData[entityName];
+           return `${entityName}: ${data.count} records${data.error ? ` (error: ${data.error})` : ''}`;
+         }).join(', ');
+         console.log(`📊 Entity data summary:`, trimmedContext.entities_summary);
+       }
       }
       else if(agentType === "child" || ai_agent == "ChildAgent")
       {
         contextObj = await childBuildContext(req)
         trimmedContext = summarizeContextChild(contextObj);
+        
+        // 🔥 STEP 2: Fetch data from entity tables WITH user context
+        const userId = req.user?.id || null;
+        if (entitiesToFetch.length > 0) {
+          console.log(`📊 Fetching data from entities for child:`, entitiesToFetch, `userId: ${userId}`);
+          entityData = await fetchEntityData(entitiesToFetch, {
+            class: classFilter,
+            state: state,
+            userId: userId
+          });
+          console.log(`✅ Fetched entity data counts:`, Object.keys(entityData).map(k => `${k}: ${entityData[k].count}`).join(', '));
+        }
+        
+        // Add entity data to trimmed context
+        if (Object.keys(entityData).length > 0) {
+          trimmedContext.entity_data = entityData;
+          trimmedContext.entities_summary = Object.keys(entityData).map(entityName => {
+            const data = entityData[entityName];
+            return `${entityName}: ${data.count} records${data.error ? ` (error: ${data.error})` : ''}`;
+          }).join(', ');
+          console.log(`📊 Entity data summary:`, trimmedContext.entities_summary);
+        }
         
         // Add specific homework context if scanId is provided
         if (scanId && mode === "homework") {
@@ -84,9 +134,55 @@ exports.chatWithAgent = async (req, res) => {
       {
         contextObj = await teacherContextBuilder(req)
         trimmedContext = summarizeContextTeacher(contextObj);
+        
+        // 🔥 STEP 2: Fetch data from entity tables WITH user context
+        const userId = req.user?.id || null;
+        if (entitiesToFetch.length > 0) {
+          console.log(`📊 Fetching data from entities for teacher:`, entitiesToFetch, `userId: ${userId}`);
+          entityData = await fetchEntityData(entitiesToFetch, {
+            class: classFilter,
+            state: state,
+            userId: userId
+          });
+          console.log(`✅ Fetched entity data counts:`, Object.keys(entityData).map(k => `${k}: ${entityData[k].count}`).join(', '));
+        }
+        
+        // Add entity data to trimmed context
+        if (Object.keys(entityData).length > 0) {
+          trimmedContext.entity_data = entityData;
+          trimmedContext.entities_summary = Object.keys(entityData).map(entityName => {
+            const data = entityData[entityName];
+            return `${entityName}: ${data.count} records${data.error ? ` (error: ${data.error})` : ''}`;
+          }).join(', ');
+          console.log(`📊 Entity data summary:`, trimmedContext.entities_summary);
+        }
       }
       else if (agentType === "custom" || ai_agent === "CustomAgent") {
       // For custom agents, use the dynamic builder
+      
+      // 🔥 Also include user context and parent context if user is a parent
+      let parentId = null;
+      let parentContext = null;
+      if (req.user?.role_id === 2) {
+        // User is a parent - get parent ID for entity filtering
+        parentContext = await buildContext(req);
+        const parentTrimmed = summarizeContextParent(parentContext, req);
+        parentId = parentContext.parent?.[0]?.id || null;
+        console.log("✅ Custom agent: Parent ID for filtering:", parentId);
+      }
+      
+      // Fetch entity data with appropriate context
+      const userId = req.user?.id || null;
+      if (entitiesToFetch.length > 0) {
+        console.log(`📊 Fetching data from entities for custom agent:`, entitiesToFetch, `userId: ${userId}, parentId: ${parentId}`);
+        entityData = await fetchEntityData(entitiesToFetch, {
+          class: classFilter,
+          state: state,
+          userId: userId,
+          parentId: parentId
+        });
+        console.log(`✅ Fetched entity data counts:`, Object.keys(entityData).map(k => `${k}: ${entityData[k].count}`).join(', '));
+      }
       
       contextObj = await buildCustomAgentContext({
         user: req.user,
@@ -95,14 +191,18 @@ exports.chatWithAgent = async (req, res) => {
         state
       });
     
-      // Custom agents already have entity_data in their context
+      // Custom agents already have entity_data in their context, but we'll override with filtered data
       trimmedContext = contextObj || {};
+      trimmedContext.entity_data = entityData;
+      trimmedContext.entities_summary = Object.keys(entityData).map(entityName => {
+        const data = entityData[entityName];
+        return `${entityName}: ${data.count} records${data.error ? ` (error: ${data.error})` : ''}`;
+      }).join(', ');
       
       // 🔥 Also include user context and parent context if user is a parent
-      if (req.user?.role_id === 2) {
+      if (req.user?.role_id === 2 && parentContext) {
         // User is a parent - include parent context with children
-        const parentContext = await buildContext(req);
-        const parentTrimmed = summarizeContextParent(parentContext);
+        const parentTrimmed = summarizeContextParent(parentContext, req);
         trimmedContext.user = parentTrimmed.user;
         trimmedContext.children = parentTrimmed.children;
         trimmedContext.children_count = parentTrimmed.children_count;
@@ -130,15 +230,28 @@ exports.chatWithAgent = async (req, res) => {
       console.log("🤖 Unknown agent type, falling back to child context:", ai_agent);
       contextObj = await childBuildContext(req)
       trimmedContext = summarizeContextChild(contextObj);
-    }
-    // 🔥 STEP 3: Add entity data to trimmed context
-    if (Object.keys(entityData).length > 0) {
-      trimmedContext.entity_data = entityData;
-      trimmedContext.entities_summary = Object.keys(entityData).map(entityName => {
-        const data = entityData[entityName];
-        return `${entityName}: ${data.count} records${data.error ? ` (error: ${data.error})` : ''}`;
-      }).join(', ');
-      console.log(`📊 Entity data summary:`, trimmedContext.entities_summary);
+      
+      // 🔥 STEP 2: Fetch data from entity tables WITH user context
+      const userId = req.user?.id || null;
+      if (entitiesToFetch.length > 0) {
+        console.log(`📊 Fetching data from entities for unknown agent:`, entitiesToFetch, `userId: ${userId}`);
+        entityData = await fetchEntityData(entitiesToFetch, {
+          class: classFilter,
+          state: state,
+          userId: userId
+        });
+        console.log(`✅ Fetched entity data counts:`, Object.keys(entityData).map(k => `${k}: ${entityData[k].count}`).join(', '));
+      }
+      
+      // Add entity data to trimmed context
+      if (Object.keys(entityData).length > 0) {
+        trimmedContext.entity_data = entityData;
+        trimmedContext.entities_summary = Object.keys(entityData).map(entityName => {
+          const data = entityData[entityName];
+          return `${entityName}: ${data.count} records${data.error ? ` (error: ${data.error})` : ''}`;
+        }).join(', ');
+        console.log(`📊 Entity data summary:`, trimmedContext.entities_summary);
+      }
     }
 
     console.log("🎯 Full context object:", JSON.stringify(contextObj, null, 2));
@@ -503,7 +616,20 @@ KRITISCHE HAUSAUFGABEN-ANWEISUNGEN:
 };
 
 // small helper to reduce context size
-function summarizeContextParent(ctx) {
+function summarizeContextParent(ctx, req = null) {
+  // 🔥 DEBUG: Log what we're receiving
+  console.log(`🔍 summarizeContextParent: ctx.children type=${Array.isArray(ctx.children) ? 'array' : typeof ctx.children}, length=${ctx.children?.length || 0}`);
+  console.log(`🔍 summarizeContextParent: ctx.user=`, ctx.user ? { id: ctx.user.id, email: ctx.user.email, first_name: ctx.user.first_name, last_name: ctx.user.last_name } : 'null');
+  
+  if (ctx.children && ctx.children.length > 0) {
+    console.log(`  Children data:`, ctx.children.map(c => ({
+      id: c.id,
+      user_id: c.user_id,
+      has_user: !!c.user,
+      user_name: c.user ? `${c.user.first_name || ''} ${c.user.last_name || ''}`.trim() : 'no user'
+    })));
+  }
+  
   // Extract children with proper name and class information
   const children = (ctx.children || []).map(c => {
     const user = c.user || {};
@@ -518,8 +644,30 @@ function summarizeContextParent(ctx) {
     };
   });
 
+  console.log(`🔍 summarizeContextParent: Processed ${children.length} children`);
+  if (children.length > 0) {
+    console.log(`  Processed children:`, children.map(c => c.full_name));
+  }
+
+  // 🔥 Ensure user object always has required fields, fallback to req.user if needed
+  let user = ctx.user;
+  if (!user || !user.id) {
+    console.log(`⚠️ summarizeContextParent: ctx.user is null or missing id, using req.user as fallback`);
+    if (req && req.user) {
+      user = {
+        id: req.user.id,
+        email: req.user.email || 'unknown',
+        first_name: req.user.first_name || '',
+        last_name: req.user.last_name || '',
+        role_id: req.user.role_id || 2
+      };
+    } else {
+      user = { id: null, email: 'unknown', first_name: '', last_name: '' };
+    }
+  }
+
   return {
-    user: ctx.user,
+    user: user,
     subscription: ctx.subscription?.[0] ? {
       plan: ctx.subscription[0].product?.name || 'N/A',
       status: ctx.subscription[0].status || 'N/A'

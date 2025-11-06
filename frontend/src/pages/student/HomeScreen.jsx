@@ -1,6 +1,7 @@
 import React from "react";
 import { Row, Col } from "antd";
 import { useNavigate } from "react-router-dom";
+import { useChatDock } from "@/context/ChatDockContext.jsx";
 
 import ImageTile from "@/components/student/mobile/ImageTile";
 import SettingsRibbon from "@/components/student/mobile/SettingsRibbon";
@@ -16,6 +17,7 @@ import bottomBg from "@/assets/backgrounds/int-back.png";
 
 export default function HomeMobile() {
   const navigate = useNavigate();
+  const { closeChat } = useChatDock();
 
   // Desktop Layout - Shows starting from iPad (md: 768px and above)
   const DesktopLayout = () => (
@@ -65,7 +67,10 @@ export default function HomeMobile() {
                 title="Hausaufgaben"
                 bg={TILE_BG.blue}
                 illustration={IMGS.homework}
-                onClick={() => navigate("/student/homework")}
+                onClick={() => {
+                  closeChat?.(); // Close chat before navigating (same approach as onboarding)
+                  navigate("/student/homework");
+                }}
                 ariaLabel="Zu Hausaufgaben"
                 data-testid="tile-homework"
               />
@@ -149,7 +154,10 @@ export default function HomeMobile() {
       <main className="relative flex-1 px-4 py-6 bg-[#f7f2ec]" aria-label="Schnellzugriffe">
         <div className="max-w-md mx-auto space-y-4">
           <button
-            onClick={() => navigate("/student/homework")}
+            onClick={() => {
+              closeChat?.(); // Close chat before navigating (same approach as onboarding)
+              navigate("/student/homework");
+            }}
             className="w-full p-4 rounded-2xl shadow-md transition-transform active:scale-95"
             style={{ backgroundColor: TILE_BG.blue }}
             aria-label="Zu Hausaufgaben"

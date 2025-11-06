@@ -550,7 +550,7 @@ export default function StudentSettings() {
                           {name || defaultName || "Student"}
                         </Title>
                         <Text className="text-white/90 text-lg">
-                          Student ID: {userId || "N/A"}
+                          Student ID: {serverStudentId || "N/A"}
                         </Text>
                       </Col>
                     </Row>
@@ -582,7 +582,7 @@ export default function StudentSettings() {
                           <div className="space-y-2">
                             <Text strong className="text-base">Student ID</Text>
                             <Input 
-                              value={userId || "N/A"} 
+                              value={serverStudentId || "N/A"} 
                               disabled 
                               className="rounded-xl" 
                               size="large"

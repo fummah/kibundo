@@ -1,5 +1,6 @@
 // services/entityDataFetcher.js
 const db = require('../models');
+const { Op } = require('sequelize');
 
 /**
  * Fetches all data from specified entity tables
@@ -68,9 +69,68 @@ async function fetchEntityData(entities = [], options = {}) {
         whereClause.state = options.state;
       }
 
+      // 🔥 Filter by user/parent context for parent agents
+      // For parent agents, filter entities to only include data related to the current parent
+      if (options.userId || options.parentId) {
+        const normalizedEntityName = mappedName.toLowerCase();
+        
+        // Filter STUDENTS by parent_id
+        if (normalizedEntityName === 'student' && options.parentId) {
+          whereClause.parent_id = options.parentId;
+          console.log(`🔍 Filtering STUDENTS by parent_id: ${options.parentId}`);
+        }
+        
+        // Filter SUBSCRIPTIONS by parent_id
+        if (normalizedEntityName === 'subscription' && options.parentId) {
+          whereClause.parent_id = options.parentId;
+          console.log(`🔍 Filtering SUBSCRIPTIONS by parent_id: ${options.parentId}`);
+        }
+        
+        // Filter INVOICES by parent_id
+        if (normalizedEntityName === 'invoice' && options.parentId) {
+          whereClause.parent_id = options.parentId;
+          console.log(`🔍 Filtering INVOICES by parent_id: ${options.parentId}`);
+        }
+        
+        // Filter HOMEWORK_SCANS by student's parent_id (via student relationship)
+        if (normalizedEntityName === 'homeworkscan' && options.parentId) {
+          // We'll need to filter via student relationship
+          // For now, we'll fetch all and filter in memory, or use include
+          console.log(`🔍 Filtering HOMEWORK_SCANS by parent_id: ${options.parentId}`);
+        }
+        
+        // Filter USERS - for parents, only return the current user
+        if (normalizedEntityName === 'user' && options.userId) {
+          whereClause.id = options.userId;
+          console.log(`🔍 Filtering USERS by user_id: ${options.userId}`);
+        }
+      }
+
+      // For HOMEWORK_SCANS with parent filter, we need to filter by student_id where student belongs to parent
+      let includeOptions = undefined;
+      if (normalizedName === 'homeworkscan' && options.parentId) {
+        // First, get all student IDs for this parent
+        const Student = db.student;
+        const students = await Student.findAll({
+          where: { parent_id: options.parentId },
+          attributes: ['id']
+        });
+        const studentIds = students.map(s => s.id);
+        
+        if (studentIds.length > 0) {
+          // Filter homework scans by student_id
+          whereClause.student_id = { [Op.in]: studentIds };
+          console.log(`🔍 Filtering HOMEWORK_SCANS by student_ids: ${studentIds.length} students`);
+        } else {
+          // No students for this parent, return empty result
+          whereClause.student_id = { [Op.in]: [] };
+        }
+      }
+
       // Fetch all records (limit to reasonable number to avoid huge context)
       const records = await Model.findAll({
         where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
+        include: includeOptions,
         limit: 1000, // Limit to prevent context from being too large
         order: [['id', 'DESC']], // Most recent first
         attributes: { exclude: ['password'] } // Always exclude passwords

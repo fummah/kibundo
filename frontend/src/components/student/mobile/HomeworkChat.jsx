@@ -565,6 +565,7 @@ export default function HomeworkChat({
 
       sendingRef.current = true;
       setSending(true);
+      setTyping(true); // Show thinking indicator in chat area
 
       const optimisticMsg = formatMessage(t, "student", "text", { pending: true });
       updateMessages((m) => [...m, optimisticMsg]);
@@ -670,6 +671,7 @@ export default function HomeworkChat({
         antdMessage.error(`Nachricht fehlgeschlagen: ${serverMsg}`);
       } finally {
         setSending(false);
+        setTyping(false); // Hide thinking indicator when done
         sendingRef.current = false;
       }
     },
@@ -680,6 +682,7 @@ export default function HomeworkChat({
     async (files) => {
       if (!files.length || uploading) return;
       setUploading(true);
+      setTyping(true); // Show thinking indicator when uploading
 
       const readAsDataURL = (file) =>
         new Promise((resolve, reject) => {
@@ -889,6 +892,7 @@ export default function HomeworkChat({
         }
       } finally {
         setUploading(false);
+        setTyping(false); // Hide thinking indicator when upload is done
       }
     },
     [onSendMedia, updateMessages, antdMessage, uploading, conversationId, studentId, taskId]
@@ -1138,12 +1142,27 @@ export default function HomeworkChat({
 
         {(typing || externalTyping) && (
           <div className="w-full flex justify-start mb-3">
-            <img src={agentIcon} alt="Kibundo" className="w-7 h-7 rounded-full mr-2 self-end" />
-            <div className="max-w-[78%] px-3 py-2 rounded-2xl shadow-sm bg-[#aee17b] text-[#1b3a1b]">
+            <div className="flex flex-col mr-2 self-end">
+              <img
+                src={agentIcon}
+                alt={selectedAgent || "Kibundo"}
+                className="w-7 h-7 rounded-full"
+              />
+              <div className="text-xs text-gray-600 mt-1 text-center max-w-[60px] break-words">
+                {selectedAgent || "Kibundo"}
+              </div>
+            </div>
+            <div className="max-w-[78%] px-3 py-2 rounded-2xl shadow-sm bg-white border border-gray-200">
               <div className="flex gap-1">
-                <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" />
-                <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" style={{ animationDelay: "0.1s" }} />
-                <div className="w-2 h-2 rounded-full bg-[#1b3a1b]/60 animate-bounce" style={{ animationDelay: "0.2s" }} />
+                <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" />
+                <div
+                  className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"
+                  style={{ animationDelay: "0.1s" }}
+                />
+                <div
+                  className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"
+                  style={{ animationDelay: "0.2s" }}
+                />
               </div>
             </div>
           </div>
@@ -1220,9 +1239,7 @@ export default function HomeworkChat({
               type="button"
               disabled={sending || uploading}
             >
-              {sending || uploading ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : draft.trim() ? (
+              {draft.trim() ? (
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
                   <path d="M21.44 2.56a1 1 0 0 0-1.05-.22L3.6 9.06a1 1 0 0 0 .04 1.87l6.9 2.28 2.3 6.91a1 1 0 0 0 1.86.03l6.74-16.78a1 1 0 0 0-.99-1.81ZM11.8 13.18l-4.18-1.38 9.68-4.04-5.5 5.42Z" />
                 </svg>
