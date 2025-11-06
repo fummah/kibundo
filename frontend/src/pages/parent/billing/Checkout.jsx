@@ -21,7 +21,7 @@ import {
   UpOutlined,
 } from "@ant-design/icons";
 import api from "@/api/axios";
-import ParentShell from "@/components/parent/ParentShell";
+// ParentShell is now handled at route level
 import globalBg from "@/assets/backgrounds/global-bg.png";
 
 const { Title, Text } = Typography;
@@ -278,33 +278,29 @@ export default function Checkout() {
 
   if (loading) {
     return (
-      <ParentShell bgImage={globalBg}>
-        <div className="w-full min-h-[100dvh] flex justify-center items-center">
-          <Spin size="large" />
-        </div>
-      </ParentShell>
+      <div className="w-full min-h-[100dvh] flex justify-center items-center">
+        <Spin size="large" />
+      </div>
     );
   }
 
   if (error) {
     return (
-      <ParentShell bgImage={globalBg}>
-        <div className="w-full min-h-[100dvh] flex justify-center">
-          <div className="w-full max-w-2xl mx-auto px-4 py-8">
-            <Alert
-              message="Error"
-              description={error}
-              type="error"
-              showIcon
-              action={
-                <Button onClick={() => navigate("/parent/billing/subscription")}>
-                  Go Back
-                </Button>
-              }
-            />
-          </div>
+      <div className="w-full min-h-[100dvh] flex justify-center">
+        <div className="w-full max-w-2xl mx-auto px-4 py-8">
+          <Alert
+            message="Error"
+            description={error}
+            type="error"
+            showIcon
+            action={
+              <Button onClick={() => navigate("/parent/billing/subscription")}>
+                Go Back
+              </Button>
+            }
+          />
         </div>
-      </ParentShell>
+      </div>
     );
   }
 
@@ -313,7 +309,6 @@ export default function Checkout() {
   const total = Math.max(0, subtotal - discount);
 
   return (
-    <ParentShell bgImage={globalBg}>
       <div className="w-full min-h-[100dvh] flex justify-center">
         <div className="w-full max-w-2xl mx-auto px-4 py-6 space-y-6">
           {/* Breadcrumb Navigation */}
@@ -504,7 +499,6 @@ export default function Checkout() {
           </Text>
         </div>
       </div>
-    </ParentShell>
   );
 }
 

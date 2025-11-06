@@ -1,11 +1,13 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import api from "@/api/axios";
-import ParentShell from "@/components/parent/ParentShell.jsx";
+// ParentShell is now handled at route level
 import BuddyAvatar from "@/components/student/BuddyAvatar";
 import globalBg from "@/assets/backgrounds/global-bg.png";
+import monster1 from "@/assets/buddies/monster1.png";
+import monster2 from "@/assets/buddies/monster2.png";
 
 import {
   Button,
@@ -45,6 +47,8 @@ export default function AddStudentFlow() {
   const [parentId, setParentId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingDropdowns, setLoadingDropdowns] = useState(false);
+  const [checkingStudents, setCheckingStudents] = useState(true);
+  const isInitialMountRef = React.useRef(true);
 
   // Fetch dropdown options (classes, subjects, states) when on step 2
   useEffect(() => {
@@ -83,60 +87,115 @@ export default function AddStudentFlow() {
     fetchDropdowns();
   }, [step]);
 
-  // Fetch parent ID and students
+  // Fetch parent ID and students on mount
   useEffect(() => {
     const fetchData = async () => {
-      if (step === 1) {
-        setLoading(true);
-        try {
-          // Get current user to find parent_id
-          const currentUserRes = await api.get("/current-user");
-          const currentUser = currentUserRes.data;
-          
-          // Get parent_id from user's parent relationship
-          let foundParentId = null;
-          if (currentUser?.parent && Array.isArray(currentUser.parent) && currentUser.parent.length > 0) {
-            foundParentId = currentUser.parent[0].id;
-          } else if (currentUser?.parent?.id) {
-            foundParentId = currentUser.parent.id;
-          } else if (currentUser?.parent_id) {
-            foundParentId = currentUser.parent_id;
-          }
-          
-          setParentId(foundParentId);
-          
-          // Fetch all students and filter by parent_id
-          if (foundParentId) {
-            const studentsRes = await api.get("/allstudents");
-            const allStudents = Array.isArray(studentsRes.data) 
-              ? studentsRes.data 
-              : (studentsRes.data?.data || []);
-            
-            // Filter students by parent_id
-            const parentStudents = allStudents.filter(s => s.parent_id === foundParentId);
-            setStudents(parentStudents);
-          }
-          
-          // Fetch classes for display in step 1 (if needed)
-          const classesRes = await api.get("/allclasses");
-          const allClasses = Array.isArray(classesRes.data) 
-            ? classesRes.data 
-            : (classesRes.data?.data || []);
-          setClasses(allClasses);
-        } catch (error) {
-          console.error("❌ Error fetching data:", error);
-          message.error(t("parent.addStudent.fetchError", "Failed to load students."));
-        } finally {
-          setLoading(false);
+      setCheckingStudents(true);
+      setLoading(true);
+      try {
+        // Get current user to find parent_id
+        const currentUserRes = await api.get("/current-user");
+        const currentUser = currentUserRes.data;
+        
+        // Get parent_id from user's parent relationship
+        let foundParentId = null;
+        if (currentUser?.parent && Array.isArray(currentUser.parent) && currentUser.parent.length > 0) {
+          foundParentId = currentUser.parent[0].id;
+        } else if (currentUser?.parent?.id) {
+          foundParentId = currentUser.parent.id;
+        } else if (currentUser?.parent_id) {
+          foundParentId = currentUser.parent_id;
         }
+        
+        setParentId(foundParentId);
+        
+        // Fetch all students and filter by parent_id
+        if (foundParentId) {
+          const studentsRes = await api.get("/allstudents");
+          const allStudents = Array.isArray(studentsRes.data) 
+            ? studentsRes.data 
+            : (studentsRes.data?.data || []);
+          
+          // Filter students by parent_id
+          const parentStudents = allStudents.filter(s => s.parent_id === foundParentId);
+          setStudents(parentStudents);
+          
+          // Auto-skip to form if no students and on step 0 or 1
+          // Do this after setting students, but defer navigation to avoid render warnings
+          const currentUrlStep = params.get("step");
+          if (parentStudents.length === 0 && currentUrlStep !== "2" && currentUrlStep !== "3") {
+            const currentStepNum = Number(currentUrlStep);
+            const isValidStep = Number.isFinite(currentStepNum) ? Math.max(0, Math.min(3, currentStepNum)) : 0;
+            if (isValidStep === 0 || isValidStep === 1) {
+              // Defer navigation to next tick to avoid render warnings
+              setTimeout(() => {
+                navigate("/parent/myfamily/add-student-flow?step=2", { replace: true });
+              }, 0);
+            }
+          }
+        }
+        
+        // Fetch classes for display
+        const classesRes = await api.get("/allclasses");
+        const allClasses = Array.isArray(classesRes.data) 
+          ? classesRes.data 
+          : (classesRes.data?.data || []);
+        setClasses(allClasses);
+      } catch (error) {
+        console.error("❌ Error fetching data:", error);
+        message.error(t("parent.addStudent.fetchError", "Failed to load students."));
+      } finally {
+        setLoading(false);
+        setCheckingStudents(false);
       }
     };
     
     fetchData();
-  }, [step, t]);
+  }, [t, navigate, params]); // Added navigate and params for auto-skip logic
 
-  const goBack = () => setStep((s) => Math.max(0, s - 1));
-  const goNext = () => setStep((s) => Math.min(3, s + 1));
+  // Sync step with URL parameter (only after initial mount)
+  useEffect(() => {
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      return;
+    }
+    
+    const urlStepParam = params.get("step");
+    const urlStepNum = Number(urlStepParam);
+    if (Number.isFinite(urlStepNum)) {
+      const validStep = Math.max(0, Math.min(3, urlStepNum));
+      // Only update if different to avoid unnecessary re-renders
+      setStep((currentStep) => {
+        return currentStep !== validStep ? validStep : currentStep;
+      });
+    }
+  }, [params]);
+
+
+  const goBack = () => {
+    setStep((s) => {
+      const newStep = Math.max(0, s - 1);
+      // If going back from step 2 and parent has no students, go to step 0 (intro) instead of step 1
+      if (s === 2 && newStep === 1 && students.length === 0) {
+        navigate("/parent/myfamily/add-student-flow?step=0", { replace: true });
+        return 0;
+      }
+      navigate(`/parent/myfamily/add-student-flow?step=${newStep}`, { replace: true });
+      return newStep;
+    });
+  };
+  
+  const goNext = () => {
+    setStep((s) => {
+      let newStep = Math.min(3, s + 1);
+      // If going from step 0 to step 1, but parent has no students, skip to step 2
+      if (s === 0 && newStep === 1 && students.length === 0) {
+        newStep = 2;
+      }
+      navigate(`/parent/myfamily/add-student-flow?step=${newStep}`, { replace: true });
+      return newStep;
+    });
+  };
 
   const onCreate = async (values) => {
     setSubmitting(true);
@@ -240,17 +299,40 @@ export default function AddStudentFlow() {
     }
   };
 
+  // Show loading while checking if parent has students
+  if (checkingStudents && step !== 2 && step !== 3) {
+    return (
+      <div className="mx-auto w-full max-w-[820px] py-6 px-4">
+        <Card className="rounded-2xl shadow-sm">
+          <div className="flex justify-center py-8">
+            <Spin size="large" />
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <ParentShell bgImage={globalBg}>
       <div className="mx-auto w-full max-w-[820px] py-6 px-4">
         {/* ---------- Step 0: Intro (with mascot) ---------- */}
         {step === 0 && (
-          <Card className="rounded-2xl shadow-sm">
+          <Card 
+            className="rounded-2xl shadow-sm"
+            title={
+              <Space>
+                <Button 
+                  type="text" 
+                  icon={<LeftOutlined />} 
+                  onClick={() => navigate("/parent/home")}
+                />
+                <span className="font-semibold">
+                  {t("parent.addStudent.introTitle", "Create a student account")}
+                </span>
+              </Space>
+            }
+          >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
               <div className="order-2 md:order-1">
-                <Title level={3} className="!mb-2">
-                  {t("parent.addStudent.introTitle", "Create a student account")}
-                </Title>
                 <Text className="text-neutral-600">
                   {t(
                     "parent.addStudent.introText",
@@ -262,7 +344,11 @@ export default function AddStudentFlow() {
                     type="primary"
                     size="large"
                     icon={<PlusOutlined />}
-                    onClick={goNext}
+                    onClick={() => {
+                      // Always go directly to form (step 2)
+                      setStep(2);
+                      navigate("/parent/myfamily/add-student-flow?step=2", { replace: true });
+                    }}
                   >
                     {t("parent.addStudent.add", "Add Student")}
                   </Button>
@@ -270,7 +356,7 @@ export default function AddStudentFlow() {
               </div>
 
               <div className="order-1 md:order-2 flex justify-center">
-              <BuddyAvatar src="/buddies/monster1.png" size={160} ring={false} />
+              <BuddyAvatar src={monster1} size={160} ring={false} />
               </div>
             </div>
           </Card>
@@ -300,7 +386,10 @@ export default function AddStudentFlow() {
                   const firstName = studentUser.first_name || "";
                   const lastName = studentUser.last_name || "";
                   const fullName = `${firstName} ${lastName}`.trim() || `Student #${s.id}`;
-                  const avatar = studentUser.avatar || `/buddies/monster${(s.id % 3) + 1}.png`;
+                  // Map student ID to monster image (cycle through monster1, monster2)
+                  const monsterImages = [monster1, monster2];
+                  const defaultAvatar = monsterImages[(s.id - 1) % 2];
+                  const avatar = studentUser.avatar || defaultAvatar;
                   
                   return (
                     <div
@@ -323,7 +412,10 @@ export default function AddStudentFlow() {
             )}
 
             <div className="mt-6 flex items-center justify-between">
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setStep(2)}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => {
+                setStep(2);
+                navigate("/parent/myfamily/add-student-flow?step=2", { replace: true });
+              }}>
                 {t("parent.addStudent.addAnother", "Add another student")}
               </Button>
               <Button onClick={() => navigate("/parent/home")}>
@@ -339,7 +431,19 @@ export default function AddStudentFlow() {
             className="rounded-2xl shadow-sm"
             title={
               <Space>
-                <Button type="text" icon={<LeftOutlined />} onClick={goBack} />
+                <Button 
+                  type="text" 
+                  icon={<LeftOutlined />} 
+                  onClick={() => {
+                    // If parent has students, go back to student list (step 1)
+                    // Otherwise, go to home screen
+                    if (students.length > 0) {
+                      goBack();
+                    } else {
+                      navigate("/parent/home");
+                    }
+                  }}
+                />
                 <span className="font-semibold">
                   {t("parent.addStudent.formTitle", "Student Details")}
                 </span>
@@ -459,7 +563,19 @@ export default function AddStudentFlow() {
               </Form.Item>
 
               <div className="flex items-center justify-end gap-2">
-                <Button onClick={goBack}>{t("common.back", "Back")}</Button>
+                <Button 
+                  onClick={() => {
+                    // If parent has students, go back to student list (step 1)
+                    // Otherwise, go to home screen
+                    if (students.length > 0) {
+                      goBack();
+                    } else {
+                      navigate("/parent/home");
+                    }
+                  }}
+                >
+                  {t("common.back", "Back")}
+                </Button>
                 <Button type="primary" htmlType="submit" loading={submitting}>
                   {t("parent.addStudent.create", "Create")}
                 </Button>
@@ -487,14 +603,17 @@ export default function AddStudentFlow() {
                   <Button type="primary" onClick={() => navigate("/parent/home")}>
                     {t("parent.addStudent.backHome", "Continue")}
                   </Button>
-                  <Button onClick={() => setStep(2)}>
+                  <Button onClick={() => {
+                    setStep(2);
+                    navigate("/parent/myfamily/add-student-flow?step=2", { replace: true });
+                  }}>
                     {t("parent.addStudent.addAnother", "Add another student")}
                   </Button>
                 </Space>
               </div>
               <div className="order-1 md:order-2 flex justify-center">
                 <BuddyAvatar
-                  src="/buddies/monster1.png"
+                  src={monster1}
                   alt="Mascot"
                   size={160}
                   ring={false}
@@ -504,6 +623,5 @@ export default function AddStudentFlow() {
           </Card>
         )}
       </div>
-    </ParentShell>
   );
 }

@@ -18,7 +18,7 @@ import { ArrowRightOutlined, CheckCircleOutlined, ArrowLeftOutlined } from "@ant
 import { useNavigate } from "react-router-dom";
 import api from "@/api/axios";
 
-import ParentShell from "@/components/parent/ParentShell";
+// ParentShell is now handled at route level
 import globalBg from "@/assets/backgrounds/global-bg.png";
 
 const { Text, Title } = Typography;
@@ -446,18 +446,15 @@ export default function Subscription() {
   if (loading) {
     return (
       <App>
-        <ParentShell bgImage={globalBg}>
-          <div className="w-full min-h-[100dvh] flex justify-center items-center">
-            <Spin size="large" />
-          </div>
-        </ParentShell>
+        <div className="w-full min-h-[100dvh] flex justify-center items-center">
+          <Spin size="large" />
+        </div>
       </App>
     );
   }
 
   return (
     <App>
-      <ParentShell bgImage={globalBg}>
       <div className="w-full min-h-[100dvh]">
         {/* Responsive layout - no frame */}
         <main className="w-full max-w-7xl mx-auto px-4 md:px-8">
@@ -703,7 +700,6 @@ export default function Subscription() {
           <div className="h-[env(safe-area-inset-bottom)]" />
         </div>
       </div>
-      </ParentShell>
     </App>
   );
 }

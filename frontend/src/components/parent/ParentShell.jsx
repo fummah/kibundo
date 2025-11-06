@@ -31,7 +31,7 @@ export default function ParentShell({
     <div className={className}>
       {/* Background + layout that fills the App's framed screen */}
       <div
-        className="min-h-[100svh] flex flex-col"
+        className="min-h-[100svh] flex flex-col relative"
         style={{
           backgroundImage: `url(${bgImage})`,
           backgroundSize: "cover",
@@ -40,13 +40,13 @@ export default function ParentShell({
         }}
       >
         {/* Content scrolls when needed; padding at bottom for fixed footer */}
-        <main id="parent-shell" className="flex-1 relative overflow-y-auto" style={{ minHeight: 0 }}>
+        <main id="parent-shell" className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
           <div className={contentClassName} style={{ paddingBottom: hideBottomBar ? 0 : "80px", minHeight: "fit-content" }}>
             {children}
           </div>
         </main>
-
-        {/* Fixed bottom nav - always at bottom, outside main content area */}
+        
+        {/* Bottom nav - positioned within the container on desktop, fixed on mobile */}
         {!hideBottomBar && (
           <BottomTabBar
             includeOnRoutes={includeOnRoutes}

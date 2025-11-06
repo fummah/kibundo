@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Input, Tag, Empty, message, Button, Skeleton } from "antd";
 import { RightOutlined } from "@ant-design/icons";
 
-import ParentShell from "@/components/parent/ParentShell";
+// ParentShell is now handled at route level
 import api from "@/api/axios";
 
 // Background (optional: looks consistent with other parent screens)
@@ -379,8 +379,7 @@ export default function NewsFeed() {
   }
 
   return (
-    <ParentShell bgImage={globalBg}>
-      <div className="w-full flex justify-center">
+    <div className="w-full flex justify-center">
         <section className="relative w-full max-w-[520px] px-4 pt-4 mx-auto">
           <div className="text-center mb-3">
             <h1
@@ -467,6 +466,5 @@ export default function NewsFeed() {
           )}
         </section>
       </div>
-    </ParentShell>
   );
 }

@@ -11,8 +11,7 @@ import {
 } from "@ant-design/icons";
 
 import { useAuthContext } from "@/context/AuthContext.jsx";
-import ParentShell from "@/components/parent/ParentShell.jsx";
-import globalBg from "@/assets/backgrounds/global-bg.png";
+import api from "@/api/axios";
 
 const { useBreakpoint } = Grid;
 
@@ -22,6 +21,9 @@ export default function Settings() {
   const [twoFA, setTwoFA] = useState(Boolean(user?.mfa_enabled));
   const navigate = useNavigate();
   const { lg } = useBreakpoint(); // ✅ true on large screens
+  const [states, setStates] = useState([]);
+  const [loadingStates, setLoadingStates] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
 
   const formatDEPhone = useCallback((raw = "") => {
     const digits = String(raw).replace(/[^\d]/g, "");
@@ -31,26 +33,133 @@ export default function Settings() {
     return `+49 ${rest}`.trim();
   }, []);
 
-  const initialValues = useMemo(() => ({
-    first_name: user?.first_name ?? user?.name?.split(" ")?.[0] ?? "",
-    last_name:
-      user?.last_name ?? (user?.name ? user.name.split(" ").slice(1).join(" ") : "") ?? "",
-    email: user?.email ?? "",
-    phone: user?.contact_number ? formatDEPhone(user.contact_number) : "+49 ",
-    locale: user?.locale ?? "de-DE",
-  }), [user, formatDEPhone]);
+  // Fetch current user data and states
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoadingStates(true);
+        // Fetch current user to get full data including state
+        const userRes = await api.get("/current-user");
+        const userData = userRes?.data?.user || userRes?.data || user;
+        setCurrentUser(userData);
+
+        // Fetch states list
+        const statesRes = await api.get("/states");
+        const statesData = Array.isArray(statesRes.data) 
+          ? statesRes.data 
+          : (statesRes.data?.data || []);
+        
+        const processedStates = statesData.map(state => {
+          if (state && typeof state === 'object') {
+            const value = state.state_name || state.name || state.id;
+            const label = state.state_name || state.name || state.id;
+            return { 
+              value: String(value), 
+              label: String(label)
+            };
+          }
+          return { value: String(state), label: String(state) };
+        });
+        setStates(processedStates);
+      } catch (error) {
+        console.error("Error fetching user data or states:", error);
+        message.error("Failed to load user information");
+      } finally {
+        setLoadingStates(false);
+      }
+    };
+
+    if (isAuthenticated) {
+      fetchData();
+    }
+  }, [isAuthenticated]);
+
+  const initialValues = useMemo(() => {
+    const userData = currentUser || user;
+    return {
+      first_name: userData?.first_name ?? userData?.name?.split(" ")?.[0] ?? "",
+      last_name:
+        userData?.last_name ?? (userData?.name ? userData.name.split(" ").slice(1).join(" ") : "") ?? "",
+      email: userData?.email ?? "",
+      phone: userData?.contact_number ? formatDEPhone(userData.contact_number) : "+49 ",
+      state: userData?.state ?? "",
+      locale: userData?.locale ?? "de-DE",
+    };
+  }, [currentUser, user, formatDEPhone]);
 
   useEffect(() => {
-    form.setFieldsValue(initialValues);
-    setTwoFA(Boolean(user?.mfa_enabled));
-  }, [initialValues, form, user]);
+    if (currentUser || user) {
+      form.setFieldsValue(initialValues);
+      setTwoFA(Boolean((currentUser || user)?.mfa_enabled));
+    }
+  }, [initialValues, form, currentUser, user]);
 
   const save = async () => {
     try {
       const vals = await form.validateFields();
-      // await api.put("/me", { ...vals, mfa_enabled: twoFA });
-      message.success("Settings saved");
-    } catch {/* antd handles errors */}
+      const userData = currentUser || user;
+      
+      if (!userData?.id) {
+        message.error("User ID not found. Please refresh the page.");
+        return;
+      }
+
+      // Convert formatted phone back to raw format (remove +49 prefix and spaces)
+      let contact_number = vals.phone;
+      if (contact_number) {
+        // Remove +49 prefix, spaces, and leading zeros
+        contact_number = contact_number.replace(/\+49\s*/g, "").replace(/\s+/g, "").replace(/^0+/, "");
+        // Add +49 prefix back if not empty
+        if (contact_number) {
+          contact_number = `+49${contact_number}`;
+        }
+      }
+
+      // Prepare update payload
+      const updatePayload = {
+        first_name: vals.first_name,
+        last_name: vals.last_name,
+        email: vals.email,
+        contact_number: contact_number || null,
+        state: vals.state || null,
+      };
+
+      // Only include password if provided
+      if (vals.password && vals.password.trim()) {
+        updatePayload.plain_pass = vals.password;
+      }
+
+      // Include locale if supported (backend may ignore if not in schema)
+      if (vals.locale) {
+        updatePayload.locale = vals.locale;
+      }
+
+      // Update user via API
+      const response = await api.put(`/users/${userData.id}`, updatePayload);
+      
+      // Update local state with fresh data
+      if (response.data?.user) {
+        setCurrentUser(response.data.user);
+        // Update form with fresh data
+        form.setFieldsValue({
+          first_name: response.data.user.first_name,
+          last_name: response.data.user.last_name,
+          email: response.data.user.email,
+          phone: response.data.user.contact_number ? formatDEPhone(response.data.user.contact_number) : "+49 ",
+          state: response.data.user.state,
+          locale: response.data.user.locale || "de-DE",
+        });
+      }
+
+      message.success("Settings saved successfully");
+    } catch (error) {
+      console.error("Error saving settings:", error);
+      message.error(
+        error?.response?.data?.message || 
+        error?.message || 
+        "Failed to save settings. Please try again."
+      );
+    }
   };
 
   const confirmLogout = () => {
@@ -70,24 +179,23 @@ export default function Settings() {
   const goInvoices     = (e) => { e?.stopPropagation(); navigate("/parent/billing/invoices"); };
   const goCoupons      = (e) => { e?.stopPropagation(); navigate("/parent/billing/coupons"); };
 
-  // Use ParentShell for all breakpoints; it handles the framed layout and sticky bottom nav
   return (
-    <ParentShell bgImage={globalBg}>
-      <SettingsContent
-        form={form}
-        isAuthenticated={isAuthenticated}
-        twoFA={twoFA}
-        setTwoFA={setTwoFA}
-        confirmLogout={confirmLogout}
-        save={save}
-        openBilling={openBilling}
-        goOverview={goOverview}
-        goSubscription={goSubscription}
-        goInvoices={goInvoices}
-        goCoupons={goCoupons}
-        navigate={navigate}
-      />
-    </ParentShell>
+    <SettingsContent
+      form={form}
+      isAuthenticated={isAuthenticated}
+      twoFA={twoFA}
+      setTwoFA={setTwoFA}
+      confirmLogout={confirmLogout}
+      save={save}
+      openBilling={openBilling}
+      goOverview={goOverview}
+      goSubscription={goSubscription}
+      goInvoices={goInvoices}
+      goCoupons={goCoupons}
+      navigate={navigate}
+      states={states}
+      loadingStates={loadingStates}
+    />
   );
 }
 
@@ -105,6 +213,8 @@ function SettingsContent({
   goInvoices,
   goCoupons,
   navigate,
+  states,
+  loadingStates,
 }) {
   return (
     <section className="relative w-full max-w-[520px] mx-auto pt-6 space-y-6">
@@ -184,6 +294,24 @@ function SettingsContent({
                     // setTimeout avoids cursor jump; or keep as-is:
                     form.setFieldsValue({ phone: digits });
                   }}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={12}>
+              <Form.Item 
+                label="State (Bundesland)" 
+                name="state"
+                rules={[{ required: true, message: "Please select your state" }]}
+              >
+                <Select
+                  placeholder="Select state"
+                  options={states}
+                  loading={loadingStates}
+                  showSearch
+                  filterOption={(input, option) =>
+                    (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                  }
                 />
               </Form.Item>
             </Col>

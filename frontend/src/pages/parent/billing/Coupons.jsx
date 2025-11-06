@@ -32,7 +32,7 @@ import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import api from "@/api/axios";
 
-import ParentShell from "@/components/parent/ParentShell";
+// ParentShell is now handled at route level
 import globalBg from "@/assets/backgrounds/global-bg.png";
 
 const { Title, Text } = Typography;
@@ -273,8 +273,7 @@ export default function Coupons() {
   };
 
   return (
-    <ParentShell bgImage={globalBg}>
-      <div className="w-full min-h-[100dvh]">
+    <div className="w-full min-h-[100dvh]">
         {/* Responsive layout - no frame */}
         <main className="w-full max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
             {/* header with back + refresh */}
@@ -468,6 +467,5 @@ export default function Coupons() {
             </Card>
         </main>
       </div>
-    </ParentShell>
   );
 }

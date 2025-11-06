@@ -139,10 +139,14 @@ export default function BottomTabBar({
 
   return (
     <>
-      {/* Fixed at bottom - always visible on all screen sizes */}
+      {/* Mobile: fixed to viewport, Desktop: absolute within device frame */}
       <div
         className={[
-          "fixed bottom-0 left-0 right-0 z-50",
+          "z-50",
+          // Mobile: fixed to viewport bottom
+          "fixed bottom-0 left-0 right-0",
+          // Desktop: absolute within the device frame container (stays at bottom)
+          "md:absolute md:bottom-0 md:left-0 md:right-0",
           className,
         ].join(" ")}
       >

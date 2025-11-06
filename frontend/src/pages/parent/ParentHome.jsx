@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 import api from "@/api/axios";
 import { useAuthContext } from "@/context/AuthContext";
 
-import ParentShell from "@/components/parent/ParentShell";
 // ✅ explicit extension + alias to avoid any shadowing
 import ParentNewsCard from "@/components/parent/NewsCard.jsx";
 
@@ -86,6 +85,23 @@ export default function ParentHome() {
   const panelRef = useRef(null);
   const inputRef = useRef(null);
   const greetingAddedRef = useRef(false);
+  const [windowWidth, setWindowWidth] = useState(() => 
+    typeof window !== 'undefined' ? window.innerWidth : 1024
+  );
+
+  // Track window width for responsive chat positioning
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
+  }, []);
 
   // Current user from context (small, safe summary)
   const { user } = useAuthContext();
@@ -294,6 +310,15 @@ export default function ParentHome() {
     fetchData();
   }, [user?.id]);
 
+  // Dispatch events when chat opens/closes to hide bottom bar
+  React.useEffect(() => {
+    if (chatOpen) {
+      window.dispatchEvent(new CustomEvent('parent-chat:open'));
+    } else {
+      window.dispatchEvent(new CustomEvent('parent-chat:close'));
+    }
+  }, [chatOpen]);
+
   // Prevent background scroll when chat is open
   React.useEffect(() => {
     if (chatOpen) {
@@ -446,8 +471,8 @@ export default function ParentHome() {
   };
 
   return (
-    <ParentShell title={t("parent.home.title", "Home")} showBack={false} bgImage={globalBg} contentClassName="px-0">
-      <div className="w-full flex justify-center pb-0">
+    <>
+    <div className="w-full flex justify-center pb-0">
         <section className="relative w-full max-w-[520px] px-4 pt-4 pb-2 mx-auto space-y-6">
           <h1 className="text-3xl font-extrabold text-neutral-800 text-center mb-0">
             {t("parent.home.title", "Home")}
@@ -529,22 +554,57 @@ export default function ParentHome() {
 
       {/* Floating chat button removed; chat opens via Feedback tab */}
       {chatOpen && (
-        <div className="fixed inset-0 z-[9999] pointer-events-auto">
+        <div 
+          className="fixed z-[9999] pointer-events-auto"
+          style={{
+            // On desktop, position within device frame (same as student chat)
+            left: windowWidth >= 768 && windowWidth < 1024 
+              ? "50%" 
+              : windowWidth >= 1024
+              ? `calc(50% - 512px)` // Center: 50% - half of max-width (1024px / 2)
+              : "0",
+            right: windowWidth >= 768 && windowWidth < 1024
+              ? "auto"
+              : windowWidth >= 1024
+              ? "auto"
+              : "0",
+            width: windowWidth >= 768 && windowWidth < 1024
+              ? "100%"
+              : windowWidth >= 1024
+              ? "1024px"
+              : "100%",
+            maxWidth: windowWidth >= 1024 ? "1024px" : "100%",
+            top: 0,
+            bottom: windowWidth >= 1024 ? "8px" : windowWidth >= 768 ? "4px" : 0,
+            transform: windowWidth >= 768 && windowWidth < 1024 ? "translateX(-50%)" : "none",
+            overscrollBehavior: "contain",
+          }}
+        >
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-black/30 pointer-events-auto"
+            className="absolute inset-0 bg-black/40 pointer-events-auto"
             onClick={() => setChatOpen(false)}
           />
-          {/* Fullscreen chat panel */}
+          {/* Chat panel - positioned like student chat (bottom sheet) */}
           <div
             ref={panelRef}
-            className="fixed inset-0 bg-white flex flex-col"
+            className="absolute left-0 right-0 bg-white flex flex-col"
             style={{
-              left: panelPos.x ?? 0,
-              top: panelPos.y ?? 0,
-              width: '400px',
-              height: '520px',
-              transform: 'none'
+              bottom: windowWidth >= 1024 ? "8px" : windowWidth >= 768 ? "4px" : "0",
+              height: windowWidth >= 1024 
+                ? "calc(100vh - 16px)" 
+                : windowWidth >= 768 
+                ? "calc(100vh - 8px)" 
+                : "100vh",
+              maxHeight: windowWidth >= 1024 
+                ? "calc(100vh - 16px)" 
+                : windowWidth >= 768 
+                ? "calc(100vh - 8px)" 
+                : "100vh",
+              minHeight: windowWidth < 768 ? "50vh" : windowWidth < 1024 ? "40vh" : "30vh",
+              borderTopLeftRadius: windowWidth < 768 ? "1.5rem" : "1rem",
+              borderTopRightRadius: windowWidth < 768 ? "1.5rem" : "1rem",
+              overflow: "hidden",
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -607,6 +667,6 @@ export default function ParentHome() {
           </div>
         </div>
       )}
-    </ParentShell>
+    </>
   );
 }

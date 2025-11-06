@@ -36,8 +36,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 
-import ParentShell from "@/components/parent/ParentShell";
-import globalBg from "@/assets/backgrounds/global-bg.png";
+// ParentShell is now handled at route level
 
 const { Title, Text } = Typography;
 
@@ -655,8 +654,7 @@ export default function BillingOverview() {
   ];
 
   return (
-    <ParentShell bgImage={globalBg}>
-      <div className="w-full min-h-[100dvh] flex justify-center">
+    <div className="w-full min-h-[100dvh] flex justify-center">
         {/* Responsive layout - no frame */}
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-8">
             {/* Header */}
@@ -984,7 +982,6 @@ export default function BillingOverview() {
             </div>
 
           </div>
-        </div>
 
         {/* View Subscription Drawer */}
         <Drawer
@@ -1308,6 +1305,6 @@ export default function BillingOverview() {
             <Empty description="No subscription data available" />
           )}
         </Drawer>
-    </ParentShell>
+    </div>
   );
 }

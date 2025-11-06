@@ -1,10 +1,11 @@
 // src/context/AuthContext.js
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react";
 import { setAuthToken as setAxiosToken, clearAuth as clearAxiosAuth } from "@/api/axios";
 
 /** Small, safe keys — do NOT use 'user' */
 const USER_SUMMARY_KEY = "kibundo_user_summary";
 const TOKEN_KEYS = ["kibundo_token", "token"];
+const BROWSER_FINGERPRINT_KEY = "kibundo_browser_fingerprint";
 
 /** Pick only what you need across reloads (keep it tiny) */
 const pickUserSummary = (u = {}) => ({
@@ -33,6 +34,48 @@ function safePersistSummary(summary) {
     } catch {
       return "memory";
     }
+  }
+}
+
+/**
+ * Generate a browser fingerprint based on browser characteristics
+ * This helps detect if the session is being accessed from a different browser
+ */
+function generateBrowserFingerprint() {
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.textBaseline = 'top';
+    ctx.font = '14px Arial';
+    ctx.fillText('Browser fingerprint', 2, 2);
+    
+    const fingerprint = [
+      navigator.userAgent,
+      navigator.language,
+      screen.width + 'x' + screen.height,
+      new Date().getTimezoneOffset(),
+      canvas.toDataURL(), // Canvas fingerprint
+      navigator.hardwareConcurrency || 0,
+      navigator.deviceMemory || 0,
+      navigator.platform,
+    ].join('|');
+    
+    // Simple hash function
+    let hash = 0;
+    for (let i = 0; i < fingerprint.length; i++) {
+      const char = fingerprint.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return String(Math.abs(hash));
+  } catch {
+    // Fallback to simpler fingerprint if canvas is not available
+    return [
+      navigator.userAgent,
+      navigator.language,
+      screen.width + 'x' + screen.height,
+      new Date().getTimezoneOffset(),
+    ].join('|');
   }
 }
 
@@ -94,6 +137,44 @@ export const AuthProvider = ({ children }) => {
   const [{ token, user }, setAuth] = useState(loadInitialAuth);
   const [account, setAccount] = useState(null);
 
+  const logout = useCallback(() => {
+    clearAxiosAuth();
+    try {
+      localStorage.removeItem(USER_SUMMARY_KEY);
+      sessionStorage.removeItem(USER_SUMMARY_KEY);
+      // Clear browser fingerprint on logout
+      sessionStorage.removeItem(BROWSER_FINGERPRINT_KEY);
+    } catch {}
+    setAuth({ token: null, user: null });
+    setAccount(null);
+  }, []);
+
+  // Check browser fingerprint on mount and when token changes
+  // If fingerprint doesn't match, log out the user (different browser detected)
+  useEffect(() => {
+    if (!token) return; // No token, no need to check
+    
+    try {
+      const storedFingerprint = sessionStorage.getItem(BROWSER_FINGERPRINT_KEY);
+      const currentFingerprint = generateBrowserFingerprint();
+      
+      if (storedFingerprint && storedFingerprint !== currentFingerprint) {
+        // Different browser detected - log out for security
+        console.warn('Browser fingerprint mismatch detected. Logging out for security.');
+        logout();
+        return;
+      }
+      
+      // Store fingerprint if not already stored (first time login in this browser)
+      if (!storedFingerprint) {
+        sessionStorage.setItem(BROWSER_FINGERPRINT_KEY, currentFingerprint);
+      }
+    } catch (error) {
+      // If fingerprint check fails, don't block the user but log the error
+      console.error('Error checking browser fingerprint:', error);
+    }
+  }, [token, logout]);
+
   // Keep axios header in sync on mount & when token changes
   useEffect(() => {
     if (token) setAxiosToken(token);
@@ -108,6 +189,23 @@ export const AuthProvider = ({ children }) => {
       
       // Only use SSO token if no regular login token exists
       if (ssoToken && !regularToken) {
+        // Check browser fingerprint for SSO tokens too
+        const storedFingerprint = sessionStorage.getItem(BROWSER_FINGERPRINT_KEY);
+        const currentFingerprint = generateBrowserFingerprint();
+        
+        if (storedFingerprint && storedFingerprint !== currentFingerprint) {
+          // Different browser detected - clear SSO tokens for security
+          console.warn('Browser fingerprint mismatch detected for SSO. Clearing session for security.');
+          sessionStorage.removeItem("portal.token");
+          sessionStorage.removeItem("portal.user");
+          return;
+        }
+        
+        // Store fingerprint if not already stored
+        if (!storedFingerprint) {
+          sessionStorage.setItem(BROWSER_FINGERPRINT_KEY, currentFingerprint);
+        }
+        
         setAxiosToken(ssoToken);
         if (ssoUser) {
           const userData = JSON.parse(ssoUser);
@@ -177,28 +275,26 @@ export const AuthProvider = ({ children }) => {
       sessionStorage.removeItem("portal.user");
     } catch {}
     
-    // 3) Token in axios + persist token (via axios helper)
+    // 3) Generate and store browser fingerprint for this session
+    try {
+      const fingerprint = generateBrowserFingerprint();
+      sessionStorage.setItem(BROWSER_FINGERPRINT_KEY, fingerprint);
+    } catch (error) {
+      console.error('Error storing browser fingerprint:', error);
+    }
+    
+    // 4) Token in axios + persist token (via axios helper)
     setAxiosToken(jwt);
 
-    // 4) Tiny summary only (no giant objects)
+    // 5) Tiny summary only (no giant objects)
     const summary = pickUserSummary(userObj);
     
     // Debug: Log the user data being stored
     
     safePersistSummary(summary);
 
-    // 5) Update state
+    // 6) Update state
     setAuth({ token: jwt, user: summary });
-  };
-
-  const logout = () => {
-    clearAxiosAuth();
-    try {
-      localStorage.removeItem(USER_SUMMARY_KEY);
-      sessionStorage.removeItem(USER_SUMMARY_KEY);
-    } catch {}
-    setAuth({ token: null, user: null });
-    setAccount(null);
   };
 
   const updateUserSummary = (partial) => {

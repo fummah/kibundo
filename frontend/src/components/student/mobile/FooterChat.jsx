@@ -71,6 +71,13 @@ export default function FooterChat({
     return normalizedPath === "/student/homework";
   }, [pathname]);
 
+  // Check if we're on the homework DOING page (scanner page)
+  const isOnHomeworkDoing = useMemo(() => {
+    // Doing page is exactly /student/homework/doing
+    const normalizedPath = pathname.replace(/\/$/, ''); // Remove trailing slash
+    return normalizedPath === "/student/homework/doing";
+  }, [pathname]);
+
   // Extract taskId from common homework routes:
   // /student/homework/doing/:taskId
   // /student/homework/interaction/:taskId
@@ -99,18 +106,30 @@ export default function FooterChat({
     }
   }, [isOnOnboarding, closeChat]);
 
-  // Close chat when navigating TO homework list page (prevent auto-opening)
+  // Close chat when navigating TO homework list page or doing page (prevent auto-opening)
   // But allow manual opening via footer button
   const prevPathnameRef = useRef(pathname);
+  const justNavigatedToDoingRef = useRef(false);
   useEffect(() => {
-    // Only close if we just navigated TO the list page (not if we're already there)
-    if (isOnHomeworkList && prevPathnameRef.current !== pathname) {
-      // Just navigated to list page - close chat to prevent auto-opening
+    // Only close if we just navigated TO the list page or doing page (not if we're already there)
+    const justNavigatedToList = isOnHomeworkList && prevPathnameRef.current !== pathname;
+    const justNavigatedToDoing = isOnHomeworkDoing && prevPathnameRef.current !== pathname;
+    
+    if (justNavigatedToList || justNavigatedToDoing) {
+      // Just navigated to list page or doing page - close chat to prevent auto-opening
+      // The doing page will open chat explicitly if needed (e.g., when uploading a file)
       closeChat?.();
       setOpen(false);
+      // Track that we just navigated to doing page (reset after a short delay)
+      if (justNavigatedToDoing) {
+        justNavigatedToDoingRef.current = true;
+        setTimeout(() => {
+          justNavigatedToDoingRef.current = false;
+        }, 100);
+      }
     }
     prevPathnameRef.current = pathname;
-  }, [isOnHomeworkList, pathname, closeChat]);
+  }, [isOnHomeworkList, isOnHomeworkDoing, pathname, closeChat]);
 
   // Close chat when navigating to home screen (unless explicitly opened)
   useEffect(() => {
@@ -129,7 +148,6 @@ export default function FooterChat({
     // Small delay to ensure state updates are processed
     const timeoutId = setTimeout(() => {
       // On list page: allow opening if dock is visible/expanded (either from card click or footer button)
-      // On detail pages: allow normal opening
       if (isOnHomeworkList) {
         // Allow opening if dock is visible/expanded (supports both card clicks and footer button)
         if (dockState?.visible || dockState?.expanded) {
@@ -140,14 +158,28 @@ export default function FooterChat({
         return;
       }
       
-      // Only open on homework detail routes when dock is explicitly set to visible/expanded
+      // On doing page: only open if there's an explicit task (user uploaded a file or has task state)
+      // Don't auto-open just because dock state is visible/expanded from a previous action
+      // Check if we just navigated to this page - if so, don't auto-open
+      if (isOnHomeworkDoing) {
+        // Only open if there's a task AND dock is visible/expanded AND we didn't just navigate here
+        // This prevents auto-opening when navigating to the doing page
+        if (!justNavigatedToDoingRef.current && dockState?.task && (dockState?.visible || dockState?.expanded)) {
+          setOpen(true);
+        } else {
+          setOpen(false);
+        }
+        return;
+      }
+      
+      // Only open on other homework detail routes when dock is explicitly set to visible/expanded
       const shouldOpen = isOnHomework && (dockState?.visible || dockState?.expanded);
       if (shouldOpen) setOpen(true);
       if (!dockState?.visible && !dockState?.expanded) setOpen(false);
     }, 0);
 
     return () => clearTimeout(timeoutId);
-  }, [isOnHomework, isOnHomeworkList, dockState?.visible, dockState?.expanded, dockState?.task?.id, dockState?.task?.updatedAt]);
+  }, [isOnHomework, isOnHomeworkList, isOnHomeworkDoing, dockState?.visible, dockState?.expanded, dockState?.task?.id, dockState?.task?.updatedAt]);
 
   // Hide the footer trigger if not included or explicitly hidden
   if (isHidden || !isIncluded) return null;

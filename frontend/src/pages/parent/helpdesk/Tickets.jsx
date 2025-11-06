@@ -19,8 +19,7 @@ import {
   SendOutlined,
 } from "@ant-design/icons";
 
-import ParentShell from "@/components/parent/ParentShell"; // ✅ uses sticky bottom bar + spacer
-import globalBg from "@/assets/backgrounds/global-bg.png"; // optional background
+// ParentShell is now handled at route level
 
 const { Title, Text } = Typography;
 
@@ -81,8 +80,7 @@ export default function Tickets() {
   };
 
   return (
-    <ParentShell bgImage={globalBg}>
-      <div className="w-full min-h-[100dvh] flex justify-center">
+    <div className="w-full min-h-[100dvh] flex justify-center">
         {/* Single-column layout inside the phone mockup; sticky footer handled by ParentShell */}
         <section className="relative w-full max-w-[520px] px-4 pt-6 mx-auto space-y-6">
           {/* Header with Back Arrow */}
@@ -158,9 +156,8 @@ export default function Tickets() {
               </div>
             </Form>
           </Card>
-          {/* Spacer + BottomTabBar are handled by ParentShell (sticky inside the scroller) */}
+          {/* Spacer + BottomTabBar are handled by ParentShellRoute (sticky inside the scroller) */}
         </section>
       </div>
-    </ParentShell>
   );
 }

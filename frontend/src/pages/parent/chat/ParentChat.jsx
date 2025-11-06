@@ -18,9 +18,9 @@ import {
   ExclamationCircleOutlined,
   ReloadOutlined,
   CopyOutlined,
+  PlusOutlined,
 } from "@ant-design/icons";
-import ParentShell from "@/components/parent/ParentShell";
-import globalBg from "@/assets/backgrounds/global-bg.png";
+// ParentShell is now handled at route level
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
 import parentIcon from "@/assets/parent/childone.png";
 import { useAuthContext } from "@/context/AuthContext.jsx";
@@ -225,9 +225,26 @@ export default function ParentChat() {
   const [typing, setTyping] = useState(false);
   const [warnedClosing, setWarnedClosing] = useState(false);
   const [confirmAutoClose, setConfirmAutoClose] = useState(false);
+  const [windowWidth, setWindowWidth] = useState(() => 
+    typeof window !== 'undefined' ? window.innerWidth : 1024
+  );
 
   const chatRef = useRef(null);
   const { atBottom, scrollToBottom } = useAtBottom(chatRef, 32);
+
+  // Track window width for responsive positioning
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
+  }, []);
 
   // Auto-scroll when new messages arrive and the user is at (or near) bottom
   useEffect(() => {
@@ -370,8 +387,76 @@ export default function ParentChat() {
     }
   };
 
+  const handleStartNewChat = () => {
+    Modal.confirm({
+      title: "Start a new chat?",
+      icon: <ExclamationCircleOutlined />,
+      content: "This will clear your current conversation. You can't undo this action.",
+      okText: "Start New Chat",
+      cancelText: "Cancel",
+      okButtonProps: { danger: false },
+      onOk: () => {
+        try {
+          // Clear conversationId from localStorage
+          localStorage.removeItem(conversationIdKey);
+          console.log("🗑️ ParentChat: Cleared conversationId from localStorage");
+          
+          // Reset conversationId state
+          setConversationId(null);
+          
+          // Clear messages and show welcome message
+          setMessages([makeMsg({ type: "received", content: welcomeMessage, sender: agentName })]);
+          
+          // Reset input
+          setInput("");
+          
+          message.success("New chat started");
+        } catch (e) {
+          console.error("❌ ParentChat: Failed to start new chat:", e);
+          message.error("Failed to start new chat. Please try again.");
+        }
+      },
+    });
+  };
+
+  // Calculate responsive positioning for device frame on desktop
+  const isDesktop = windowWidth >= 1024;
+  const isTablet = windowWidth >= 768 && windowWidth < 1024;
+  const isMobile = windowWidth < 768;
+
+  const containerStyle = {
+    // Mobile: full width
+    ...(isMobile && {
+      position: 'fixed',
+      inset: 0,
+    }),
+    // Tablet: centered with transform
+    ...(isTablet && {
+      position: 'fixed',
+      left: '50%',
+      right: 'auto',
+      top: 0,
+      bottom: 0,
+      width: '100%',
+      maxWidth: '1024px',
+      transform: 'translateX(-50%)',
+    }),
+    // Desktop: centered within device frame
+    ...(isDesktop && {
+      position: 'fixed',
+      left: `calc(50% - 512px)`, // Center: 50% - half of max-width (1024px / 2)
+      right: 'auto',
+      top: 0,
+      bottom: 0,
+      width: '1024px',
+      maxWidth: '1024px',
+    }),
+    paddingTop: 'env(safe-area-inset-top, 0px)',
+    paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+  };
+
   return (
-    <div className="fixed inset-0 flex flex-col bg-[#f3f7eb] z-50" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+    <div className="flex flex-col bg-[#f3f7eb] z-50" style={containerStyle}>
         {/* Header */}
         <div className="flex items-center gap-3 p-4 bg-white/90 backdrop-blur border-b z-10 flex-shrink-0">
             <Button
@@ -391,6 +476,14 @@ export default function ParentChat() {
               </div>
             </div>
             <div className="flex items-center gap-1">
+              <Tooltip title="Start new chat">
+                <Button 
+                  type="text" 
+                  icon={<PlusOutlined />} 
+                  onClick={handleStartNewChat}
+                  aria-label="Start new chat"
+                />
+              </Tooltip>
               <Tooltip title="Retry last message">
                 <Button type="text" icon={<ReloadOutlined />} onClick={handleRetryLast} />
               </Tooltip>

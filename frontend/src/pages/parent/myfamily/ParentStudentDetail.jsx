@@ -4,7 +4,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button, Checkbox } from "antd";
 import { StarFilled, ArrowLeftOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
-import ParentShell from "@/components/parent/ParentShell";
 import api from "@/api/axios";
 import childOne from "@/assets/parent/childone.png";
 import childTwo from "@/assets/parent/childtwo.png";
@@ -210,22 +209,18 @@ export default function ParentStudentDetail() {
 
   if (loading) {
     return (
-      <ParentShell>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-neutral-600">Loading student data...</div>
-        </div>
-      </ParentShell>
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-neutral-600">Loading student data...</div>
+      </div>
     );
   }
 
   if (!student) {
     return (
-      <ParentShell>
-        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-          <div className="text-neutral-800 font-semibold">Student not found</div>
-          <Button onClick={() => navigate(-1)}>Go Back</Button>
-        </div>
-      </ParentShell>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <div className="text-neutral-800 font-semibold">Student not found</div>
+        <Button onClick={() => navigate(-1)}>Go Back</Button>
+      </div>
     );
   }
 
@@ -240,8 +235,7 @@ export default function ParentStudentDetail() {
   const ageDisplay = studentAge ? `Age ${studentAge}` : "Age X";
 
   return (
-    <ParentShell contentClassName="px-4">
-      <div className="w-full max-w-[520px] mx-auto pt-4 pb-6 space-y-6">
+    <div className="w-full max-w-[520px] mx-auto pt-4 pb-6 space-y-6 px-4">
         {/* Header with back button and centered title */}
         <div className="flex items-center justify-center relative mb-4">
           <Button
@@ -449,6 +443,5 @@ export default function ParentStudentDetail() {
           </div>
         </div>
       </div>
-    </ParentShell>
   );
 }

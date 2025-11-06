@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { PlusOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
-import ParentShell from "@/components/parent/ParentShell.jsx";
+// ParentShell is now handled at route level
 import HeroBackdrop from "@/components/parent/HeroBackdrop";
 import globalBg from "@/assets/backgrounds/global-bg.png";
 
@@ -14,7 +14,6 @@ export default function AddStudentIntro() {
   const goToCreateFlow = () => navigate("/parent/myfamily/add-student-flow?step=2");
 
   return (
-    <ParentShell bgImage={globalBg}>
       <HeroBackdrop
         showBuddy
         buddySize={120}
@@ -67,6 +66,5 @@ export default function AddStudentIntro() {
         </p>
 
       </HeroBackdrop>
-    </ParentShell>
   );
 }

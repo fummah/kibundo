@@ -29,12 +29,10 @@ export default function App() {
 function AppContent() {
   const { pathname } = useLocation();
   const isStudentRoute = pathname.startsWith("/student");
+  const isParentRoute = pathname.startsWith("/parent");
 
   return (
     <>
-      {/* Chat portal mount point */}
-      <div id="chat-root" className="absolute inset-0 pointer-events-none" />
-      
       {/* Responsive container for all routes */}
       <div className="min-h-screen w-full">
         {/* Student routes: full width on mobile, centered container starting from iPad */}
@@ -42,6 +40,8 @@ function AppContent() {
           <div className="w-full min-h-screen flex flex-col">
             {/* Mobile: full width (< 768px) */}
             <div className="md:hidden w-full flex-1 relative pb-20">
+              {/* Chat portal mount point for mobile */}
+              <div id="chat-root" className="absolute inset-0 pointer-events-none" />
               <AppRoutes />
               
               {/* Footer chat for mobile - fixed at bottom */}
@@ -56,6 +56,8 @@ function AppContent() {
             {/* iPad and larger: centered container with max-width */}
             <div className="hidden md:flex md:justify-center md:min-h-screen md:bg-gray-50">
               <div className="w-full max-w-[1024px] bg-white shadow-lg flex flex-col min-h-screen relative">
+                {/* Chat portal mount point for desktop - inside device frame */}
+                <div id="chat-root" className="absolute inset-0 pointer-events-none" />
                 <div className="flex-1 overflow-y-auto pb-20">
                   <AppRoutes />
                 </div>
@@ -70,9 +72,34 @@ function AppContent() {
               </div>
             </div>
           </div>
+        ) : isParentRoute ? (
+          // Parent routes: full width on mobile, centered container starting from iPad (same as student)
+          <div className="w-full min-h-screen flex flex-col">
+            {/* Mobile: full width (< 768px) */}
+            <div className="md:hidden w-full flex-1 relative">
+              {/* Chat portal mount point for mobile */}
+              <div id="chat-root" className="absolute inset-0 pointer-events-none" />
+              <AppRoutes />
+            </div>
+            
+            {/* iPad and larger: centered container with max-width */}
+            <div className="hidden md:flex md:justify-center md:min-h-screen md:bg-gray-50">
+              <div className="w-full max-w-[1024px] bg-white shadow-lg flex flex-col min-h-screen relative">
+                {/* Chat portal mount point for desktop - inside device frame */}
+                <div id="chat-root" className="absolute inset-0 pointer-events-none" />
+                <div className="flex-1 overflow-y-auto">
+                  <AppRoutes />
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
-          // Non-student routes: full width
-          <AppRoutes />
+          // Non-student/parent routes: full width
+          <>
+            {/* Chat portal mount point for other routes */}
+            <div id="chat-root" className="absolute inset-0 pointer-events-none" />
+            <AppRoutes />
+          </>
         )}
       </div>
 

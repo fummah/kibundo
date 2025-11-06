@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { PlusOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
-import ParentShell from "@/components/parent/ParentShell.jsx";
+// ParentShell is now handled at route level
 import HeroBackdrop from "@/components/parent/HeroBackdrop";
 import globalBg from "@/assets/backgrounds/global-bg.png";
 
@@ -13,7 +13,6 @@ export default function AddAnotherChildIntro() {
   const navigate = useNavigate();
 
   return (
-    <ParentShell bgImage={globalBg}>
       <HeroBackdrop
         showBuddy
         buddySize={280}
@@ -78,6 +77,5 @@ export default function AddAnotherChildIntro() {
         </div>
 
       </HeroBackdrop>
-    </ParentShell>
   );
 }
