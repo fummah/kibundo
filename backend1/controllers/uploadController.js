@@ -302,14 +302,23 @@ export const handleUpload = async (req, res) => {
       - Werkzeuge, Bauen, Handwerk → "Technik"
       - Gemischt oder unklar → "Sonstiges"
 
+      AUFGABENTYP-ERKENNUNG:
+      - Type A (Solvable): Mathe, Deutsch, Englisch, Sachkunde, Biologie, Erdkunde, Geschichte - Aufgaben mit Fragen, Rechnungen, Texten zum Lösen
+      - Type B (Creative/Manual): Kunst, Musik, Sport, Handwerk, Basteln, Malen, Zeichnen - Kreative oder manuelle Aufgaben ohne direkte Lösung
+      
       Gib nur gültiges JSON zurück:
       {
         "subject": "Deutscher Fachname",
+        "task_type": "solvable" oder "creative",
         "raw_text": "Extrahierten Text und Beschreibung (NUR auf Deutsch - übersetze ALLE englischen Teile)",
         "questions": [
           { "text": "Frage (NUR auf Deutsch - übersetze englische Fragen)", "answer": "Einfache Antwort für ein Kind (NUR auf Deutsch)" }
         ]
       }
+      
+      Bestimme task_type basierend auf:
+      - "solvable": Wenn es mathematische Aufgaben, Fragen zum Beantworten, Texte zum Lesen/Schreiben, Grammatikübungen gibt
+      - "creative": Wenn es um Malen, Zeichnen, Basteln, Handwerk, Musik, Sport, kreative Gestaltung geht
       
       ⚠️ FINALE PRÜFUNG VOR DER AUSGABE:
       - Übersetze ALLE englischen Texte ins Deutsche, bevor du sie in raw_text oder questions einfügst
@@ -401,15 +410,34 @@ export const handleUpload = async (req, res) => {
     let extractedText = parsed?.raw_text || aiText || "";
     extractedText = await translateEnglishToGerman(extractedText);
     let detectedSubject = parsed?.subject || detectSubject(extractedText);
+    let detectedTaskType = parsed?.task_type || null; // Get task_type from AI response
 
-    // Update scan with results and API usage stats
+    // Update scan with results, task type, and API usage stats
+    // Note: If task_type column doesn't exist, this will fail gracefully - we'll handle it
+    try {
       await pool.query(
-      `UPDATE homework_scans 
-       SET raw_text=$1, detected_subject=$2, 
-           api_tokens_used=$3, api_cost_usd=$4, processed_at=NOW()
-       WHERE id=$5`,
-      [extractedText, detectedSubject, usageStats.totalTokens, usageStats.cost, scan.id]
-    );
+        `UPDATE homework_scans 
+         SET raw_text=$1, detected_subject=$2, 
+             api_tokens_used=$3, api_cost_usd=$4, processed_at=NOW(),
+             task_type=$6
+         WHERE id=$5`,
+        [extractedText, detectedSubject, usageStats.totalTokens, usageStats.cost, scan.id, detectedTaskType]
+      );
+    } catch (updateError) {
+      // If task_type column doesn't exist, update without it
+      if (updateError.message?.includes('task_type') || updateError.message?.includes('column')) {
+        console.warn('⚠️ task_type column not found, updating without it');
+        await pool.query(
+          `UPDATE homework_scans 
+           SET raw_text=$1, detected_subject=$2, 
+               api_tokens_used=$3, api_cost_usd=$4, processed_at=NOW()
+           WHERE id=$5`,
+          [extractedText, detectedSubject, usageStats.totalTokens, usageStats.cost, scan.id]
+        );
+      } else {
+        throw updateError;
+      }
+    }
 
     if (Array.isArray(parsed?.questions)) {
       await Promise.all(
@@ -427,12 +455,21 @@ export const handleUpload = async (req, res) => {
       );
     }
 
+    // Include task_type in response
+    const responseScan = {
+      ...scan,
+      task_type: detectedTaskType,
+    };
+    
     res.json({
       success: true,
       message: "Homework scanned successfully",
       fileUrl,
-      scan,
-      parsed,
+      scan: responseScan,
+      parsed: {
+        ...parsed,
+        task_type: detectedTaskType, // Ensure task_type is in parsed response
+      },
       aiText,
       conversationId,
     });

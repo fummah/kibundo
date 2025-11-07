@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   App,
   Card,
@@ -36,7 +36,7 @@ import {
   Edit,
   Info,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 import BackButton from "@/components/student/common/BackButton.jsx";
 import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
@@ -90,10 +90,11 @@ const THEME_SWATCH = {
 
 export default function StudentSettings() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { message } =
     App.useApp?.() ?? { message: { success: () => {}, error: () => {}, info: () => {} } };
 
-  const { buddy, setBuddy, interests, setInterests, profile, setProfile, setTtsEnabled } = useStudentApp();
+  const { buddy, setBuddy, interests, setInterests, profile, setProfile, setTtsEnabled, setColorTheme } = useStudentApp();
   const auth = useAuthContext?.();
   const { user, logout, signOut } = auth || {};
   const userId = user?.id ?? user?._id ?? user?.user_id ?? null;
@@ -103,11 +104,17 @@ export default function StudentSettings() {
   const avatarSize = screens.lg ? 96 : screens.md ? 80 : 64;
 
   const defaultName = useMemo(() => {
-    if (profile?.name) return profile.name;
+    // Prioritize user's actual name over profile name
     const firstName = user?.first_name || "";
     const lastName = user?.last_name || "";
     const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
     if (fullName) return fullName;
+    
+    // Only use profile name if it's not a test value
+    const profileName = profile?.name || "";
+    const isTestName = profileName?.toLowerCase().includes("test");
+    if (profileName && !isTestName) return profileName;
+    
     if (user?.name) return user.name;
     if (user?.email) return user.email.split("@")[0];
     return "";
@@ -136,6 +143,7 @@ export default function StudentSettings() {
   const [serverStudentId, setServerStudentId] = useState(null);
   const [justUpdatedBuddy, setJustUpdatedBuddy] = useState(false);
   const [buddyImageKey, setBuddyImageKey] = useState(0);
+  const [hasLocalBuddyChange, setHasLocalBuddyChange] = useState(false);
 
   // baseline
   const initialRef = useRef({
@@ -155,6 +163,25 @@ export default function StudentSettings() {
       (interests?.length ?? 0) !== (profile?.interests?.length ?? 0)
     );
   }, [name, ttsEnabled, theme, buddy, interests, profile?.interests?.length]);
+
+  // Warn on browser navigation (refresh, close tab, etc.)
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "You have unsaved changes. Are you sure you want to leave?";
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [isDirty]);
+
+  // Handle browser back button (only if BackButton doesn't handle it)
+  // We'll let BackButton handle the warning, so we only need beforeunload for browser refresh/close
 
   const themePreview = useMemo(() => THEME_GRADIENT[theme] || THEME_GRADIENT.indigo, [theme]);
 
@@ -222,6 +249,14 @@ export default function StudentSettings() {
         // Only update buddy from server if we haven't just updated it locally
         // This prevents overwriting the newly selected buddy
         const srvBuddy = data?.buddy ?? null;
+        
+        // Map buddy structure: database uses 'img', context uses 'avatar'
+        const mappedBuddy = srvBuddy ? {
+          id: srvBuddy.id,
+          name: srvBuddy.name,
+          avatar: srvBuddy.img || srvBuddy.avatar,
+          img: srvBuddy.img || srvBuddy.avatar, // Keep both for compatibility
+        } : null;
 
         setStudentData(data);
 
@@ -231,21 +266,51 @@ export default function StudentSettings() {
           theme: srvProfile.theme || "indigo",
         });
         setInterests(srvInterests);
-        // Only set buddy from server if we haven't just updated it
-        if (!justUpdatedBuddy) {
-          setBuddy(srvBuddy);
+        // Always update buddy from server to reflect admin changes
+        // BUT: Don't overwrite if student has made local changes (not saved yet)
+        if (!hasLocalBuddyChange) {
+          if (mappedBuddy) {
+            // Ensure the buddy object has all required fields for context
+            const buddyForContext = {
+              id: mappedBuddy.id,
+              name: mappedBuddy.name,
+              avatar: mappedBuddy.avatar || mappedBuddy.img,
+              img: mappedBuddy.img || mappedBuddy.avatar,
+            };
+            setBuddy(buddyForContext);
+            // Also update pendingBuddy to match
+            setPendingBuddy(buddyForContext);
+          } else {
+            // If no buddy in database, set to null (context will use default)
+            setBuddy(null);
+            setPendingBuddy(BUDDIES[0]);
+          }
+          // Reset justUpdatedBuddy flag when loading from database (database is source of truth)
+          setJustUpdatedBuddy(false);
+          // Force image refresh to show updated buddy
+          setBuddyImageKey(prev => prev + 1);
         }
 
         const serverName = srvProfile.name ?? "";
         const apiUser = data?.user ?? {};
         const apiUserName = [apiUser.first_name, apiUser.last_name].filter(Boolean).join(" ").trim();
         const fallbackName = defaultName ?? "";
-        const finalName = serverName || apiUserName || fallbackName;
+        
+        // Prioritize user's actual name (first_name + last_name) over profile name
+        // Only use profile name if user name is not available and profile name is not a test value
+        const isTestName = serverName?.toLowerCase().includes("test");
+        const finalName = apiUserName || (!isTestName && serverName) || fallbackName;
 
         setName(finalName);
-        setTTSEnabled(Boolean(srvProfile.ttsEnabled));
-        setTheme(srvProfile.theme || "indigo");
-        setPendingBuddy(srvBuddy || BUDDIES[0]);
+        const newTtsEnabled = Boolean(srvProfile.ttsEnabled);
+        setTTSEnabled(newTtsEnabled);
+        setTtsEnabled(newTtsEnabled); // Update context TTS
+        const newTheme = srvProfile.theme || "indigo";
+        setTheme(newTheme);
+        setColorTheme(newTheme); // Update context theme
+        
+        // pendingBuddy already updated above when setting buddy from database
+        // No need to update again here
 
         initialRef.current = {
           name: srvProfile.name ?? (defaultName ?? ""),
@@ -269,8 +334,140 @@ export default function StudentSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
+  // Reload settings when page becomes visible or periodically (e.g., when admin updates settings)
+  useEffect(() => {
+    if (!userId || !hasServerRecord) return;
+    
+    const sid = (obj) => obj?.id ?? obj?._id ?? obj?.student_id;
+    
+    const loadSettings = async () => {
+      try {
+        const allRes = await api.get("/allstudents", {
+          validateStatus: (s) => s >= 200 && s < 500,
+        });
+        const all = Array.isArray(allRes?.data) ? allRes.data : [];
+        const match = all.find(
+          (s) =>
+            s?.user?.id === userId ||
+            s?.user_id === userId ||
+            sid(s) === userId
+        );
+        if (match) {
+          const foundId = sid(match);
+          const { data } = await api.get(`/student/${foundId}`, {
+            validateStatus: (s) => s >= 200 && s < 500,
+          });
+          if (data) {
+            const srvProfile = data?.profile ?? {};
+            const srvInterests = Array.isArray(data?.interests) ? data.interests : [];
+            const srvBuddy = data?.buddy ?? null;
+            
+            // Map buddy structure
+            const mappedBuddy = srvBuddy ? {
+              id: srvBuddy.id,
+              name: srvBuddy.name,
+              avatar: srvBuddy.img || srvBuddy.avatar,
+              img: srvBuddy.img || srvBuddy.avatar,
+            } : null;
+
+            // Update context and local state with server data
+            setProfile({
+              name: srvProfile.name ?? "",
+              ttsEnabled: Boolean(srvProfile.ttsEnabled),
+              theme: srvProfile.theme || "indigo",
+            });
+            setInterests(srvInterests);
+            // Always update buddy from database - it's the source of truth
+            // BUT: Don't overwrite if student has made local changes (not saved yet)
+            if (!hasLocalBuddyChange) {
+              if (mappedBuddy) {
+                // Ensure the buddy object has all required fields for context
+                const buddyForContext = {
+                  id: mappedBuddy.id,
+                  name: mappedBuddy.name,
+                  avatar: mappedBuddy.avatar || mappedBuddy.img,
+                  img: mappedBuddy.img || mappedBuddy.avatar,
+                };
+                setBuddy(buddyForContext);
+                // Also update pendingBuddy to match
+                setPendingBuddy(buddyForContext);
+              } else {
+                // If no buddy in database, set to null (context will use default)
+                setBuddy(null);
+                setPendingBuddy(BUDDIES[0]);
+              }
+              // Reset justUpdatedBuddy flag when loading from database
+              setJustUpdatedBuddy(false);
+              // Force image refresh to show updated buddy
+              setBuddyImageKey(prev => prev + 1);
+            }
+
+            // Update local state
+            const apiUser = data?.user ?? {};
+            const apiUserName = [apiUser.first_name, apiUser.last_name].filter(Boolean).join(" ").trim();
+            const serverName = srvProfile.name ?? "";
+            const isTestName = serverName?.toLowerCase().includes("test");
+            const finalName = apiUserName || (!isTestName && serverName) || defaultName || "";
+
+            setName(finalName);
+            setTTSEnabled(Boolean(srvProfile.ttsEnabled));
+            setTheme(srvProfile.theme || "indigo");
+            setPendingBuddy(srvBuddy || BUDDIES[0]);
+            setStudentData(data);
+
+            initialRef.current = {
+              name: srvProfile.name ?? (defaultName ?? ""),
+              ttsEnabled: Boolean(srvProfile.ttsEnabled),
+              theme: srvProfile.theme || "indigo",
+              buddy: srvBuddy,
+            };
+          }
+        }
+      } catch (e) {
+        console.error("Error reloading settings:", e);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && hasServerRecord) {
+        // Page became visible, reload settings to get admin updates
+        loadSettings();
+      }
+    };
+
+    const handleFocus = () => {
+      // Also reload when window gains focus
+      if (hasServerRecord) {
+        loadSettings();
+      }
+    };
+
+    // Set up periodic refresh every 30 seconds (only when page is visible)
+    const intervalId = setInterval(() => {
+      if (!document.hidden && hasServerRecord) {
+        loadSettings();
+      }
+    }, 30000); // Check every 30 seconds
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [userId, hasServerRecord, justUpdatedBuddy, hasLocalBuddyChange, defaultName, setProfile, setInterests, setBuddy]);
+
   // ---------- Create on first save ----------
   const createStudentOnServer = async ({ profile, interests, buddy }) => {
+    // Ensure buddy has all required fields (id, name, img)
+    const buddyToSave = buddy ? {
+      id: buddy.id,
+      name: buddy.name,
+      img: buddy.img || buddy.avatar || BUDDIES.find(b => b.id === buddy.id)?.img || buddyMilo
+    } : null;
+    
     const payload = {
       userId,
       profile: {
@@ -279,7 +476,7 @@ export default function StudentSettings() {
         theme: profile?.theme || "indigo",
       },
       interests: Array.isArray(interests) ? interests : [],
-      buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
+      buddy: buddyToSave,
     };
     const res = await api.post(`/addstudent`, payload);
     return res?.data;
@@ -290,12 +487,19 @@ export default function StudentSettings() {
       setSaving(true);
       setProfile({ name, ttsEnabled, theme });
 
+      // Prepare buddy to save with all required fields
+      const buddyToSave = buddy ? {
+        id: buddy.id,
+        name: buddy.name,
+        img: buddy.img || buddy.avatar || BUDDIES.find(b => b.id === buddy.id)?.img || buddyMilo
+      } : null;
+
       if (!hasServerRecord) {
         // Create new student record
         const created = await createStudentOnServer({
           profile: { name, ttsEnabled, theme },
           interests: interests || [],
-          buddy: buddy || null,
+          buddy: buddyToSave,
         });
         setHasServerRecord(true);
         setServerStudentId(created?.id ?? created?._id ?? userId);
@@ -309,14 +513,28 @@ export default function StudentSettings() {
             theme: theme || "indigo",
           },
           interests: Array.isArray(interests) ? interests : [],
-          buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
+          buddy: buddyToSave,
         };
         
         await api.patch(`/student/${serverStudentId}`, payload);
-        message.success?.(`Settings saved! Theme: ${theme}`);
+        message.success?.("Saved successfully");
       }
 
-      initialRef.current = { name, ttsEnabled, theme, buddy };
+      // Update initialRef after successful save
+      initialRef.current = { name, ttsEnabled, theme, buddy: buddyToSave };
+      
+      // Update context to ensure it matches saved state
+      setTtsEnabled(ttsEnabled);
+      setColorTheme(theme);
+      
+      // Update studentData to reflect saved state
+      if (studentData) {
+        setStudentData({ ...studentData, buddy: buddyToSave });
+      }
+      
+      // Reset flags after save - local changes are now saved
+      setJustUpdatedBuddy(false);
+      setHasLocalBuddyChange(false);
     } catch (error) {
       message.error?.("Could not save settings. Please try again.");
     } finally {
@@ -377,89 +595,29 @@ export default function StudentSettings() {
     }
   };
 
-  const confirmBuddy = async () => {
-    try {
-      // Set flag to prevent useEffect from overwriting the buddy
-      setJustUpdatedBuddy(true);
-      
-      // Update buddy immediately in context and local state
-      setBuddy(pendingBuddy);
-      // Force image re-render by updating the key
-      setBuddyImageKey(prev => prev + 1);
-
-      if (!hasServerRecord) {
-        // Create new student record with buddy
-        const created = await createStudentOnServer({
-          profile: { name, ttsEnabled, theme },
-          interests: interests || [],
-          buddy: pendingBuddy,
-        });
-        setHasServerRecord(true);
-        setServerStudentId(created?.id ?? created?._id ?? userId);
-        setBuddyModal(false);
-        message.success?.(`Buddy selected: ${pendingBuddy.name}`);
-        
-        // Update studentData with the new buddy
-        if (studentData) {
-          setStudentData({ ...studentData, buddy: pendingBuddy });
-        }
-      } else {
-        // Update existing student record with new buddy
-        const payload = {
-          profile: {
-            name: name ?? "",
-            ttsEnabled: Boolean(ttsEnabled),
-            theme: theme || "indigo",
-          },
-          interests: Array.isArray(interests) ? interests : [],
-          buddy: pendingBuddy ? { id: pendingBuddy.id, name: pendingBuddy.name, img: pendingBuddy.img } : null,
-        };
-        
-        await api.patch(`/student/${serverStudentId}`, payload);
-        setBuddyModal(false);
-        message.success?.(`Buddy updated: ${pendingBuddy.name}`);
-        
-        // Update studentData with the new buddy to ensure UI reflects the change
-        if (studentData) {
-          setStudentData({ ...studentData, buddy: pendingBuddy });
-        }
-      }
-
-      initialRef.current = { ...initialRef.current, buddy: pendingBuddy };
-      
-      // Ensure pendingBuddy matches the updated buddy
-      setPendingBuddy(pendingBuddy);
-      
-      // Reset the flag after a short delay to allow future server updates
-      setTimeout(() => {
-        setJustUpdatedBuddy(false);
-      }, 2000);
-    } catch (error) {
-      setJustUpdatedBuddy(false);
-      message.error?.("Could not apply buddy. Please try again.");
-    }
+  const confirmBuddy = () => {
+    // Just update local state - don't save to database yet
+    // Save will happen when user clicks "Save Changes" button
+    const buddyToUpdate = pendingBuddy ? {
+      id: pendingBuddy.id,
+      name: pendingBuddy.name,
+      avatar: pendingBuddy.img || pendingBuddy.avatar || BUDDIES.find(b => b.id === pendingBuddy.id)?.img || buddyMilo,
+      img: pendingBuddy.img || pendingBuddy.avatar || BUDDIES.find(b => b.id === pendingBuddy.id)?.img || buddyMilo,
+    } : null;
+    
+    // Update buddy in context and local state (preview only, not saved yet)
+    setBuddy(buddyToUpdate);
+    // Force image re-render by updating the key
+    setBuddyImageKey(prev => prev + 1);
+    
+    // Mark that student has made a local change (don't overwrite with database sync)
+    setHasLocalBuddyChange(true);
+    setJustUpdatedBuddy(true);
+    
+    // Close the modal
+    setBuddyModal(false);
   };
 
-  const resetAll = () => {
-    try {
-      const STUDENT_LS_KEYS = [
-        "kibundo_buddy",
-        "kibundo_interests",
-        "kibundo_profile",
-        "kibundo.student.buddy.v1",
-        "kibundo.student.interests.v1",
-        "kibundo.student.profile.v1",
-      ];
-      STUDENT_LS_KEYS.forEach((k) => localStorage.removeItem(k));
-    } catch {}
-    setBuddy(null);
-    setInterests([]);
-    setProfile({ name: "", ttsEnabled: false, theme: "indigo" });
-    setName("");
-    setTTSEnabled(false);
-    setTheme("indigo");
-    message.success?.("All student data reset on this device.");
-  };
 
   const doLogout = async () => {
     try {
@@ -487,7 +645,25 @@ export default function StudentSettings() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div className="flex items-center gap-3">
-          <BackButton className="p-2 rounded-full hover:bg-neutral-100 active:scale-95" aria-label="Back" />
+          <BackButton 
+            className="p-2 rounded-full hover:bg-neutral-100 active:scale-95" 
+            aria-label="Back"
+            onBeforeNavigate={() => {
+              if (isDirty) {
+                return new Promise((resolve) => {
+                  Modal.confirm({
+                    title: "Unsaved Changes",
+                    content: "You have unsaved changes. Are you sure you want to leave? Your changes will be lost.",
+                    okText: "Leave",
+                    cancelText: "Stay",
+                    onOk: () => resolve(true),
+                    onCancel: () => resolve(false),
+                  });
+                });
+              }
+              return true;
+            }}
+          />
           <div className="min-w-0">
             <Title level={3} className="!mb-0 flex items-center gap-2 !text-[clamp(1.15rem,2vw,1.5rem)]">
               <Settings className="h-5 w-5 shrink-0" />
@@ -550,7 +726,7 @@ export default function StudentSettings() {
                           {name || defaultName || "Student"}
                         </Title>
                         <Text className="text-white/90 text-lg">
-                          Student ID: {serverStudentId || "N/A"}
+                          Student ID: {serverStudentId || studentData?.id || "N/A"}
                         </Text>
                       </Col>
                     </Row>
@@ -582,7 +758,7 @@ export default function StudentSettings() {
                           <div className="space-y-2">
                             <Text strong className="text-base">Student ID</Text>
                             <Input 
-                              value={serverStudentId || "N/A"} 
+                              value={serverStudentId || studentData?.id || "N/A"} 
                               disabled 
                               className="rounded-xl" 
                               size="large"
@@ -617,50 +793,12 @@ export default function StudentSettings() {
                           </div>
                           <Switch 
                             checked={ttsEnabled} 
-                            onChange={async (checked) => {
-                              // Update local state immediately
+                            onChange={(checked) => {
+                              // Update local state only - don't save to database yet
+                              // Save will happen when user clicks "Save Changes" button
                               setTTSEnabled(checked);
-                              
-                              // Update context immediately so TTS works right away
                               setTtsEnabled(checked);
                               setProfile({ ...profile, ttsEnabled: checked });
-                              
-                              // Always save to database
-                              try {
-                                if (hasServerRecord && serverStudentId) {
-                                  // Update existing student record
-                                  const payload = {
-                                    profile: {
-                                      name: name ?? "",
-                                      ttsEnabled: checked,
-                                      theme: theme || "indigo",
-                                    },
-                                    interests: Array.isArray(interests) ? interests : [],
-                                    buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
-                                  };
-                                  
-                                  await api.patch(`/student/${serverStudentId}`, payload);
-                                  message.success?.(checked ? "Text-to-Speech enabled" : "Text-to-Speech disabled");
-                                  
-                                  // Update initial ref so dirty check works correctly
-                                  initialRef.current = { ...initialRef.current, ttsEnabled: checked };
-                                } else if (userId) {
-                                  // Create new student record if it doesn't exist
-                                  const created = await createStudentOnServer({
-                                    profile: { name: name ?? "", ttsEnabled: checked, theme: theme || "indigo" },
-                                    interests: interests || [],
-                                    buddy: buddy || null,
-                                  });
-                                  setHasServerRecord(true);
-                                  setServerStudentId(created?.id ?? created?._id ?? userId);
-                                  message.success?.(checked ? "Text-to-Speech enabled and saved" : "Text-to-Speech disabled and saved");
-                                  
-                                  // Update initial ref
-                                  initialRef.current = { name: name ?? "", ttsEnabled: checked, theme: theme || "indigo", buddy: buddy || null };
-                                }
-                              } catch (error) {
-                                message.error?.("Could not save TTS setting to database. Please try again.");
-                              }
                             }} 
                             size="large" 
                           />
@@ -687,7 +825,13 @@ export default function StudentSettings() {
                     <Segmented
                       block
                       value={theme}
-                      onChange={(val) => setTheme(val)}
+                      onChange={(val) => {
+                        // Update local state only - don't save to database yet
+                        // Save will happen when user clicks "Save Changes" button
+                        setTheme(val);
+                        setColorTheme(val);
+                        setProfile({ ...profile, theme: val });
+                      }}
                       options={THEMES.map((t) => ({
                         label: <ThemeOption value={t.value} label={t.label} />,
                         value: t.value,
@@ -879,7 +1023,9 @@ export default function StudentSettings() {
               children: (
                 <div className="py-4 space-y-6">
                   <div className="flex items-center justify-between">
-                    <Title level={4} className="!mb-0">My Interests</Title>
+                    <Title level={4} className="!mb-0">
+                      {name || defaultName ? `${name || defaultName}'s Interests` : "My Interests"}
+                    </Title>
                     <Button 
                       type="primary" 
                       className="rounded-xl" 
@@ -892,7 +1038,9 @@ export default function StudentSettings() {
                   <div className="flex flex-wrap gap-3 p-4 bg-gray-50 rounded-2xl min-h-[100px]">
                     {(interests || []).length === 0 ? (
                       <Text type="secondary" className="text-base">
-                        No interests yet — add some below to personalize your learning experience
+                        {name || defaultName 
+                          ? `${name || defaultName} hasn't added any interests yet — add some below to personalize your learning experience`
+                          : "No interests yet — add some below to personalize your learning experience"}
                       </Text>
                     ) : (
                       (interests || []).map((it) => (
@@ -966,23 +1114,6 @@ export default function StudentSettings() {
                     </div>
                   </Card>
 
-                  <Card className="rounded-xl">
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                      <div>
-                        <Title level={5} className="!mb-1">Reset Settings</Title>
-                        <Text type="secondary">Clear all local settings and preferences</Text>
-                      </div>
-                      <Button 
-                        onClick={resetAll} 
-                        className="rounded-xl" 
-                        danger 
-                        type="default"
-                        size="large"
-                      >
-                        Reset Local Data
-                      </Button>
-                    </div>
-                  </Card>
                 </div>
               ),
             },

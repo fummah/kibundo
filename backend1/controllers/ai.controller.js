@@ -116,10 +116,18 @@ exports.chatWithAgent = async (req, res) => {
           console.log("🔍 AI Chat: Fetching homework context for scanId:", scanId, "mode:", mode);
           try {
             const { pool } = require('../config/db.js');
-            const scanResult = await pool.query(`SELECT raw_text FROM homework_scans WHERE id=$1`, [scanId]);
+            // Fetch homework scan with task type
+            const scanResult = await pool.query(`
+              SELECT raw_text, detected_subject, task_type
+              FROM homework_scans WHERE id=$1
+            `, [scanId]);
             if (scanResult.rows[0]) {
-              trimmedContext.homework_context = `CURRENT HOMEWORK: ${scanResult.rows[0].raw_text}`;
-              console.log("✅ AI Chat: Homework context found:", scanResult.rows[0].raw_text?.substring(0, 100) + "...");
+              const scan = scanResult.rows[0];
+              trimmedContext.homework_context = `CURRENT HOMEWORK: ${scan.raw_text}`;
+              trimmedContext.homework_subject = scan.detected_subject || null;
+              trimmedContext.homework_task_type = scan.task_type || null; // 'solvable' or 'creative'
+              console.log("✅ AI Chat: Homework context found:", scan.raw_text?.substring(0, 100) + "...");
+              console.log("✅ AI Chat: Task type:", scan.task_type || "not set");
             } else {
               console.log("❌ AI Chat: No homework context found for scanId:", scanId);
             }
@@ -293,10 +301,19 @@ ZUSÄTZLICHE DATENQUELLEN:
 Du hast Zugriff auf folgende Datenbanktabellen:
 ${Object.keys(entityData).map(entityName => `- ${entityName}: ${entityData[entityName].count} Datensätze`).join('\n')}
 
-Beantworte Fragen basierend auf diesen Daten. Wenn der Elternteil nach Informationen fragt, die in diesen Tabellen vorhanden sind, nutze diese Daten für deine Antwort.
+WICHTIG - DATENZUGRIFF:
+- Die Daten sind im Kontext-Objekt unter "entity_data" verfügbar
+- Jede Tabelle enthält ein "data" Array mit allen Datensätzen
+- Wenn nach Studentennamen gefragt wird, durchsuche "entity_data.STUDENTS.data" oder "entity_data.students.data"
+- Wenn nach Fächern gefragt wird, durchsuche "entity_data.SUBJECTS.data" oder "entity_data.subjects.data"
+- Wenn nach Rechnungen gefragt wird, durchsuche "entity_data.INVOICES.data" oder "entity_data.invoices.data"
+- Wenn nach Abonnements gefragt wird, durchsuche "entity_data.SUBSCRIPTIONS.data" oder "entity_data.subscriptions.data"
+- Sage NIEMALS "die verfügbaren Informationen enthalten keine spezifischen Daten" - die Daten SIND im Kontext vorhanden
+- Lies IMMER die vollständigen Daten aus dem entity_data Objekt, bevor du sagst, dass Informationen fehlen
+- Beantworte Fragen basierend auf diesen Daten. Wenn der Elternteil nach Informationen fragt, die in diesen Tabellen vorhanden sind, nutze diese Daten für deine Antwort.
 ` : ''}
 
-Kontext: ${JSON.stringify(trimmedContext)}`;
+Kontext: ${JSON.stringify(trimmedContext, null, 2)}`;
     } else if (agentType === "child" || ai_agent == "ChildAgent") {
       // CHILD AGENT PROMPT (existing)
       systemContent = `Du bist Kibundo, ein geduldiger und freundlicher Hausaufgabenhelfer für Schüler der Klassen 1–7.
@@ -334,10 +351,19 @@ ZUSÄTZLICHE DATENQUELLEN:
 Du hast Zugriff auf folgende Datenbanktabellen:
 ${Object.keys(entityData).map(entityName => `- ${entityName}: ${entityData[entityName].count} Datensätze`).join('\n')}
 
-Beantworte Fragen basierend auf diesen Daten. Wenn der Schüler nach Informationen fragt, die in diesen Tabellen vorhanden sind, nutze diese Daten für deine Antwort.
+WICHTIG - DATENZUGRIFF:
+- Die Daten sind im Kontext-Objekt unter "entity_data" verfügbar
+- Jede Tabelle enthält ein "data" Array mit allen Datensätzen
+- Wenn nach Studentennamen gefragt wird, durchsuche "entity_data.STUDENTS.data" oder "entity_data.students.data"
+- Wenn nach Fächern gefragt wird, durchsuche "entity_data.SUBJECTS.data" oder "entity_data.subjects.data"
+- Wenn nach Hausaufgaben gefragt wird, durchsuche "entity_data.HOMEWORK_SCANS.data" oder "entity_data.homework_scans.data"
+- Wenn nach Klassen gefragt wird, durchsuche "entity_data.CLASSES.data" oder "entity_data.classes.data"
+- Sage NIEMALS "die verfügbaren Informationen enthalten keine spezifischen Daten" - die Daten SIND im Kontext vorhanden
+- Lies IMMER die vollständigen Daten aus dem entity_data Objekt, bevor du sagst, dass Informationen fehlen
+- Beantworte Fragen basierend auf diesen Daten. Wenn der Schüler nach Informationen fragt, die in diesen Tabellen vorhanden sind, nutze diese Daten für deine Antwort.
 ` : ''}
 
-Kontext: ${JSON.stringify(trimmedContext)}`;
+Kontext: ${JSON.stringify(trimmedContext, null, 2)}`;
     } else if (agentType === "teacher" || ai_agent == "TeacherAgent") {
       // TEACHER AGENT PROMPT
       systemContent = `Du bist Kibundo, ein KI-Assistent für Lehrer im Kibundo-Bildungssystem.
@@ -358,10 +384,18 @@ ${Object.keys(entityData).length > 0 ? `
 Du hast Zugriff auf folgende Datenbanktabellen:
 ${Object.keys(entityData).map(entityName => `- ${entityName}: ${entityData[entityName].count} Datensätze`).join('\n')}
 
-Beantworte Fragen basierend auf diesen Daten. Wenn der Lehrer nach Informationen fragt, die in diesen Tabellen vorhanden sind, nutze diese Daten für deine Antwort.
+WICHTIG - DATENZUGRIFF:
+- Die Daten sind im Kontext-Objekt unter "entity_data" verfügbar
+- Jede Tabelle enthält ein "data" Array mit allen Datensätzen
+- Wenn nach Studentennamen gefragt wird, durchsuche "entity_data.STUDENTS.data" oder "entity_data.students.data"
+- Wenn nach Fächern gefragt wird, durchsuche "entity_data.SUBJECTS.data" oder "entity_data.subjects.data"
+- Wenn nach Klassen gefragt wird, durchsuche "entity_data.CLASSES.data" oder "entity_data.classes.data"
+- Sage NIEMALS "die verfügbaren Informationen enthalten keine spezifischen Daten" - die Daten SIND im Kontext vorhanden
+- Lies IMMER die vollständigen Daten aus dem entity_data Objekt, bevor du sagst, dass Informationen fehlen
+- Beantworte Fragen basierend auf diesen Daten. Wenn der Lehrer nach Informationen fragt, die in diesen Tabellen vorhanden sind, nutze diese Daten für deine Antwort.
 ` : ''}
 
-Kontext: ${JSON.stringify(trimmedContext)}`;
+Kontext: ${JSON.stringify(trimmedContext, null, 2)}`;
     } else if (agentType === "custom" || ai_agent === "CustomAgent") {
       // CUSTOM AGENT PROMPT
       const entitiesList = Object.keys(entityData).length > 0 
@@ -427,29 +461,63 @@ ZUSÄTZLICHE DATENQUELLEN:
 Du hast Zugriff auf folgende Datenbanktabellen:
 ${Object.keys(entityData).map(entityName => `- ${entityName}: ${entityData[entityName].count} Datensätze`).join('\n')}
 
-Beantworte Fragen basierend auf diesen Daten.
+WICHTIG - DATENZUGRIFF:
+- Die Daten sind im Kontext-Objekt unter "entity_data" verfügbar
+- Jede Tabelle enthält ein "data" Array mit allen Datensätzen
+- Lies IMMER die vollständigen Daten aus dem entity_data Objekt, bevor du sagst, dass Informationen fehlen
+- Beantworte Fragen basierend auf diesen Daten.
 ` : ''}
 
-Kontext: ${JSON.stringify(trimmedContext)}`;
+Kontext: ${JSON.stringify(trimmedContext, null, 2)}`;
     }
 
     // Add homework-specific instructions if we have homework context
     if (trimmedContext.homework_context) {
-      systemContent += `
+      const taskType = trimmedContext.homework_task_type || 'solvable'; // Default to solvable
+      
+      if (taskType === 'creative') {
+        // Type B: Creative/Manual - Motivational Mode
+        systemContent += `
 
-KRITISCHE HAUSAUFGABEN-ANWEISUNGEN:
-- Du hilfst einem Schüler der Klassen 1-7 bei seinen Hausaufgaben
+🎨 HAUSAUFGABEN-ANWEISUNGEN - KREATIVE AUFGABE (Type B):
+- Du hilfst einem Schüler der Klassen 1-7 bei einer KREATIVEN oder MANUELLEN Aufgabe (z.B. Malen, Zeichnen, Basteln, Handwerk, Musik, Sport)
+- WICHTIG: Diese Aufgabe kann NICHT durch AI gelöst werden - sie erfordert Kreativität und manuelle Arbeit
+- Deine Hauptaufgabe ist MOTIVATION und emotionale Unterstützung, NICHT das Lösen der Aufgabe
+- Verwende einen positiven, ermutigenden und spielerischen Ton
+- Gib Lob und Anerkennung für Fortschritte
+- Biete motivierende Phrasen und spielerische Anregungen
+- Verwende Timer, kleine Missionen oder Musikvorschläge, um die Konzentration zu unterstützen
+- Halte das Kind engagiert und positiv während der gesamten Aufgabe
+- Verwende einfache, ermutigende Sprache, die für einen 6-13-jährigen Schüler geeignet ist
+- Verwende NUR Deutsch - KEINE englischen Begriffe, KEINE englischen Antworten, KEINE englischen Wörter
+- FINALE PRÜFUNG: Prüfe jede Antwort auf englische Wörter und übersetze sie SOFORT
+
+MOTIVATIONSPHRASEN (verwende diese regelmäßig):
+- "Super gemacht! Du bist auf dem richtigen Weg! 💪"
+- "Das sieht schon toll aus! Weiter so! 🌟"
+- "Lass uns gemeinsam etwas Schönes schaffen! 🎨"
+- "Du schaffst das! Ich glaube an dich! ✨"
+- "Jeder Schritt zählt! Du machst das großartig! 🚀"`;
+      } else {
+        // Type A: Solvable - Step-by-step Help Mode
+        systemContent += `
+
+✅ HAUSAUFGABEN-ANWEISUNGEN - LÖSBARE AUFGABE (Type A):
+- Du hilfst einem Schüler der Klassen 1-7 bei einer LÖSBAREN Aufgabe (z.B. Mathe, Deutsch, Englisch, Sachkunde)
 - Der Hausaufgabeninhalt wird oben im Kontext bereitgestellt
 - Beantworte IMMER Fragen basierend auf dem spezifischen Hausaufgabeninhalt
 - Sage niemals "Ich habe keinen Hausaufgabenkontext" oder "keine spezifischen Hausaufgaben bereitgestellt"
 - Beziehe deine Antworten immer auf den gescannten Hausaufgabeninhalt
-- Biete schrittweise Hilfe für die spezifischen Aufgaben in den Hausaufgaben
+- Biete INTERAKTIVE, SCHRITT-FÜR-SCHRITT Hilfe für die spezifischen Aufgaben
+- Führe den Schüler durch jeden Schritt, aber gib nicht sofort die vollständige Antwort
+- Stelle Zwischenfragen, um sicherzustellen, dass der Schüler versteht
 - Verwende einfache, ermutigende Sprache, die für einen 6-13-jährigen Schüler geeignet ist
 - Bei Mathematikaufgaben mit Mehrfachauswahl: Erkläre ALLE Optionen auf Deutsch und helfe dem Schüler zu verstehen, welche richtig ist und warum. Übersetze alle englischen Optionen ins Deutsche.
 - Verwende NUR Deutsch - KEINE englischen Begriffe, KEINE englischen Antworten, KEINE englischen Wörter
 - Wenn die Hausaufgabe gemischte Sprachen hat, übersetze ALLES ins Deutsche, bevor du antwortest
 - Wenn der Schüler nach etwas fragt, das nicht in den Hausaufgaben steht, leite ihn zu den Hausaufgabenaufgaben zurück
 - FINALE PRÜFUNG: Prüfe jede Antwort auf englische Wörter und übersetze sie SOFORT`;
+      }
     }
 
     console.log("🎯 System prompt being sent to AI:", systemContent);

@@ -138,7 +138,12 @@ export default function HomeworkFeedback() {
           <Button
             size="large"
             className="rounded-xl !px-8 !h-12"
-            onClick={() => navigate("/student/homework/chat", { state: { taskId } })}
+            onClick={() =>
+              navigate("/student/homework/doing", {
+                state: { taskId, openHomeworkChat: true },
+                replace: true,
+              })
+            }
             disabled={!taskId}
           >
             Weiter chatten

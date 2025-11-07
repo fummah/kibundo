@@ -150,7 +150,7 @@ const REQUIRED_REMOVE_PATH = {
   invoices: (id) => `/invoice/${id}`,
 };
 
-export default function EntityDetail({ cfg, extraHeaderButtons, onEntityLoad }) {
+export default function EntityDetail({ cfg, extraHeaderButtons, onEntityLoad, onBeforeSave }) {
   const navigate = useNavigate();
   const { id } = useParams();
   const location = useLocation();
@@ -660,6 +660,17 @@ export default function EntityDetail({ cfg, extraHeaderButtons, onEntityLoad }) 
 
   const saveInfo = async () => {
     try {
+      let profileSaveSuccess = true;
+      // Call onBeforeSave callback if provided (e.g., to save profile data)
+      if (onBeforeSave) {
+        profileSaveSuccess = await onBeforeSave();
+        if (profileSaveSuccess === false) {
+          // If onBeforeSave returns false, cancel the save and show error
+          messageApi.error("Failed to save profile data");
+          return;
+        }
+      }
+      
       const values = await infoForm.validateFields();
       delete values[idField];
       
@@ -709,10 +720,12 @@ export default function EntityDetail({ cfg, extraHeaderButtons, onEntityLoad }) 
 
       if (typeof apiObj.updatePath === "function") {
         await api.put(apiObj.updatePath(id), transformedValues, { withCredentials: true });
-        messageApi.success("Saved");
+        // Only show one success message for both profile and info saves
+        messageApi.success("Saved successfully");
         await load();
       } else {
         setEntity((prev) => ({ ...(prev || {}), ...values }));
+        messageApi.success("Saved successfully");
       }
     } catch (err) {
       if (err?.errorFields) {

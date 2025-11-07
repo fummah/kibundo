@@ -102,15 +102,27 @@ export function StudentAppProvider({ children }) {
 
   // Convenience setters (keep legacy mirrors in sync)
   const setBuddy = (buddy) =>
-    setState((s) => ({
-      ...s,
-      buddy: {
-        id: buddy?.id ?? s.buddy.id,
-        name: buddy?.name ?? s.buddy.name,
-        avatar: buddy?.avatar || monster1, // always fallback to our asset
-        theme: buddy?.theme ?? s.buddy.theme,
-      },
-    }));
+    setState((s) => {
+      // If buddy is null/undefined, reset to default
+      if (!buddy) {
+        return {
+          ...s,
+          buddy: DEFAULT_STATE.buddy,
+        };
+      }
+      // Otherwise update with new buddy data
+      return {
+        ...s,
+        buddy: {
+          id: buddy.id ?? s.buddy.id,
+          name: buddy.name ?? s.buddy.name,
+          // Support both 'img' (from database) and 'avatar' (from context)
+          avatar: buddy.avatar || buddy.img || monster1, // always fallback to our asset
+          img: buddy.img || buddy.avatar, // Keep img for compatibility
+          theme: buddy.theme ?? s.buddy.theme,
+        },
+      };
+    });
 
   const setInterests = (interests) =>
     setState((s) => ({

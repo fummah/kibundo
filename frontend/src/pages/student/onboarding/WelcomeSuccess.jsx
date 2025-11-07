@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Typography, Button } from "antd";
 import { useNavigate } from "react-router-dom";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
@@ -13,7 +14,27 @@ const { Title, Text } = Typography;
 
 export default function WelcomeSuccess() {
   const navigate = useNavigate();
-  const { buddy } = useStudentApp();
+  const { buddy, ttsEnabled } = useStudentApp();
+
+  // Speak congratulations message when page loads (if TTS is enabled)
+  useEffect(() => {
+    if (ttsEnabled) {
+      const timer = setTimeout(() => {
+        try {
+          const message = "Glückwunsch! Du hast den ersten Schritt gemacht.";
+          const u = new SpeechSynthesisUtterance(message);
+          u.lang = "de-DE";
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(u);
+        } catch {}
+      }, 500); // Small delay for page to render
+      
+      return () => {
+        clearTimeout(timer);
+        window.speechSynthesis.cancel();
+      };
+    }
+  }, [ttsEnabled]);
 
   return (
     <div className="relative min-h-[100dvh] flex flex-col items-center justify-center px-6 overflow-hidden">

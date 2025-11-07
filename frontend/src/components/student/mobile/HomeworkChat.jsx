@@ -356,9 +356,12 @@ export default function HomeworkChat({
   // Fetch backend messages when conversation ID changes
   useEffect(() => {
     if (conversationId) {
+      // Reset initial load flag when a new conversation starts
+      isInitialLoadRef.current = true;
       fetchBackendMessages(conversationId);
     } else {
       setBackendMessages([]);
+      isInitialLoadRef.current = true;
     }
   }, [conversationId, fetchBackendMessages]);
 
@@ -489,6 +492,7 @@ export default function HomeworkChat({
   const sendingRef = useRef(false);
   const lastSentMessageRef = useRef(null);
   const lastSentTimeRef = useRef(0);
+  const isInitialLoadRef = useRef(true); // Track if this is the initial load
 
   // autoscroll
   const lastLenRef = useRef(0);
@@ -566,6 +570,9 @@ export default function HomeworkChat({
       sendingRef.current = true;
       setSending(true);
       setTyping(true); // Show thinking indicator in chat area
+      
+      // Mark that user has sent a message, so future responses should be spoken
+      isInitialLoadRef.current = false;
 
       const optimisticMsg = formatMessage(t, "student", "text", { pending: true });
       updateMessages((m) => [...m, optimisticMsg]);
@@ -633,8 +640,8 @@ export default function HomeworkChat({
             // Merge server messages with local messages to avoid duplicates
             const merged = mergeById(serverMessages, withoutPending);
             
-            // Speak the latest agent message if TTS is enabled
-            if (ttsEnabled && serverMessages.length > 0) {
+            // Only speak agent messages if this is NOT the initial load (i.e., user just sent a message)
+            if (ttsEnabled && !isInitialLoadRef.current && serverMessages.length > 0) {
               const latestAgentMessage = [...serverMessages]
                 .reverse()
                 .find(msg => msg.from === "agent" || msg.sender === "agent");

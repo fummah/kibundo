@@ -1463,7 +1463,13 @@ exports.editStudent = async (req, res) => {
     const studentUpdateFields = {};
     if (class_id !== undefined) studentUpdateFields.class_id = class_id;
     if (parent_id !== undefined) studentUpdateFields.parent_id = parent_id;
-    if (age !== undefined) studentUpdateFields.age = age;
+    // Validate and convert age to integer - skip if invalid (like "-" or empty string)
+    if (age !== undefined && age !== null && age !== "" && age !== "-") {
+      const ageNum = parseInt(age, 10);
+      if (!isNaN(ageNum) && ageNum > 0) {
+        studentUpdateFields.age = ageNum;
+      }
+    }
     studentUpdateFields.updated_by = updated_by;
     
     // Update JSONB fields (profile, interests, buddy)

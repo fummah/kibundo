@@ -196,26 +196,115 @@ const SubjectsTab = ({ student, reload }) => {
 };
 
 // Interests Tab Component
-const InterestsTab = ({ student, reload }) => {
+const InterestsTab = ({ student, reload, onProfileSave }) => {
   const { message } = App.useApp();
   const studentData = student?.raw || {};
   const interests = Array.isArray(studentData?.interests) ? studentData.interests : [];
   const profile = studentData?.profile || {};
-  const buddy = studentData?.buddy || {};
+  // Handle buddy: use null if empty object or falsy, otherwise use the buddy object
+  const buddy = studentData?.buddy && Object.keys(studentData.buddy).length > 0 ? studentData.buddy : null;
+  
+  // Get student's actual name (prioritize user's name over profile name, ignore test values)
+  const getUserName = () => {
+    const user = studentData?.user || {};
+    const firstName = user.first_name || "";
+    const lastName = user.last_name || "";
+    const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+    if (fullName) return fullName;
+    
+    // Only use profile name if it's not a test value
+    const profileName = profile?.name || studentData?.firstName || "";
+    const isTestName = profileName?.toLowerCase().includes("test");
+    if (profileName && !isTestName) return profileName;
+    
+    // Fallback to computed name from student object
+    if (student?.name && !student.name.toLowerCase().includes("test")) return student.name;
+    
+    return null;
+  };
+  
+  const studentName = getUserName();
   
   const [editingInterests, setEditingInterests] = useState(false);
   const [interestsDraft, setInterestsDraft] = useState([]);
   const [newInterestInput, setNewInterestInput] = useState("");
   const [savingInterests, setSavingInterests] = useState(false);
   
-  const [editingProfile, setEditingProfile] = useState(false);
   const [profileDraft, setProfileDraft] = useState({ 
-    name: studentData?.firstName || profile?.name || "",
+    name: profile?.name || "",
     theme: profile?.theme || "indigo", 
     ttsEnabled: profile?.ttsEnabled !== undefined ? Boolean(profile.ttsEnabled) : (profile?.tts !== undefined ? Boolean(profile.tts) : true)
   });
   const [buddyDraft, setBuddyDraft] = useState(buddy);
   const [savingProfile, setSavingProfile] = useState(false);
+  
+  // Expose save function to parent component (no messages - parent will show them)
+  const saveProfile = useCallback(async () => {
+    setSavingProfile(true);
+    try {
+      // Validate buddy data - ensure it has required fields if it exists
+      let buddyToSave = null;
+      if (buddyDraft && buddyDraft.id && buddyDraft.name) {
+        // Find the full buddy object from BUDDIES array to ensure we have the img
+        const fullBuddy = BUDDIES.find(b => b.id === buddyDraft.id) || buddyDraft;
+        buddyToSave = {
+          id: fullBuddy.id,
+          name: fullBuddy.name,
+          img: fullBuddy.img || buddyDraft.img || buddyMilo
+        };
+      }
+      
+      await api.patch(`/student/${student.id}`, {
+        profile: {
+          name: profileDraft.name || "",
+          theme: profileDraft.theme || "indigo",
+          ttsEnabled: Boolean(profileDraft.ttsEnabled),
+        },
+        buddy: buddyToSave,
+      });
+      reload?.();
+      return true;
+    } catch (err) {
+      console.error("Error saving profile:", err);
+      message.error(err?.response?.data?.message || "Failed to save profile. Please try again.");
+      return false;
+    } finally {
+      setSavingProfile(false);
+    }
+  }, [student.id, profileDraft.name, profileDraft.theme, profileDraft.ttsEnabled, buddyDraft, reload, message]);
+  
+  // Expose save function to parent via callback
+  useEffect(() => {
+    if (onProfileSave) {
+      onProfileSave(saveProfile);
+    }
+  }, [saveProfile, onProfileSave]);
+  
+  // Update profileDraft when student data loads
+  useEffect(() => {
+    setProfileDraft(prev => ({
+      ...prev,
+      name: profile?.name || "",
+      theme: profile?.theme || "indigo",
+      ttsEnabled: profile?.ttsEnabled !== undefined ? Boolean(profile.ttsEnabled) : (profile?.tts !== undefined ? Boolean(profile.tts) : true)
+    }));
+    
+    // Handle buddy initialization - ensure it has all required fields or set to null
+    if (buddy && buddy.id && buddy.name) {
+      // Find the full buddy object from BUDDIES array to ensure we have the img
+      const fullBuddy = BUDDIES.find(b => b.id === buddy.id);
+      if (fullBuddy) {
+        setBuddyDraft(fullBuddy);
+      } else if (buddy.img) {
+        // If buddy exists but not in BUDDIES array, use it as-is if it has img
+        setBuddyDraft(buddy);
+      } else {
+        setBuddyDraft(null);
+      }
+    } else {
+      setBuddyDraft(null);
+    }
+  }, [profile?.name, profile?.theme, profile?.ttsEnabled, buddy]);
   
   const startEditingInterests = () => {
     setInterestsDraft([...interests]);
@@ -256,48 +345,14 @@ const InterestsTab = ({ student, reload }) => {
     }
   };
   
-  const startEditingProfile = () => {
-    setProfileDraft({ 
-      name: studentData?.firstName || profile?.name || "",
-      theme: profile?.theme || "indigo", 
-      ttsEnabled: profile?.ttsEnabled !== undefined ? Boolean(profile.ttsEnabled) : (profile?.tts !== undefined ? Boolean(profile.tts) : true)
-    });
-    setBuddyDraft(buddy);
-    setEditingProfile(true);
-  };
-  
-  const cancelEditingProfile = () => {
-    setEditingProfile(false);
-  };
-  
-  const saveProfile = async () => {
-    setSavingProfile(true);
-    try {
-      await api.patch(`/student/${student.id}`, {
-        profile: {
-          name: profileDraft.name || "",
-          theme: profileDraft.theme || "indigo",
-          ttsEnabled: Boolean(profileDraft.ttsEnabled),
-        },
-        buddy: buddyDraft,
-      });
-      message.success("Learning profile updated successfully!");
-      setEditingProfile(false);
-      reload?.();
-    } catch (err) {
-      console.error("Error saving profile:", err);
-      message.error("Failed to save learning profile");
-    } finally {
-      setSavingProfile(false);
-    }
-  };
-  
   return (
     <div className="p-4 space-y-6">
       {/* Interests Section */}
       <div>
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium">Student Interests</h3>
+          <h3 className="text-lg font-medium">
+            {studentName ? `${studentName}'s Interests` : "Student Interests"}
+          </h3>
           {!editingInterests ? (
             <Button
               type="primary"
@@ -362,7 +417,11 @@ const InterestsTab = ({ student, reload }) => {
                 </Tag>
               ))
             ) : (
-              <div className="text-gray-500">No interests recorded</div>
+              <div className="text-gray-500">
+                {studentName 
+                  ? `${studentName} hasn't added any interests yet`
+                  : "No interests recorded"}
+              </div>
             )}
           </div>
         )}
@@ -372,64 +431,32 @@ const InterestsTab = ({ student, reload }) => {
       <div>
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-medium">Learning Profile</h3>
-          {!editingProfile ? (
-            <Button
-              type="primary"
-              icon={<EditOutlined />}
-              onClick={startEditingProfile}
-            >
-              Edit Profile
-            </Button>
-          ) : (
-            <Space>
-              <Button
-                icon={<CloseOutlined />}
-                onClick={cancelEditingProfile}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="primary"
-                icon={<SaveOutlined />}
-                onClick={saveProfile}
-                loading={savingProfile}
-              >
-                Save
-              </Button>
-            </Space>
-          )}
         </div>
+        <p className="text-sm text-gray-500 mb-4">
+          Customize the student's learning experience preferences. The display name is what the student sees in their app.
+        </p>
 
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Name</label>
-            {editingProfile ? (
-              <Input
-                value={profileDraft.name}
-                onChange={(e) => setProfileDraft({ ...profileDraft, name: e.target.value })}
-                placeholder="Enter display name"
-              />
-            ) : (
-              <Input
-                value={studentData?.firstName || profile?.name || ""}
-                disabled
-                className="bg-gray-50"
-              />
-            )}
+            <Input
+              value={profileDraft.name}
+              onChange={(e) => setProfileDraft({ ...profileDraft, name: e.target.value })}
+              placeholder="Enter display name (what student sees in app)"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              This is the name the student selected. You can edit it here.
+            </p>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Theme</label>
-            {editingProfile ? (
-              <Select
-                value={profileDraft.theme}
-                onChange={(val) => setProfileDraft({ ...profileDraft, theme: val })}
-                style={{ width: "100%" }}
-                options={THEME_OPTIONS}
-              />
-            ) : (
-              <Input value={profile?.theme || "indigo"} disabled className="bg-gray-50" />
-            )}
+            <Select
+              value={profileDraft.theme}
+              onChange={(val) => setProfileDraft({ ...profileDraft, theme: val })}
+              style={{ width: "100%" }}
+              options={THEME_OPTIONS}
+            />
           </div>
 
           <div className="flex items-center justify-between">
@@ -437,33 +464,60 @@ const InterestsTab = ({ student, reload }) => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Text-to-Speech</label>
               <span className="text-xs text-gray-500">Enable voice feedback from the learning buddy</span>
             </div>
-            {editingProfile ? (
-              <Switch
-                checked={profileDraft.ttsEnabled}
-                onChange={(checked) => setProfileDraft({ ...profileDraft, ttsEnabled: checked })}
-                size="default"
-              />
-            ) : (
-              <Tag color={(profile?.ttsEnabled !== undefined ? Boolean(profile.ttsEnabled) : (profile?.tts !== undefined ? Boolean(profile.tts) : true)) ? "green" : "red"}>
-                {(profile?.ttsEnabled !== undefined ? Boolean(profile.ttsEnabled) : (profile?.tts !== undefined ? Boolean(profile.tts) : true)) ? "Enabled" : "Disabled"}
-              </Tag>
-            )}
+            <Switch
+              checked={profileDraft.ttsEnabled}
+              onChange={(checked) => setProfileDraft({ ...profileDraft, ttsEnabled: checked })}
+              size="default"
+            />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Learning Buddy</label>
-            {editingProfile ? (
-              <Select
-                value={buddyDraft?.id}
-                onChange={(val) => {
+            {buddyDraft && (
+              <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex items-center gap-3">
+                  <img
+                    src={buddyDraft.img || buddyMilo}
+                    alt={buddyDraft.name || "Learning Buddy"}
+                    className="w-12 h-12 object-contain rounded-lg"
+                    onError={(e) => {
+                      e.target.src = buddyMilo;
+                    }}
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      Current: {buddyDraft.name || "Not selected"}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      This is the buddy the student selected. You can change it below.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            <Select
+              value={buddyDraft?.id}
+              onChange={(val) => {
+                if (val) {
                   const selected = BUDDIES.find((b) => b.id === val);
-                  setBuddyDraft(selected);
-                }}
-                style={{ width: "100%" }}
-                options={BUDDIES.map((b) => ({ label: b.name, value: b.id }))}
-              />
-            ) : (
-              <Input value={buddy?.name || "Not set"} disabled className="bg-gray-50" />
+                  if (selected) {
+                    setBuddyDraft(selected);
+                  } else {
+                    setBuddyDraft(null);
+                  }
+                } else {
+                  setBuddyDraft(null);
+                }
+              }}
+              allowClear
+              style={{ width: "100%" }}
+              options={BUDDIES.map((b) => ({ label: b.name, value: b.id }))}
+              placeholder="Select a learning buddy"
+            />
+            {!buddyDraft && (
+              <p className="text-xs text-gray-500 mt-1">
+                No learning buddy selected by the student yet.
+              </p>
             )}
           </div>
         </div>
@@ -870,6 +924,7 @@ export default function StudentDetail() {
 
   const [credentialsModalVisible, setCredentialsModalVisible] = useState(false);
   const [currentEntity, setCurrentEntity] = useState(null);
+  const profileSaveRef = useRef(null);
 
   // Stable config object (does not depend on location)
   const cfg = useMemo(() => ({
@@ -1162,7 +1217,15 @@ export default function StudentDetail() {
       interests: {
         enabled: true,
         label: "Interests",
-        render: (student, { reload } = {}) => <InterestsTab student={student} reload={reload} />,
+        render: (student, { reload } = {}) => (
+          <InterestsTab 
+            student={student} 
+            reload={reload} 
+            onProfileSave={(saveFn) => {
+              profileSaveRef.current = saveFn;
+            }}
+          />
+        ),
       },
 
       // API Usage Statistics Tab
@@ -1206,6 +1269,13 @@ export default function StudentDetail() {
       <EntityDetail 
         cfg={cfg}
         onEntityLoad={(entity) => setCurrentEntity(entity)}
+        onBeforeSave={async () => {
+          // Save profile data when main Save button is clicked
+          if (profileSaveRef.current) {
+            return await profileSaveRef.current();
+          }
+          return true;
+        }}
         extraHeaderButtons={(entity) => (
           <Button
             type="default"

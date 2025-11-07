@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import { Card, Typography, Button, App } from "antd";
+import { Card, Typography, Button, App, Switch } from "antd";
 import { ArrowLeft, Volume2, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -69,7 +69,7 @@ export default function InterestsWizard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { buddy, interests, setInterests, profile, ttsEnabled, theme } = useStudentApp();
+  const { buddy, interests, setInterests, profile, ttsEnabled, setTtsEnabled, setProfile, theme } = useStudentApp();
   const [stepIdx, setStepIdx] = useState(0);
   const [saving, setSaving] = useState(false);
   const [answers, setAnswers] = useState(() =>
@@ -87,13 +87,38 @@ export default function InterestsWizard() {
         }
       } catch {}
     }
-  }, []);  
+  }, []);
 
   const step = STEPS[stepIdx];
   const canNext = useMemo(() => !!answers[stepIdx], [answers, stepIdx]);
 
+  // Automatically speak step title when step changes (if TTS is enabled)
+  useEffect(() => {
+    if (ttsEnabled && step) {
+      // Small delay to ensure the step has rendered
+      const timer = setTimeout(() => {
+        try {
+          const u = new SpeechSynthesisUtterance(step.title);
+          u.lang = "de-DE";
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(u);
+        } catch {}
+      }, 300); // 300ms delay for smooth transition
+      
+      return () => {
+        clearTimeout(timer);
+        window.speechSynthesis.cancel();
+      };
+    }
+  }, [stepIdx, step, ttsEnabled]);
+
   const speak = () => {
+    if (!ttsEnabled) {
+      // If TTS is disabled, don't speak
+      return;
+    }
     try {
+      // Speak the step title
       const u = new SpeechSynthesisUtterance(step.title);
       u.lang = "de-DE";
       window.speechSynthesis.cancel();
@@ -105,6 +130,16 @@ export default function InterestsWizard() {
     const next = [...answers];
     next[stepIdx] = c;
     setAnswers(next);
+    
+    // Speak the selected choice if TTS is enabled
+    if (ttsEnabled && c) {
+      try {
+        const u = new SpeechSynthesisUtterance(c);
+        u.lang = "de-DE";
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      } catch {}
+    }
   };
 
   const onBack = () => {
@@ -140,24 +175,27 @@ export default function InterestsWizard() {
         );
         
         if (match && match.id) {
-          // Save interests to database
+          // Save interests and TTS to database - same as settings page
+          // Use current ttsEnabled from context (which may have been updated by the toggle)
+          const currentTtsEnabled = Boolean(ttsEnabled);
           const payload = {
             profile: {
               name: profile?.name ?? "",
-              ttsEnabled: Boolean(ttsEnabled),
+              ttsEnabled: currentTtsEnabled,
               theme: theme || "indigo",
             },
             interests: final,
             buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
           };
           
-          console.log("💾 Saving interests from wizard to database:", {
+          console.log("💾 Saving interests and TTS from wizard to database:", {
             studentId: match.id,
-            interests: final
+            interests: final,
+            ttsEnabled: currentTtsEnabled
           });
           
           await api.patch(`/student/${match.id}`, payload);
-          console.log("✅ Interests saved to database successfully!");
+          console.log("✅ Interests and TTS saved to database successfully!");
           message.success?.("Interessen erfolgreich gespeichert!");
         } else {
           console.warn("⚠️ No student record found - interests saved locally only");
@@ -212,12 +250,46 @@ export default function InterestsWizard() {
             Interessen
           </Title>
           <button
-            className="ml-auto p-2 rounded-full hover:bg-neutral-100"
+            className={`ml-auto p-2 rounded-full hover:bg-neutral-100 ${!ttsEnabled ? 'opacity-50' : ''}`}
             onClick={speak}
             aria-label="Vorlesen"
+            disabled={!ttsEnabled}
+            title={ttsEnabled ? "Vorlesen" : "Text-to-Speech ist deaktiviert"}
           >
             <Volume2 className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* TTS Toggle - Same as settings page */}
+        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl mb-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Volume2 className="h-4 w-4" />
+              Text-to-Speech
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              Enable voice feedback from your buddy
+            </div>
+          </div>
+          <Switch 
+            checked={ttsEnabled} 
+            onChange={(checked) => {
+              // Update context immediately - same as settings page
+              setTtsEnabled(checked);
+              setProfile({ ...profile, ttsEnabled: checked });
+              
+              // Give feedback when TTS is enabled
+              if (checked) {
+                try {
+                  const feedback = new SpeechSynthesisUtterance("enabled");
+                  feedback.lang = "en-US";
+                  window.speechSynthesis.cancel();
+                  window.speechSynthesis.speak(feedback);
+                } catch {}
+              }
+            }} 
+            size="default" 
+          />
         </div>
 
         {/* Buddy + question */}
