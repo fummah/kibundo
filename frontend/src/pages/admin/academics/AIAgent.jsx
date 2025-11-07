@@ -184,7 +184,11 @@ export default function AIAgent() {
 
   // Helper function to get agent details by name
   const getAgentDetails = useCallback((agentName) => {
-    return state.sources.agents?.find(agent => agent.agent_name === agentName);
+    if (!agentName) return undefined;
+    return state.sources.agents?.find((agent) => {
+      const currentName = agent?.agent_name || agent?.name || agent?.agentName;
+      return currentName === agentName;
+    });
   }, [state.sources.agents]);
 
   // Helper function to get default agent for a specific role
@@ -249,7 +253,52 @@ export default function AIAgent() {
     try {
       const { data } = await api.get("/agents");
       const agents = Array.isArray(data) ? data : [];
-      setState((s) => ({ ...s, sources: { ...s.sources, agents } }));
+      const normalizedAgents = agents.map((agent) => {
+        const name = agent?.agent_name || agent?.name || agent?.agentName || "";
+        const entities =
+          Array.isArray(agent?.entities)
+            ? agent.entities
+            : typeof agent?.entities === "string"
+              ? agent.entities
+                  .split(",")
+                  .map((entry) => entry.trim())
+                  .filter(Boolean)
+              : [];
+
+        const rawPrompts =
+          agent?.prompts && typeof agent.prompts === "object" && !Array.isArray(agent.prompts)
+            ? agent.prompts
+            : {};
+
+        const promptEntities =
+          Array.isArray(rawPrompts?.entities)
+            ? rawPrompts.entities
+            : typeof rawPrompts?.entities === "string"
+              ? rawPrompts.entities
+                  .split(",")
+                  .map((entry) => entry.trim())
+                  .filter(Boolean)
+              : entities;
+
+        return {
+          ...agent,
+          name,
+          agent_name: name,
+          entities,
+          prompts: {
+            ...rawPrompts,
+            entities: promptEntities,
+            api: rawPrompts?.api ?? agent?.api ?? "",
+            file_name: rawPrompts?.file_name ?? agent?.file_name ?? "",
+            url: rawPrompts?.url ?? agent?.url ?? "",
+          },
+        };
+      });
+
+      setState((s) => ({
+        ...s,
+        sources: { ...s.sources, agents: normalizedAgents },
+      }));
       
     } catch (err) {
       setAgentsError(err.message);
@@ -412,15 +461,33 @@ export default function AIAgent() {
 
   const updateAgentSettings = async (agentId, agentData) => {
     try {
+      const resolvedName = agentData.name ?? agentData.agent_name ?? agentData.agentName ?? "";
       const payload = {
         id: agentId,
-        agent_name: agentData.name,
+        name: resolvedName,
+        agent_name: resolvedName,
         entities: agentData.entities,
         grade: agentData.grade,
         state: agentData.state,
         file_name: agentData.file_name,
         api: agentData.api,
       };
+
+      if (agentData.master_prompt !== undefined) {
+        payload.master_prompt = agentData.master_prompt;
+      }
+      if (agentData.instructions !== undefined) {
+        payload.instructions = agentData.instructions;
+      }
+      if (agentData.prompts !== undefined) {
+        payload.prompts = agentData.prompts;
+      }
+      if (agentData.initial_messages !== undefined) {
+        payload.initial_messages = agentData.initial_messages;
+      }
+      if (agentData.suggested_messages !== undefined) {
+        payload.suggested_messages = agentData.suggested_messages;
+      }
 
       await api.put("/updateaiagents", payload);
       message.success("Agent updated successfully!");
@@ -1190,16 +1257,46 @@ export default function AIAgent() {
                     return;
                   }
 
+                  const masterPrompt = (state.playground.systemPrompt || "").trim();
+                  const instructions = (state.playground.instructions || "").trim();
+                  const initialMessages = Array.isArray(state.settings.initialMessages)
+                    ? state.settings.initialMessages
+                    : [];
+                  const suggestedMessages = Array.isArray(state.settings.suggestedMessages)
+                    ? state.settings.suggestedMessages
+                    : [];
+                  const sourceFiles = Array.isArray(state.sources.files) ? state.sources.files : [];
+                  const apiValue = (state.sources._tmpApi || "").trim();
+                  const urlValue = (state.sources._tmpUrl || "").trim();
+
+                  const promptsPayload = {
+                    ...(masterPrompt ? { master_prompt: masterPrompt } : {}),
+                    ...(instructions ? { instructions } : {}),
+                    initial_messages: initialMessages,
+                    suggested_messages: suggestedMessages,
+                    files: sourceFiles,
+                    ...(apiValue ? { api: apiValue } : {}),
+                    ...(urlValue ? { url: urlValue } : {}),
+                    entities,
+                  };
+
                   const agentData = {
+                    name,
                     agent_name: name,
                     description: `Agent for ${entities.join(", ")}`,
                     state: selectedState || null,
                     grade: selectedGrade || null,
                     entities,
-                    file_name: state.sources._tmpApi || "",
-                    api: state.sources._tmpUrl || "",
+                    file_name: apiValue || "",
+                    api: urlValue || "",
                     version: "v1",
                     stage: "staging",
+                    master_prompt: masterPrompt,
+                    instructions,
+                    initial_messages: initialMessages,
+                    suggested_messages: suggestedMessages,
+                    files: sourceFiles,
+                    prompts: promptsPayload,
                   };
 
                   await createAgent(agentData);

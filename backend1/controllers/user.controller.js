@@ -2570,13 +2570,243 @@ exports.getAllStates = async (req, res) => {
   }
 };
 
+function safeJsonParse(value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return null;
+  }
+}
+
+function normalizeEntitiesInput(raw) {
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+  if (Array.isArray(raw)) {
+    return raw
+      .map((entry) => (entry === null || entry === undefined ? '' : String(entry).trim()))
+      .filter(Boolean);
+  }
+  if (typeof raw === 'string') {
+    return raw
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  return undefined;
+}
+
+function normalizeStringArray(raw) {
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+  if (Array.isArray(raw)) {
+    return raw
+      .map((entry) => (entry === null || entry === undefined ? '' : String(entry).trim()))
+      .filter(Boolean);
+  }
+  if (typeof raw === 'string') {
+    return raw
+      .split('\n')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  return undefined;
+}
+
+function buildPromptsPayload(body, entitiesForPrompt) {
+  const rawPrompts =
+    typeof body.prompts === 'string'
+      ? safeJsonParse(body.prompts)
+      : body.prompts;
+
+  let prompts =
+    rawPrompts && typeof rawPrompts === 'object' && !Array.isArray(rawPrompts)
+      ? { ...rawPrompts }
+      : {};
+
+  const masterPrompt =
+    [body.master_prompt, body.masterPrompt, body.master_promt, body.masterPromt, body.master_prompt_text, body.masterPromptText]
+      .find((value) => typeof value === 'string' && value.trim());
+  if (masterPrompt) {
+    prompts.master_prompt = masterPrompt.trim();
+  }
+
+  const instructionsCandidate =
+    [body.instructions, body.agent_instructions, rawPrompts?.instructions]
+      .find((value) => typeof value === 'string' && value.trim());
+  if (instructionsCandidate) {
+    prompts.instructions = instructionsCandidate.trim();
+  }
+
+  const initialMessages = normalizeStringArray(
+    body.initial_messages ?? body.initialMessages ?? rawPrompts?.initial_messages
+  );
+  if (initialMessages !== undefined) {
+    prompts.initial_messages = initialMessages;
+  }
+
+  const suggestedMessages = normalizeStringArray(
+    body.suggested_messages ?? body.suggestedMessages ?? rawPrompts?.suggested_messages
+  );
+  if (suggestedMessages !== undefined) {
+    prompts.suggested_messages = suggestedMessages;
+  }
+
+  const files = Array.isArray(body.files ?? body.prompt_files ?? rawPrompts?.files)
+    ? body.files ?? body.prompt_files ?? rawPrompts?.files
+    : undefined;
+  if (files && files.length) {
+    prompts.files = files;
+  }
+
+  const urlCandidate =
+    [body.url, body.source_url, body.sourceUrl, rawPrompts?.url]
+      .find((value) => typeof value === 'string' && value.trim());
+  if (urlCandidate) {
+    prompts.url = urlCandidate.trim();
+  }
+
+  const apiCandidate =
+    [body.api_endpoint, body.apiEndpoint, rawPrompts?.api]
+      .find((value) => typeof value === 'string' && value.trim());
+  if (apiCandidate) {
+    prompts.api = apiCandidate.trim();
+  }
+
+  const fileNameCandidate =
+    [body.file_name, body.fileName, body.filename, rawPrompts?.file_name]
+      .find((value) => typeof value === 'string' && value.trim());
+  if (fileNameCandidate) {
+    prompts.file_name = fileNameCandidate.trim();
+  }
+
+  if (Array.isArray(entitiesForPrompt) && entitiesForPrompt.length) {
+    prompts.entities = entitiesForPrompt;
+  }
+
+  if (Object.keys(prompts).length === 0) {
+    return undefined;
+  }
+
+  return prompts;
+}
+
+function extractAgentPayload(body) {
+  const payload = {};
+
+  const nameCandidate =
+    [body.name, body.agent_name, body.agentName]
+      .find((value) => typeof value === 'string' && value.trim());
+  if (nameCandidate) {
+    payload.name = nameCandidate.trim();
+  }
+
+  if (body.description !== undefined) {
+    payload.description = body.description;
+  } else if (body.agent_description !== undefined) {
+    payload.description = body.agent_description;
+  }
+
+  const entitiesCandidate = normalizeEntitiesInput(
+    body.entities ?? body.entities_list ?? body.entity_list ?? body.prompts?.entities
+  );
+  if (entitiesCandidate !== undefined) {
+    payload.entities = entitiesCandidate;
+  }
+
+  const gradeCandidate = body.grade ?? body.grade_id;
+  if (gradeCandidate !== undefined && gradeCandidate !== null && gradeCandidate !== '') {
+    payload.grade = gradeCandidate;
+  }
+
+  const stateCandidate = body.state ?? body.state_id;
+  if (stateCandidate !== undefined && stateCandidate !== null && stateCandidate !== '') {
+    payload.state = stateCandidate;
+  }
+
+  const fileNameCandidate = body.file_name ?? body.fileName ?? body.filename;
+  if (fileNameCandidate !== undefined) {
+    payload.file_name = fileNameCandidate;
+  }
+
+  const apiCandidate = body.api ?? body.api_endpoint ?? body.apiEndpoint;
+  if (apiCandidate !== undefined) {
+    payload.api = apiCandidate;
+  }
+
+  if (body.version !== undefined) {
+    payload.version = body.version;
+  } else if (body.agent_version !== undefined) {
+    payload.version = body.agent_version;
+  }
+
+  if (body.stage !== undefined) {
+    payload.stage = body.stage;
+  } else if (body.agent_stage !== undefined) {
+    payload.stage = body.agent_stage;
+  }
+
+  const promptsPayload = buildPromptsPayload(
+    body,
+    entitiesCandidate !== undefined ? entitiesCandidate : undefined
+  );
+  if (promptsPayload !== undefined) {
+    payload.prompts = promptsPayload;
+  }
+
+  return payload;
+}
+
+function formatAgentResponse(agentInstance) {
+  if (!agentInstance) {
+    return agentInstance;
+  }
+
+  const plain = agentInstance.get ? agentInstance.get({ plain: true }) : agentInstance;
+  const formatted = { ...plain };
+
+  formatted.agent_name = formatted.agent_name || formatted.name || null;
+
+  if (formatted.entities && !Array.isArray(formatted.entities)) {
+    const normalized = normalizeEntitiesInput(formatted.entities);
+    formatted.entities = normalized !== undefined ? normalized : [];
+  } else if (!formatted.entities) {
+    formatted.entities = [];
+  }
+
+  if (formatted.prompts && typeof formatted.prompts === 'string') {
+    const parsed = safeJsonParse(formatted.prompts);
+    formatted.prompts =
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } else if (!formatted.prompts || typeof formatted.prompts !== 'object') {
+    formatted.prompts = {};
+  }
+
+  if (formatted.api && !formatted.prompts.api) {
+    formatted.prompts.api = formatted.api;
+  }
+  if (formatted.file_name && !formatted.prompts.file_name) {
+    formatted.prompts.file_name = formatted.file_name;
+  }
+  if (formatted.entities?.length && !formatted.prompts.entities) {
+    formatted.prompts.entities = formatted.entities;
+  }
+
+  return formatted;
+}
+
 exports.getAllAgents = async (req, res) => {
   try {
     const db = require("../models");
     const agents = await db.agentPromptSet.findAll({
       order: [['id', 'DESC']]
     });
-    res.json(agents);
+    const formatted = agents.map(formatAgentResponse);
+    res.json(formatted);
   } catch (error) {
     console.error("❌ Error fetching agents:", error);
     res.status(500).json({ message: error.message || "Failed to fetch agents" });
@@ -2613,23 +2843,28 @@ exports.getPublicTables = async (req, res) => {
 exports.addAgent = async (req, res) => {
   try {
     const db = require("../models");
-    const { name, description, prompts, entities, grade, state, file_name, api, version, stage } = req.body;
+    const payload = extractAgentPayload(req.body);
+    const name = payload.name;
+
+    if (!name) {
+      return res.status(400).json({ message: "Agent name is required" });
+    }
     
     const agent = await db.agentPromptSet.create({
       name,
-      description,
-      prompts: prompts || {},
-      entities: entities || [],
-      grade,
-      state,
-      file_name,
-      api,
-      version: version || 'v1',
-      stage: stage || 'staging',
+      description: payload.description ?? null,
+      prompts: payload.prompts || {},
+      entities: payload.entities || [],
+      grade: payload.grade ?? null,
+      state: payload.state ?? null,
+      file_name: payload.file_name ?? null,
+      api: payload.api ?? null,
+      version: payload.version || 'v1',
+      stage: payload.stage || 'staging',
       created_by: req.user?.id || null
     });
     
-    res.status(201).json(agent);
+    res.status(201).json(formatAgentResponse(agent));
   } catch (error) {
     console.error("❌ Error adding agent:", error);
     res.status(500).json({ message: error.message || "Failed to add agent" });
@@ -2639,20 +2874,26 @@ exports.addAgent = async (req, res) => {
 exports.updateAgent = async (req, res) => {
   try {
     const db = require("../models");
-    const { id } = req.body;
+    const id = req.body.id ?? req.params?.id;
+
+    if (!id) {
+      return res.status(400).json({ message: "Agent ID is required" });
+    }
+
+    const payload = extractAgentPayload(req.body);
     const updateData = {};
-    
-    if (req.body.name !== undefined) updateData.name = req.body.name;
-    if (req.body.description !== undefined) updateData.description = req.body.description;
-    if (req.body.prompts !== undefined) updateData.prompts = req.body.prompts;
-    if (req.body.entities !== undefined) updateData.entities = req.body.entities;
-    if (req.body.grade !== undefined) updateData.grade = req.body.grade;
-    if (req.body.state !== undefined) updateData.state = req.body.state;
-    if (req.body.file_name !== undefined) updateData.file_name = req.body.file_name;
-    if (req.body.api !== undefined) updateData.api = req.body.api;
-    if (req.body.version !== undefined) updateData.version = req.body.version;
-    if (req.body.stage !== undefined) updateData.stage = req.body.stage;
-    
+
+    if (payload.name !== undefined) updateData.name = payload.name;
+    if (payload.description !== undefined) updateData.description = payload.description;
+    if (payload.prompts !== undefined) updateData.prompts = payload.prompts;
+    if (payload.entities !== undefined) updateData.entities = payload.entities;
+    if (payload.grade !== undefined) updateData.grade = payload.grade;
+    if (payload.state !== undefined) updateData.state = payload.state;
+    if (payload.file_name !== undefined) updateData.file_name = payload.file_name;
+    if (payload.api !== undefined) updateData.api = payload.api;
+    if (payload.version !== undefined) updateData.version = payload.version;
+    if (payload.stage !== undefined) updateData.stage = payload.stage;
+
     updateData.updated_at = new Date();
     
     const [updated] = await db.agentPromptSet.update(updateData, {
@@ -2664,7 +2905,7 @@ exports.updateAgent = async (req, res) => {
     }
     
     const agent = await db.agentPromptSet.findByPk(id);
-    res.json(agent);
+    res.json(formatAgentResponse(agent));
   } catch (error) {
     console.error("❌ Error updating agent:", error);
     res.status(500).json({ message: error.message || "Failed to update agent" });

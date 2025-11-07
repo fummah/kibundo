@@ -72,6 +72,7 @@ const AgentForm = () => {
     
     try {
       const agentData = {
+        name: formData.agent_name,
         agent_name: formData.agent_name,
         entities: formData.entities,
         grade: formData.grade,
