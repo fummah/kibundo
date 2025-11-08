@@ -4,18 +4,12 @@ import { useNavigate, Link } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
 import { Form, Input, Button, Typography } from "antd";
 import { useTranslation } from "react-i18next";
-import {
-  MailOutlined,
-  UserOutlined,
-  LockOutlined,
-  ArrowLeftOutlined,
-  CloseSquareFilled,
-} from "@ant-design/icons";
+import { UserOutlined, LockOutlined } from "@ant-design/icons";
 import { useAuthContext } from "@/context/AuthContext";
 import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
-import Lottie from "lottie-react";
-import loginAnimation from "@/assets/signup2.json";
 import api from "@/api/axios";
+import heroImage from "@/assets/onboarding-dino.png";
+import useEnsureGerman from "@/hooks/useEnsureGerman.js";
 
 // Onboarding flags
 import {
@@ -57,13 +51,13 @@ function normalizeRoleId(user) {
 
 /* ------------------------------ page ------------------------------- */
 export default function SignIn() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const ready = useEnsureGerman(i18n);
   const navigate = useNavigate();
   const { login } = useAuthContext();
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
 
-  const goHome = useCallback(() => navigate("/"), [navigate]);
   const goForgot = useCallback(
     () => navigate("/forgot-password"),
     [navigate]
@@ -78,8 +72,6 @@ export default function SignIn() {
       
       // Always use username field for backend
       const loginPayload = { username: emailOrUsername, password };
-
-CloseSquareFilled
       const resp = await api.post("/auth/login", loginPayload);
       const user = resp?.data?.user ?? resp?.data?.data?.user ?? null;
       const token = extractToken(resp);
@@ -93,7 +85,7 @@ CloseSquareFilled
       // ✅ Update auth context (persists tiny summary and sets axios header/token)
       const roleId = normalizeRoleId(user);
       login(user, token);
-      toast.success("Login successful!");
+      toast.success("Erfolgreich angemeldet!");
 
       // ✅ Student onboarding flow - check user-specific flags
       if (roleId === ROLES.STUDENT) {
@@ -126,83 +118,118 @@ CloseSquareFilled
       }
 
       const msg =
-        (status === 401 && "Invalid email or password.") ||
+        (status === 401 && "E-Mail oder Passwort ist ungültig.") ||
         err?.response?.data?.message ||
         err?.response?.data?.error ||
         err?.message ||
-        "Login failed";
+        "Anmeldung fehlgeschlagen.";
       toast.error(msg);
     } finally {
       setLoading(false);
     }
   };
 
+  if (!ready) {
+    return (
+      <div
+        className="relative min-h-screen w-full overflow-hidden"
+        style={{
+          background:
+            "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
+        }}
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-tr from-blue-100 via-white to-purple-100 relative">
+    <div
+      className="relative min-h-screen w-full overflow-hidden"
+      style={{
+        background:
+          "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
+      }}
+    >
       <Toaster position="top-center" />
 
-      {/* 🔙 Back Button */}
-      <div className="absolute top-6 left-6 z-50">
-        <Button
-          type="link"
-          icon={<ArrowLeftOutlined />}
-          onClick={goHome}
-          className="text-indigo-600 hover:text-indigo-800"
-        >
-          Back
-        </Button>
-      </div>
-
-      <div className="flex w-full max-w-5xl bg-white rounded-xl overflow-hidden shadow-xl">
-        {/* Left: Animation */}
-        <div className="hidden md:flex flex-col justify-center items-center bg-blue-600 p-8 w-1/2 text-white">
-          <Lottie animationData={loginAnimation} loop className="w-full max-w-xs" />
-          <Title level={3} className="!text-white mt-4 text-center">
-            Welcome Back!
-          </Title>
-          <p className="text-sm text-center max-w-xs">
-            Log in to your Kibundo account and continue your learning journey.
-          </p>
+      <div className="relative z-10 flex min-h-screen flex-col items-center justify-between px-4 py-10">
+        <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
+          <img
+            src={heroImage}
+            alt="Kibundo Buddy"
+            className="w-full max-w-xs drop-shadow-[0_12px_30px_rgba(0,0,0,0.12)]"
+          />
+          <div className="space-y-3">
+            <Title
+              level={1}
+              className="!m-0 text-4xl font-bold tracking-[0.08em] md:text-5xl"
+              style={{ color: "#FF7F32" }}
+            >
+              Kibundo
+            </Title>
+            <Text
+              className="block text-base font-medium md:text-lg"
+              style={{ color: "#31A892" }}
+            >
+              Hausaufgaben mit Spaß
+              <br />
+              und in Deinem Tempo
+            </Text>
+          </div>
         </div>
 
-        {/* Right: Form */}
-        <div className="w-full md:w-1/2 p-8">
-          <Title level={3} className="text-center text-gray-800 mb-6">
-            Login to Kibundo
+        <div className="w-full max-w-md rounded-[32px] bg-white/90 p-8 shadow-xl backdrop-blur-sm">
+          <Title
+            level={3}
+            className="!mb-2 text-center text-2xl font-semibold text-[#5A4C3A]"
+          >
+            Willkommen zurück
           </Title>
+          <Text className="mb-6 block text-center text-sm text-[#8A8075]">
+            Melde dich an, um mit Kibundo weiterzulernen.
+          </Text>
 
-          <Form layout="vertical" form={form} onFinish={handleFinish}>
+          <Form
+            layout="vertical"
+            form={form}
+            onFinish={handleFinish}
+            requiredMark={false}
+            className="space-y-4"
+          >
             <Form.Item
-              label="Email or Username"
               name="email"
               rules={[
-                { required: true, message: "Please enter your email or username" },
+                {
+                  required: true,
+                  message: "Bitte gib deine E-Mail oder deinen Benutzernamen ein",
+                },
                 {
                   validator: (_, value) => {
                     if (!value) return Promise.resolve();
-                    
-                    // Check if it looks like an email
+
                     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-                    
+
                     if (isEmail) {
-                      // It's an email, validate email format
                       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
                         ? Promise.resolve()
-                        : Promise.reject(new Error("Invalid email format"));
-                    } else {
-                      // It's a username, validate username format (alphanumeric + some special chars)
-                      return /^[a-zA-Z0-9_]+$/.test(value)
-                        ? Promise.resolve()
-                        : Promise.reject(new Error("Username can only contain letters, numbers, and underscores"));
+                        : Promise.reject(new Error("Ungültiges E-Mail-Format"));
                     }
+
+                    return /^[a-zA-Z0-9_]+$/.test(value)
+                      ? Promise.resolve()
+                      : Promise.reject(
+                          new Error(
+                            "Der Benutzername darf nur Buchstaben, Zahlen und Unterstriche enthalten"
+                          )
+                        );
                   },
                 },
               ]}
             >
               <Input
+                size="large"
                 prefix={<UserOutlined />}
-                placeholder="Enter your email or username"
-                className="rounded-md"
+                placeholder="E-Mail oder Benutzername"
+                className="rounded-full border-none bg-[#F6F1E8] py-2 text-base shadow-inner transition focus:bg-white focus:shadow-md"
                 autoComplete="username"
                 autoCapitalize="none"
                 autoCorrect="off"
@@ -210,41 +237,45 @@ CloseSquareFilled
             </Form.Item>
 
             <Form.Item
-              label="Password"
               name="password"
-              rules={[{ required: true, message: "Please enter your password" }]}
+              rules={[{ required: true, message: "Bitte gib dein Passwort ein" }]}
             >
               <Input.Password
+                size="large"
                 prefix={<LockOutlined />}
-                placeholder="Enter your password"
-                className="rounded-md"
+                placeholder="Passwort"
+                className="rounded-full border-none bg-[#F6F1E8] py-2 text-base shadow-inner transition focus:bg-white focus:shadow-md"
                 autoComplete="current-password"
               />
             </Form.Item>
 
-            <div className="text-right mb-3">
+            <div className="mb-3 text-right">
               <Text
-                className="text-indigo-600 hover:underline cursor-pointer"
+                className="cursor-pointer text-sm font-medium text-[#FF7F32] hover:underline"
                 onClick={goForgot}
               >
-                Forgot Password?
+                Passwort vergessen?
               </Text>
             </div>
 
-            <Form.Item>
+            <Form.Item className="!mb-2">
               <Button
                 type="primary"
                 htmlType="submit"
-                className="w-full bg-indigo-600 hover:bg-indigo-700"
+                size="large"
+                className="w-full rounded-full border-none bg-[#FF7F32] text-lg font-semibold tracking-wide shadow-lg transition hover:bg-[#ff6c12]"
                 loading={loading}
               >
                 {loading ? t("auth.signIn") : t("auth.signIn")}
               </Button>
             </Form.Item>
 
-            <div className="text-center text-sm">
+            <div className="text-center text-sm text-[#8A8075]">
               {t("auth.noAccount")}{" "}
-              <Link to="/signup" className="text-indigo-600 hover:underline">
+              <Link
+                to="/signup"
+                className="font-semibold text-[#FF7F32] hover:underline"
+              >
                 {t("auth.signUp")}
               </Link>
             </div>

@@ -1,82 +1,62 @@
 import { useMemo, useState, useEffect } from "react";
-import { Card, Typography, Button, App, Switch } from "antd";
-import { ArrowLeft, Volume2, Check } from "lucide-react";
+import { Typography, Button, App } from "antd";
+import { Volume2, VolumeX, Check, RotateCcw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
 import api from "@/api/axios";
+import useEnsureGerman from "@/hooks/useEnsureGerman.js";
 
-import globalBg from "../../../assets/backgrounds/global-bg.png";
-import intBack from "../../../assets/backgrounds/int-back.png";
+/* Mascot (optional) */
+import buddyMascot from "@/assets/buddies/kibundo-buddy.png";
 
-/* Mascot (optional, not directly used here) */
-import buddyMascot from "../../../assets/buddies/kibundo-buddy.png";
+/* Choice images */
+import dinoImg from "@/assets/mobile/icons/Dinosaurier.png";
+import unicornImg from "@/assets/mobile/icons/Einhörner.png";
 
-/* image assets (used for the theme step) */
-import dinoImg from "../../../assets/mobile/icons/Dinosaurier.png";
-import unicornImg from "../../../assets/mobile/icons/Einhörner.png";
+/* ---------- NEW: layered background assets ---------- */
+import bgGlobal from "@/assets/backgrounds/global-bg.png";
+import bgClouds from "@/assets/backgrounds/clouds.png";
+import bgBottom from "@/assets/backgrounds/bottom.png";
 
 const { Title } = Typography;
 
 /* ---------- Steps ---------- */
 const STEPS = [
-  {
-    id: "colors",
-    title: "Welche Farbe gefällt dir am meisten?",
-    choices: ["Rot", "Blau", "Grün", "Gelb"],
-    grid: 2,
-    style: "colors",
-  },
-  {
-    id: "theme1",
-    title: "Was magst du lieber? Einhörner oder Dinosaurier?",
-    choices: ["Einhörner", "Dinosaurier"],
-    grid: 2,
-    style: "imageCards",
-    images: { Einhörner: unicornImg, Dinosaurier: dinoImg },
-    bg: "#f6ded6",
-  },
-  {
-    id: "theme2",
-    title: "Was magst du lieber? Roboter oder Zauberer?",
-    choices: ["Roboter", "Zauberer"],
-    grid: 2,
-  },
-  {
-    id: "hobby1",
-    title: "Was machst du gerne?",
-    choices: ["Malen", "Bauen (Lego)"],
-    grid: 2,
-  },
-  {
-    id: "world",
-    title: "Welche Welt findest du spannender?",
-    choices: ["Weltraum", "Unterwasserwelt"],
-    grid: 2,
-  },
-  {
-    id: "animals",
-    title: "Welche Tiere magst du?",
-    choices: ["Hund / Katze / Kaninchen", "Schlange / Spinne / Schildkröte"],
-    grid: 2,
-  },
+  { id: "colors", title: "Welche Farbe gefällt dir am meisten?", choices: ["Rot", "Blau", "Grün", "Gelb"], grid: 2, style: "colors" },
+  { id: "theme1", title: "Was magst du lieber? Einhörner oder Dinosaurier?", choices: ["Einhörner", "Dinosaurier"], grid: 2, style: "imageCards", images: { Einhörner: unicornImg, Dinosaurier: dinoImg }, bg: "#f6ded6" },
+  { id: "theme2", title: "Was magst du lieber? Roboter oder Zauberer?", choices: ["Roboter", "Zauberer"], grid: 2 },
+  { id: "hobby1", title: "Was machst du gerne?", choices: ["Malen", "Bauen (Lego)"], grid: 2 },
+  { id: "world", title: "Welche Welt findest du spannender?", choices: ["Weltraum", "Unterwasserwelt"], grid: 2 },
+  { id: "animals", title: "Welche Tiere magst du?", choices: ["Hund / Katze / Kaninchen", "Schlange / Spinne / Schildkröte"], grid: 2 },
 ];
 
 export default function InterestsWizard() {
   const { message } = App.useApp();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const ready = useEnsureGerman(i18n);
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { buddy, interests, setInterests, profile, ttsEnabled, setTtsEnabled, setProfile, theme } = useStudentApp();
+  const {
+    buddy,
+    interests,
+    setInterests,
+    profile,
+    ttsEnabled,
+    setTtsEnabled,
+    setProfile,
+    theme,
+  } = useStudentApp();
+
   const [stepIdx, setStepIdx] = useState(0);
   const [saving, setSaving] = useState(false);
   const [answers, setAnswers] = useState(() =>
     interests?.length ? [...interests] : []
   );
 
-  // Optional restore from localStorage if context is empty
+  // Restore from localStorage if context empty
   useEffect(() => {
     if (!interests?.length) {
       try {
@@ -92,10 +72,9 @@ export default function InterestsWizard() {
   const step = STEPS[stepIdx];
   const canNext = useMemo(() => !!answers[stepIdx], [answers, stepIdx]);
 
-  // Automatically speak step title when step changes (if TTS is enabled)
+  // TTS: auto-say the step title on change
   useEffect(() => {
     if (ttsEnabled && step) {
-      // Small delay to ensure the step has rendered
       const timer = setTimeout(() => {
         try {
           const u = new SpeechSynthesisUtterance(step.title);
@@ -103,8 +82,7 @@ export default function InterestsWizard() {
           window.speechSynthesis.cancel();
           window.speechSynthesis.speak(u);
         } catch {}
-      }, 300); // 300ms delay for smooth transition
-      
+      }, 300);
       return () => {
         clearTimeout(timer);
         window.speechSynthesis.cancel();
@@ -112,26 +90,11 @@ export default function InterestsWizard() {
     }
   }, [stepIdx, step, ttsEnabled]);
 
-  const speak = () => {
-    if (!ttsEnabled) {
-      // If TTS is disabled, don't speak
-      return;
-    }
-    try {
-      // Speak the step title
-      const u = new SpeechSynthesisUtterance(step.title);
-      u.lang = "de-DE";
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
-    } catch {}
-  };
-
   const choose = (c) => {
     const next = [...answers];
     next[stepIdx] = c;
     setAnswers(next);
-    
-    // Speak the selected choice if TTS is enabled
+
     if (ttsEnabled && c) {
       try {
         const u = new SpeechSynthesisUtterance(c);
@@ -153,19 +116,14 @@ export default function InterestsWizard() {
     } else {
       const final = answers.filter(Boolean);
       setInterests(final);
-      
-      try { 
-        localStorage.setItem("kibundo_interests", JSON.stringify(final)); 
+
+      try {
+        localStorage.setItem("kibundo_interests", JSON.stringify(final));
       } catch {}
-      
-      // Save to database
+
       setSaving(true);
       try {
-        // Find student ID
-        const allRes = await api.get("/allstudents", {
-          validateStatus: (s) => s >= 200 && s < 500,
-        });
-        
+        const allRes = await api.get("/allstudents", { validateStatus: (s) => s >= 200 && s < 500 });
         const all = Array.isArray(allRes?.data) ? allRes.data : [];
         const match = all.find(
           (s) =>
@@ -173,10 +131,8 @@ export default function InterestsWizard() {
             s?.user_id === user?.id ||
             s?.id === user?.id
         );
-        
+
         if (match && match.id) {
-          // Save interests and TTS to database - same as settings page
-          // Use current ttsEnabled from context (which may have been updated by the toggle)
           const currentTtsEnabled = Boolean(ttsEnabled);
           const payload = {
             profile: {
@@ -187,278 +143,287 @@ export default function InterestsWizard() {
             interests: final,
             buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
           };
-          
-          console.log("💾 Saving interests and TTS from wizard to database:", {
-            studentId: match.id,
-            interests: final,
-            ttsEnabled: currentTtsEnabled
-          });
-          
+
           await api.patch(`/student/${match.id}`, payload);
-          console.log("✅ Interests and TTS saved to database successfully!");
           message.success?.("Interessen erfolgreich gespeichert!");
-        } else {
-          console.warn("⚠️ No student record found - interests saved locally only");
         }
       } catch (error) {
-        console.error("❌ Failed to save interests to database:", error);
-        // Don't show error to user - they can still proceed
+        console.error("Failed to save interests:", error);
       } finally {
         setSaving(false);
       }
-      
+
       navigate("/student/onboarding/success");
     }
   };
 
+  if (!ready) {
+    return null;
+  }
+
   return (
     <App>
+      {/* ---------- Background Layers (match screenshot) ---------- */}
       <div className="relative min-h-[100svh] md:min-h-screen overflow-hidden">
-      {/* Backgrounds */}
-      <img
-        src={globalBg}
-        alt=""
-        className="absolute inset-0 w-full h-full object-cover pointer-events-none -z-20"
-        draggable={false}
-      />
-      <img
-        src={intBack}
-        alt=""
-        className="absolute bottom-0 left-0 w-full h-1/2 object-cover pointer-events-none -z-10"
-        draggable={false}
-      />
-
-      {/* Page content */}
-      <div
-        className="
-          relative z-10 w-full max-w-[800px] mx-auto
-          px-4 md:px-8 py-6
-          min-h-[100svh] md:min-h-screen
-          flex flex-col
-        "
-      >
-        {/* Header */}
-        <div className="flex items-center gap-2 mb-2">
-          <button
-            className="p-2 rounded-full hover:bg-neutral-100"
-            onClick={onBack}
-            aria-label="Zurück"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <Title level={4} className="!mb-0">
-            Interessen
-          </Title>
-          <button
-            className={`ml-auto p-2 rounded-full hover:bg-neutral-100 ${!ttsEnabled ? 'opacity-50' : ''}`}
-            onClick={speak}
-            aria-label="Vorlesen"
-            disabled={!ttsEnabled}
-            title={ttsEnabled ? "Vorlesen" : "Text-to-Speech ist deaktiviert"}
-          >
-            <Volume2 className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* TTS Toggle - Same as settings page */}
-        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl mb-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Volume2 className="h-4 w-4" />
-              Text-to-Speech
-            </div>
-            <div className="text-xs text-gray-500 mt-0.5">
-              Enable voice feedback from your buddy
-            </div>
-          </div>
-          <Switch 
-            checked={ttsEnabled} 
-            onChange={(checked) => {
-              // Update context immediately - same as settings page
-              setTtsEnabled(checked);
-              setProfile({ ...profile, ttsEnabled: checked });
-              
-              // Give feedback when TTS is enabled
-              if (checked) {
-                try {
-                  const feedback = new SpeechSynthesisUtterance("enabled");
-                  feedback.lang = "en-US";
-                  window.speechSynthesis.cancel();
-                  window.speechSynthesis.speak(feedback);
-                } catch {}
-              }
-            }} 
-            size="default" 
-          />
-        </div>
-
-        {/* Buddy + question */}
-        <div className="flex items-start gap-3 mb-4">
-          <BuddyAvatar
-            src={buddy?.img || buddyMascot}
-            size={96}
-          />
-          <div className="flex-1">
-            <div className="text-lg font-semibold">{step.title}</div>
-            <div className="text-neutral-600 text-sm">
-              Schritt {stepIdx + 1} von {STEPS.length}
-            </div>
-          </div>
-        </div>
-
-        {/* Choices */}
+        {/* Base texture/gradient */}
         <div
-          className={`grid ${step.grid === 2 ? "grid-cols-2" : "grid-cols-1"} gap-3`}
-          role="radiogroup"
-          aria-label={step.title}
-        >
-          {step.choices.map((c) => {
-            const isActive = answers[stepIdx] === c;
+          className="absolute inset-0 -z-40"
+          style={{
+            backgroundImage: `url(${bgGlobal})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+          }}
+        />
+        {/* Peach sky fallback/overlay gradient to soften */}
+        <div
+          className="absolute inset-0 -z-30 opacity-90"
+          style={{
+            background:
+              "radial-gradient(120% 90% at 50% 0%, #ffd7ba 0%, #f6e7da 55%, #eaf5ef 100%)",
+          }}
+        />
+        {/* Slow drifting clouds (top) */}
+        <div
+          className="pointer-events-none absolute inset-x-0 -top-16 h-[55%] -z-20"
+          style={{
+            backgroundImage: `url(${bgClouds})`,
+            backgroundRepeat: "repeat-x",
+            backgroundPosition: "top center",
+            backgroundSize: "contain",
+            animation: "kib-clouds 60s linear infinite",
+            opacity: 0.9,
+          }}
+        />
+        {/* Curved foreground bottom panel */}
+        <div
+          className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 w-[160%] max-w-[1900px] -z-10"
+          style={{
+            height: "60vw",
+            maxHeight: "920px",
+            minHeight: "540px",
+            backgroundImage: `url(${bgBottom})`,
+            backgroundRepeat: "no-repeat",
+            backgroundSize: "100% 100%",
+          }}
+        />
+        {/* ---------- Page content ---------- */}
+        <div className="relative z-10 mx-auto flex min-h-[100svh] w-full max-w-[900px] flex-col px-5 pb-10 pt-8 md:px-10">
+          {/* Header */}
+          <div className="flex items-center justify-center">
+            <Title level={2} className="!mb-0 text-center text-3xl font-bold tracking-wide text-[#5a4c3a]">
+              Interessen
+            </Title>
+          </div>
 
-            // Color squares
-            if (step.style === "colors") {
-              const bg =
-                c === "Rot"
-                  ? "#ef4444"
-                  : c === "Blau"
-                  ? "#3b82f6"
-                  : c === "Grün"
-                  ? "#22c55e"
-                  : "#eab308";
-              return (
+          {/* Hero + controls */}
+          <div className="mt-10 flex flex-1 flex-col items-center gap-6 md:gap-8">
+            <div className="flex w-full items-start justify-center gap-4 md:gap-8">
+              <div className="relative flex flex-col items-center">
+                <BuddyAvatar src={buddy?.img || buddyMascot} size={150} />
+                <div className="relative mt-4 rounded-[28px] bg-[#A4DC4F] px-6 py-4 text-lg font-semibold text-[#3A4E1A] shadow-lg">
+                  <div>{step.title}</div>
+                  <div className="text-sm font-medium text-[#4e5f2f]">
+                    Schritt {stepIdx + 1} von {STEPS.length}
+                  </div>
+                  <div className="absolute -left-4 top-1/2 h-0 w-0 -translate-y-1/2 border-8 border-transparent border-r-[#A4DC4F]" />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
                 <button
-                  key={c}
-                  onClick={() => choose(c)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(c); }
+                  className="flex h-12 w-12 items-center justify-center rounded-full bg-[#FF7F32] text-white shadow-lg transition hover:scale-105"
+                  onClick={() => {
+                    const next = !ttsEnabled;
+                    setTtsEnabled(next);
+                    setProfile({ ...profile, ttsEnabled: next });
+                    if (next) {
+                      try {
+                        const feedback = new SpeechSynthesisUtterance("Eingeschaltet");
+                        feedback.lang = "de-DE";
+                        window.speechSynthesis.cancel();
+                        window.speechSynthesis.speak(feedback);
+                      } catch {}
+                    } else {
+                      try {
+                        window.speechSynthesis.cancel();
+                      } catch {}
+                    }
                   }}
-                  role="radio"
-                  aria-checked={isActive}
-                  className="w-full focus:outline-none focus:ring-2 focus:ring-blue-400 rounded-2xl"
+                  aria-label={ttsEnabled ? "Stimme deaktivieren" : "Stimme aktivieren"}
                 >
-                  <Card
-                    className={`relative rounded-2xl border-2 ${
-                      isActive
-                        ? "border-blue-500 ring-2 ring-blue-300"
-                        : "border-transparent"
-                    }`}
-                    styles={{ body: { padding: 18 } }}
-                    hoverable
-                  >
-                    <div className="h-14 rounded-xl" style={{ background: bg }} />
-                    {isActive && (
-                      <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full p-1 shadow">
-                        <Check className="w-4 h-4" />
-                      </div>
-                    )}
-                  </Card>
+                  {ttsEnabled ? <Volume2 size={24} /> : <VolumeX size={24} />}
                 </button>
-              );
-            }
 
-            // Image cards (Unicorn/Dino)
-            if (step.style === "imageCards") {
-              const imgSrc = step.images?.[c];
-              return (
                 <button
-                  key={c}
-                  onClick={() => choose(c)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(c); }
-                  }}
-                  role="radio"
-                  aria-checked={isActive}
-                  className="text-left focus:outline-none focus:ring-2 focus:ring-blue-400 rounded-2xl"
-                  aria-label={c}
+                  className="flex h-12 w-12 items-center justify-center rounded-full bg-[#FF7F32] text-white shadow-lg transition hover:scale-105"
+                  onClick={onBack}
+                  aria-label="Zurück"
                 >
-                  <Card
-                    hoverable
-                    className={`relative rounded-2xl transition shadow-sm ${
-                      isActive ? "ring-2 ring-emerald-400" : ""
-                    }`}
-                    styles={{ body: { padding: 0 } }}
+                  <RotateCcw size={24} />
+                </button>
+              </div>
+            </div>
+
+            {/* Choices */}
+            <div
+              className={`grid w-full max-w-[720px] gap-5 ${step.grid === 2 ? "grid-cols-2" : "grid-cols-1"}`}
+              role="radiogroup"
+              aria-label={step.title}
+            >
+              {step.choices.map((c) => {
+                const isActive = answers[stepIdx] === c;
+
+                if (step.style === "colors") {
+                  const bg =
+                    c === "Rot" ? "#ef4444" :
+                    c === "Blau" ? "#3b82f6" :
+                    c === "Grün" ? "#22c55e" :
+                    "#eab308";
+
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => choose(c)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(c); } }}
+                      role="radio"
+                      aria-checked={isActive}
+                      className="w-full rounded-[30px] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#FFB347]/60"
+                    >
+                      <div
+                        className={`relative rounded-[30px] border-none shadow-[0_18px_45px_rgba(0,0,0,0.08)] transition bg-white ${isActive ? "ring-4 ring-[#FFB347]" : ""}`}
+                        style={{ padding: 0 }}
+                      >
+                        <div className="h-20 rounded-2xl" style={{ background: bg }} />
+                        {isActive && (
+                          <div className="absolute top-4 right-4 rounded-full bg-[#FF7F32] p-2 text-white shadow-lg">
+                            <Check className="h-5 w-5" />
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                }
+
+                if (step.style === "imageCards") {
+                  const imgSrc = step.images?.[c];
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => choose(c)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(c); } }}
+                      role="radio"
+                      aria-checked={isActive}
+                      className="text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-[#FFB347]/60"
+                      aria-label={c}
+                    >
+                      <div
+                        className={`relative rounded-[32px] border-none shadow-[0_24px_50px_rgba(0,0,0,0.1)] transition bg-white ${isActive ? "ring-4 ring-[#A4DC4F]" : ""}`}
+                        style={{ padding: 0 }}
+                      >
+                        <div className="grid h-[240px] place-items-center rounded-[32px]" style={{ backgroundColor: step.bg || "#f6ded6" }}>
+                          {imgSrc ? (
+                            <img src={imgSrc} alt={c} className="h-[220px] object-contain" />
+                          ) : (
+                            <div className="text-xl font-semibold">{c}</div>
+                          )}
+                        </div>
+                        {isActive && (
+                          <div className="absolute top-4 right-4 rounded-full bg-[#A4DC4F] p-2 text-white shadow-lg">
+                            <Check className="h-5 w-5" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-4 text-center text-xl font-extrabold text-[#5b4f3f]">{c}</div>
+                    </button>
+                  );
+                }
+
+                return (
+                  <button
+                    key={c}
+                    onClick={() => choose(c)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(c); } }}
+                    role="radio"
+                    aria-checked={isActive}
+                    className="w-full rounded-[30px] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#FFB347]/60"
                   >
                     <div
-                      className="h-[210px] rounded-2xl grid place-items-center"
-                      style={{ backgroundColor: step.bg || "#f6ded6" }}
+                      className={`relative rounded-[30px] border-none bg-white/90 shadow-[0_18px_45px_rgba(0,0,0,0.08)] transition ${isActive ? "ring-4 ring-[#FFB347]" : ""}`}
+                      style={{ padding: 24 }}
                     >
-                      {imgSrc ? (
-                        <img
-                          src={imgSrc}
-                          alt={c}
-                          className="h-[140px] object-contain"
-                        />
-                      ) : (
-                        <div className="text-lg font-semibold">{c}</div>
+                      <div className="text-xl font-semibold text-left text-[#5b4f3f]">{c}</div>
+                      {isActive && (
+                        <div className="absolute top-4 right-4 rounded-full bg-[#FF7F32] p-2 text-white shadow-lg">
+                          <Check className="h-5 w-5" />
+                        </div>
                       )}
                     </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-                    {isActive && (
-                      <div className="absolute top-2 right-2 bg-emerald-500 text-white rounded-full p-1 shadow">
-                        <Check className="w-4 h-4" />
-                      </div>
-                    )}
-                  </Card>
-                  <div className="text-center font-extrabold mt-3 text-[#5b4f3f]">
-                    {c}
-                  </div>
-                </button>
-              );
-            }
-
-            // Default text cards
-            return (
-              <button
-                key={c}
-                onClick={() => choose(c)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(c); }
-                }}
-                role="radio"
-                aria-checked={isActive}
-                className="w-full focus:outline-none focus:ring-2 focus:ring-blue-400 rounded-2xl"
-              >
-                <Card
-                  className={`relative rounded-2xl border-2 ${
-                    isActive
-                      ? "border-blue-500 ring-2 ring-blue-300"
-                      : "border-transparent"
-                  } bg-neutral-50`}
-                  styles={{ body: { padding: 18 } }}
-                  hoverable
-                >
-                  <div className="text-lg font-semibold text-left">{c}</div>
-
-                  {isActive && (
-                    <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full p-1 shadow">
-                      <Check className="w-4 h-4" />
-                    </div>
-                  )}
-                </Card>
-              </button>
-            );
-          })}
+          {/* Footer Actions */}
+          <div className="mt-10 flex w-full items-center justify-between gap-2">
+            <Button
+              onClick={onBack}
+              disabled={saving}
+              className="rounded-full border-none bg-white/80 px-6 py-3 text-base font-semibold text-[#5b4f3f] shadow-md hover:bg-white"
+            >
+              Zurück
+            </Button>
+            <Button
+              type="primary"
+              disabled={!canNext || saving}
+              loading={saving}
+              onClick={onNext}
+              className="rounded-full border-none bg-[#FF7F32] px-8 py-3 text-lg font-semibold shadow-lg hover:bg-[#ff6c12]"
+            >
+              {stepIdx === STEPS.length - 1 ? "Fertig" : "Weiter"}
+            </Button>
+          </div>
         </div>
-
-        {/* Footer Aktionen */}
-        <div className="mt-5 flex gap-2 mb-[env(safe-area-inset-bottom,0)]">
-          <Button onClick={onBack} disabled={saving} className="rounded-xl">
-            Zurück
-          </Button>
-          <Button
-            type="primary"
-            disabled={!canNext || saving}
-            loading={saving}
-            onClick={onNext}
-            className="rounded-xl"
-          >
-            {stepIdx === STEPS.length - 1 ? "Fertig" : "Weiter"}
-          </Button>
-        </div>
-
-       
       </div>
-    </div>
+
+      {/* Small CSS block for cloud/parallax + confetti */}
+      <style>{`
+        @keyframes kib-clouds {
+          from { background-position: 0px top; }
+          to   { background-position: 2000px top; }
+        }
+        @keyframes kib-parallax {
+          from { background-position: 0 bottom; }
+          to   { background-position: 1500px bottom; }
+        }
+        /* Lightweight confetti made from tiny radial gradients */
+        .kib-confetti::before, .kib-confetti::after {
+          content: "";
+          position: absolute; inset: 0;
+          background-image:
+            radial-gradient(circle 3px at 10% 5%,   #ff7332 99%, transparent 100%),
+            radial-gradient(circle 3px at 20% 12%,  #ffa62b 99%, transparent 100%),
+            radial-gradient(circle 3px at 30% 7%,   #48b9ff 99%, transparent 100%),
+            radial-gradient(circle 3px at 40% 18%,  #6ee7b7 99%, transparent 100%),
+            radial-gradient(circle 3px at 55% 9%,   #f472b6 99%, transparent 100%),
+            radial-gradient(circle 3px at 65% 16%,  #93c5fd 99%, transparent 100%),
+            radial-gradient(circle 3px at 75% 6%,   #fbbf24 99%, transparent 100%),
+            radial-gradient(circle 3px at 88% 15%,  #34d399 99%, transparent 100%);
+          background-size: 220px 220px;
+          animation: kib-confetti-scroll 28s linear infinite;
+          opacity: .8;
+        }
+        .kib-confetti::after {
+          background-size: 260px 260px;
+          animation-duration: 36s;
+          opacity: .6;
+        }
+        @keyframes kib-confetti-scroll {
+          from { background-position: 0 0; }
+          to   { background-position: 0 3800px; }
+        }
+      `}</style>
     </App>
   );
 }

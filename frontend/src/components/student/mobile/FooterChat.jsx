@@ -30,6 +30,9 @@ export default function FooterChat({
   hideOnRoutes = ["/student/homework/feedback"],
   className = "",
   sheetHeight = "75%", // bottom sheet height (fallback)
+  hideTriggerWhenOpen = false,
+  onChatOpen,
+  onChatClose,
 }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
@@ -110,6 +113,7 @@ export default function FooterChat({
   // But allow manual opening via footer button
   const prevPathnameRef = useRef(pathname);
   const justNavigatedToDoingRef = useRef(false);
+  const hasAnnouncedRef = useRef(false);
   useEffect(() => {
     // Only close if we just navigated TO the list page or doing page (not if we're already there)
     const justNavigatedToList = isOnHomeworkList && prevPathnameRef.current !== pathname;
@@ -181,64 +185,84 @@ export default function FooterChat({
     return () => clearTimeout(timeoutId);
   }, [isOnHomework, isOnHomeworkList, isOnHomeworkDoing, dockState?.visible, dockState?.expanded, dockState?.task?.id, dockState?.task?.updatedAt]);
 
+  useEffect(() => {
+    if (!hasAnnouncedRef.current) {
+      hasAnnouncedRef.current = true;
+      if (open) onChatOpen?.();
+      return;
+    }
+
+    if (open) {
+      onChatOpen?.();
+    } else {
+      onChatClose?.();
+    }
+  }, [open, onChatOpen, onChatClose]);
+
   // Hide the footer trigger if not included or explicitly hidden
   if (isHidden || !isIncluded) return null;
+
+  const hideTriggerStrip = hideTriggerWhenOpen && open;
 
   return (
     <>
       {/* Mobile trigger: fixed to viewport bottom */}
-      <div
-        className={[
-          "fixed bottom-0 left-0 right-0 z-20 md:hidden pointer-events-none",
-          className,
-        ].join(" ")}
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        <button
-          type="button"
-          onClick={() => {
-            setOpen(true);
-            expandChat?.();
-          }}
-          className="block w-full pointer-events-auto active:scale-[0.98] transition"
-          aria-label="Open chat"
+      {!hideTriggerStrip && (
+        <div
+          className={[
+            "fixed bottom-0 left-0 right-0 z-20 md:hidden pointer-events-none",
+            className,
+          ].join(" ")}
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
-          <img
-            src={bottomChat}
-            alt="Chat dock"
-            className="w-full h-auto select-none"
-            draggable={false}
-          />
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(true);
+              expandChat?.();
+            }}
+            className="block w-full pointer-events-auto active:scale-[0.98] transition"
+            aria-label="Open chat"
+          >
+            <img
+              src={bottomChat}
+              alt="Chat dock"
+              className="w-full h-auto select-none"
+              draggable={false}
+            />
+          </button>
+        </div>
+      )}
 
       {/* Desktop trigger: absolute inside container with bottom offset to avoid taskbar */}
-      <div
-        className={[
-          "hidden md:block absolute left-0 right-0 z-20 pointer-events-none",
-          className,
-        ].join(" ")}
-        style={{
-          bottom: windowWidth >= 1024 ? "8px" : "4px", // Small offset on desktop to avoid taskbar overlap
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => {
-            setOpen(true);
-            expandChat?.();
+      {!hideTriggerStrip && (
+        <div
+          className={[
+            "hidden md:block absolute left-0 right-0 z-20 pointer-events-none",
+            className,
+          ].join(" ")}
+          style={{
+            bottom: windowWidth >= 1024 ? "8px" : "4px", // Small offset on desktop to avoid taskbar overlap
           }}
-          className="block w-full pointer-events-auto active:scale-[0.98] transition dd"
-          aria-label="Open chat"
         >
-          <img
-            src={bottomChat}
-            alt="Chat dock"
-            className="w-full h-auto select-none"
-            draggable={false}
-          />
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(true);
+              expandChat?.();
+            }}
+            className="block w-full pointer-events-auto active:scale-[0.98] transition"
+            aria-label="Open chat"
+          >
+            <img
+              src={bottomChat}
+              alt="Chat dock"
+              className="w-full h-auto select-none"
+              draggable={false}
+            />
+          </button>
+        </div>
+      )}
 
       {/* Bottom sheet overlay */}
       {/* On mobile: fixed to viewport, On desktop: contained within shell */}

@@ -1,61 +1,52 @@
 // src/pages/student/onboarding/WelcomeTour.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Typography } from "antd";
-import { ArrowLeft, Home } from "lucide-react";
+import React, { useEffect, useMemo } from "react";
+import { Typography } from "antd";
+import { ArrowLeft, ArrowRight, Mic } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import { markIntroSeen, markTourDone } from "./introFlags";
 
-/* Backgrounds like HomeworkStart */
 import buddyImg from "@/assets/buddies/kibundo-buddy.png";
-import treesBg from "@/assets/backgrounds/trees.png";
-import waterBg from "@/assets/backgrounds/water.png";
 
-/* Icons & bubble */
-import chatAgentIcon from "@/assets/mobile/icons/chat-agent.png";
-import micIcon from "@/assets/mobile/icons/mic.png";
-import speakerIcon from "@/assets/mobile/icons/speaker.png";
+/* Layered background assets (same set used in the InterestsWizard) */
+import bgGlobal from "@/assets/backgrounds/global-bg.png";
+import bgClouds from "@/assets/backgrounds/clouds.png";
+import bgTrees from "@/assets/backgrounds/trees.png";
+import bgBottom from "@/assets/backgrounds/bottom.png";
 
-const { Text } = Typography;
+import FooterChat, { ChatStripSpacer } from "@/components/student/mobile/FooterChat.jsx";
+import useEnsureGerman from "@/hooks/useEnsureGerman.js";
 
-const Halo = ({ children, active }) => (
-  <div className={`relative inline-grid place-items-center ${active ? "animate-[pulse_1.6s_ease-in-out_infinite]" : ""}`}>
-    <div className={`absolute inset-[-10px] rounded-full ${active ? "ring-2 ring-[#ff4d4f]/70" : "ring-0"}`} />
-    {children}
-  </div>
-);
+const { Title, Text } = Typography;
 
 export default function WelcomeTour() {
   const navigate = useNavigate();
   const { buddy } = useStudentApp();
   const { user } = useAuthContext();
-  
+  const { i18n } = useTranslation();
+  const ready = useEnsureGerman(i18n);
+
   const studentId = user?.id || user?.user_id || null;
 
-  const micRef = useRef(null);
-  const chatRef = useRef(null);
-  const homeRef = useRef(null);
-
-  const [step, setStep] = useState(0);
-
-  const steps = useMemo(
-    () => [
-      { id: "welcome", text: "Willkommen! Ich bin dein Lernbuddy. Ich zeige dir kurz, wie alles funktioniert." },
-      { id: "voice",   text: "Tippe auf das Mikrofon, um mit mir zu sprechen und mir zu sagen, womit du Hilfe brauchst.", anchor: "mic" },
-      { id: "chat",    text: "Das ist der Chat. Hier können wir schreiben und Bilder austauschen.", anchor: "chat" },
-      { id: "home",    text: "Das bringt dich nach Hause, wo du Aufgaben und Abenteuer startest.", anchor: "home" },
-      { id: "done",    text: "Alles fertig! Los geht's 🎉" },
-    ],
+  const current = useMemo(
+    () => ({
+      title: "Sprich mit mir",
+      text: "Tippe auf das Mikrofon, erzähle mir wofür du Hilfe brauchst und ich höre zu.",
+    }),
     []
   );
 
-  const current = steps[step];
+  useEffect(() => {
+    markIntroSeen(studentId);
+  }, [studentId]);
 
   const speak = () => {
     try {
-      const u = new SpeechSynthesisUtterance(current.text);
+      const message = `${current.title}. ${current.text}`;
+      const u = new SpeechSynthesisUtterance(message);
       u.lang = "de-DE";
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(u);
@@ -63,185 +54,160 @@ export default function WelcomeTour() {
   };
 
   useEffect(() => {
-    markIntroSeen(studentId);
     speak();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, studentId]);
+  }, []);
 
   const onSkip = () => {
     markTourDone(studentId);
     navigate("/student/home");
   };
+
   const onNext = () => {
-    if (step < steps.length - 1) setStep((s) => s + 1);
-    else {
-      markTourDone(studentId);
-      navigate("/student/onboarding/buddy");
-    }
-  };
-  const onBack = () => {
-    if (step === 0) return navigate(-1);
-    setStep((s) => s - 1);
+    markTourDone(studentId);
+    navigate("/student/onboarding/buddy");
   };
 
-  const haloActive = {
-    mic: current.anchor === "mic",
-    chat: current.anchor === "chat",
-    home: current.anchor === "home",
+  const onBack = () => {
+    navigate("/student/onboarding/welcome-intro", {
+      state: { allowIntroReturn: true },
+    });
   };
+
+  if (!ready) {
+    return null;
+  }
 
   return (
-    <div className="relative z-0 min-h-[100dvh] overflow-hidden pb-28">
-      {/* ---------- SKY (gradient like HomeworkStart) ---------- */}
+    <div className="relative min-h-[100dvh] overflow-hidden">
+      {/* ---------- Background Layers (same look as InterestsWizard) ---------- */}
+      {/* Base texture/sky */}
       <div
-        className="absolute inset-0 pointer-events-none z-0"
+        className="absolute inset-0 -z-40"
         style={{
-          backgroundImage: `
-            radial-gradient(1200px 600px at 92% 4%, rgba(247,210,178,.85) 0%, rgba(247,210,178,.55) 20%, rgba(247,210,178,0) 55%),
-            linear-gradient(180deg, #eaf5f5 0%, #edf2ed 45%, #e8f4f6 100%)
-          `,
+          backgroundImage: `url(${bgGlobal})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
         }}
       />
-
-      {/* ---------- WATER (bottom, rounded container) ---------- */}
+      {/* Soft peach gradient overlay */}
       <div
-        className="absolute inset-x-0 bottom-0 h-[50vh] pointer-events-none z-10 overflow-hidden"
+        className="absolute inset-0 -z-30 opacity-90"
         style={{
-          borderTopLeftRadius: 36,
-          borderTopRightRadius: 36,
-          boxShadow: "0 -8px 24px rgba(0,0,0,.10)",
-          background: "linear-gradient(180deg, #cfeef2 0%, #bfe6e8 100%)",
+          background:
+            "radial-gradient(120% 90% at 50% 0%, #ffd7ba 0%, #f6e7da 55%, #eaf5ef 100%)",
         }}
-      >
+      />
+      {/* Drifting clouds (top) */}
+      <div
+        className="pointer-events-none absolute inset-x-0 -top-16 h-[55%] -z-20"
+        style={{
+          backgroundImage: `url(${bgClouds})`,
+          backgroundRepeat: "repeat-x",
+          backgroundPosition: "top center",
+          backgroundSize: "contain",
+          animation: "kib-clouds 60s linear infinite",
+          opacity: 0.9,
+        }}
+      />
+      {/* Static tree horizon */}
+      <div className="pointer-events-none absolute inset-x-0 top-[18%] -z-15 flex justify-center">
         <img
-          src={waterBg}
+          src={bgTrees}
           alt=""
-          className="w-full h-full object-contain object-bottom select-none"
+          className="w-[1200px] max-w-full object-contain"
           draggable={false}
         />
       </div>
-
-      {/* ---------- TREES (above water) ---------- */}
-      <div className="absolute inset-x-0 top-9 bottom-[43vh] z-20 pointer-events-none">
-        <img
-          src={treesBg}
-          alt=""
-          className="w-full h-full object-contain object-bottom select-none"
-          draggable={false}
-        />
-      </div>
-
-      {/* ---------- HEADER ---------- */}
-      <div className="relative z-30 flex items-center gap-2 px-3 pt-3">
-        <button className="p-2 rounded-full hover:bg-neutral-100" onClick={onBack} aria-label="Back">
-          <ArrowLeft className="w-5 h-5" />
+      {/* Curved foreground bottom panel */}
+      <div
+        className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 w-[160%] max-w-[1900px] -z-10"
+        style={{
+          height: "60vw",
+          maxHeight: "920px",
+          minHeight: "540px",
+          backgroundImage: `url(${bgBottom})`,
+          backgroundRepeat: "no-repeat",
+          backgroundSize: "100% 100%",
+        }}
+      />
+      {/* ---------- Header ---------- */}
+      <div className="relative z-30 flex items-center justify-between px-5 pt-5">
+        <button
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 shadow-sm transition hover:bg-white"
+          onClick={onBack}
+          aria-label="Zurück"
+        >
+          <ArrowLeft className="h-5 w-5 text-[#5b4f3f]" />
         </button>
 
-        <div className="ml-auto flex items-center gap-2">
-          <button className="px-2 py-1 text-sm rounded-full hover:bg-neutral-100" onClick={onSkip}>
+        <div className="flex items-center gap-3">
+          <button
+            className="rounded-full border border-white/40 bg-white/60 px-4 py-1 text-sm font-medium text-[#5b4f3f] transition hover:bg-white"
+            onClick={onSkip}
+          >
             Überspringen
           </button>
-          <button className="p-2 rounded-full hover:bg-neutral-100" onClick={speak} aria-label="Read aloud">
-            <img src={speakerIcon} alt="Read" className="w-5 h-5 object-contain" />
+          <button
+            onClick={onNext}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-[#ff7a00] shadow-sm transition hover:bg-white"
+            aria-label="Weiter"
+          >
+            <ArrowRight className="h-5 w-5" />
           </button>
         </div>
       </div>
 
-      {/* ---------- FOREGROUND CONTENT (no overlap) ---------- */}
-      <div className="relative z-30 flex flex-col items-center pt-8 px-4 ">
-        {/* Mascot + PNG speech bubble */}
-       <div className="w-full mx-auto mt-[3vh] z-30 pointer-events-none">
-                  <div className="mx-auto w-full max-w-[180px] h-[40vh] min-h-[140px]">
-            <img
-              src={buddy?.img || buddyImg}
-              alt="Buddy"
-              draggable={false}
-              className="w-full h-full object-contain object-bottom select-none"
-              style={{ filter: "drop-shadow(0 12px 22px rgba(0,0,0,.18))" }}
-            />
-          </div>
+      {/* ---------- Content ---------- */}
+      <div className="relative z-20 mx-auto flex min-h-[calc(100dvh-120px)] w-full max-w-[640px] flex-col items-center px-6 pt-6 text-center">
+        <div className="w-full max-w-[210px] md:max-w-[240px]">
+          <img
+            src={buddy?.img || buddyImg}
+            alt="Kibundo"
+            className="w-full select-none drop-shadow-[0_22px_45px_rgba(90,76,58,0.22)]"
+            draggable={false}
+          />
         </div>
-          
 
-        {/* Bubble positioned near the head, but still above chips */}
-        <div
-          className="relative -mt-10 mb-2"
-          style={{ width: 280, maxWidth: "85%" }}
-        >
-          <div
-            className="mx-auto text-[#1b3a1b]"
-            style={{
-              backgroundImage: `url(${chatAgentIcon})`,
-              backgroundRepeat: "no-repeat",
-              backgroundSize: "contain",
-              width: "100%",
-              minHeight: 175,
-              padding: "28px 24px 36px 26px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              filter: "drop-shadow(0 8px 16px rgba(0,0,0,.12))",
-            }}
-            role="note"
-            aria-label="Buddy message"
+        <div className="mt-6 flex max-w-[520px] flex-col gap-2 text-[#4c3f32]">
+          <Title level={3} className="!m-0 text-2xl font-semibold tracking-wide text-[#4c3f32]">
+            {current.title}
+          </Title>
+          <Text className="text-base leading-relaxed text-[#5f5449]">
+            {current.text}
+          </Text>
+        </div>
+
+        <div className="mt-9 flex flex-col items-center gap-6">
+          <button
+            type="button"
+            onClick={speak}
+            className="grid h-20 w-20 place-items-center rounded-full bg-[#ff7a00] text-white shadow-[0_18px_32px_rgba(255,122,0,0.35)] transition hover:scale-105 focus:outline-none focus-visible:ring-4 focus-visible:ring-white/70"
+            aria-label="Tour erklären lassen"
           >
-            <Text style={{ fontSize: 14, lineHeight: 1.3, display: "block", textAlign: "center" }}>
-              {current.text}
-            </Text>
-          </div>
-        </div>
-
-        {/* Mid highlights — BELOW mascot and bubble */}
-        <div className="mt-4 flex items-center justify-center gap-6">
-          <Halo active={haloActive.chat}>
-            <button
-              ref={chatRef}
-              className="flex items-center gap-2 px-4 py-2 rounded-full bg-white shadow-sm"
-              aria-label="Chat"
-            >
-              <img src={chatAgentIcon} alt="Chat" className="w-4 h-4 object-contain" />
-              <span className="text-sm font-medium">Chat</span>
-            </button>
-          </Halo>
-
-          <Halo active={haloActive.home}>
-            <button
-              ref={homeRef}
-              className="flex items-center gap-2 px-4 py-2 rounded-full bg-white shadow-sm"
-              aria-label="Home"
-            >
-              <Home className="w-4 h-4" />
-              <span className="text-sm font-medium">Home</span>
-            </button>
-          </Halo>
-        </div>
-
-        {/* Big mic (in flow, not absolute) */}
-        <div className="mt-8 grid place-items-center">
-          <Halo active={haloActive.mic}>
-            <button
-              ref={micRef}
-              aria-label="Voice input"
-              className="grid place-items-center w-16 h-16 rounded-full shadow-lg bg-[#ff7a00]"
-            >
-              <img src={micIcon} alt="Mic" className="w-15 h-15 object-contain" />
-            </button>
-          </Halo>
+            <Mic className="h-9 w-9" />
+          </button>
         </div>
       </div>
 
-   
+      {/* Bottom dock */}
+      <ChatStripSpacer className="mt-4" />
+      <FooterChat
+        includeOnRoutes={["/student/onboarding/welcome-tour"]}
+        hideOnRoutes={[]}
+        hideTriggerWhenOpen
+        onChatOpen={speak}
+        className="pointer-events-auto"
+      />
 
-      <div className="absolute left-3 right-3 bottom-3 flex gap-2 z-30">
-       
-        <Button
-          type="primary"
-          onClick={onNext}
-          className="rounded-full flex-1 !bg-[#ff4d4f] !border-none !h-[48px] font-semibold"
-        >
-          {step < steps.length - 1 ? "Weiter" : "Los geht's"}
-        </Button>
-      </div>
+      {/* Animations */}
+      <style>{`
+        @keyframes kib-clouds {
+          0% { background-position: 0px top; }
+          100% { background-position: 2000px top; }
+        }
+      `}</style>
     </div>
   );
 }

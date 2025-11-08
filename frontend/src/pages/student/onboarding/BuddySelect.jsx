@@ -4,18 +4,16 @@ import { Typography, Button } from "antd";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
+import useEnsureGerman from "@/hooks/useEnsureGerman.js";
 
 /* New shared UI components */
 import OnboardingHeader from "@/components/student/onboarding/OnboardingHeader.jsx";
 import BuddyCard from "@/components/student/onboarding/BuddyCard.jsx";
 
-/* Optional ribbons (keep if you want the top overlays) */
-import HomeRibbon from "@/components/student/mobile/HomeRibbon";
-import SettingsRibbon from "@/components/student/mobile/SettingsRibbon";
-
 /* Screen backgrounds */
 import globalBg from "@/assets/backgrounds/global-bg.png";
-import intBack from "@/assets/backgrounds/int-back.png";
+import cloudsBg from "@/assets/backgrounds/clouds.png";
+import bottomBg from "@/assets/backgrounds/bottom.png";
 
 // Import buddy images
 import buddyMilo from "@/assets/buddies/kibundo-buddy.png";
@@ -37,7 +35,8 @@ const BUDDIES = [
 ];
 
 export default function BuddySelect() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const ready = useEnsureGerman(i18n);
   const navigate = useNavigate();
   const { buddy, setBuddy } = useStudentApp();
   const [selected, setSelected] = useState(buddy?.id || null);
@@ -69,26 +68,52 @@ export default function BuddySelect() {
     navigate("/student/onboarding/interests");
   };
 
+  if (!ready) {
+    return null;
+  }
+
   return (
     <div className="relative min-h-[100svh] overflow-hidden">
       {/* ---------- BACKGROUND ---------- */}
-      <img
-        src={globalBg}
-        alt=""
-        className="absolute inset-0 w-full h-full object-cover pointer-events-none -z-20"
-        draggable={false}
+      <div className="absolute inset-0 pointer-events-none -z-20">
+        <img
+          src={globalBg}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          draggable={false}
+        />
+        <div
+          className="absolute inset-0 opacity-90"
+          style={{
+            background:
+              "radial-gradient(120% 90% at 50% 0%, #ffd7ba 0%, #f6e7da 55%, #eaf5ef 100%)",
+          }}
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `url(${cloudsBg})`,
+            backgroundRepeat: "repeat-x",
+            backgroundPosition: "top center",
+            backgroundSize: "contain",
+            animation: "kib-clouds 60s linear infinite",
+            opacity: 0.9,
+          }}
+        />
+      </div>
+      <div
+        className="absolute bottom-0 left-1/2 -z-10 h-[58vh] w-[150%] max-w-[1800px] -translate-x-1/2"
+        style={{
+          backgroundImage: `url(${bottomBg})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center bottom",
+          backgroundRepeat: "no-repeat",
+          clipPath: "ellipse(120% 90% at 50% 0%)",
+          borderTopLeftRadius: "60% 32%",
+          borderTopRightRadius: "60% 32%",
+          boxShadow: "0 -32px 60px rgba(157, 141, 117, 0.18)",
+        }}
       />
-      <img
-        src={intBack}
-        alt=""
-        className="absolute bottom-0 left-0 w-full h-1/2 object-cover pointer-events-none -z-10"
-        draggable={false}
-      />
-
-      {/* ---------- RIBBONS (optional) ---------- */}
-      <HomeRibbon />
-      <SettingsRibbon />
-
       {/* ---------- CONTENT ---------- */}
       <div className="relative px-4 py-6 flex flex-col min-h-[100svh]">
         {/* Header (Back + TTS/Skip if you want) */}
@@ -160,6 +185,12 @@ export default function BuddySelect() {
           </Button>
         </div>
       </div>
+      <style>{`
+        @keyframes kib-clouds {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+      `}</style>
     </div>
   );
 }

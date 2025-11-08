@@ -30,6 +30,7 @@ function AppContent() {
   const { pathname } = useLocation();
   const isStudentRoute = pathname.startsWith("/student");
   const isParentRoute = pathname.startsWith("/parent");
+  const isStudentOnboarding = isStudentRoute && pathname.includes("/student/onboarding");
 
   return (
     <>
@@ -54,13 +55,15 @@ function AppContent() {
             </div>
             
             {/* iPad and larger: centered container with max-width */}
-            <div className="hidden md:flex md:justify-center md:min-h-screen md:bg-gray-50">
-              <div className="w-full max-w-[1024px] bg-white shadow-lg flex flex-col min-h-screen relative">
+            <div className={`hidden md:flex md:justify-center md:min-h-screen ${isStudentOnboarding ? "md:bg-transparent" : "md:bg-gray-50"}`}>
+              <div
+                className={`w-full max-w-[1024px] ${isStudentOnboarding ? "bg-transparent shadow-none" : "bg-white shadow-lg"} flex flex-col min-h-screen relative`}
+              >
                 {/* Chat portal mount point for desktop - inside device frame */}
                 <div id="chat-root" className="absolute inset-0 pointer-events-none" />
-                <div className="flex-1 overflow-y-auto pb-20">
+             
                   <AppRoutes />
-                </div>
+             
                 
                 {/* Footer chat for student routes - fixed at bottom */}
                 <div className="absolute bottom-0 left-0 right-0 z-20">
