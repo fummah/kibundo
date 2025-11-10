@@ -19,7 +19,7 @@ import bottomBg from "@/assets/backgrounds/bottom.png";
 import buddyMilo from "@/assets/buddies/kibundo-buddy.png";
 import buddyLumi from "@/assets/buddies/kibundo-buddy1.png";
 import buddyZuzu from "@/assets/buddies/monster1.png";
-import buddyKiko from "@/assets/buddies/monster2.png";
+import buddyKiko from "@/assets/buddies/monster21.png";
 import buddyPipa from "@/assets/buddies/Hausaufgaben.png";
 import buddyNori from "@/assets/buddies/Lernen.png";
 

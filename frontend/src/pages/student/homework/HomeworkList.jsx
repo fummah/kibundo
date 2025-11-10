@@ -44,7 +44,10 @@ function transformHomeworkScanToTask(scan) {
     what: deriveWhat(scan.raw_text),
     description: scan.raw_text ? scan.raw_text.slice(0, 120).trim() + (scan.raw_text.length > 120 ? '...' : '') : (scan.notes || '—'),
     due: null,
-    done: false, // Default to false (status column doesn't exist in DB yet)
+    done: Boolean(scan.completed_at),
+    completedAt: scan.completed_at || null,
+    completionPhotoUrl: scan.completion_photo_url || null,
+    grade: scan.grade || null,
     source: 'image',
     hasImage: !!scan.file_url,
     fileName: null,
@@ -67,7 +70,15 @@ function loadTasksFromKeys(keys = []) {
           const id = t?.id || `${t?.what || ""}|${t?.createdAt || ""}`;
           if (seen.has(id)) continue;
           seen.add(id);
-          out.push(t);
+          const normalized = { ...t };
+          if (
+            normalized.completionPhotoDataUrl &&
+            !normalized.completionPhotoUrl
+          ) {
+            normalized.completionPhotoUrl = normalized.completionPhotoDataUrl;
+            delete normalized.completionPhotoDataUrl;
+          }
+          out.push(normalized);
         }
       }
     } catch {}
@@ -136,6 +147,22 @@ export default function HomeworkList() {
   const [apiTasks, setApiTasks] = useState([]);
   const [loading, setLoading] = useState(false);
   
+  const persistTasksToStorage = useCallback(
+    (tasksToPersist) => {
+      try {
+        localStorage.setItem(TASKS_KEY_USER, JSON.stringify(tasksToPersist));
+      } catch {}
+      try {
+        setTimeout(() => {
+          try {
+            window.dispatchEvent(new Event("kibundo:tasks-updated"));
+          } catch {}
+        }, 0);
+      } catch {}
+    },
+    [TASKS_KEY_USER]
+  );
+  
   // Cache to remember if endpoint is not implemented (501) - use sessionStorage to persist across remounts
   const ENDPOINT_CACHE_KEY = 'homeworkscans_endpoint_status';
   const fetchingRef = useRef(false); // Prevent concurrent requests
@@ -164,25 +191,26 @@ export default function HomeworkList() {
   const tasks = useMemo(() => {
     const merged = [];
     const seen = new Set();
-    
-    // Add API tasks first (they're the source of truth from database)
-    for (const task of apiTasks) {
-      const key = task.scanId ? `scan_${task.scanId}` : task.id;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(task);
-    }
-    
-    // Add localStorage tasks (local-only data)
+
+    // Add local tasks first so student updates (done/photo) override API snapshots
     for (const task of localStorageTasks) {
-      const key = task.scanId ? `scan_${task.scanId}` : task.id;
-      if (seen.has(key)) continue;
+      const key = task?.scanId ? `scan_${task.scanId}` : task?.id;
+      if (!key || seen.has(key)) continue;
       seen.add(key);
       merged.push(task);
     }
-    
-    // Sort by creation date (newest first)
-    return merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+    // Add API tasks if they are not already represented locally
+    for (const task of apiTasks) {
+      const key = task?.scanId ? `scan_${task.scanId}` : task?.id;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      merged.push(task);
+    }
+
+    return merged.sort(
+      (a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0)
+    );
   }, [apiTasks, localStorageTasks]);
 
   // Fetch homework scans from API
@@ -366,9 +394,22 @@ export default function HomeworkList() {
     try {
       localStorage.setItem(
         PROGRESS_KEY_USER,
-        JSON.stringify({ step: task.done ? 2 : 1, taskId: task.id })
+        JSON.stringify({ step: task.done ? 3 : 1, taskId: task.id })
       );
     } catch {}
+
+    if (task?.done) {
+      closeChat?.();
+      navigate("/student/homework/feedback", {
+        state: {
+          taskId: task.id,
+          task,
+          from: "list",
+          readOnly: true,
+        },
+      });
+      return;
+    }
 
     const chatKey = `homework:${task.id}::u:${studentId}`;
 
@@ -397,9 +438,52 @@ export default function HomeworkList() {
   };
 
   // Handle mark task as done/undone
-  const handleMarkTaskDone = (task) => {
-    // Add mark done functionality here
-  };
+  const handleMarkTaskDone = useCallback(
+    async (task) => {
+      if (!task) return;
+      const resolvedKey = task?.scanId ? `scan_${task.scanId}` : task?.id;
+      if (!resolvedKey) return;
+
+      const toggledDone = !Boolean(task?.done);
+      const timestamp = toggledDone ? new Date().toISOString() : null;
+
+      let updatedTaskRef = null;
+      setLocalStorageTasks((prev) => {
+        const list = Array.isArray(prev) ? [...prev] : [];
+        const idx = list.findIndex((entry) => {
+          const entryKey = entry?.scanId ? `scan_${entry.scanId}` : entry?.id;
+          return entryKey === resolvedKey;
+        });
+        const existing = idx >= 0 ? list[idx] : task;
+        const updatedTask = {
+          ...existing,
+          done: toggledDone,
+          completedAt: timestamp,
+        };
+        if (idx >= 0) {
+          list[idx] = updatedTask;
+        } else {
+          list.unshift(updatedTask);
+        }
+        updatedTaskRef = updatedTask;
+        persistTasksToStorage(list);
+        return list;
+      });
+
+      if (task?.scanId) {
+        try {
+          await api.put(`/homeworkscans/${task.scanId}/completion`, {
+            completedAt: timestamp,
+            completionPhotoUrl:
+              updatedTaskRef?.completionPhotoUrl || task?.completionPhotoUrl || null,
+          });
+        } catch (error) {
+          console.error("❌ Fehler beim Aktualisieren des Abschlussstatus:", error);
+        }
+      }
+    },
+    [persistTasksToStorage]
+  );
 
   return (
     <>

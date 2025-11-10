@@ -1,6 +1,7 @@
 // src/pages/student/mobile/MobileShell.jsx
 import React from "react";
 import { Outlet } from "react-router-dom";
+import { NUNITO_FONT_STACK } from "@/constants/fonts.js";
 
 /**
  * MobileShell
@@ -11,5 +12,9 @@ import { Outlet } from "react-router-dom";
 export default function MobileShell() {
   // App-level device frame is applied in src/App.jsx. To prevent double frames,
   // this shell simply renders the nested routes.
-  return <Outlet />;
+  return (
+    <div className="contents" style={{ fontFamily: NUNITO_FONT_STACK }}>
+      <Outlet />
+    </div>
+  );
 }

@@ -49,6 +49,27 @@ async function askOpenAI(systemPrompt, userInput, opts = {}) {
   return { text, raw: completion };
 }
 
+let gradeColumnEnsured = false;
+async function ensureGradeColumnIsText() {
+  if (gradeColumnEnsured) return;
+  try {
+    await pool.query(
+      "ALTER TABLE homework_scans ALTER COLUMN grade TYPE TEXT USING grade::text"
+    );
+  } catch (err) {
+    const msg = String(err?.message || "");
+    if (
+      !msg.includes("cannot cast type") &&
+      !msg.includes("already of type") &&
+      !msg.includes("does not exist")
+    ) {
+      console.warn("⚠️ Unable to alter homework_scans.grade to TEXT:", err.message);
+    }
+  } finally {
+    gradeColumnEnsured = true;
+  }
+}
+
 // ================================
 // 📷 1️⃣ OCR UPLOAD & ANALYSIS
 // ================================
@@ -61,10 +82,33 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     const rawText = data.text;
     fs.unlinkSync(filePath); // delete temp file
 
+    const studentRow = await pool.query(
+      "SELECT id, class_id FROM students WHERE user_id = $1 LIMIT 1",
+      [1 || null]
+    );
+    const studentId = studentRow.rows[0]?.id || null;
+    const classId = studentRow.rows[0]?.class_id || null;
+
+    await ensureGradeColumnIsText();
+
+    let gradeValue = null;
+    if (classId) {
+      try {
+        const classRes = await pool.query(
+          "SELECT class_name FROM classes WHERE id = $1 LIMIT 1",
+          [classId]
+        );
+        const className = classRes.rows[0]?.class_name;
+        gradeValue = className || String(classId);
+      } catch {
+        gradeValue = String(classId);
+      }
+    }
+
     const scanRes = await pool.query(
-      `INSERT INTO homework_scans(student_id, raw_text,file_url)
-       VALUES($1, $2, $3) RETURNING *`,
-      [1 || null, rawText,"testfile"]
+      `INSERT INTO homework_scans(student_id, raw_text,file_url, grade, created_by)
+       VALUES($1, $2, $3, $4, $5) RETURNING *`,
+      [studentId, rawText, "testfile", gradeValue, String(1)]
     );
     const scan = scanRes.rows[0];
 

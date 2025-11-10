@@ -67,6 +67,20 @@ function formatScanDate(dateStr) {
   }
 }
 
+function formatCompletedAt(dateStr) {
+  if (!dateStr) return "";
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("de-DE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
 const HomeworkCard = ({
   id,
   subject,
@@ -74,6 +88,7 @@ const HomeworkCard = ({
   description,
   due,
   done,
+  completedAt,
   createdAt,
   onOpen,
   onEdit,
@@ -83,6 +98,13 @@ const HomeworkCard = ({
   const [showActions, setShowActions] = useState(false);
   const meta = SUBJECTS[subject] || { color: "#ff8a3d", icon: "📚" };
   const scanDate = formatScanDate(createdAt);
+  const completedLabel = formatCompletedAt(completedAt);
+  const cardClassName = [
+    "relative w-full max-w-xs mx-auto rounded-xl p-6 cursor-pointer transition-all duration-300 hover:shadow-lg",
+    done ? "ring-2 ring-white/70" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const handleCardClick = () => {
     // 🔥 Open the chat directly when card is clicked
@@ -119,7 +141,7 @@ const HomeworkCard = ({
 
   return (
     <div
-      className="relative w-full max-w-xs mx-auto rounded-xl p-6 cursor-pointer transition-all duration-300 hover:shadow-lg"
+      className={cardClassName}
       style={{ backgroundColor: meta.color }}
       onClick={handleCardClick}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && handleCardClick()}
@@ -127,6 +149,13 @@ const HomeworkCard = ({
       tabIndex={0}
       aria-label={`Aufgabe: ${subject || "Sonstiges"} – ${what || ""}`}
     >
+      {done && (
+        <div className="absolute top-3 left-3 flex items-center gap-1 bg-white/85 text-[#2b6a5b] rounded-full px-3 py-[4px] text-xs font-semibold shadow-sm">
+          <CheckOutlined style={{ fontSize: 12 }} />
+          Erledigt
+        </div>
+      )}
+
       {/* Menu Button (top-right) */}
       <button
         className="absolute top-3 right-3 w-8 h-8 bg-white/80 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-all shadow-sm"
@@ -155,6 +184,12 @@ const HomeworkCard = ({
           <p className="text-sm">{formatDueDate(due)}</p>
         )}
       </div>
+
+      {done && (
+        <div className="text-white text-xs mb-4 opacity-90">
+          Fertig am {completedLabel || "—"}
+        </div>
+      )}
 
       {/* Bottom Section - Action Buttons */}
       {showActions && (

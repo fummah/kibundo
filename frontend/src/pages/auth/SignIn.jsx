@@ -10,6 +10,7 @@ import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
 import api from "@/api/axios";
 import heroImage from "@/assets/onboarding-dino.png";
 import useEnsureGerman from "@/hooks/useEnsureGerman.js";
+import { NUNITO_FONT_STACK } from "@/constants/fonts.js";
 
 // Onboarding flags
 import {
@@ -136,6 +137,7 @@ export default function SignIn() {
         style={{
           background:
             "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
+          fontFamily: NUNITO_FONT_STACK,
         }}
       />
     );
@@ -147,6 +149,7 @@ export default function SignIn() {
       style={{
         background:
           "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
+        fontFamily: NUNITO_FONT_STACK,
       }}
     >
       <Toaster position="top-center" />
@@ -156,13 +159,14 @@ export default function SignIn() {
           <img
             src={heroImage}
             alt="Kibundo Buddy"
-            className="w-full max-w-xs drop-shadow-[0_12px_30px_rgba(0,0,0,0.12)]"
+            style={{ width: "201px", height: "412px" }}
+            className="drop-shadow-[0_12px_30px_rgba(0,0,0,0.12)]"
           />
           <div className="space-y-3">
             <Title
               level={1}
               className="!m-0 text-4xl font-bold tracking-[0.08em] md:text-5xl"
-              style={{ color: "#FF7F32" }}
+              style={{ color: "#FF7F32" , fontSize: "60px"}}
             >
               Kibundo
             </Title>

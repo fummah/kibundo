@@ -5,6 +5,7 @@ import PropTypes from "prop-types";
 import BottomTabBar from "@/components/parent/BottomTabBar";
 import ParentSpaceBar from "@/components/parent/ParentSpaceBar.jsx";
 import defaultBg from "@/assets/backgrounds/global-bg.png";
+import { NUNITO_FONT_STACK } from "@/constants/fonts.js";
 
 /**
  * ParentShell
@@ -37,6 +38,7 @@ export default function ParentShell({
           backgroundSize: "cover",
           backgroundPosition: "center",
           paddingTop: "env(safe-area-inset-top)",
+          fontFamily: NUNITO_FONT_STACK,
         }}
       >
         {/* Content scrolls when needed; padding at bottom for fixed footer */}

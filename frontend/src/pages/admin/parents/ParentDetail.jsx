@@ -1,17 +1,19 @@
 // src/pages/admin/parents/ParentDetail.jsx
 import React, { useMemo, useCallback, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
-import { Tag, Button, Modal, App } from "antd";
-import { KeyOutlined } from "@ant-design/icons";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Tag, Button, App, Space, Dropdown } from "antd";
+import { KeyOutlined, EllipsisOutlined } from "@ant-design/icons";
 import EntityDetail from "@/components/EntityDetail.jsx";
 import BillingTab from "./BillingTab";
 import EditCredentialsModal from "@/components/common/EditCredentialsModal";
+import api from "@/api/axios";
 
 export default function ParentDetail() {
   // Freeze any prefill coming via router state so later URL/tab changes don't clobber it
   const location = useLocation();
+  const navigate = useNavigate();
   const prefillRef = useRef(location.state?.prefill || null);
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   
   const [credentialsModalVisible, setCredentialsModalVisible] = useState(false);
   const [currentEntity, setCurrentEntity] = useState(null);
@@ -70,6 +72,47 @@ export default function ParentDetail() {
     []
   );
 
+  const handleDeleteStudent = useCallback(
+    (student) => {
+      if (!student?.id) return;
+      const user = student?.user || {};
+      const fullName = [user.first_name || "", user.last_name || ""].filter(Boolean).join(" ").trim();
+      const displayName = fullName || user.email || `Student #${student.id}`;
+      modal.confirm({
+        title: "Delete student?",
+        content: (
+          <>
+            Are you sure you want to permanently delete{" "}
+            <strong>
+              {displayName}
+            </strong>
+            ?
+          </>
+        ),
+        okText: "Delete student",
+        okButtonProps: { danger: true },
+        cancelText: "Cancel",
+        async onOk() {
+          try {
+            await api.delete(`/student/${student.id}`);
+            message.success("Student deleted.");
+            setTimeout(() => {
+              window.location.reload();
+            }, 400);
+          } catch (error) {
+            console.error("Failed to delete student:", error);
+            message.error(
+              error?.response?.data?.message ||
+                error?.response?.data?.error ||
+                "Failed to delete student. Please try again."
+            );
+          }
+        },
+      });
+    },
+    [message, modal]
+  );
+
   const cfg = useMemo(
     () => ({
       titleSingular: "Parent",
@@ -92,7 +135,6 @@ export default function ParentDetail() {
         updatePath: (id) => `/parents/${id}`,
         linkStudentByIdPath: (id) => `/parents/${id}/children`,
         linkStudentByEmailPath: (id) => `/parents/${id}/children/link-by-email`,
-        unlinkStudentPath: (id, studentId) => `/parents/${id}/children/${studentId}`,
       },
 
       // Provide normalized prefill (if any)
@@ -195,6 +237,38 @@ export default function ParentDetail() {
               },
               width: 140,
             },
+            {
+              title: "Actions",
+              key: "actions",
+              fixed: "right",
+              width: 80,
+              render: (_, record) => (
+                <Dropdown
+                  trigger={["click"]}
+                  menu={{
+                    items: [
+                      {
+                        key: "view",
+                        label: "View",
+                        onClick: () => navigate(`/admin/students/${record.id}`),
+                      },
+                      {
+                        key: "delete",
+                        danger: true,
+                        label: "Delete",
+                        onClick: () => handleDeleteStudent(record),
+                      },
+                    ],
+                  }}
+                >
+                  <Button
+                    type="text"
+                    icon={<EllipsisOutlined />}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </Dropdown>
+              ),
+            },
           ],
         },
 
@@ -203,7 +277,7 @@ export default function ParentDetail() {
         documents: { enabled: true, label: "Documents" },
       },
     }),
-    [coerceParent, initialEntity, renderBillingTab]
+    [coerceParent, handleDeleteStudent, initialEntity, navigate, renderBillingTab]
   );
 
   return (

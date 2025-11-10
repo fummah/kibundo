@@ -1,5 +1,6 @@
 const db = require("../models");
 const { Student, User, HomeworkScan } = db;
+const { Op } = require("sequelize");
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // ============================================
@@ -2156,9 +2157,74 @@ exports.deleteRole = async (req, res) => {
 // Classes, Subjects, Quizzes, Worksheets, Curriculum, Blog Posts, Agents, etc.
 // These are stubbed out - implement as needed
 
+const buildUserDisplayName = (user) => {
+  if (!user || typeof user !== "object") return null;
+  const first =
+    user.first_name || user.firstName || user.given_name || user.name_first || "";
+  const last =
+    user.last_name || user.lastName || user.family_name || user.name_last || "";
+  const full = `${first} ${last}`.trim();
+  if (full) return full;
+  return user.username || user.email || user.name || null;
+};
+
+const attachCreatorMeta = async (plainClasses) => {
+  if (!Array.isArray(plainClasses)) return plainClasses;
+
+  const missingIds = Array.from(
+    new Set(
+      plainClasses
+        .filter(
+          (cls) =>
+            !buildUserDisplayName(cls.userCreated) &&
+            cls.created_by !== null &&
+            cls.created_by !== undefined
+        )
+        .map((cls) => cls.created_by)
+    )
+  );
+
+  let userMap = new Map();
+
+  if (missingIds.length > 0) {
+    try {
+      const users = await db.user.findAll({
+        where: { id: { [Op.in]: missingIds } },
+        attributes: ["id", "first_name", "last_name", "email", "username"],
+      });
+      userMap = new Map(
+        users.map((u) => {
+          const plain = u.get ? u.get({ plain: true }) : u;
+          return [plain.id, plain];
+        })
+      );
+    } catch (err) {
+      console.warn("attachCreatorMeta: failed to load users", err);
+    }
+  }
+
+  return plainClasses.map((cls) => {
+    const plain = cls;
+    const displayName =
+      buildUserDisplayName(plain.userCreated) ||
+      buildUserDisplayName(userMap.get(plain.created_by)) ||
+      null;
+
+    plain.created_by_name = displayName || plain.created_by || null;
+    plain.created_by_username =
+      plain.userCreated?.username || userMap.get(plain.created_by)?.username || null;
+    plain.created_by_email =
+      plain.userCreated?.email || userMap.get(plain.created_by)?.email || null;
+    return plain;
+  });
+};
+
 exports.addclass = async (req, res) => {
   try {
-    const classData = req.body;
+    const classData = {
+      ...req.body,
+      created_by: req.user?.id || req.body.created_by || null,
+    };
     const classItem = await db.class.create(classData);
     res.status(201).json(classItem);
   } catch (error) {
@@ -2170,9 +2236,22 @@ exports.addclass = async (req, res) => {
 exports.getClassById = async (req, res) => {
   try {
     const { id } = req.params;
-    const classItem = await db.class.findOne({ where: { id } });
+    const classItem = await db.class.findOne({
+      where: { id },
+      include: [
+        {
+          model: db.user,
+          as: 'userCreated',
+          attributes: ['id', 'first_name', 'last_name', 'email', 'username'],
+          required: false
+        }
+      ]
+    });
     if (!classItem) return res.status(404).json({ message: 'Class not found' });
-    res.json(classItem);
+
+    let plain = classItem.get ? classItem.get({ plain: true }) : classItem;
+    [plain] = await attachCreatorMeta([plain]);
+    res.json(plain);
   } catch (error) {
     console.error('Error fetching class:', error);
     res.status(500).json({ message: 'Internal server error', error: error.message });
@@ -2193,11 +2272,9 @@ exports.getAllClasses = async (req, res) => {
       order: [['id', 'ASC']]
     });
     // Convert Sequelize instances to plain objects to ensure proper serialization
-    const plainClasses = classes.map(cls => {
-      const plain = cls.get ? cls.get({ plain: true }) : cls;
-      return plain;
-    });
-    res.json(plainClasses);
+    const plainClasses = classes.map(cls => (cls.get ? cls.get({ plain: true }) : cls));
+    const enriched = await attachCreatorMeta(plainClasses);
+    res.json(enriched);
   } catch (error) {
     console.error('Error fetching classes:', error);
     res.status(500).json({ message: 'Internal server error', error: error.message });
@@ -2212,6 +2289,22 @@ exports.editClass = async (req, res) => {
     res.json({ message: 'Class updated successfully' });
   } catch (error) {
     console.error('Error updating class:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+};
+
+exports.deleteClass = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await db.class.destroy({ where: { id } });
+
+    if (!deleted) {
+      return res.status(404).json({ message: 'Class not found' });
+    }
+
+    res.json({ message: 'Class deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting class:', error);
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };
@@ -2813,6 +2906,135 @@ exports.getAllAgents = async (req, res) => {
   }
 };
 
+exports.getAgentsForStudent = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
+    const userRecord = await db.user.findOne({
+      where: { id: userId },
+      attributes: ["id", "state", "role_id"],
+    });
+
+    if (!userRecord) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const studentRecord = await db.student.findOne({
+      where: { user_id: userId },
+      attributes: ["id", "class_id"],
+    });
+
+    if (!studentRecord) {
+      // Not a student - return empty list to avoid leaking agent info
+      return res.json([]);
+    }
+
+    const studentGrade = studentRecord.class_id;
+    const studentState = userRecord.state || null;
+
+    const gradeConditions = [
+      { grade: null },
+      { grade: "" },
+      { grade: { [Op.is]: null } },
+    ];
+
+    if (studentGrade !== null && studentGrade !== undefined) {
+      const gradeValue = String(studentGrade);
+      gradeConditions.push(
+        { grade: { [Op.eq]: gradeValue } }
+      );
+    }
+
+    const stateConditions = [
+      { state: null },
+      { state: "" },
+      { state: { [Op.is]: null } },
+    ];
+
+    if (studentState) {
+      stateConditions.push(
+        { state: { [Op.eq]: studentState } },
+        { state: { [Op.eq]: String(studentState) } },
+        { state: { [Op.eq]: String(studentState).toLowerCase() } },
+        { state: { [Op.eq]: String(studentState).toUpperCase() } }
+      );
+    }
+
+    if (!db.agentPromptSet) {
+      return res.json([]);
+    }
+
+    const gradeFilter = {
+      [Op.or]: gradeConditions,
+    };
+
+    const stateFilter = {
+      [Op.or]: stateConditions,
+    };
+
+    const agents = await db.agentPromptSet.findAll({
+      where: {
+        [Op.and]: [gradeFilter, stateFilter],
+      },
+      order: [["id", "DESC"]],
+    });
+
+    const formatted = agents.map((agent) => {
+      const base = formatAgentResponse(agent);
+      return {
+        ...base,
+        matched_grade: studentGrade,
+        matched_state: studentState,
+      };
+    });
+
+    const normalizeGrade = (value) => {
+      if (value === null || value === undefined) return null;
+      const str = String(value).trim();
+      return str.length ? str : null;
+    };
+    const normalizeState = (value) => {
+      if (!value && value !== 0) return null;
+      const str = String(value).trim();
+      return str.length ? str.toLowerCase() : null;
+    };
+
+    const normStudentGrade = normalizeGrade(studentGrade);
+    const normStudentState = normalizeState(studentState);
+
+    const scoreAgent = (agent) => {
+      const agentGrade = normalizeGrade(agent.grade);
+      const agentState = normalizeState(agent.state);
+      const gradeMatch =
+        normStudentGrade && agentGrade && agentGrade === normStudentGrade;
+      const stateMatch =
+        normStudentState && agentState && agentState === normStudentState;
+      const gradeSpecific = Boolean(agentGrade);
+      const stateSpecific = Boolean(agentState);
+      let score = 0;
+      if (gradeMatch) score += 8;
+      if (stateMatch) score += 4;
+      if (gradeSpecific) score += 1;
+      if (stateSpecific) score += 0.5;
+      return score;
+    };
+
+    const scored = [...formatted].sort((a, b) => {
+      const diff = scoreAgent(b) - scoreAgent(a);
+      if (diff !== 0) return diff;
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+
+    res.json(scored);
+  } catch (error) {
+    console.error("❌ Error fetching student agents:", error);
+    res.status(500).json({ message: error.message || "Failed to fetch student agents" });
+  }
+};
+
 exports.getPublicTables = async (req, res) => {
   try {
     const db = require("../models");
@@ -3020,6 +3242,67 @@ exports.getHomeworks = async (req, res) => {
   } catch (err) {
     console.error("❌ Error fetching homework scans:", err);
     res.status(500).json({ message: err.message || 'Internal server error' });
+  }
+};
+
+exports.updateHomeworkCompletion = async (req, res) => {
+  try {
+    const scanId = Number(req.params.id);
+    if (!scanId || Number.isNaN(scanId)) {
+      return res.status(400).json({ message: "Valid homework scan id is required" });
+    }
+
+    const { completedAt, completionPhotoUrl } = req.body || {};
+    if (typeof completedAt === "undefined" && typeof completionPhotoUrl === "undefined") {
+      return res.status(400).json({ message: "No completion fields provided" });
+    }
+
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
+    const studentRecord = await db.student.findOne({
+      where: { user_id: userId },
+      attributes: ["id"],
+    });
+
+    if (!studentRecord) {
+      return res.status(403).json({ message: "Student profile not found for user" });
+    }
+
+    const scanRecord = await db.homeworkScan.findByPk(scanId);
+    if (!scanRecord) {
+      return res.status(404).json({ message: "Homework scan not found" });
+    }
+
+    if (
+      scanRecord.student_id &&
+      Number(scanRecord.student_id) !== Number(studentRecord.id)
+    ) {
+      return res.status(403).json({ message: "You do not have access to this homework scan" });
+    }
+
+    const updates = {};
+    if (completedAt !== undefined) {
+      const date = completedAt ? new Date(completedAt) : null;
+      updates.completed_at = date && !Number.isNaN(date.getTime()) ? date : null;
+    }
+    if (completionPhotoUrl !== undefined) {
+      updates.completion_photo_url = completionPhotoUrl || null;
+    }
+
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ message: "Nothing to update" });
+    }
+
+    await db.homeworkScan.update(updates, { where: { id: scanId } });
+    const refreshed = await db.homeworkScan.findByPk(scanId);
+
+    res.json(refreshed);
+  } catch (error) {
+    console.error("❌ Error updating homework completion:", error);
+    res.status(500).json({ message: error.message || "Failed to update homework completion" });
   }
 };
 exports.getStudentApiUsage = async (req, res) => {

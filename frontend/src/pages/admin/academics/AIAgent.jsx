@@ -179,6 +179,7 @@ export default function AIAgent() {
     const savedState = localStorage.getItem('aiAgent-unsaved-changes');
     return savedState === 'true';
   });
+  const [gradeFilter, setGradeFilter] = useState("");
 
   const refreshPreview = useCallback(() => setPreviewKey((p) => p + 1), []);
 
@@ -204,16 +205,30 @@ export default function AIAgent() {
   }, [state.playground.selectedAgent, state.playground.selectedStudentAgent]);
 
   // Pagination logic with sorting by ID (highest ID first)
-  const totalAgents = state.sources.agents?.length || 0;
+  const normalizedAgents = useMemo(() => {
+    const agents = state.sources.agents || [];
+    return agents.map((agent) => ({
+      ...agent,
+      grade: agent?.grade ?? agent?.grade_id ?? null,
+    }));
+  }, [state.sources.agents]);
+
+  // Sort agents by ID in descending order (highest ID first)
+  const sortedAgents = useMemo(() => {
+    return [...normalizedAgents].sort((a, b) => Number(b.id) - Number(a.id));
+  }, [normalizedAgents]);
+
+  // Filter by grade when gradeFilter selected
+  const filteredAgents = useMemo(() => {
+    if (!gradeFilter) return sortedAgents;
+    return sortedAgents.filter((agent) => String(agent.grade ?? "") === String(gradeFilter));
+  }, [gradeFilter, sortedAgents]);
+
+  const totalAgents = filteredAgents.length;
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = startIndex + pageSize;
-  
-  // Sort agents by ID in descending order (highest ID first)
-  const sortedAgents = [...(state.sources.agents || [])].sort((a, b) => {
-    return Number(b.id) - Number(a.id); // Descending order (highest ID first)
-  });
-  
-  const paginatedAgents = sortedAgents.slice(startIndex, endIndex);
+
+  const paginatedAgents = filteredAgents.slice(startIndex, endIndex);
 
   // ——————————————— API calls ———————————————
   const fetchStates = async () => {
@@ -926,7 +941,27 @@ export default function AIAgent() {
           className="rounded-xl"
           title="Agents"
           extra={
-            <Tag color="blue">{(state.sources.agents?.length || 0)} total</Tag>
+            <Space size="small">
+              <Select
+                size="small"
+                allowClear
+                placeholder="Filter grade"
+                style={{ minWidth: 140 }}
+                value={gradeFilter || undefined}
+                onChange={(value) => {
+                  setCurrentPage(1);
+                  setGradeFilter(value || "");
+                }}
+                options={[
+                  { value: "", label: "All Grades" },
+                  ...grades.map((g) => ({
+                    value: String(g.value),
+                    label: g.label || `Grade ${g.value}`,
+                  })),
+                ]}
+              />
+              <Tag color="blue">{totalAgents} total</Tag>
+            </Space>
           }
         >
           {agentsLoading ? (
@@ -1008,11 +1043,15 @@ export default function AIAgent() {
                         </Space>
                       </Space>
 
-                      {a.description && (
-                        <Text type="secondary" className="text-sm">
-                          {a.description}
-                        </Text>
-                      )}
+                      {(() => {
+                        const fallbackName = a.name || a.agent_name || a.agentName || `Agent #${a.id || ""}`;
+                        const finalDescription = `Agent prompt set for ${fallbackName}`.trim();
+                        return (
+                          <Text type="secondary" className="text-sm">
+                            {finalDescription}
+                          </Text>
+                        );
+                      })()}
 
                       <Space wrap>
                         {a.version && <Tag color="blue">v{a.version}</Tag>}

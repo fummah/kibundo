@@ -1,11 +1,12 @@
 // src/pages/student/homework/HomeworkChat.jsx
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import ChatLayer from "@/components/student/mobile/ChatLayer.jsx";
 import { useNavigate, useLocation } from "react-router-dom";
 import { message as antdMessage } from "antd";
 import api from "@/api/axios";
 import { useChatDock } from "@/context/ChatDockContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
+import { resolveStudentAgent } from "@/utils/studentAgent";
 
 const PROGRESS_KEY = "kibundo.homework.progress.v1";
 
@@ -45,6 +46,75 @@ const mergeMessages = (existing = [], newMessages = []) => {
   }
   
   return out;
+};
+
+const tryParseJson = (value) => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || (trimmed[0] !== "{" && trimmed[0] !== "[")) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+};
+
+const extractQuestionsCount = (...sources) => {
+  for (const src of sources) {
+    if (!src) continue;
+    if (typeof src.questions_count === "number") return src.questions_count;
+    if (typeof src.questionsCount === "number") return src.questionsCount;
+    if (Array.isArray(src.questions)) return src.questions.length;
+  }
+  return null;
+};
+
+const buildTaskIntro = (task) => {
+  if (!task) {
+    return "Ich helfe dir bei deiner Hausaufgabe. Womit möchtest du starten?";
+  }
+
+  const metaFromDescription = tryParseJson(task.description);
+  const questionsCount =
+    extractQuestionsCount(
+      metaFromDescription,
+      task,
+      task?.meta
+    ) || (() => {
+      const match = /^(\d+)\s*Frage/.exec(task?.what || "");
+      return match ? Number(match[1]) : null;
+    })();
+
+  const subjectLabel = task.subject || metaFromDescription?.subject || "Hausaufgabe";
+  const taskType = (task.taskType || metaFromDescription?.task_type || "Aufgabe").toString();
+  const readableTaskType =
+    taskType === "solvable"
+      ? "Übungsaufgaben"
+      : taskType === "creative"
+      ? "kreative Aufgabe"
+      : taskType;
+
+  const parts = [];
+  if (questionsCount && Number.isFinite(questionsCount)) {
+    parts.push(`Ich habe ${questionsCount} Frage${questionsCount === 1 ? "" : "n"} erkannt.`);
+  } else if (readableTaskType) {
+    parts.push(`Das sieht nach einer ${readableTaskType} aus.`);
+  }
+
+  const rawSnippet =
+    typeof metaFromDescription?.raw_text === "string"
+      ? metaFromDescription.raw_text.trim().slice(0, 120)
+      : task.description && !metaFromDescription
+      ? task.description.trim().slice(0, 120)
+      : "";
+
+  if (rawSnippet) {
+    parts.push(`Darum geht es: ${rawSnippet}${rawSnippet.length === 120 ? "…" : ""}`);
+  }
+
+  parts.push("Womit möchtest du anfangen?");
+
+  return `Ich helfe dir bei deiner ${subjectLabel}-Hausaufgabe. ${parts.join(" ")}`;
 };
 
 // Build a nice Markdown table + extracted text
@@ -105,12 +175,25 @@ async function analyzeOneImage(file) {
 export default function HomeworkChat() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { markHomeworkDone } = useChatDock() || {};
+  const { markHomeworkDone, closeChat } = useChatDock() || {};
   const { user: authUser } = useAuthContext();
+
+  const navTask = location.state?.task || null;
+
+  useEffect(() => {
+    closeChat?.();
+  }, [closeChat]);
+
+  const isReadOnly = Boolean(
+    location.state?.readOnly ||
+      location.state?.task?.done ||
+      location.state?.done
+  );
 
   const [open, setOpen] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
+  const [studentAgent, setStudentAgent] = useState(null);
   
   // 🔥 Load conversationId from localStorage on mount
   const studentId = authUser?.id || "anon";
@@ -142,47 +225,51 @@ export default function HomeworkChat() {
 
   // Keep progress at step 2 while chatting
   useEffect(() => {
+    if (isReadOnly) return;
     try {
       const prev = JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}");
       localStorage.setItem(PROGRESS_KEY, JSON.stringify({ ...prev, step: 2 }));
     } catch {}
-  }, []);
+  }, [isReadOnly]);
+
+  const processedTasksRef = useRef(new Set());
 
   // 🔥 Handle clicking a homework card from the list - load the task context and conversation history
   useEffect(() => {
     const task = location.state?.task;
     const taskId = location.state?.taskId;
     const scanId = task?.scanId;
-    
+    const resolvedKey = `${location.key || "default"}::${taskId || task?.id || "unknown"}`;
+
     if (!task && !taskId) return;
-    
+    if (processedTasksRef.current.has(resolvedKey)) {
+      return;
+    }
+    processedTasksRef.current.add(resolvedKey);
+
     console.log("📋 HOMEWORK: Opened from task list:", { task, taskId, scanId });
-    
-    // If we have a scanId, try to load the existing conversation
+
     if (scanId) {
       (async () => {
         try {
           console.log("🔍 HOMEWORK: Fetching conversation for scanId:", scanId);
-          
-          // Try to fetch conversation by scanId
+
           const { data } = await api.get(`/conversations`, {
             params: { scan_id: scanId },
           });
-          
+
           if (data && data.length > 0) {
-            const conversation = data[0]; // Get the first matching conversation
+            const conversation = data[0];
             const convId = conversation.id;
-            
+
             console.log("✅ HOMEWORK: Found existing conversation:", convId);
             setConversationId(convId);
-            
-            // Fetch messages for this conversation
+
             const { data: messages } = await api.get(`/conversations/${convId}/messages`);
-            
+
             if (messages && messages.length > 0) {
               console.log("✅ HOMEWORK: Loaded", messages.length, "messages from conversation");
-              
-              // Transform backend messages to chat format
+
               const formattedMessages = messages.map((msg) => ({
                 id: msg.id || Date.now() + Math.random(),
                 from: msg.sender === "student" ? "student" : "agent",
@@ -190,44 +277,22 @@ export default function HomeworkChat() {
                 content: msg.content,
                 timestamp: msg.created_at || new Date().toISOString(),
               }));
-              
+
               setChatHistory(formattedMessages);
             } else {
-              // No messages yet, show welcome
               const welcomeMsg = formatMessage(
-                `I'm here to help you with your ${task?.subject || 'homework'}! ${task?.description ? `Here's what I see: ${task.description}` : 'What would you like to know?'}`,
+                buildTaskIntro(task || navTask),
                 "agent"
               );
               setChatHistory([welcomeMsg]);
             }
-          } else {
-            console.log("ℹ️ HOMEWORK: No existing conversation found, starting fresh");
-            // No conversation yet, show welcome
-            const welcomeMsg = formatMessage(
-              `I'm here to help you with your ${task?.subject || 'homework'}! ${task?.description ? `Here's what I see: ${task.description}` : 'What would you like to know?'}`,
-              "agent"
-            );
-            setChatHistory([welcomeMsg]);
           }
         } catch (error) {
-          console.error("❌ HOMEWORK: Failed to load conversation:", error);
-          // On error, just show welcome
-          const welcomeMsg = formatMessage(
-            `I'm here to help you with your ${task?.subject || 'homework'}! What would you like to know?`,
-            "agent"
-          );
-          setChatHistory([welcomeMsg]);
+          console.error("❌ HOMEWORK: Error loading conversation:", error);
         }
       })();
-    } else {
-      // No scanId, just show welcome
-      const welcomeMsg = formatMessage(
-        `I'm here to help you with your ${task?.subject || 'homework'}! ${task?.description ? `Here's what I see: ${task.description}` : 'What would you like to know?'}`,
-        "agent"
-      );
-      setChatHistory([welcomeMsg]);
     }
-  }, [location.state?.task, location.state?.taskId]);
+  }, [location.key, location.state?.task, location.state?.taskId]);
 
   // If we navigated here with an image (or images) from HomeworkDoing
   useEffect(() => {
@@ -265,12 +330,7 @@ export default function HomeworkChat() {
           
           // Add greeting after analysis is complete
           if (res.ok) {
-            const userName = authUser?.name || authUser?.username || "there";
-            const greetingMsg = formatMessage(
-              `Hello ${userName}, I've analyzed your homework. How can I help you with what you've scanned?`,
-              "agent"
-            );
-            newMessages.push(greetingMsg);
+            newMessages.push(formatMessage(buildTaskIntro(navTask), "agent"));
           }
           
           return mergeMessages(arr, newMessages);
@@ -281,7 +341,24 @@ export default function HomeworkChat() {
     })();
   }, [location.state?.image]);
 
+  // Apply conversationId from navigation state when provided.
+  useEffect(() => {
+    if (location.state?.conversationId) {
+      setConversationId(Number(location.state.conversationId));
+    }
+  }, [location.state?.conversationId]);
+
   // Send message (text or image dataURL)
+  useEffect(() => {
+    const fetchAgent = async () => {
+      const agent = await resolveStudentAgent();
+      if (agent?.name) {
+        setStudentAgent(agent);
+      }
+    };
+    fetchAgent();
+  }, []);
+
   const sendToAI = useCallback(async (content, type = "text") => {
     try {
       setIsTyping(true);
@@ -306,35 +383,27 @@ export default function HomeworkChat() {
         };
       }
 
-      // Get the global child default AI agent setting
-      let assignedAgent = "Kibundo"; // default fallback
-      try {
-        // Only fetch if authenticated
-        const token = localStorage.getItem('kibundo_token') || sessionStorage.getItem('kibundo_token');
-        if (token) {
-          try {
-            const { data: aiSettings } = await api.get("/aisettings", {
-              validateStatus: (status) => status < 500,
-            });
-            if (aiSettings?.child_default_ai) {
-              assignedAgent = aiSettings.child_default_ai;
-            }
-          } catch (error) {
-            console.debug("Could not fetch AI settings:", error.message);
-          }
-        }
-      } catch (err) {
-        console.debug("Error checking authentication for AI settings:", err.message);
-      }
+      const assignedAgent = studentAgent?.name || "Kibundo";
 
       // Text → general chat 🔥 NOW WITH CONVERSATION ID
       console.log("📤 FRONTEND: Sending to /ai/chat with conversationId:", conversationId);
-      const { data } = await api.post("/ai/chat", {
+      const payload = {
         question: content,
         ai_agent: assignedAgent,
         conversationId: conversationId, // 🔥 Send conversation ID for memory
         mode: "homework",
-      });
+      };
+      if (studentAgent?.entities?.length) {
+        payload.entities = studentAgent.entities;
+      }
+      if (studentAgent?.grade !== null && studentAgent?.grade !== undefined && studentAgent?.grade !== "") {
+        payload.class = studentAgent.grade;
+      }
+      if (studentElement?.state) {
+        payload.state = studentAgent.state;
+      }
+
+      const { data } = await api.post("/ai/chat", payload);
       
       console.log("📥 FRONTEND: Received response from backend:", {
         hasConversationId: !!data?.conversationId,
@@ -365,10 +434,11 @@ export default function HomeworkChat() {
     } finally {
       setIsTyping(false);
     }
-  }, [conversationId]); // 🔥 Added conversationId to dependencies
+  }, [conversationId, studentAgent]); // 🔥 Added dependencies
 
   const handleSendMessage = useCallback(
     async (content, type = "text") => {
+      if (isReadOnly) return;
       if (!content) return;
 
       // For images: don't show the image, only show the analysis result
@@ -383,13 +453,14 @@ export default function HomeworkChat() {
       const newMessages = [];
       
       if (success) {
-        newMessages.push(formatMessage(response, "agent"));
+        const agentNameMeta = studentAgent?.name || "Kibundo";
+        newMessages.push(formatMessage(response, "agent", "text", { agentName: agentNameMeta }));
         
         // Add greeting after image analysis is complete
         if (type === "image") {
-          const userName = authUser?.name || authUser?.username || "there";
+          const friendlyIntro = buildTaskIntro(navTask);
           const greetingMsg = formatMessage(
-            `Hello ${userName}, I've analyzed your homework. How can I help you with what you've scanned?`,
+            friendlyIntro,
             "agent"
           );
           newMessages.push(greetingMsg);
@@ -402,11 +473,12 @@ export default function HomeworkChat() {
           formatMessage(error || "Fehler bei der Analyse.", "system")
         ]));
       }
-    },
-    [sendToAI, authUser]
+  },
+    [sendToAI, authUser, studentAgent, isReadOnly]
   );
 
   const handleDone = () => {
+    if (isReadOnly) return;
     if (typeof markHomeworkDone === "function") {
       markHomeworkDone();
       return;
@@ -425,31 +497,34 @@ export default function HomeworkChat() {
           className="h-full"
           messages={chatHistory}
           onSendText={(text) => handleSendMessage(text, "text")}
-          onSendMedia={(files) => {
-            // ChatLayer will pass a FileList | File[] — handle both
-            const list = Array.from(files || []);
-            if (!list.length) return;
-
-            // For each file: create a dataURL preview message and analyze
-            list.forEach((file) => {
-              const reader = new FileReader();
-              reader.onload = (e) => {
-                handleSendMessage(
-                  {
-                    content: e.target.result, // dataURL
-                    type: "image",
-                    fileName: file.name,
-                    fileType: file.type,
-                    fileSize: file.size,
-                  },
-                  "image"
-                );
-              };
-              reader.readAsDataURL(file);
-            });
-          }}
-          isTyping={isTyping}
+          onSendMedia={
+            isReadOnly
+              ? undefined
+              : (files) => {
+                  const list = Array.from(files || []);
+                  if (!list.length) return;
+                  list.forEach((file) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                      handleSendMessage(
+                        {
+                          content: e.target.result,
+                          type: "image",
+                          fileName: file.name,
+                          fileType: file.type,
+                          fileSize: file.size,
+                        },
+                        "image"
+                      );
+                    };
+                    reader.readAsDataURL(file);
+                  });
+                }
+          }
           onMinimise={() => setOpen(false)}
+          isTyping={isTyping}
+          readOnly={isReadOnly}
+          onStartNewChat={() => navigate("/student/homework/doing")}
         />
       ) : (
         <div className="px-4 py-6">
@@ -467,8 +542,7 @@ export default function HomeworkChat() {
         </div>
       )}
 
-      {/* Floating DONE CTA above the input area */}
-      {open && (
+      {open && !isReadOnly && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 pb-[calc(env(safe-area-inset-bottom)+96px)] flex justify-center">
           <button
             type="button"

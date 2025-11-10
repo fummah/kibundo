@@ -31,60 +31,7 @@ const money = (v, currency = "EUR") =>
     maximumFractionDigits: 2,
   }).format(Number(v) || 0);
 
-/* ----------------------------- Helper to convert product to plan ----------------------------- */
-function productToPlan(product) {
-  const metadata = product.metadata || {};
-  
-  // Try to infer billing interval from name or metadata, default to "month"
-  let billingInterval = metadata.billing_interval;
-  if (!billingInterval) {
-    const name = (product.name || "").toLowerCase();
-    if (name.includes("week") || name.includes("weekly")) billingInterval = "week";
-    else if (name.includes("year") || name.includes("yearly") || name.includes("annual")) billingInterval = "year";
-    else billingInterval = "month"; // Default
-  }
-  
-  // Try to infer child count from name or metadata, default to 1
-  let childCount = metadata.child_count;
-  if (!childCount) {
-    const name = (product.name || "").toLowerCase();
-    if (name.includes("family") || name.includes("2") || name.includes("two")) childCount = 2;
-    else childCount = 1; // Default
-  }
-  
-  // Ensure childCount is a number
-  childCount = parseInt(childCount) || 1;
-  
-  // Generate features based on product data - always show consistent features
-  const features = [
-    "Cancel anytime",
-    billingInterval === "year" ? "Priority email support" : "Full platform access",
-    `For ${childCount} ${childCount === 1 ? "child" : "children"}`,
-  ];
-  
-  if (billingInterval === "year") {
-    features.push("2 months free (equivalent)");
-  }
-  
-  // Add trial period as a feature if it exists
-  if (product.trial_period_days && product.trial_period_days > 0) {
-    features.push(`${product.trial_period_days}-day free trial`);
-  }
-  
-  return {
-    id: product.id,
-    name: product.name || "Subscription Plan",
-    billing_interval: billingInterval,
-    child_count: childCount,
-    price_amount: parseFloat(product.price || 0),
-    currency: "EUR",
-    trial_days: product.trial_period_days || 0,
-    is_best_value: metadata.is_best_value || false,
-    features,
-    sort_order: metadata.sort_order || 999,
-    stripe_product_id: product.stripe_product_id,
-  };
-}
+import { productToPlan } from "@/pages/parent/billing/planUtils";
 
 /* ----------------------------- Small Pieces ----------------------------- */
 function Check({ text }) {

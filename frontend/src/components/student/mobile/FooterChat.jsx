@@ -93,10 +93,8 @@ export default function FooterChat({
     return m ? m[1] : null;
   }, [pathname]);
 
-  const isHidden = hideOnRoutes.some((r) => pathname.startsWith(r));
-  const isIncluded =
-    !includeOnRoutes?.length ||
-    includeOnRoutes.some((r) => pathname.startsWith(r));
+  const isHiddenRoute = hideOnRoutes.some((r) => pathname.startsWith(r));
+  const isHidden = isHiddenRoute && !(dockState?.visible || dockState?.expanded);
 
   // Which component should the sheet show?
   const SheetContent = isOnHomework ? HomeworkChat : ChatLayer;
@@ -199,8 +197,7 @@ export default function FooterChat({
     }
   }, [open, onChatOpen, onChatClose]);
 
-  // Hide the footer trigger if not included or explicitly hidden
-  if (isHidden || !isIncluded) return null;
+  if (isHidden && !dockState?.visible && !dockState?.expanded) return null;
 
   const hideTriggerStrip = hideTriggerWhenOpen && open;
 
@@ -386,6 +383,7 @@ export default function FooterChat({
             {isOnHomework ? (
               <SheetContent
                 taskId={taskId}
+                readOnly={!!dockState?.readOnly}
                 onClose={() => {
                   setOpen(false);
                   closeChat?.();

@@ -42,10 +42,24 @@ export const handleConversation = async (req, res) => {
     let grounding = "";
     if (scanId) {
       console.log("🔍 Fetching homework context for scanId:", scanId);
-      const s = await pool.query(`SELECT raw_text FROM homework_scans WHERE id=$1`, [scanId]);
+      const s = await pool.query(`SELECT raw_text, grade FROM homework_scans WHERE id=$1`, [scanId]);
       if (s.rows[0]) {
-        grounding = `HAUSAUFGABEN-KONTEXT - Dies ist die gescannte Hausaufgabe, an der der Schüler arbeitet:\n\n${s.rows[0].raw_text}\n\nWICHTIG: Beantworte Fragen immer basierend auf diesem Hausaufgabeninhalt. Sage niemals, dass du keinen Hausaufgabenkontext hast - du hast immer den oben genannten Kontext.\n\n`;
-        console.log("✅ Homework context found:", s.rows[0].raw_text?.substring(0, 100) + "...");
+        const rawText = s.rows[0].raw_text;
+        const gradeRaw = s.rows[0].grade;
+        let gradeInstruction = "";
+        if (gradeRaw) {
+          const gradeNumberMatch = String(gradeRaw).match(/(\d+)/);
+          const gradeNumber = gradeNumberMatch ? gradeNumberMatch[1] : null;
+          if (gradeNumber) {
+            gradeInstruction = `Der Schüler ist in Klasse ${gradeNumber}. Passe deine Erklärung an dieses Niveau an – verwende kurze, einfache Sätze und Beispiele, die ein Kind in dieser Klassenstufe versteht.\n\n`;
+          } else {
+            gradeInstruction = `Nutze eine einfache, kindgerechte Sprache (Klassenstufe 1–7), damit der Schüler es gut versteht.\n\n`;
+          }
+        } else {
+          gradeInstruction = `Nutze eine einfache, kindgerechte Sprache (Klassenstufe 1–7), damit der Schüler es gut versteht.\n\n`;
+        }
+        grounding = `${gradeInstruction}HAUSAUFGABEN-KONTEXT - Dies ist die gescannte Hausaufgabe, an der der Schüler arbeitet:\n\n${rawText}\n\nWICHTIG: Beantworte Fragen immer basierend auf diesem Hausaufgabeninhalt. Sage niemals, dass du keinen Hausaufgabenkontext hast - du hast immer den oben genannten Kontext.\n\n`;
+        console.log("✅ Homework context found:", rawText?.substring(0, 100) + "...");
       } else {
         console.log("❌ No homework context found for scanId:", scanId);
       }
@@ -78,7 +92,10 @@ export const handleConversation = async (req, res) => {
       - Sage niemals "Ich habe keinen Hausaufgabenkontext" oder "keine spezifischen Hausaufgaben bereitgestellt"
       - Beziehe deine Antworten immer auf den gescannten Hausaufgabeninhalt
       - Biete schrittweise Hilfe für die spezifischen Aufgaben in den Hausaufgaben
-      - Verwende einfache, ermutigende Sprache, die für einen 6-13-jährigen Schüler geeignet ist
+      - Verwende eine warme, ermutigende und sehr einfache Sprache, damit Kinder sie verstehen
+      - Beginne deine Antwort direkt mit der Erklärung oder Lösung. Wiederhole nicht die Frage des Schülers und verwende keine Sätze wie "Du hast gefragt ..." oder "Die Frage lautet ...".
+      - Antworte kurz, klar und kindgerecht. Nutze Beispiele oder Vergleiche, wenn sie helfen.
+      - Wenn du etwas erklärst, stelle sicher, dass es für die angegebene Klassenstufe verständlich ist.
       - Erinnere dich an vorherige Fragen und Antworten in dieser Unterhaltung, um kontextbezogene Hilfe zu bieten
       - Bei Mathematikaufgaben mit Mehrfachauswahl: Erkläre ALLE Optionen auf Deutsch und helfe dem Schüler zu verstehen, welche richtig ist und warum. Übersetze ALLE englischen Optionen ins Deutsche. KEINE englischen Begriffe in den Optionen behalten.
       - Bei gemischten Sprachen in Aufgaben: Übersetze ALLES ins Deutsche, bevor du antwortest. Prüfe jede Option, jeden Text, jede Frage auf Englisch und übersetze sie SOFORT.

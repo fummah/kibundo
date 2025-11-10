@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/api/axios"; // ⬅️ your centralized Axios instance
+import { resolveStudentAgent } from "@/utils/studentAgent";
 
 export const TASKS_KEY = "kibundo.homework.tasks.v1";
 export const PROGRESS_KEY = "kibundo.homework.progress.v1";
@@ -25,6 +26,7 @@ const DEFAULT_CTX = {
     initialMessages: null,
     chatByKey: {},
     analyzeOnOpen: false,
+    readOnly: false,
   },
   openChat: NOOP,
   expandChat: NOOP,
@@ -34,6 +36,7 @@ const DEFAULT_CTX = {
   getChatMessages: () => [],
   setChatMessages: NOOP,
   clearChatMessages: NOOP,
+  setReadOnly: NOOP,
 };
 
 const ChatDockCtx = createContext(DEFAULT_CTX);
@@ -153,6 +156,7 @@ export function ChatDockProvider({ children }) {
     initialMessages: null,
     chatByKey: loadAllChats(),
     analyzeOnOpen: false,
+    readOnly: false,
   }));
   
   const [selectedAgent, setSelectedAgent] = useState("Kibundo"); // Default fallback
@@ -160,28 +164,12 @@ export function ChatDockProvider({ children }) {
   // Fetch selected agent from backend (only if authenticated)
   useEffect(() => {
     const fetchSelectedAgent = async () => {
-      try {
-        // Check if user is authenticated before making request
-        const token = localStorage.getItem('kibundo_token') || sessionStorage.getItem('kibundo_token');
-        if (!token) {
-          // Not authenticated, skip API call
-          return;
-        }
-        
-        const { default: api } = await import("@/api/axios");
-        const response = await api.get('/aisettings', {
-          withCredentials: true,
-          validateStatus: (status) => status < 500, // Don't throw on 403/404
-        });
-        if (response?.status === 200 && response?.data?.child_default_ai) {
-          setSelectedAgent(response.data.child_default_ai);
-        }
-      } catch (error) {
-        // Silently fail - use default Kibundo
-        console.debug("Could not fetch AI settings (user may not be authenticated):", error.message);
+      const agent = await resolveStudentAgent();
+      if (agent?.name) {
+        setSelectedAgent(agent.name);
       }
     };
-    
+
     fetchSelectedAgent();
   }, []);
 
@@ -270,7 +258,7 @@ export function ChatDockProvider({ children }) {
   }, []);
 
   const openChat = useCallback(
-    ({ mode = "general", task = null, initialMessages = null, analyze = false } = {}) => {
+    ({ mode = "general", task = null, initialMessages = null, analyze = false, readOnly = false } = {}) => {
       const hasProvided = Array.isArray(initialMessages) && initialMessages.length > 0;
       const hasTaskMsgs = Array.isArray(task?.messages) && task.messages.length > 0;
       const existing = getChatMessages(mode, task?.id);
@@ -291,6 +279,7 @@ export function ChatDockProvider({ children }) {
         task,
         initialMessages: null,
         analyzeOnOpen: Boolean(analyze && task?.file),
+        readOnly: Boolean(readOnly),
       }));
     },
     [getChatMessages, setChatMessages]
@@ -305,7 +294,13 @@ export function ChatDockProvider({ children }) {
     []
   );
   const closeChat = useCallback(
-    () => setState((s) => ({ ...s, expanded: false, visible: false })),
+    () =>
+      setState((s) => ({
+        ...s,
+        expanded: false,
+        visible: false,
+        readOnly: false,
+      })),
     []
   );
 
@@ -341,6 +336,10 @@ export function ChatDockProvider({ children }) {
 
     navigate("/student/homework/feedback", { state: { taskId: task?.id || null } });
   }, [state.task, navigate]);
+
+  const setReadOnly = useCallback((value) => {
+    setState((s) => ({ ...s, readOnly: Boolean(value) }));
+  }, []);
 
   /* -------------------- AUTO ANALYZE USING /api/ai/upload (Axios) -------------------- */
   useEffect(() => {
@@ -398,7 +397,7 @@ export function ChatDockProvider({ children }) {
             msg.content === "Ich analysiere dein Bild …" && msg.from === "system"
           );
           if (loadingIndex !== -1) {
-            newMessages[loadingIndex] = fmt("✅ Analyse abgeschlossen!", "agent", "text", { agentName: selectedAgent || "Kibundo" || "ChildAgent" });
+            newMessages[loadingIndex] = fmt("✅ Analyse abgeschlossen!", "agent", "text", { agentName: selectedAgent || "Kibundo" });
           }
           
           // Add analysis results - be more flexible about what we show
@@ -488,6 +487,7 @@ export function ChatDockProvider({ children }) {
       getChatMessages,
       setChatMessages,
       clearChatMessages,
+      setReadOnly,
     }),
     [
       state,
@@ -499,6 +499,7 @@ export function ChatDockProvider({ children }) {
       getChatMessages,
       setChatMessages,
       clearChatMessages,
+      setReadOnly,
     ]
   );
 

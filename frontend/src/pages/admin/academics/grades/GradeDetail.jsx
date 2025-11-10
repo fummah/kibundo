@@ -10,10 +10,15 @@ import {
   Divider,
   Tabs,
   message,
+  Dropdown,
+  Modal,
 } from "antd";
 import {
   StarOutlined,
   EditOutlined,
+  EllipsisOutlined,
+  DeleteOutlined,
+  PlusOutlined,
   ArrowLeftOutlined,
   BookOutlined,
   TeamOutlined,
@@ -113,6 +118,85 @@ export default function GradeDetail() {
     loadClass();
   }, [id, topbar, loadClass]);
 
+  const createdByDisplay = (() => {
+    if (!classData) return "—";
+    const user =
+      classData.userCreated ||
+      classData.createdBy ||
+      classData.created_by_user ||
+      classData.owner ||
+      classData.user;
+
+    if (user && typeof user === "object") {
+      const first =
+        user.first_name ||
+        user.firstName ||
+        user.given_name ||
+        user.name_first ||
+        "";
+      const last =
+        user.last_name ||
+        user.lastName ||
+        user.family_name ||
+        user.name_last ||
+        "";
+      const full = `${first} ${last}`.trim();
+      return (
+        full ||
+        user.username ||
+        user.email ||
+        user.name ||
+        user.display_name ||
+        "—"
+      );
+    }
+
+    return (
+      classData.created_by_name ||
+      classData.created_by ||
+      classData.createdBy ||
+      "—"
+    );
+  })();
+
+  const handleDelete = useCallback(() => {
+    if (!classData?.id) return;
+    Modal.confirm({
+      title: "Delete Grade",
+      content: `Are you sure you want to delete "${classData.class_name || classData.name}"?`,
+      okText: "Delete",
+      okType: "danger",
+      cancelText: "Cancel",
+      onOk: async () => {
+        try {
+          await api.delete(`/class/${classData.id}`);
+          message.success("Grade deleted successfully");
+          navigate("/admin/academics/grades");
+        } catch (error) {
+          console.error("Failed to delete grade:", error);
+          const msg =
+            error?.response?.data?.message ||
+            error?.response?.data?.error ||
+            "Failed to delete grade";
+          message.error(msg);
+        }
+      },
+    });
+  }, [classData, navigate]);
+
+  const handleActionClick = useCallback(
+    ({ key }) => {
+      if (key === "create") {
+        navigate("/admin/academics/grades/new");
+        return;
+      }
+      if (key === "delete") {
+        handleDelete();
+      }
+    },
+    [navigate, handleDelete]
+  );
+
   if (!classData) return null;
 
   const tabs = [
@@ -137,7 +221,7 @@ export default function GradeDetail() {
             <Descriptions.Item label="Created By">
               <div className="flex items-center gap-2">
                 <UserOutlined className="text-blue-500" />
-                <span>{classData.userCreated?.username || classData.userCreated?.email || "Unknown"}</span>
+                <span>{createdByDisplay}</span>
               </div>
             </Descriptions.Item>
 
@@ -204,7 +288,7 @@ export default function GradeDetail() {
             </div>
           )}
         </div>
-        <div>
+        <Space>
           <Button
             type="primary"
             icon={<EditOutlined />}
@@ -212,7 +296,30 @@ export default function GradeDetail() {
           >
             Edit Class
           </Button>
-        </div>
+          <Dropdown
+            trigger={["click"]}
+            menu={{
+              onClick: handleActionClick,
+              items: [
+                {
+                  key: "create",
+                  icon: <PlusOutlined />,
+                  label: "Create Grade",
+                },
+                {
+                  type: "divider",
+                },
+                {
+                  key: "delete",
+                  icon: <DeleteOutlined />,
+                  label: <span className="text-red-500">Delete Grade</span>,
+                },
+              ],
+            }}
+          >
+            <Button icon={<EllipsisOutlined />} />
+          </Dropdown>
+        </Space>
       </div>
 
       {/* AntD v5: Tabs use `items` instead of TabPane */}

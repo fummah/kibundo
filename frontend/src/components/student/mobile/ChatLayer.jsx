@@ -5,6 +5,7 @@ import { App } from "antd";
 import api from "@/api/axios";
 import { useChatDock } from "@/context/ChatDockContext";
 import { useAuthContext } from "@/context/AuthContext";
+import { resolveStudentAgent } from "@/utils/studentAgent";
 
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
@@ -110,6 +111,8 @@ export default function ChatLayer({
   minimiseTo = "/student/home",
   minimiseHeight = 54,
   className = "",
+  readOnly = false,
+  onStartNewChat = () => {},
 }) {
   const navigate = useNavigate();
   const { message: antdMessage } = App.useApp();
@@ -144,6 +147,7 @@ export default function ChatLayer({
     type: "Kibundo",
     id: null,
     name: "Kibundo",
+    meta: null,
   });
 
   // Track which conversations we've already fetched
@@ -261,30 +265,17 @@ export default function ChatLayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, controlledMessagesProp]); // Only depend on conversationId, not the fetch function
 
-  // Fetch selected AI agent from AIAgent.jsx settings
+  // Fetch selected AI agent based on student profile
   useEffect(() => {
     const fetchSelectedAgent = async () => {
-      try {
-        // Only fetch if authenticated
-        const token = localStorage.getItem('kibundo_token') || sessionStorage.getItem('kibundo_token');
-        if (!token) {
-          return;
-        }
-        
-        const { data } = await api.get('/aisettings', {
-          validateStatus: (status) => status < 500, // Don't throw on 403/404
-          withCredentials: true,
+      const agent = await resolveStudentAgent();
+      if (agent?.name) {
+        setAssignedAgent({
+          type: agent.name,
+          id: agent.id ?? null,
+          name: agent.name,
+          meta: agent,
         });
-        if (data?.child_default_ai) {
-          const selectedAgent = data.child_default_ai;
-          setAssignedAgent({
-            type: selectedAgent,
-            id: null,
-            name: selectedAgent,
-          });
-        }
-      } catch (err) {
-        console.error("❌ CHATLAYER: Failed to fetch AI agent:", err);
       }
     };
     fetchSelectedAgent();
@@ -487,14 +478,29 @@ export default function ChatLayer({
         if (onSendText) {
           await onSendText(t);
         } else {
-          const { data } = await api.post("ai/chat", {
+          const payload = {
             question: t,
             ai_agent: assignedAgent.type,
             agent_id: assignedAgent.id,
             mode: "general", // ✅ Changed from "homework" to "general" for general chat
             student_id: studentId,
             conversationId: conversationId, // 🔥 Send conversation ID for memory
-          }, {
+          };
+          if (assignedAgent.meta?.entities?.length) {
+            payload.entities = assignedAgent.meta.entities;
+          }
+          if (
+            assignedAgent.meta?.grade !== null &&
+            assignedAgent.meta?.grade !== undefined &&
+            assignedAgent.meta?.grade !== ""
+          ) {
+            payload.class = assignedAgent.meta.grade;
+          }
+          if (assignedAgent.meta?.state) {
+            payload.state = assignedAgent.meta.state;
+          }
+
+          const { data } = await api.post("ai/chat", payload, {
             withCredentials: true,
           });
           
@@ -542,12 +548,13 @@ export default function ChatLayer({
   );
 
   const sendText = useCallback(() => {
+    if (readOnly) return;
     if (!draft.trim()) return;
     handleSendText(draft).then(() => {
       setDraft("");
       requestAnimationFrame(() => inputRef.current?.focus());
     });
-  }, [draft, handleSendText]);
+  }, [draft, handleSendText, readOnly]);
 
   const onMinimise = () => {
     if (typeof onClose === "function") onClose();
@@ -814,79 +821,90 @@ export default function ChatLayer({
         role="form"
         aria-label="Nachrichten-Eingabe"
       >
-        <div className="mx-auto max-w-[900px] px-2 sm:px-3 py-2 flex items-center gap-2 sm:gap-3">
-          <div className="flex-1 h-10 sm:h-11 flex items-center px-2 sm:px-3 bg-white rounded-full">
-            <input
-              ref={inputRef}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (
-                  e.key === "Enter" &&
-                  !e.shiftKey &&
-                  !e.nativeEvent.isComposing &&
-                  draft.trim()
-                ) {
-                  e.preventDefault();
+        {readOnly ? (
+          <div className="mx-auto max-w-[900px] px-3 py-3 flex flex-col items-center gap-2 text-center text-white">
+            <span className="text-sm sm:text-[15px] font-medium">
+              Dieser Chat gehört zu einer abgeschlossenen Aufgabe. Du kannst ihn lesen, aber keine neuen Nachrichten senden.
+            </span>
+            <button
+              type="button"
+              onClick={onStartNewChat}
+              className="inline-flex items-center justify-center px-5 h-10 sm:h-11 rounded-full bg-white text-[#1b3a1b] font-semibold shadow-md hover:brightness-95 transition"
+            >
+              Neuen Chat starten
+            </button>
+          </div>
+        ) : (
+          <div className="mx-auto max-w-[900px] px-2 sm:px-3 py-2 flex items-center gap-2 sm:gap-3">
+            <div className="flex-1 h-10 sm:h-11 flex items-center px-2 sm:px-3 bg-white rounded-full">
+              <input
+                ref={inputRef}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !e.nativeEvent.isComposing &&
+                    draft.trim()
+                  ) {
+                    e.preventDefault();
+                    sendText();
+                  }
+                }}
+                placeholder="Schreibe eine Nachricht…"
+                className="w-full bg-transparent outline-none text-sm sm:text-[15px]"
+                aria-label="Nachricht eingeben"
+                disabled={sending}
+              />
+            </div>
+
+            <button
+              onClick={() => {
+                if (draft.trim()) {
                   sendText();
+                } else {
+                  startNewChat();
                 }
               }}
-              placeholder="Schreibe eine Nachricht…"
-              className="w-full bg-transparent outline-none text-sm sm:text-[15px]"
-              aria-label="Nachricht eingeben"
-              disabled={sending}
-            />
-          </div>
-
-          <button
-            onClick={() => {
-              if (draft.trim()) {
-                sendText();
-              } else {
-                startNewChat();
+              className={`w-10 h-10 sm:w-11 sm:h-11 grid place-items-center rounded-full transition-colors shadow-sm ${
+                sending ? "opacity-70" : "hover:brightness-95 active:scale-95"
+              }`}
+              style={{ backgroundColor: "#ff7a00" }}
+              aria-label={
+                sending
+                  ? "Wird gesendet..."
+                  : draft.trim()
+                  ? "Nachricht senden"
+                  : "Neuen Chat starten"
               }
-            }}
-            className={`w-10 h-10 sm:w-11 sm:h-11 grid place-items-center rounded-full transition-colors shadow-sm ${
-              sending ? "opacity-70" : "hover:brightness-95 active:scale-95"
-            }`}
-            style={{ backgroundColor: "#ff7a00" }}
-            aria-label={
-              sending
-                ? "Wird gesendet..."
-                : draft.trim()
-                ? "Nachricht senden"
-                : "Neuen Chat starten"
-            }
-            type="button"
-            disabled={sending}
-          >
-            {sending ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : draft.trim() ? (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                className="w-5 h-5"
-                fill="#ffffff"
-              >
-                <path d="M21.44 2.56a1 1 0 0 0-1.05-.22L3.6 9.06a1 1 0 0 0 .04 1.87l6.9 2.28 2.3 6.91a1 1 0 0 0 1.86.03l6.74-16.78a1 1 0 0 0-.99-1.81ZM11.8 13.18l-4.18-1.38 9.68-4.04-5.5 5.42Z" />
-              </svg>
-            ) : (
-              // With the safety above, this icon won't trigger reset anymore.
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                className="w-5 h-5"
-                fill="#ffffff"
-              >
-                <path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z" />
-              </svg>
-            )}
-          </button>
-
-          {/* If you still want a manual "Reset" action, keep it explicit: */}
-          {/* <button onClick={startNewChat} ...>Reset</button> */}
-        </div>
+              type="button"
+              disabled={sending}
+            >
+              {sending ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : draft.trim() ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  className="w-5 h-5"
+                  fill="#ffffff"
+                >
+                  <path d="M21.44 2.56a1 1 0 0 0-1.05-.22L3.6 9.06a1 1 0 0 0 .04 1.87l6.9 2.28 2.3 6.91a1 1 0 0 0 1.86.03l6.74-16.78a1 1 0 0 0-.99-1.81ZM11.8 13.18l-4.18-1.38 9.68-4.04-5.5 5.42Z" />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  className="w-5 h-5"
+                  fill="#ffffff"
+                >
+                  <path d="M12 2a1 1 0 0 1 1 1v8h8a1 1 0 1 1 0 2h-8v8a1 1 0 1 1-2 0v-8H3a1 1 0 1 1 0-2h8V3a1 1 0 0 1 1-1Z" />
+                </svg>
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

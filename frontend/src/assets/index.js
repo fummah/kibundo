@@ -1,6 +1,6 @@
 // Buddies
 import monster1 from "@/assets/buddies/monster1.png";
-import monster2 from "@/assets/buddies/monster2.png";
+import monster2 from "@/assets/buddies/monster21.png";
 import monster3 from "@/assets/buddies/monster3.png";
 import monster4 from "@/assets/buddies/monster4.png";
 import monster5 from "@/assets/buddies/monster5.png";

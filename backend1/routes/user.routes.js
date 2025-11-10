@@ -11,8 +11,9 @@ deleteProduct, addsubscription, getAllSubscriptions, getSubscriptionById, delete
 getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice, addcoupon, 
 getAllCoupons, getCouponById,deleteCoupon, addrole, updateRole, deleteRole, adduser,addquiz,  getQuizzes, getQuizById,  deleteQuiz, 
 addcurriculum, getAllCurriculum,getCurriculumById, deleteCurriculum, addWorksheet, getAllWorksheets, getWorksheetById, deleteWorksheet,
-getAllStates, getAllAgents,getPublicTables,addAgent, getHomeworks, getStudentApiUsage, getStudentUsageStats, getAiAgentSettings,updateAiAgentSettings,updateAgent, 
-getCurrentUser, debugUser, deleteAgent, editUser,editSubject,editClass,editProduct,editSubscription, editQuiz, editStudent, editTeacher, editParent, 
+    getAllStates, getAllAgents, getAgentsForStudent, getPublicTables,addAgent, getHomeworks, getStudentApiUsage, getStudentUsageStats, getAiAgentSettings,updateAiAgentSettings,updateAgent, 
+    updateHomeworkCompletion,
+    getCurrentUser, debugUser, deleteAgent, editUser,editSubject,editClass,deleteClass,editProduct,editSubscription, editQuiz, editStudent, editTeacher, editParent, 
 updateStudentStatus, updateTeacherStatus, updateParentStatus, changePassword, adminUpdateCredentials, deleteUser } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
@@ -84,6 +85,7 @@ router.put("/roles/:id", verifyToken, updateRole);
 router.delete("/roles/:id", verifyToken, deleteRole);
 router.post("/addclass", verifyToken, addclass);
 router.get("/class/:id", verifyToken, getClassById);
+router.delete("/class/:id", verifyToken, deleteClass);
 router.post("/addsubject", verifyToken, addsubject);
 router.get("/allclasses", verifyToken, getAllClasses);
 router.get("/allstudents", verifyToken, getAllStudents);
@@ -91,6 +93,7 @@ router.get("/allteachers", verifyToken, getAllTeachers);
 router.get("/allsubjects", verifyToken, getAllSubjects);
 router.get('/subject/:id', verifyToken,getSubjectById);
 // Specific student routes MUST come before /student/:id to avoid pattern matching issues
+router.get("/student/agents", verifyToken, getAgentsForStudent);
 router.get("/student/api-usage", verifyToken, getStudentApiUsage);
 router.get("/student/:id/usage-stats", verifyToken, getStudentUsageStats);
 router.get('/student/:id', verifyToken,getStudentById);
@@ -149,6 +152,7 @@ router.get('/games', verifyToken, (req, res) => {
 });
 router.post("/addagent",verifyToken, addAgent);
 router.get("/homeworkscans",verifyToken, getHomeworks);
+router.put("/homeworkscans/:id/completion", verifyToken, updateHomeworkCompletion);
 router.get("/student/:id/homeworkscans", verifyToken, async (req, res) => {
   try {
     const studentId = req.params.id;

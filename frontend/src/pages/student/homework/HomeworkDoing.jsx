@@ -6,6 +6,7 @@ import { useChatDock } from "@/context/ChatDockContext";
 import { useAuthContext } from "@/context/AuthContext";
 import { useStudentApp } from "@/context/StudentAppContext";
 import api from "@/api/axios";
+import { resolveStudentAgent } from "@/utils/studentAgent";
 import useTTS from "@/lib/voice/useTTS";
 
 import cameraIcon from "@/assets/mobile/icons/camera.png";
@@ -101,21 +102,9 @@ export default function HomeworkDoing() {
   // Fetch selected agent from backend
   useEffect(() => {
     const fetchSelectedAgent = async () => {
-      try {
-        // Only fetch if authenticated
-        const token = localStorage.getItem('kibundo_token') || sessionStorage.getItem('kibundo_token');
-        if (!token) {
-          return;
-        }
-
-        const response = await api.get('/aisettings', {
-          validateStatus: (status) => status < 500,
-          withCredentials: true,
-        });
-        if (response?.data?.child_default_ai) {
-          setSelectedAgent(response.data.child_default_ai);
-        }
-      } catch (error) {
+      const agent = await resolveStudentAgent();
+      if (agent?.name) {
+        setSelectedAgent(agent.name);
       }
     };
 
@@ -560,6 +549,12 @@ export default function HomeworkDoing() {
     // Store task type for motivational mode
     setTaskType(detectedTaskType);
 
+    const detectedGrade =
+      scanData?.scan?.grade ??
+      existingTask?.grade ??
+      meta.grade ??
+      null;
+
     const taskForStorage = {
       id,
       createdAt: existingTask?.createdAt || now,
@@ -578,6 +573,9 @@ export default function HomeworkDoing() {
       conversationId: scanData?.conversationId ?? existingTask?.conversationId ?? null,
       taskType: detectedTaskType, // 'solvable' or 'creative'
       userId: studentId, // convenience only
+      completionPhotoUrl: existingTask?.completionPhotoUrl || null,
+      completedAt: existingTask?.completedAt || null,
+      grade: detectedGrade,
     };
 
     // Upsert tasks (scoped)
@@ -603,13 +601,15 @@ export default function HomeworkDoing() {
         storageMode = "minimal";
         const minimal = upserted
           .slice(0, 12)
-          .map(({ id, what, createdAt, updatedAt, done, hasImage }) => ({
+          .map(({ id, what, createdAt, updatedAt, done, hasImage, completedAt, grade }) => ({
             id,
             what,
             createdAt,
             updatedAt,
             done: !!done,
             hasImage: !!hasImage,
+            completedAt: completedAt || null,
+            grade: grade ?? null,
           }));
         if (!trySaveJson(TASKS_KEY_USER, minimal)) {
           storageMode = "fail";
@@ -619,7 +619,11 @@ export default function HomeworkDoing() {
 
     // Notify same-tab listeners that tasks have changed (storage event won't fire in same tab)
     try {
-      window.dispatchEvent(new Event("kibundo:tasks-updated"));
+      setTimeout(() => {
+        try {
+          window.dispatchEvent(new Event("kibundo:tasks-updated"));
+        } catch {}
+      }, 0);
     } catch {}
 
     // progress is best-effort; keep it small

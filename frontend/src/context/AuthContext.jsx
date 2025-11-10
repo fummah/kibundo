@@ -159,21 +159,17 @@ export const AuthProvider = ({ children }) => {
       const currentFingerprint = generateBrowserFingerprint();
       
       if (storedFingerprint && storedFingerprint !== currentFingerprint) {
-        // Different browser detected - log out for security
-        console.warn('Browser fingerprint mismatch detected. Logging out for security.');
-        logout();
-        return;
+        console.warn('Browser fingerprint mismatch detected. Refreshing fingerprint for this session.');
+        sessionStorage.setItem(BROWSER_FINGERPRINT_KEY, currentFingerprint);
       }
       
-      // Store fingerprint if not already stored (first time login in this browser)
       if (!storedFingerprint) {
         sessionStorage.setItem(BROWSER_FINGERPRINT_KEY, currentFingerprint);
       }
     } catch (error) {
-      // If fingerprint check fails, don't block the user but log the error
       console.error('Error checking browser fingerprint:', error);
     }
-  }, [token, logout]);
+  }, [token]);
 
   // Keep axios header in sync on mount & when token changes
   useEffect(() => {
@@ -189,19 +185,14 @@ export const AuthProvider = ({ children }) => {
       
       // Only use SSO token if no regular login token exists
       if (ssoToken && !regularToken) {
-        // Check browser fingerprint for SSO tokens too
         const storedFingerprint = sessionStorage.getItem(BROWSER_FINGERPRINT_KEY);
         const currentFingerprint = generateBrowserFingerprint();
         
         if (storedFingerprint && storedFingerprint !== currentFingerprint) {
-          // Different browser detected - clear SSO tokens for security
-          console.warn('Browser fingerprint mismatch detected for SSO. Clearing session for security.');
-          sessionStorage.removeItem("portal.token");
-          sessionStorage.removeItem("portal.user");
-          return;
+          console.warn('Browser fingerprint mismatch detected for SSO. Refreshing fingerprint for this session.');
+          sessionStorage.setItem(BROWSER_FINGERPRINT_KEY, currentFingerprint);
         }
         
-        // Store fingerprint if not already stored
         if (!storedFingerprint) {
           sessionStorage.setItem(BROWSER_FINGERPRINT_KEY, currentFingerprint);
         }

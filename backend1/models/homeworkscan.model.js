@@ -58,6 +58,18 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DECIMAL(10, 6),
       allowNull: true,
       defaultValue: 0.000000
+    },
+    completion_photo_url: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    completed_at: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    task_type: {
+      type: DataTypes.STRING,
+      allowNull: true
     }
     // NOTE: status column doesn't exist in database yet
     // Uncomment this after your backend developer adds this column:

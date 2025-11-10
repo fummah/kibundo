@@ -8,6 +8,7 @@ import { useChatDock, TASKS_KEY } from "@/context/ChatDockContext";
 import { useAuthContext } from "@/context/AuthContext";
 import { useStudentApp } from "@/context/StudentAppContext";
 import useTTS from "@/lib/voice/useTTS";
+import { resolveStudentAgent } from "@/utils/studentAgent";
 
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
@@ -161,6 +162,7 @@ export default function HomeworkChat({
   minimiseTo = "/student/homework",
   minimiseHeight = 54,
   className = "",
+  readOnly = false,
   onDone,
 }) {
   const navigate = useNavigate();
@@ -171,9 +173,11 @@ export default function HomeworkChat({
     getChatMessages,
     setChatMessages,
     clearChatMessages,
+    setReadOnly: setDockReadOnly,
   } = useChatDock();
   const { user: authUser } = useAuthContext();
 
+  const effectiveReadOnly = Boolean(readOnly || dockState?.readOnly);
 
   // per-student scoping
   const mode = "homework";
@@ -215,6 +219,7 @@ export default function HomeworkChat({
 
   const [scanId, setScanId] = useState(() => dockState?.task?.scanId ?? null);
   const [selectedAgent, setSelectedAgent] = useState("Kibundo"); // Default fallback
+  const [agentMeta, setAgentMeta] = useState(null);
   
   // TTS integration
   const { profile } = useStudentApp();
@@ -231,26 +236,13 @@ export default function HomeworkChat({
   // Fetch selected agent from backend
   useEffect(() => {
     const fetchSelectedAgent = async () => {
-      try {
-        // Only fetch if authenticated
-        const token = localStorage.getItem('kibundo_token') || sessionStorage.getItem('kibundo_token');
-        if (!token) {
-          return;
-        }
-        
-        const response = await api.get('/aisettings', {
-          validateStatus: (status) => status < 500,
-          withCredentials: true,
-        });
-        if (response?.data?.child_default_ai) {
-          // Use the agent name from settings
-          setSelectedAgent(response.data.child_default_ai);
-        }
-      } catch (error) {
-        // Keep default "Kibundo" if fetch fails
+      const agent = await resolveStudentAgent();
+      if (agent?.name) {
+        setSelectedAgent(agent.name);
+        setAgentMeta(agent);
       }
     };
-    
+
     fetchSelectedAgent();
   }, []);
   
@@ -543,6 +535,7 @@ export default function HomeworkChat({
 
   const handleSendText = useCallback(
     async (text) => {
+      if (effectiveReadOnly) return;
       const t = (text || "").trim();
       if (!t) return;
       if (sendingRef.current || sending) return;
@@ -595,13 +588,28 @@ export default function HomeworkChat({
         } catch (err) {
           const code = err?.response?.status;
           if (code === 404) {
-            const r = await api.post("ai/chat", {
+            const payload = {
               question: t,
               ai_agent: selectedAgent,
               mode: "homework",
               scanId,
               conversationId,
-            }, {
+            };
+            if (agentMeta?.entities?.length) {
+              payload.entities = agentMeta.entities;
+            }
+            if (
+              agentMeta?.grade !== null &&
+              agentMeta?.grade !== undefined &&
+              agentMeta?.grade !== ""
+            ) {
+              payload.class = agentMeta.grade;
+            }
+            if (agentMeta?.state) {
+              payload.state = agentMeta.state;
+            }
+
+            const r = await api.post("ai/chat", payload, {
               withCredentials: true,
             });
             const agentMessage = formatMessage(r?.data?.answer || "Okay!", "agent", "text", { agentName: r?.data?.agentName || selectedAgent });
@@ -682,11 +690,12 @@ export default function HomeworkChat({
         sendingRef.current = false;
       }
     },
-    [sending, onSendText, updateMessages, antdMessage, conversationId, scanId, msgs]
+    [sending, onSendText, updateMessages, antdMessage, conversationId, scanId, msgs, agentMeta, ttsEnabled, speak, selectedAgent, effectiveReadOnly]
   );
 
   const handleMediaUpload = useCallback(
     async (files) => {
+      if (effectiveReadOnly) return;
       if (!files.length || uploading) return;
       setUploading(true);
       setTyping(true); // Show thinking indicator when uploading
@@ -902,10 +911,11 @@ export default function HomeworkChat({
         setTyping(false); // Hide thinking indicator when upload is done
       }
     },
-    [onSendMedia, updateMessages, antdMessage, uploading, conversationId, studentId, taskId]
+    [onSendMedia, updateMessages, antdMessage, uploading, conversationId, studentId, taskId, effectiveReadOnly]
   );
 
   const sendText = useCallback(() => {
+    if (effectiveReadOnly) return;
     if (!draft.trim()) return;
     if (sendingRef.current || sending) return;
     const originalDraft = draft;
@@ -915,7 +925,7 @@ export default function HomeworkChat({
     }).catch(() => {
       setDraft(originalDraft);
     });
-  }, [draft, handleSendText, sending]);
+  }, [draft, handleSendText, sending, effectiveReadOnly]);
 
   const onMinimise = () => {
     if (typeof onClose === "function") onClose();
@@ -923,6 +933,7 @@ export default function HomeworkChat({
   };
 
   const startNewChat = useCallback(() => {
+    setDockReadOnly?.(false);
     const seed =
       Array.isArray(initialMessages) && initialMessages.length > 0
         ? [...initialMessages]
@@ -937,14 +948,17 @@ export default function HomeworkChat({
     requestAnimationFrame(() =>
       listRef.current?.scrollTo({ top: 999999, behavior: "smooth" })
     );
-  }, [clearChatMessages, setChatMessages, initialMessages]);
+    navigate("/student/homework/doing", { replace: false });
+  }, [clearChatMessages, setChatMessages, initialMessages, setDockReadOnly, navigate]);
 
   const handleCameraChange = (e) => {
+    if (effectiveReadOnly) return;
     const file = e.target.files?.[0];
     if (file) handleMediaUpload([file]);
     e.target.value = "";
   };
   const handleGalleryChange = (e) => {
+    if (effectiveReadOnly) return;
     const files = Array.from(e.target.files || []);
     if (files.length) handleMediaUpload(files);
     e.target.value = "";
@@ -1184,114 +1198,131 @@ export default function HomeworkChat({
         aria-label="Nachrichten-Eingabe"
       >
         <div className="mx-auto max-w-[900px] px-3 py-2 flex flex-col gap-2">
-          {/* Top row: Input and action buttons */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => cameraInputRef.current?.click()}
-              className="w-10 h-10 grid place-items-center rounded-full bg-white/30 hidden md:grid"
-              aria-label="Kamera öffnen"
-              type="button"
-              disabled={sending || uploading}
-            >
-              <img src={cameraIcon} alt="" className="w-6 h-6" />
-            </button>
-            <button
-              onClick={() => galleryInputRef.current?.click()}
-              className="w-10 h-10 grid place-items-center rounded-full bg-white/30 hidden md:grid"
-              aria-label="Galerie öffnen"
-              type="button"
-              disabled={sending || uploading}
-            >
-              <img src={galleryIcon} alt="" className="w-6 h-6" />
-            </button>
-
-            <div className="flex-1 h-10 flex items-center px-3 bg-white rounded-full">
-              <input
-                ref={inputRef}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    !e.shiftKey &&
-                    !e.nativeEvent.isComposing &&
-                    !sendingRef.current &&
-                    !sending &&
-                    draft.trim()
-                  ) {
-                    e.preventDefault();
-                    sendText();
-                  }
-                }}
-                placeholder="Frag etwas zur Aufgabe oder lade ein Bild über die Kamera/Galerie hoch…"
-                className="w-full bg-transparent outline-none text-[15px]"
-                aria-label="Nachricht eingeben"
-                disabled={sending || uploading}
-              />
-            </div>
-
-            <button
-              onClick={() => {
-                if (draft.trim()) {
-                  sendText();
-                } else {
-                  startNewChat();
-                }
-              }}
-              className={`w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm ${
-                sending || uploading ? "opacity-70" : "hover:brightness-95"
-              }`}
-              style={{ backgroundColor: "#ff7a00" }}
-              aria-label={sending ? "Wird gesendet..." : draft.trim() ? "Nachricht senden" : "Neuen Chat starten"}
-              type="button"
-              disabled={sending || uploading}
-            >
-              {draft.trim() ? (
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
-                  <path d="M21.44 2.56a1 1 0 0 0-1.05-.22L3.6 9.06a1 1 0 0 0 .04 1.87l6.9 2.28 2.3 6.91a1 1 0 0 0 1.86.03l6.74-16.78a1 1 0 0 0-.99-1.81ZM11.8 13.18l-4.18-1.38 9.68-4.04-5.5 5.42Z" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
-                  <path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z" />
-                </svg>
-              )}
-            </button>
-
-            {dockState?.mode === "homework" && (
+          {effectiveReadOnly ? (
+            <div className="rounded-3xl bg-[#b2c10a] text-white px-4 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-lg">
+              <div className="text-sm md:text-base leading-snug text-center md:text-left">
+                Dieser Chat gehört zu einer abgeschlossenen Aufgabe. Du kannst ihn lesen, aber keine neuen Nachrichten senden.
+              </div>
               <button
-                onClick={() => markHomeworkDone?.()}
-                className="w-11 h-11 grid place-items-center rounded-full"
-                style={{ backgroundColor: "#8fd85d" }}
-                aria-label="Aufgabe abschließen"
                 type="button"
-                disabled={sending || uploading}
+                onClick={startNewChat}
+                className="inline-flex items-center justify-center px-4 py-2 rounded-full bg-white text-[#5a6505] font-semibold shadow-sm hover:shadow transition"
               >
-                <CheckOutlined style={{ color: "#fff", fontSize: 16 }} />
+                Neuen Chat starten
               </button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <>
+              {/* Top row: Input and action buttons */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="w-10 h-10 grid place-items-center rounded-full bg-white/30 hidden md:grid"
+                  aria-label="Kamera öffnen"
+                  type="button"
+                  disabled={sending || uploading}
+                >
+                  <img src={cameraIcon} alt="" className="w-6 h-6" />
+                </button>
+                <button
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="w-10 h-10 grid place-items-center rounded-full bg-white/30 hidden md:grid"
+                  aria-label="Galerie öffnen"
+                  type="button"
+                  disabled={sending || uploading}
+                >
+                  <img src={galleryIcon} alt="" className="w-6 h-6" />
+                </button>
 
-          {/* Bottom row: Scan buttons (mobile only) */}
-          <div className="flex items-center justify-center gap-3 md:hidden">
-            <button
-              onClick={() => cameraInputRef.current?.click()}
-              className="w-12 h-12 grid place-items-center rounded-full bg-white/30"
-              aria-label="Kamera öffnen"
-              type="button"
-              disabled={sending || uploading}
-            >
-              <img src={cameraIcon} alt="" className="w-7 h-7" />
-            </button>
-            <button
-              onClick={() => galleryInputRef.current?.click()}
-              className="w-12 h-12 grid place-items-center rounded-full bg-white/30"
-              aria-label="Galerie öffnen"
-              type="button"
-              disabled={sending || uploading}
-            >
-              <img src={galleryIcon} alt="" className="w-7 h-7" />
-            </button>
-          </div>
+                <div className="flex-1 h-10 flex items-center px-3 bg-white rounded-full">
+                  <input
+                    ref={inputRef}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === "Enter" &&
+                        !e.shiftKey &&
+                        !e.nativeEvent.isComposing &&
+                        !sendingRef.current &&
+                        !sending &&
+                        draft.trim()
+                      ) {
+                        e.preventDefault();
+                        sendText();
+                      }
+                    }}
+                    placeholder="Frag etwas zur Aufgabe oder lade ein Bild über die Kamera/Galerie hoch…"
+                    className="w-full bg-transparent outline-none text-[15px]"
+                    aria-label="Nachricht eingeben"
+                    disabled={sending || uploading}
+                  />
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (draft.trim()) {
+                      sendText();
+                    } else {
+                      startNewChat();
+                    }
+                  }}
+                  className={`w-10 h-10 grid place-items-center rounded-full transition-colors shadow-sm ${
+                    sending || uploading ? "opacity-70" : "hover:brightness-95"
+                  }`}
+                  style={{ backgroundColor: "#ff7a00" }}
+                  aria-label={sending ? "Wird gesendet..." : draft.trim() ? "Nachricht senden" : "Neuen Chat starten"}
+                  type="button"
+                  disabled={sending || uploading}
+                >
+                  {draft.trim() ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
+                      <path d="M21.44 2.56a1 1 0 0 0-1.05-.22L3.6 9.06a1 1 0 0 0 .04 1.87l6.9 2.28 2.3 6.91a1 1 0 0 0 1.86.03l6.74-16.78a1 1 0 0 0-.99-1.81ZM11.8 13.18l-4.18-1.38 9.68-4.04-5.5 5.42Z" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-5 h-5" fill="#ffffff">
+                      <path d="M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z" />
+                    </svg>
+                  )}
+                </button>
+
+                {dockState?.mode === "homework" && (
+                  <button
+                    onClick={() => markHomeworkDone?.()}
+                    className="w-11 h-11 grid place-items-center rounded-full"
+                    style={{ backgroundColor: "#8fd85d" }}
+                    aria-label="Aufgabe abschließen"
+                    type="button"
+                    disabled={sending || uploading}
+                  >
+                    <CheckOutlined style={{ color: "#fff", fontSize: 16 }} />
+                  </button>
+                )}
+              </div>
+
+              {/* Bottom row: Scan buttons (mobile only) */}
+              <div className="flex items-center justify-center gap-3 md:hidden">
+                <button
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="w-12 h-12 grid place-items-center rounded-full bg-white/30"
+                  aria-label="Kamera öffnen"
+                  type="button"
+                  disabled={sending || uploading}
+                >
+                  <img src={cameraIcon} alt="" className="w-7 h-7" />
+                </button>
+                <button
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="w-12 h-12 grid place-items-center rounded-full bg-white/30"
+                  aria-label="Galerie öffnen"
+                  type="button"
+                  disabled={sending || uploading}
+                >
+                  <img src={galleryIcon} alt="" className="w-7 h-7" />
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -2,13 +2,8 @@
 import { useState, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
-import { Form, Input, Button, Select, Typography } from "antd";
-import {
-  PhoneOutlined,
-  UserOutlined,
-  LockOutlined,
-  MailOutlined,
-} from "@ant-design/icons";
+import { Form, Input, Select, Typography } from "antd";
+import { DownOutlined } from "@ant-design/icons";
 import api from "@/api/axios";
 import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
 import { useAuthContext } from "@/context/AuthContext";
@@ -17,7 +12,6 @@ import { useAuthContext } from "@/context/AuthContext";
 import { INTRO_LS_KEY, TOUR_LS_KEY } from "@/pages/student/onboarding/introFlags";
 
 const { Title, Text } = Typography;
-const { Option } = Select;
 
 /** German Bundesländer */
 const BUNDESLAENDER = [
@@ -76,13 +70,15 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
 
+  const inputClass =
+    "h-12 w-full rounded-2xl border border-[#E9DED2] bg-white px-4 text-base text-[#4F3A2D] placeholder:text-[#BCB1A8] shadow-[0_6px_16px_rgba(87,60,42,0.08)] focus:border-[#FF9A36] focus:shadow-[0_10px_24px_rgba(255,154,54,0.28)] transition";
+
   const bundeslandOptions = useMemo(
     () =>
-      BUNDESLAENDER.map((name) => (
-        <Option key={name} value={name}>
-          {name}
-        </Option>
-      )),
+      BUNDESLAENDER.map((name) => ({
+        label: name,
+        value: name,
+      })),
     []
   );
 
@@ -91,61 +87,21 @@ export default function SignUp() {
       first_name,
       last_name,
       email,
-      phone,
       password,
-      confirm_password,
-      role,        // "student" | "parent" | "teacher"
-      bundesland,  // required
+      bundesland, // required
     } = values;
 
-    // UI role -> backend role_id
-    const roleMap = { 
-      parent: ROLES.PARENT,  // 2
-      teacher: ROLES.TEACHER // 3
-    };
-    
-    // Debug: Log actual values
-    console.log("🔍 Frontend signup - Role selection:", role);
-    console.log("🔍 Role type:", typeof role);
-    console.log("🔍 ROLES.PARENT =", ROLES.PARENT);
-    console.log("🔍 ROLES.TEACHER =", ROLES.TEACHER);
-    console.log("🔍 Role map:", roleMap);
-    
-    // Normalize role to lowercase string
-    const normalizedRole = String(role || "").toLowerCase().trim();
-    console.log("🔍 Normalized role:", normalizedRole);
-    
-    const role_id = roleMap[normalizedRole];
-    
-    console.log("🎯 Frontend signup - Mapped role_id:", role_id);
-    console.log("🎯 Selected role string:", normalizedRole);
-    console.log("🎯 Expected for 'parent':", ROLES.PARENT);
-    console.log("🎯 Expected for 'teacher':", ROLES.TEACHER);
-    
-    if (!role_id) {
-      console.error("❌ Invalid role selected. Role value:", role, "Normalized:", normalizedRole);
-      console.error("❌ Available roles in map:", Object.keys(roleMap));
-      toast.error(`Invalid role selected: ${role}`);
-      return;
-    }
+    const role_id = ROLES.PARENT;
 
     const payload = {
       first_name,
       last_name,
       email,
-      phone,
       password,
-      confirm_password,
       role_id,
       bundesland,
+      confirm_password: password,
     };
-    
-    console.log("📤 Frontend signup - Sending payload:");
-    console.log("  - first_name:", first_name);
-    console.log("  - email:", email);
-    console.log("  - role_id:", role_id, "(type:", typeof role_id, ")");
-    console.log("  - original role value:", role);
-    console.log("  - bundesland:", bundesland);
 
     try {
       setLoading(true);
@@ -156,7 +112,6 @@ export default function SignUp() {
       const token = extractToken(resp) ?? resp?.data?.token ?? null;
 
       if (!user || !token) {
-        // Let backend/interceptor handle error messages; avoid duplicate toasts
         return;
       }
 
@@ -165,16 +120,7 @@ export default function SignUp() {
       
       // Verify the user role matches what we expected
       const userRoleId = normalizeRoleId(user, role_id);
-      console.log("✅ Signup response received");
-      console.log("  - Expected role_id:", role_id);
-      console.log("  - User role_id from response:", userRoleId);
-      console.log("  - User object role_id:", user?.role_id);
-      console.log("  - User object:", user);
-      
       if (userRoleId !== role_id) {
-        console.error("⚠️ ERROR: User role_id doesn't match expected role_id!");
-        console.error("  - Expected:", role_id);
-        console.error("  - Actual:", userRoleId);
         toast.error(`Role mismatch! Expected ${role_id} but got ${userRoleId}`);
       }
       
@@ -193,23 +139,17 @@ export default function SignUp() {
       // Non-students → role landing
       // Use the role_id we sent (not the user's role_id from response, in case of mismatch)
       const resolvedRoleId = normalizeRoleId(user, role_id);
-      const rolePath = ROLE_PATHS[resolvedRoleId] || ROLE_PATHS[role_id] || "/dashboard";
-      
-      console.log("🚀 Navigation details:");
-      console.log("  - Expected role_id:", role_id);
-      console.log("  - User role_id from response:", userRoleId);
-      console.log("  - Resolved role_id:", resolvedRoleId);
-      console.log("  - Role path for resolvedRoleId:", ROLE_PATHS[resolvedRoleId]);
-      console.log("  - Role path for role_id:", ROLE_PATHS[role_id]);
-      console.log("  - Final navigation path:", rolePath);
-      
-      // Double-check: if there's a mismatch, use the expected role_id
       const finalRoleId = userRoleId === role_id ? resolvedRoleId : role_id;
       const finalPath = ROLE_PATHS[finalRoleId] || "/dashboard";
-      
-      console.log("  - Using final role_id:", finalRoleId);
-      console.log("  - Using final path:", finalPath);
-      
+
+      if (finalRoleId === ROLES.PARENT) {
+        navigate("/signup/success", {
+          replace: true,
+          state: { next: finalPath },
+        });
+        return;
+      }
+
       navigate(finalPath, { replace: true });
     } catch (err) {
       const status = err?.response?.status;
@@ -240,174 +180,162 @@ export default function SignUp() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-10 bg-gradient-to-tr from-blue-100 via-white to-purple-100">
+    <div
+      className="relative flex min-h-screen flex-col items-center px-6 pt-24 pb-28"
+      style={{
+        background:
+          "linear-gradient(185deg, #F4BE9B 0%, #F2D6B1 45%, #EDE2CB 100%)",
+      }}
+    >
       <Toaster position="top-center" />
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-xl p-8">
-        <Title level={3} className="text-center mb-6 text-indigo-700">
-          Create Your Account
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-[-45%] bottom-[-82%] z-0 h-[150%] w-[190%] rounded-[50%] bg-[#F2E5D5]"
+      />
+      <div className="relative z-10 w-full max-w-[420px]">
+        <Title
+          level={2}
+          className="text-center font-semibold !text-[#4F3A2D]"
+        >
+          Sign up
         </Title>
-
         <Form
           form={form}
-          layout="vertical"
           onFinish={handleFinish}
           autoComplete="off"
           requiredMark={false}
+          layout="vertical"
+          className="mt-9 space-y-0"
+          colon={false}
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Form.Item
-              name="first_name"
-              label="First Name"
-              rules={[{ required: true, message: "Please enter your first name" }]}
-            >
-              <Input
-                prefix={<UserOutlined />}
-                placeholder="First Name"
-                autoComplete="given-name"
-                disabled={loading}
-              />
-            </Form.Item>
-            <Form.Item
-              name="last_name"
-              label="Last Name"
-              rules={[{ required: true, message: "Please enter your last name" }]}
-            >
-              <Input
-                prefix={<UserOutlined />}
-                placeholder="Last Name"
-                autoComplete="family-name"
-                disabled={loading}
-              />
-            </Form.Item>
-          </div>
+          <Form.Item
+            name="first_name"
+            rules={[{ required: true, message: "Please enter your first name" }]}
+            className="mb-4"
+            label={<span className="hidden">First Name</span>}
+          >
+            <Input
+              placeholder="First Name"
+              autoComplete="given-name"
+              disabled={loading}
+              className={inputClass}
+            />
+          </Form.Item>
+          <Form.Item
+            name="last_name"
+            rules={[{ required: true, message: "Please enter your last name" }]}
+            className="mb-4"
+            label={<span className="hidden">Last Name</span>}
+          >
+            <Input
+              placeholder="Last Name"
+              autoComplete="family-name"
+              disabled={loading}
+              className={inputClass}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="bundesland"
+            rules={[{ required: true, message: "Bitte Bundesland auswählen" }]}
+            className="mb-4"
+            label={<span className="hidden">Bundesland</span>}
+          >
+            <Select
+              placeholder="Bundesland"
+              disabled={loading}
+              showSearch
+              optionFilterProp="label"
+              options={bundeslandOptions}
+              className="custom-signup-select w-full text-base text-[#4F3A2D]"
+              styles={{
+                selector: {
+                  borderRadius: 16,
+                  border: "1px solid #E9DED2",
+                  background: "#FFFFFF",
+                  boxShadow: "0 6px 16px rgba(87, 60, 42, 0.08)",
+                  padding: "0 16px",
+                  height: 48,
+                  display: "flex",
+                  alignItems: "center",
+                },
+                selectionItem: {
+                  fontSize: 16,
+                  lineHeight: "48px",
+                  color: "#4F3A2D",
+                },
+                placeholder: {
+                  fontSize: 16,
+                  color: "#BCB1A8",
+                  lineHeight: "48px",
+                },
+                input: {
+                  height: 48,
+                },
+                dropdown: {
+                  borderRadius: 16,
+                },
+              }}
+              popupClassName="rounded-2xl"
+              suffixIcon={<DownOutlined className="text-[#BCB1A8]" />}
+            />
+          </Form.Item>
 
           <Form.Item
             name="email"
-            label="Email"
             rules={[
               { required: true, message: "Email is required" },
               { type: "email", message: "Invalid email" },
             ]}
+            className="mb-4"
+            label={<span className="hidden">Email</span>}
           >
             <Input
-              prefix={<MailOutlined />}
               placeholder="Email address"
               autoComplete="email"
               inputMode="email"
               autoCapitalize="none"
               autoCorrect="off"
               disabled={loading}
+              className={inputClass}
             />
-          </Form.Item>
-
-          <Form.Item
-            name="phone"
-            label="Phone Number"
-            rules={[
-              { required: true, message: "Phone number is required" },
-              { 
-                pattern: /^(\+49|0)[1-9]\d{1,14}$/, 
-                message: "Please enter a valid German phone number (e.g., +49 30 12345678 or 030 12345678)" 
-              },
-            ]}
-          >
-            <Input
-              prefix={<PhoneOutlined />}
-              placeholder="+49 30 12345678"
-              autoComplete="tel"
-              disabled={loading}
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="bundesland"
-            label="Bundesland"
-            rules={[{ required: true, message: "Bitte Bundesland auswählen" }]}
-          >
-            <Select
-              placeholder="Bundesland wählen"
-              showSearch
-              optionFilterProp="children"
-              disabled={loading}
-            >
-              {bundeslandOptions}
-            </Select>
-          </Form.Item>
-
-          <Form.Item
-            name="role"
-            label="Role"
-            rules={[{ required: true, message: "Please select a role" }]}
-            initialValue={null}
-          >
-            <Select 
-              placeholder="Select Role" 
-              disabled={loading}
-              onChange={(value) => {
-                console.log("🎯 Role Select onChange - Selected value:", value);
-                console.log("🎯 Role Select onChange - Value type:", typeof value);
-              }}
-            >
-              <Option value="parent">Parent</Option>
-              <Option value="teacher">Teacher</Option>
-            </Select>
           </Form.Item>
 
           <Form.Item
             name="password"
-            label="Password"
             rules={[{ required: true, message: "Enter a password" }]}
-            hasFeedback
+            className="mb-6"
+            label={<span className="hidden">Password</span>}
           >
-            <Input.Password
-              prefix={<LockOutlined />}
-              placeholder="Password"
+            <Input
+              type="password"
+              placeholder="Passwort"
               autoComplete="new-password"
               disabled={loading}
+              className={inputClass}
             />
           </Form.Item>
 
-          <Form.Item
-            name="confirm_password"
-            label="Confirm Password"
-            dependencies={["password"]}
-            hasFeedback
-            rules={[
-              { required: true, message: "Please confirm your password" },
-              ({ getFieldValue }) => ({
-                validator(_, value) {
-                  if (!value || getFieldValue("password") === value) return Promise.resolve();
-                  return Promise.reject(new Error("Passwords do not match"));
-                },
-              }),
-            ]}
+          <div className="mt-10 text-center text-sm font-medium text-[#816B5B] tracking-wide" style={{ paddingTop: "60px" }}>XX Tage kostenlos testen und dann entscheiden!</div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-7 h-14 w-full rounded-full bg-[#FF8400] text-lg font-semibold text-white shadow-[0_12px_24px_rgba(255,132,0,0.35)] transition hover:bg-[#FF7600] disabled:cursor-not-allowed disabled:opacity-80"
           >
-            <Input.Password
-              prefix={<LockOutlined />}
-              placeholder="Confirm password"
-              autoComplete="new-password"
-              disabled={loading}
-            />
-          </Form.Item>
+            {loading ? "Signing up..." : "Sign up"}
+          </button>
 
-          <Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              block
-              loading={loading}
-              className="bg-indigo-600 hover:bg-indigo-700"
-            >
-              {loading ? "Creating account..." : "Sign Up"}
-            </Button>
-          </Form.Item>
-
-          <Text className="block text-center">
+          <Text className="mt-7 block text-center text-sm text-[#816B5B]">
             Already have an account?{" "}
-            <Link to="/signin" className="text-indigo-600 hover:underline">
+            <Link to="/signin" className="font-semibold text-[#FF8400]">
               Sign In
             </Link>
           </Text>
+
+          <div className="pt-2 text-center text-sm font-medium text-[#816B5B]">
+            {/* placeholder for spacing previously */}
+          </div>
         </Form>
       </div>
     </div>

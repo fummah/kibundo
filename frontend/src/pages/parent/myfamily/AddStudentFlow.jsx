@@ -7,7 +7,7 @@ import api from "@/api/axios";
 import BuddyAvatar from "@/components/student/BuddyAvatar";
 import globalBg from "@/assets/backgrounds/global-bg.png";
 import monster1 from "@/assets/buddies/monster1.png";
-import monster2 from "@/assets/buddies/monster2.png";
+import monster2 from "@/assets/buddies/monster21.png";
 
 import {
   Button,
@@ -28,6 +28,10 @@ import {
 } from "@ant-design/icons";
 
 const { Title, Text } = Typography;
+
+const ONBOARDING_FLAG_KEY = "parent.onboarding.active";
+const ONBOARDING_NEXT_KEY = "parent.onboarding.next";
+const ONBOARDING_RETURN_KEY = "parent.onboarding.return";
 
 export default function AddStudentFlow() {
   const { t } = useTranslation();
@@ -288,6 +292,30 @@ export default function AddStudentFlow() {
       
       message.success(t("parent.addStudent.toast.created", "Student created successfully!"));
       setStep(3);
+
+      try {
+        const onboardingActive = sessionStorage.getItem(ONBOARDING_FLAG_KEY) === "1";
+        if (onboardingActive) {
+          const onboardingNext =
+            sessionStorage.getItem(ONBOARDING_NEXT_KEY) || "/parent";
+          const onboardingReturn =
+            sessionStorage.getItem(ONBOARDING_RETURN_KEY) || "/signup/choose-subscription";
+          const backTarget =
+            onboardingReturn === "/signup/add-child/another" ? "/signup/add-child" : "/signup/add-child/another";
+
+          sessionStorage.removeItem(ONBOARDING_FLAG_KEY);
+          sessionStorage.removeItem(ONBOARDING_NEXT_KEY);
+          sessionStorage.removeItem(ONBOARDING_RETURN_KEY);
+
+          navigate(onboardingReturn, {
+            replace: true,
+            state: { next: onboardingNext, back: backTarget },
+          });
+          return;
+        }
+      } catch {
+        // ignore storage issues
+      }
     } catch (e) {
       console.error("❌ Error creating student:", e);
       message.error(
