@@ -29,12 +29,14 @@ import {
   ReconciliationOutlined,
   GiftOutlined,
   ArrowRightOutlined,
+  ArrowLeftOutlined,
   DownloadOutlined,
   ExclamationCircleOutlined,
   EyeOutlined,
   DeleteOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { NUNITO_FONT_STACK } from "@/constants/fonts";
 
 // ParentShell is now handled at route level
 
@@ -364,21 +366,21 @@ export default function BillingOverview() {
               nextRenewal = dayjs().add(14, "day").format("YYYY-MM-DD");
             }
             
-            setSubscription({
-              id: activeSub.id,
-              subscription_id: activeSub.subscription_id || activeSub.stripe_subscription_id,
-              status: status.charAt(0).toUpperCase() + status.slice(1), // Capitalize first letter
-              plan: product.name || metadata.product_name || "Subscription Plan",
-              interval: billingInterval, // Keep raw value for logic
-              intervalDisplay: intervalDisplay, // Formatted for display
-              children: metadata.child_count || parseInt(metadata.child_count) || parentData.student?.length || 0,
-              amount: amount,
-              currency: currency,
-              next_renewal: nextRenewal, // Use calculated renewal date
-              started_at: activeSub.created_at || dayjs().subtract(3, "month").format("YYYY-MM-DD"),
-              raw: activeSub.raw, // Store raw data for detailed view
-              product: product, // Store product data
-            });
+          setSubscription({
+            id: activeSub.id,
+            subscription_id: activeSub.subscription_id || activeSub.stripe_subscription_id,
+            status: status.charAt(0).toUpperCase() + status.slice(1),
+            plan: product.name || metadata.product_name || "Subscription Plan",
+            interval: billingInterval,
+            intervalDisplay,
+            children: metadata.child_count || parseInt(metadata.child_count) || parentData.student?.length || 0,
+            amount,
+            currency,
+            next_renewal: nextRenewal,
+            started_at: activeSub.created_at || dayjs().subtract(3, "month").format("YYYY-MM-DD"),
+            raw: activeSub.raw,
+            product,
+          });
           } else {
             // No active subscription
             setSubscription(null);
@@ -654,19 +656,39 @@ export default function BillingOverview() {
   ];
 
   return (
-    <div className="w-full min-h-[100dvh] flex justify-center">
-        {/* Responsive layout - no frame */}
-        <div className="w-full max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-8">
+    <div
+      className="relative min-h-screen w-full overflow-hidden"
+      style={{
+        background: "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
+        fontFamily: NUNITO_FONT_STACK,
+      }}
+    >
+      <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-60%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
+      <div className="relative z-10 w-full min-h-[100dvh] flex justify-center px-4 md:px-6 py-10">
+        <div className="w-full max-w-7xl">
+          <Card className="rounded-3xl border-none bg-white/92 shadow-xl">
+            <div className="space-y-8">
             {/* Header */}
-            <div className="flex flex-col gap-2">
-              <Title level={3} className="!mb-0">
-                Billing Overview
-              </Title>
-              <Text type="secondary">
-                Your plan, invoices, and payment methods at a glance.
-              </Text>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
+                <Button
+                  type="text"
+                  icon={<ArrowLeftOutlined />}
+                  className="!p-0 !h-auto text-neutral-600"
+                  aria-label="Back"
+                  onClick={() => navigate("/parent/settings")}
+                />
+                <div>
+                  <Title level={3} className="!mb-0">
+                    Billing Overview
+                  </Title>
+                  <Text type="secondary">
+                    Your plan, invoices, and payment methods at a glance.
+                  </Text>
+                </div>
+              </div>
 
-              <Space wrap className="mt-2">
+              <Space wrap>
                 <Button icon={<FileDoneOutlined />} onClick={() => navigate("/parent/billing/invoices")}>
                   View Invoices
                 </Button>
@@ -1305,6 +1327,9 @@ export default function BillingOverview() {
             <Empty description="No subscription data available" />
           )}
         </Drawer>
+      </Card>
     </div>
-  );
+  </div>
+</div>
+);
 }

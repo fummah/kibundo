@@ -1,13 +1,35 @@
-// src/pages/parent/Settings.jsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Card, Form, Input, Button, Switch, Select,
-  Row, Col, Divider, message, Modal, Grid
+  Card,
+  Form,
+  Input,
+  Button,
+  Switch,
+  Select,
+  Row,
+  Col,
+  Divider,
+  message,
+  Modal,
+  Grid,
+  Tabs,
+  Tag,
+  Avatar,
+  Space,
 } from "antd";
 import {
-  SaveOutlined, LogoutOutlined, ArrowLeftOutlined,
-  CreditCardOutlined, FileTextOutlined, GiftOutlined, SolutionOutlined,
+  SaveOutlined,
+  LogoutOutlined,
+  ArrowLeftOutlined,
+  CreditCardOutlined,
+  FileTextOutlined,
+  GiftOutlined,
+  SolutionOutlined,
+  UserOutlined,
+  LockOutlined,
+  BellOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 
 import { useAuthContext } from "@/context/AuthContext.jsx";
@@ -20,10 +42,17 @@ export default function Settings() {
   const [form] = Form.useForm();
   const [twoFA, setTwoFA] = useState(Boolean(user?.mfa_enabled));
   const navigate = useNavigate();
-  const { lg } = useBreakpoint(); // ✅ true on large screens
+  useBreakpoint(); // keep breakpoint hook (future responsive tweaks)
   const [states, setStates] = useState([]);
   const [loadingStates, setLoadingStates] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [activeTab, setActiveTab] = useState("profile");
+  const [notificationPrefs, setNotificationPrefs] = useState({
+    weeklyDigest: true,
+    homeworkUpdates: true,
+    marketingEmails: false,
+    productAnnouncements: true,
+  });
 
   const formatDEPhone = useCallback((raw = "") => {
     const digits = String(raw).replace(/[^\d]/g, "");
@@ -38,24 +67,22 @@ export default function Settings() {
     const fetchData = async () => {
       try {
         setLoadingStates(true);
-        // Fetch current user to get full data including state
         const userRes = await api.get("/current-user");
         const userData = userRes?.data?.user || userRes?.data || user;
         setCurrentUser(userData);
 
-        // Fetch states list
         const statesRes = await api.get("/states");
         const statesData = Array.isArray(statesRes.data) 
           ? statesRes.data 
-          : (statesRes.data?.data || []);
+          : statesRes.data?.data || [];
         
-        const processedStates = statesData.map(state => {
-          if (state && typeof state === 'object') {
+        const processedStates = statesData.map((state) => {
+          if (state && typeof state === "object") {
             const value = state.state_name || state.name || state.id;
             const label = state.state_name || state.name || state.id;
             return { 
               value: String(value), 
-              label: String(label)
+              label: String(label),
             };
           }
           return { value: String(state), label: String(state) };
@@ -72,14 +99,16 @@ export default function Settings() {
     if (isAuthenticated) {
       fetchData();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user]);
 
   const initialValues = useMemo(() => {
     const userData = currentUser || user;
     return {
       first_name: userData?.first_name ?? userData?.name?.split(" ")?.[0] ?? "",
       last_name:
-        userData?.last_name ?? (userData?.name ? userData.name.split(" ").slice(1).join(" ") : "") ?? "",
+        userData?.last_name ??
+        (userData?.name ? userData.name.split(" ").slice(1).join(" ") : "") ??
+        "",
       email: userData?.email ?? "",
       phone: userData?.contact_number ? formatDEPhone(userData.contact_number) : "+49 ",
       state: userData?.state ?? "",
@@ -104,48 +133,38 @@ export default function Settings() {
         return;
       }
 
-      // Convert formatted phone back to raw format (remove +49 prefix and spaces)
       let contact_number = vals.phone;
       if (contact_number) {
-        // Remove +49 prefix, spaces, and leading zeros
         contact_number = contact_number.replace(/\+49\s*/g, "").replace(/\s+/g, "").replace(/^0+/, "");
-        // Add +49 prefix back if not empty
         if (contact_number) {
           contact_number = `+49${contact_number}`;
         }
       }
 
-      // Prepare update payload
       const updatePayload = {
         first_name: vals.first_name,
         last_name: vals.last_name,
         email: vals.email,
         contact_number: contact_number || null,
         state: vals.state || null,
+        locale: vals.locale || null,
       };
 
-      // Only include password if provided
       if (vals.password && vals.password.trim()) {
         updatePayload.plain_pass = vals.password;
       }
 
-      // Include locale if supported (backend may ignore if not in schema)
-      if (vals.locale) {
-        updatePayload.locale = vals.locale;
-      }
-
-      // Update user via API
       const response = await api.put(`/users/${userData.id}`, updatePayload);
       
-      // Update local state with fresh data
       if (response.data?.user) {
         setCurrentUser(response.data.user);
-        // Update form with fresh data
         form.setFieldsValue({
           first_name: response.data.user.first_name,
           last_name: response.data.user.last_name,
           email: response.data.user.email,
-          phone: response.data.user.contact_number ? formatDEPhone(response.data.user.contact_number) : "+49 ",
+          phone: response.data.user.contact_number
+            ? formatDEPhone(response.data.user.contact_number)
+            : "+49 ",
           state: response.data.user.state,
           locale: response.data.user.locale || "de-DE",
         });
@@ -168,16 +187,32 @@ export default function Settings() {
       okText: "Log out",
       okButtonProps: { danger: true, icon: <LogoutOutlined /> },
       onOk: async () => {
-        try { await logout?.(); } catch { navigate("/parent"); }
+        try {
+          await logout?.();
+        } catch {
+          navigate("/parent");
+        }
       },
     });
   };
 
   const openBilling = () => navigate("/parent/billing");
-  const goOverview     = (e) => { e?.stopPropagation(); navigate("/parent/billing/overview"); };
-  const goSubscription = (e) => { e?.stopPropagation(); navigate("/parent/billing/subscription"); };
-  const goInvoices     = (e) => { e?.stopPropagation(); navigate("/parent/billing/invoices"); };
-  const goCoupons      = (e) => { e?.stopPropagation(); navigate("/parent/billing/coupons"); };
+  const goOverview = (e) => {
+    e?.stopPropagation();
+    navigate("/parent/billing/overview");
+  };
+  const goSubscription = (e) => {
+    e?.stopPropagation();
+    navigate("/parent/billing/subscription");
+  };
+  const goInvoices = (e) => {
+    e?.stopPropagation();
+    navigate("/parent/billing/invoices");
+  };
+  const goCoupons = (e) => {
+    e?.stopPropagation();
+    navigate("/parent/billing/coupons");
+  };
 
   return (
     <SettingsContent
@@ -195,16 +230,17 @@ export default function Settings() {
       navigate={navigate}
       states={states}
       loadingStates={loadingStates}
+      currentUser={currentUser || user}
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      notificationPrefs={notificationPrefs}
+      setNotificationPrefs={setNotificationPrefs}
     />
   );
 }
 
-/* ---------- Presentational content ---------- */
 function SettingsContent({
   form,
-  isAuthenticated,
-  twoFA,
-  setTwoFA,
   confirmLogout,
   save,
   openBilling,
@@ -215,32 +251,46 @@ function SettingsContent({
   navigate,
   states,
   loadingStates,
+  currentUser,
+  activeTab,
+  setActiveTab,
+  notificationPrefs,
+  setNotificationPrefs,
+  twoFA,
+  setTwoFA,
 }) {
-  return (
-    <section className="relative w-full max-w-[520px] mx-auto pt-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Button
-          type="text"
-          icon={<ArrowLeftOutlined />}
-          onClick={() => { if (window.history.length > 1) navigate(-1); else navigate("/parent"); }}
-          className="!p-0 !h-auto text-neutral-700"
-          aria-label="Back"
-        />
-        <div className="flex-1">
-          <h1 className="text-2xl md:text-3xl font-extrabold m-0">Settings</h1>
-          <p className="text-gray-600 m-0">
-            {isAuthenticated ? "Manage your account, security, and billing." : "Please sign in to edit settings."}
-          </p>
-        </div>
-        <Button type="primary" icon={<CreditCardOutlined />} onClick={openBilling}>
-          Billing
-        </Button>
-      </div>
+  const displayUser = currentUser || {};
+  const displayName = useMemo(() => {
+    const first = displayUser.first_name || "";
+    const last = displayUser.last_name || "";
+    const name = `${first} ${last}`.trim();
+    if (name) return name;
+    if (displayUser.name) return displayUser.name;
+    if (displayUser.email) return displayUser.email.split("@")[0];
+    return "Parent";
+  }, [displayUser]);
 
-      {/* Profile & Security */}
-      <Card className="rounded-2xl shadow-sm">
-        <Form form={form} layout="vertical" requiredMark={false}>
+  const initials = useMemo(() => {
+  return (
+      displayName
+        .split(" ")
+        .map((part) => part.charAt(0))
+        .join("")
+        .slice(0, 2)
+        .toUpperCase() || "P"
+    );
+  }, [displayName]);
+
+  const handleNotificationToggle = (key, value) => {
+    setNotificationPrefs((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleNotificationSave = () => {
+    message.success("Notification preferences saved.");
+  };
+
+  const renderProfileTab = (
+    <div className="space-y-6">
           <Row gutter={[16, 16]}>
             <Col xs={24} md={12}>
               <Form.Item
@@ -260,7 +310,6 @@ function SettingsContent({
                 <Input className="rounded-xl" placeholder="Last name" />
               </Form.Item>
             </Col>
-
             <Col xs={24} md={12}>
               <Form.Item
                 label="Email"
@@ -270,7 +319,6 @@ function SettingsContent({
                 <Input className="rounded-xl" placeholder="email@example.com" />
               </Form.Item>
             </Col>
-
             <Col xs={24} md={12}>
               <Form.Item
                 label="Phone"
@@ -280,7 +328,13 @@ function SettingsContent({
                     validator: (_, v) => {
                       if (!v) return Promise.resolve();
                       const ok = /^(\+49|0)[1-9]\d{1,14}$/.test(v.replace(/\s+/g, ""));
-                      return ok ? Promise.resolve() : Promise.reject(new Error("Please enter a valid German phone number (e.g., +49 30 12345678 or 030 12345678)"));
+                  return ok
+                    ? Promise.resolve()
+                    : Promise.reject(
+                        new Error(
+                          "Please enter a valid German phone number (e.g., +49 30 12345678 or 030 12345678)"
+                        )
+                      );
                     },
                   },
                 ]}
@@ -290,14 +344,11 @@ function SettingsContent({
                   placeholder="+49 30 12345678"
                   onChange={(e) => {
                     const digits = e.target.value;
-                    // optional: live-format outside of validation
-                    // setTimeout avoids cursor jump; or keep as-is:
                     form.setFieldsValue({ phone: digits });
                   }}
                 />
               </Form.Item>
             </Col>
-
             <Col xs={24} md={12}>
               <Form.Item 
                 label="State (Bundesland)" 
@@ -315,7 +366,6 @@ function SettingsContent({
                 />
               </Form.Item>
             </Col>
-
             <Col xs={24} md={12}>
               <Form.Item label="Locale" name="locale">
                 <Select
@@ -328,9 +378,11 @@ function SettingsContent({
               </Form.Item>
             </Col>
           </Row>
+    </div>
+  );
 
-          <Divider />
-
+  const renderSecurityTab = (
+    <div className="space-y-4">
           <Row gutter={[16, 16]}>
             <Col xs={24} md={12}>
               <Form.Item
@@ -338,63 +390,292 @@ function SettingsContent({
                 name="password"
                 tooltip="Leave blank to keep your current password"
               >
-                <Input.Password placeholder="" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Two-factor Authentication">
-                <Switch checked={twoFA} onChange={setTwoFA} />
+            <Input.Password placeholder="Enter new password" />
               </Form.Item>
             </Col>
           </Row>
-
-          <div className="flex justify-between">
-            <Button danger icon={<LogoutOutlined />} onClick={confirmLogout}>
-              Logout
-            </Button>
-            <Button type="primary" icon={<SaveOutlined />} onClick={save}>
-              Save
-            </Button>
+      <Card className="rounded-2xl border border-orange-100 bg-orange-50/70">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="font-semibold text-orange-800 m-0">Two-factor Authentication</h3>
+            <p className="text-sm text-orange-700 m-0">
+              Add an extra layer of protection to your account.
+            </p>
           </div>
-        </Form>
+          <Switch
+            checked={twoFA}
+            onChange={(checked) => {
+              setTwoFA(checked);
+              message.info("Two-factor settings will be updated soon.");
+            }}
+          />
+        </div>
       </Card>
+    </div>
+  );
 
-      {/* Billing & Payments */}
+  const renderBillingTab = (
+    <div className="space-y-4">
       <Card
         className="rounded-2xl shadow-sm hover:shadow transition cursor-pointer"
         onClick={() => navigate("/parent/billing")}
-        styles={{ body: { padding: 16 } }}
       >
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-lime-100">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-lime-100 text-lime-700 text-lg">
             <CreditCardOutlined />
           </div>
-          <div className="flex-1">
+            <div>
             <h3 className="m-0 text-base font-semibold">Billing &amp; Payments</h3>
             <p className="m-0 text-gray-600 text-sm">
               Manage your plan, payment methods, and invoices.
             </p>
           </div>
-          <Button onClick={goOverview} icon={<FileTextOutlined />}>
-            Open
-          </Button>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <Button block icon={<SolutionOutlined />} onClick={goOverview}>
-            Overview
-          </Button>
-          <Button block icon={<CreditCardOutlined />} onClick={goSubscription}>
-            Subscription
-          </Button>
-          <Button block icon={<FileTextOutlined />} onClick={goInvoices}>
-            Invoices
-          </Button>
-          <Button block icon={<GiftOutlined />} onClick={goCoupons}>
-            Coupons
+          </div>
+          <Button type="primary" icon={<CreditCardOutlined />} onClick={openBilling}>
+            Open billing
           </Button>
         </div>
       </Card>
-    </section>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} md={12}>
+          <Card className="rounded-2xl shadow-sm hover:shadow cursor-pointer" onClick={goOverview}>
+            <Space direction="vertical">
+              <FileTextOutlined className="text-xl text-amber-500" />
+              <span className="font-semibold">Plan overview</span>
+              <span className="text-xs text-gray-500">
+                Review your active plan and trial period.
+              </span>
+            </Space>
+          </Card>
+        </Col>
+        <Col xs={24} md={12}>
+          <Card
+            className="rounded-2xl shadow-sm hover:shadow cursor-pointer"
+            onClick={goSubscription}
+          >
+            <Space direction="vertical">
+              <CreditCardOutlined className="text-xl text-emerald-500" />
+              <span className="font-semibold">Subscription options</span>
+              <span className="text-xs text-gray-500">
+                Upgrade or adjust your subscription preferences.
+              </span>
+            </Space>
+          </Card>
+        </Col>
+        <Col xs={24} md={12}>
+          <Card className="rounded-2xl shadow-sm hover:shadow cursor-pointer" onClick={goInvoices}>
+            <Space direction="vertical">
+              <SolutionOutlined className="text-xl text-blue-500" />
+              <span className="font-semibold">Invoices</span>
+              <span className="text-xs text-gray-500">
+                Download receipts for your accounting.
+              </span>
+            </Space>
+          </Card>
+        </Col>
+        <Col xs={24} md={12}>
+          <Card className="rounded-2xl shadow-sm hover:shadow cursor-pointer" onClick={goCoupons}>
+            <Space direction="vertical">
+              <GiftOutlined className="text-xl text-pink-500" />
+              <span className="font-semibold">Coupons</span>
+              <span className="text-xs text-gray-500">
+                Redeem promo codes or share vouchers with friends.
+              </span>
+            </Space>
+          </Card>
+        </Col>
+      </Row>
+    </div>
+  );
+
+  const renderNotificationsTab = (
+    <div className="space-y-4">
+      {[
+        {
+          key: "weeklyDigest",
+          label: "Weekly progress digest",
+          description: "Receive a summary of your child's activity every Monday.",
+        },
+        {
+          key: "homeworkUpdates",
+          label: "Homework updates",
+          description: "Be notified when new scans or feedback are available.",
+        },
+        {
+          key: "marketingEmails",
+          label: "Tips & offers",
+          description: "Get product updates and special offers from Kibundo.",
+        },
+        {
+          key: "productAnnouncements",
+          label: "Product announcements",
+          description: "Hear about new features and betas before anyone else.",
+        },
+      ].map((pref) => (
+        <Card key={pref.key} className="rounded-2xl shadow-sm border border-neutral-100">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-base font-semibold m-0">{pref.label}</h3>
+              <p className="text-sm text-gray-600 m-0">{pref.description}</p>
+            </div>
+            <Switch
+              checked={notificationPrefs[pref.key]}
+              onChange={(value) => handleNotificationToggle(pref.key, value)}
+            />
+          </div>
+        </Card>
+      ))}
+      <Button type="primary" icon={<SaveOutlined />} onClick={handleNotificationSave}>
+        Save notification preferences
+      </Button>
+    </div>
+  );
+
+  const tabItems = [
+    {
+      key: "profile",
+      label: (
+        <span className="flex items-center gap-2">
+          <UserOutlined />
+          Profile
+        </span>
+      ),
+      children: renderProfileTab,
+    },
+    {
+      key: "security",
+      label: (
+        <span className="flex items-center gap-2">
+          <LockOutlined />
+          Security
+        </span>
+      ),
+      children: renderSecurityTab,
+    },
+    {
+      key: "billing",
+      label: (
+        <span className="flex items-center gap-2">
+          <CreditCardOutlined />
+          Billing
+        </span>
+      ),
+      children: renderBillingTab,
+    },
+    {
+      key: "notifications",
+      label: (
+        <span className="flex items-center gap-2">
+          <BellOutlined />
+          Notifications
+        </span>
+      ),
+      children: renderNotificationsTab,
+    },
+  ];
+
+  return (
+    <div className="relative min-h-screen bg-gradient-to-br from-[#F4BE9B] via-[#F2D6B1] to-[#EDE2CB]">
+      <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-60%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
+      <div className="relative z-10 mx-auto w-full max-w-5xl px-4 py-10">
+        <Card className="rounded-3xl border-none bg-white/90 shadow-xl">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <Button
+              type="text"
+              icon={<ArrowLeftOutlined />}
+              onClick={() => {
+                if (window.history.length > 1) navigate(-1);
+                else navigate("/parent");
+              }}
+              className="!p-0 !h-auto text-neutral-700"
+              aria-label="Back"
+            />
+            <div className="flex flex-1 flex-col md:flex-row md:items-center md:gap-4">
+              <Avatar size={64} className="bg-[#FF8400]" style={{ color: "#fff" }}>
+                {initials}
+              </Avatar>
+              <div>
+                <h1 className="text-2xl md:text-3xl font-extrabold m-0">Settings</h1>
+                <p className="text-gray-600 m-0">
+                  Manage your account, family and billing preferences.
+                </p>
+              </div>
+            </div>
+            <Space wrap>
+              <Button icon={<GiftOutlined />} onClick={() => navigate("/parent/billing/coupons")}>
+                Redeem code
+              </Button>
+              <Button type="primary" icon={<CreditCardOutlined />} onClick={openBilling}>
+                Manage billing
+              </Button>
+            </Space>
+          </div>
+
+          <div className="mt-6 rounded-2xl bg-gradient-to-r from-[#FF8400] via-[#FF9A36] to-[#FFC46B] p-6 text-white shadow-inner">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-white/80 text-sm">Signed in as</div>
+                <div className="text-2xl font-semibold">{displayName}</div>
+                <div className="text-sm text-white/80">{displayUser.email}</div>
+              </div>
+              <Space size="middle" wrap>
+                <Tag color="gold" className="px-3 py-1 text-sm font-medium">
+                  {displayUser.state || "State not set"}
+                </Tag>
+                <Tag color={twoFA ? "green" : "red"} className="px-3 py-1 text-sm font-medium">
+                  {twoFA ? "2FA enabled" : "2FA disabled"}
+                </Tag>
+              </Space>
+            </div>
+          </div>
+
+          <Divider />
+
+          <Form form={form} layout="vertical" requiredMark={false}>
+            <Tabs
+              activeKey={activeTab}
+              onChange={setActiveTab}
+              items={tabItems}
+              tabBarGutter={24}
+              className="parent-settings-tabs"
+            />
+
+            <Divider />
+
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <Button
+                danger
+                icon={<LogoutOutlined />}
+                onClick={confirmLogout}
+                className="w-full md:w-auto"
+              >
+                Logout
+          </Button>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                <Button
+                  icon={<SettingOutlined />}
+                  onClick={() => {
+                    form.resetFields();
+                    setTwoFA(Boolean(displayUser?.mfa_enabled));
+                  }}
+                  className="w-full md:w-auto"
+                >
+                  Reset changes
+          </Button>
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  onClick={save}
+                  className="w-full md:w-auto"
+                >
+                  Save changes
+          </Button>
+        </div>
+            </div>
+          </Form>
+      </Card>
+      </div>
+    </div>
   );
 }

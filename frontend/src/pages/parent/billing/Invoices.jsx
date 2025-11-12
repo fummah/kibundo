@@ -32,9 +32,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import api from "@/api/axios";
-
-// ParentShell is now handled at route level
-import globalBg from "@/assets/backgrounds/global-bg.png";
+import { NUNITO_FONT_STACK } from "@/constants/fonts";
 
 const { Title, Text } = Typography;
 
@@ -512,57 +510,59 @@ export default function Invoices() {
   ];
 
   return (
-    <div className="w-full min-h-[100dvh]">
-        {/* Responsive layout - no frame */}
-        <main className="w-full max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
-            {/* Header */}
-            <div className="flex flex-col gap-3">
+    <div
+      className="relative min-h-screen w-full overflow-hidden"
+      style={{
+        background: "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
+        fontFamily: NUNITO_FONT_STACK,
+      }}
+    >
+      <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-60%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
+      <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 py-10">
+        <Card className="rounded-3xl border-none bg-white/92 shadow-xl">
+          <div className="space-y-8">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-3">
                 <Button
+                  type="text"
                   icon={<ArrowLeftOutlined />}
+                  className="!p-0 !h-auto text-neutral-600"
                   onClick={() => navigate("/parent/billing/overview")}
-                >
-                  Back
-                </Button>
-                <Title level={2} className="!m-0">
-                  Invoices
-                </Title>
+                  aria-label="Back to billing overview"
+                />
+                <div>
+                  <Title level={3} className="!mb-0">
+                    Invoices
+                  </Title>
+                  <Text type="secondary">Your billing history and payments.</Text>
+                </div>
               </div>
-              <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-                <p className="text-gray-600 m-0">Your billing history and payments.</p>
-                <Button icon={<ReloadOutlined />} onClick={refresh}>
-                  Refresh
-                </Button>
-              </div>
+              <Button icon={<ReloadOutlined />} onClick={refresh}>
+                Refresh
+              </Button>
             </div>
 
-            {/* KPI cards */}
             <Row gutter={[16, 16]}>
               <Col xs={24} sm={12} md={8}>
                 <Card className="rounded-2xl shadow-sm" loading={loading}>
-                  <div className="text-gray-500 text-sm mb-1">Outstanding</div>
-                  <div className="text-2xl font-extrabold text-red-500">
-                    {money(kpis.outstanding, "EUR")}
-                  </div>
+                  <div className="text-sm text-gray-500">Outstanding</div>
+                  <div className="text-2xl font-extrabold text-red-500">{money(kpis.outstanding, "EUR")}</div>
                 </Card>
               </Col>
               <Col xs={24} sm={12} md={8}>
                 <Card className="rounded-2xl shadow-sm" loading={loading}>
-                  <div className="text-gray-500 text-sm mb-1">Paid (Last 30 days)</div>
-                  <div className="text-2xl font-extrabold text-green-600">
-                    {money(kpis.last30paid, "EUR")}
-                  </div>
+                  <div className="text-sm text-gray-500">Paid (30 days)</div>
+                  <div className="text-2xl font-extrabold text-green-600">{money(kpis.last30paid, "EUR")}</div>
                 </Card>
               </Col>
               <Col xs={24} sm={12} md={8}>
                 <Card className="rounded-2xl shadow-sm" loading={loading}>
-                  <div className="text-gray-500 text-sm mb-1">Total Invoices</div>
-                  <div className="text-2xl font-extrabold">{kpis.count}</div>
+                  <div className="text-sm text-gray-500">Total invoices</div>
+                  <div className="text-2xl font-extrabold text-neutral-800">{kpis.count}</div>
                 </Card>
               </Col>
             </Row>
 
-            {/* Filters */}
             <Card className="rounded-2xl shadow-sm">
               <Row gutter={[12, 12]} align="middle">
                 <Col xs={24} md={10}>
@@ -597,7 +597,6 @@ export default function Invoices() {
               </Row>
             </Card>
 
-            {/* Mobile list */}
             <div className="mobile-only">
               {loading ? (
                 <Card className="rounded-2xl shadow-sm">
@@ -613,17 +612,16 @@ export default function Invoices() {
                 <List
                   dataSource={filtered}
                   renderItem={(inv) => (
-                    <Card className="rounded-2xl shadow-sm mb-3" key={inv.id}>
+                    <Card className="mb-3 rounded-2xl shadow-sm" key={inv.id}>
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="font-semibold">{inv.id}</div>
-                          <div className="text-gray-500 text-sm">
-                            {dayjs(inv.date).format("MMM D, YYYY")} · Due{" "}
-                            {dayjs(inv.due_date).format("MMM D")}
+                          <div className="text-sm text-gray-500">
+                            {dayjs(inv.date).format("MMM D, YYYY")} · Due {dayjs(inv.due_date).format("MMM D")}
                           </div>
                           <Tooltip title={inv.children.join(", ")}>
-                            <div className="text-gray-600 text-sm mt-1 line-clamp-2">
-                              {inv.children.length > 2 
+                            <div className="mt-1 line-clamp-2 text-sm text-gray-600">
+                              {inv.children.length > 2
                                 ? `${inv.children.slice(0, 2).join(", ")} +${inv.children.length - 2} more`
                                 : inv.children.join(", ")}
                             </div>
@@ -650,29 +648,29 @@ export default function Invoices() {
                                     label: "Download PDF",
                                     icon: <DownloadOutlined />,
                                     onClick: () => {
-                                      if (inv.pdf_url && inv.pdf_url !== '#') {
-                                        window.open(inv.pdf_url, '_blank');
+                                      if (inv.pdf_url && inv.pdf_url !== "#") {
+                                        window.open(inv.pdf_url, "_blank");
                                       } else {
                                         openPrintable(inv);
                                       }
                                     },
                                   },
-                                  ...(["due", "overdue"].includes(inv.status) ? [{
-                                    key: "pay",
-                                    label: "Pay",
-                                    icon: <CreditCardOutlined />,
-                                    onClick: () => navigate("/parent/billing/subscription"),
-                                  }] : []),
+                                  ...(["due", "overdue"].includes(inv.status)
+                                    ? [
+                                        {
+                                          key: "pay",
+                                          label: "Pay",
+                                          icon: <CreditCardOutlined />,
+                                          onClick: () => navigate("/parent/billing/subscription"),
+                                        },
+                                      ]
+                                    : []),
                                 ],
                               }}
-                              trigger={['click']}
+                              trigger={["click"]}
                               placement="bottomRight"
                             >
-                              <Button
-                                type="text"
-                                icon={<MoreOutlined />}
-                                size="small"
-                              />
+                              <Button type="text" icon={<MoreOutlined />} size="small" />
                             </Dropdown>
                           </div>
                         </div>
@@ -683,7 +681,6 @@ export default function Invoices() {
               )}
             </div>
 
-            {/* Desktop table */}
             <div className="desktop-only">
               <Card className="rounded-2xl shadow-sm" loading={loading}>
                 {filtered.length === 0 ? (
@@ -693,10 +690,10 @@ export default function Invoices() {
                     rowKey="id"
                     columns={columns}
                     dataSource={filtered}
-                    pagination={{ 
-                      pageSize: 10, 
+                    pagination={{
+                      pageSize: 10,
                       showSizeChanger: false,
-                      showTotal: (total) => `Total ${total} invoices`
+                      showTotal: (total) => `Total ${total} invoices`,
                     }}
                     scroll={{ x: 1000 }}
                     size="middle"
@@ -704,13 +701,11 @@ export default function Invoices() {
                 )}
               </Card>
             </div>
+          </div>
+        </Card>
+      </div>
 
-            {/* Give some breathing room before the bottom bar */}
-            <div className="h-6" />
-        </main>
-
-        {/* Drawer details */}
-        <Drawer
+      <Drawer
           title={active ? `Invoice ${active.id}` : "Invoice"}
           open={open}
           onClose={() => setOpen(false)}

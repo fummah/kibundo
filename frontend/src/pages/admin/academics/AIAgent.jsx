@@ -525,6 +525,27 @@ export default function AIAgent() {
       file_name: agent.file_name || agent.prompts?.file_name || "",
       api: agent.api || agent.prompts?.api || "",
       url: agent.prompts?.url || "",
+      master_prompt: agent.master_prompt ?? agent.prompts?.master_prompt ?? "",
+      instructions: agent.instructions ?? agent.prompts?.instructions ?? "",
+      initial_messages: Array.isArray(agent.initial_messages)
+        ? agent.initial_messages
+        : Array.isArray(agent.prompts?.initial_messages)
+          ? agent.prompts.initial_messages
+          : undefined,
+      suggested_messages: Array.isArray(agent.suggested_messages)
+        ? agent.suggested_messages
+        : Array.isArray(agent.prompts?.suggested_messages)
+          ? agent.prompts.suggested_messages
+          : undefined,
+      prompts: {
+        ...(agent.prompts || {}),
+        master_prompt: agent.master_prompt ?? agent.prompts?.master_prompt ?? "",
+        instructions: agent.instructions ?? agent.prompts?.instructions ?? "",
+        entities: agent.prompts?.entities || agent.entities || [],
+        api: agent.prompts?.api ?? agent.api ?? "",
+        file_name: agent.prompts?.file_name ?? agent.file_name ?? "",
+        url: agent.prompts?.url ?? agent.url ?? "",
+      },
     });
     setEditModalVisible(true);
   };
@@ -538,7 +559,53 @@ export default function AIAgent() {
   const handleEditSubmit = async () => {
     if (!editingAgent) return;
 
-    const success = await updateAgentSettings(editingAgent.id, editFormData);
+    const mergedPrompts = {
+      ...(editingAgent.prompts || {}),
+      ...(editFormData.prompts || {}),
+      master_prompt:
+        editFormData.master_prompt ??
+        editingAgent.master_prompt ??
+        editingAgent.prompts?.master_prompt ??
+        "",
+      instructions:
+        editFormData.instructions ??
+        editingAgent.instructions ??
+        editingAgent.prompts?.instructions ??
+        "",
+      entities: editFormData.entities ?? editingAgent.prompts?.entities ?? editingAgent.entities ?? [],
+      api: editFormData.api ?? editingAgent.prompts?.api ?? editingAgent.api ?? "",
+      file_name:
+        editFormData.file_name ??
+        editingAgent.prompts?.file_name ??
+        editingAgent.file_name ??
+        "",
+      url: editFormData.url ?? editingAgent.prompts?.url ?? editingAgent.url ?? "",
+    };
+
+    const payload = {
+      ...editFormData,
+      master_prompt:
+        editFormData.master_prompt ??
+        editingAgent.master_prompt ??
+        editingAgent.prompts?.master_prompt ??
+        "",
+      instructions:
+        editFormData.instructions ??
+        editingAgent.instructions ??
+        editingAgent.prompts?.instructions ??
+        "",
+      prompts: mergedPrompts,
+      initial_messages:
+        editFormData.initial_messages ??
+        editingAgent.initial_messages ??
+        editingAgent.prompts?.initial_messages,
+      suggested_messages:
+        editFormData.suggested_messages ??
+        editingAgent.suggested_messages ??
+        editingAgent.prompts?.suggested_messages,
+    };
+
+    const success = await updateAgentSettings(editingAgent.id, payload);
     if (success) {
       closeEditModal();
     }
@@ -1477,6 +1544,28 @@ export default function AIAgent() {
                 setEditFormData({ ...editFormData, api: e.target.value })
               }
               placeholder="Enter API endpoint"
+            />
+          </Form.Item>
+
+          <Form.Item label="Master Prompt">
+            <Input.TextArea
+              rows={4}
+              value={editFormData.master_prompt || ""}
+              onChange={(e) =>
+                setEditFormData({ ...editFormData, master_prompt: e.target.value })
+              }
+              placeholder="Define the system/master prompt for this agent"
+            />
+          </Form.Item>
+
+          <Form.Item label="Instructions">
+            <Input.TextArea
+              rows={4}
+              value={editFormData.instructions || ""}
+              onChange={(e) =>
+                setEditFormData({ ...editFormData, instructions: e.target.value })
+              }
+              placeholder="Additional operating instructions (optional)"
             />
           </Form.Item>
         </Form>

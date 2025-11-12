@@ -17,9 +17,7 @@ import {
 import { ArrowRightOutlined, CheckCircleOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import api from "@/api/axios";
-
-// ParentShell is now handled at route level
-import globalBg from "@/assets/backgrounds/global-bg.png";
+import { NUNITO_FONT_STACK } from "@/constants/fonts";
 
 const { Text, Title } = Typography;
 
@@ -392,256 +390,251 @@ export default function Subscription() {
 
   if (loading) {
     return (
-      <App>
-        <div className="w-full min-h-[100dvh] flex justify-center items-center">
+      <div
+        className="relative min-h-screen w-full overflow-hidden"
+        style={{
+          background: "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
+          fontFamily: NUNITO_FONT_STACK,
+        }}
+      >
+        <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-60%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
+        <div className="relative z-10 flex min-h-screen items-center justify-center px-4">
           <Spin size="large" />
         </div>
-      </App>
+      </div>
     );
   }
 
   return (
     <App>
-      <div className="w-full min-h-[100dvh]">
-        {/* Responsive layout - no frame */}
-        <main className="w-full max-w-7xl mx-auto px-4 md:px-8">
-          {/* Breadcrumb Navigation */}
-          <div className="pt-6">
-            <div className="flex items-center gap-2 text-sm text-neutral-600 mb-4">
-              <Button
-                type="link"
-                onClick={() => navigate("/parent/billing/overview")}
-                className="!p-0 !h-auto"
-              >
-                Billing
-              </Button>
-              <span>/</span>
-              <span className="text-neutral-400">Subscriptions</span>
-            </div>
-
-            {/* Page header */}
-            <div className="flex items-center gap-3 mb-2">
-              <Button
-                type="text"
-                icon={<ArrowLeftOutlined />}
-                onClick={() => navigate("/parent/billing/overview")}
-                className="flex items-center"
-              >
-                Back
-              </Button>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-neutral-800 m-0">
-              Choose Your Subscription Plan
-            </h1>
-            <p className="text-neutral-600 mt-2">
-              Select a plan that fits your family's needs. You can change or cancel anytime.
-            </p>
-          </div>
-
-          {/* Active Subscription Alert */}
-          {activeSubscription && (
-            <div className="mt-3">
-              <Alert
-                message="You have an active subscription"
-                description={
-                  <div>
-                    <p className="mb-1">
-                      You currently have an active subscription. Selecting a different plan will upgrade your subscription.
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      Your current subscription will be replaced with the new plan you select.
-                    </p>
-                  </div>
-                }
-                type="info"
-                showIcon
-                closable
-                className="rounded-2xl"
-              />
-            </div>
-          )}
-
-          {/* Information Card */}
-          <div className="mt-4">
-            <Card className="rounded-2xl bg-gradient-to-r from-[#C7D425]/10 to-[#6D8F00]/10 border-[#C7D425]/30">
-              <div className="flex items-start gap-3">
-                <div className="text-2xl">ℹ️</div>
-                <div className="flex-1">
-                  <Text strong className="block mb-1">What's Included?</Text>
-                  <Text type="secondary" className="text-sm">
-                    All plans include full platform access, homework assistance, AI-powered learning support, 
-                    progress tracking, and unlimited access to educational content. Choose the plan that best fits your family size and billing preference.
-                  </Text>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* Hero / Controls */}
-          <div>
-            <div className="mt-3 rounded-3xl bg-white/80 p-5 shadow">
-              <div className="md:flex md:items-center md:justify-between">
-                <div>
-                  <h2 className="text-xl md:text-2xl font-extrabold m-0">
-                    Select Your Plan
-                  </h2>
-                  <p className="mt-1 text-neutral-600">
-                    Choose the billing frequency and number of children. All plans include full platform access.
-                  </p>
-                </div>
-
-                <div className="mt-4 md:mt-0 flex flex-col sm:flex-row gap-3">
-                  <Segmented
-                    size="large"
-                    options={[
-                      { label: "Weekly", value: "week" },
-                      { label: "Monthly", value: "month" },
-                      { label: "Yearly", value: "year" },
-                    ]}
-                    value={interval}
-                    onChange={setInterval}
-                    aria-label="Billing interval"
-                  />
-
-                  {/* Package selector (Starter/Family) */}
-                  <Radio.Group
-                    size="large"
-                    value={childrenCount}
-                    onChange={(e) => setChildrenCount(e.target.value)}
-                    className="bg-white rounded-full px-2 py-1"
-                    aria-label="Package"
-                  >
-                    <Radio.Button value={1}>Starter (1 child)</Radio.Button>
-                    <Radio.Button value={2}>Family (2 children)</Radio.Button>
-                  </Radio.Group>
-                </div>
-              </div>
-            </div>
-
-            {/* Layout */}
-            <div className="mt-5 grid grid-cols-1 gap-6 lg:max-w-6xl xl:max-w-7xl mx-auto md:grid-cols-3">
-              {/* Plans */}
-              <div className="md:col-span-2">
-                {/* Mobile list */}
-                <div className="grid grid-cols-1 gap-4 md:hidden">
-                  {filtered.length === 0 ? (
-                    <Card className="text-center py-8">
-                      <Text type="secondary" className="block mb-2">
-                        {products.length === 0 
-                          ? "No subscription plans are currently available. Please contact support."
-                          : `No plans available for ${interval} billing with ${childrenCount} ${childrenCount === 1 ? "child" : "children"}. Try selecting a different option above.`}
-                      </Text>
-                    </Card>
-                  ) : (
-                    filtered.map((p) => (
-                      <PlanCard
-                        key={p.id}
-                        plan={p}
-                        selected={currentSelected?.id === p.id}
-                        onSelect={setSelectedPlan}
-                      />
-                    ))
-                  )}
-                </div>
-
-                {/* Desktop grid */}
-                <div className="hidden md:grid grid-cols-2 xl:grid-cols-3 gap-5">
-                  {filtered.length === 0 ? (
-                    <Card className="text-center py-8 col-span-full">
-                      <Text type="secondary" className="block mb-2">
-                        {products.length === 0 
-                          ? "No subscription plans are currently available. Please contact support."
-                          : `No plans available for ${interval} billing with ${childrenCount} ${childrenCount === 1 ? "child" : "children"}. Try selecting a different option above.`}
-                      </Text>
-                    </Card>
-                  ) : (
-                    filtered.map((p) => (
-                      <PlanCard
-                        key={p.id}
-                        plan={p}
-                        selected={currentSelected?.id === p.id}
-                        onSelect={setSelectedPlan}
-                      />
-                    ))
-                  )}
-                </div>
-
-                {/* Comparison (desktop & tablet) */}
-                {allForComparison.length > 0 && (
-                  <div className="hidden md:block mt-6">
-                    <Comparison plans={allForComparison} />
-                  </div>
-                )}
-              </div>
-
-              {/* Summary */}
-              <div className="md:col-span-1 md:relative">
-                {/* Sticky on desktop */}
-                <div className="hidden md:block md:sticky md:top-20">
-                  <PromoSummary
-                    selectedPlan={currentSelected}
-                    promoCode={promoCode}
-                    setPromoCode={setPromoCode}
-                  />
+      <div
+        className="relative min-h-screen w-full overflow-hidden"
+        style={{
+          background: "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
+          fontFamily: NUNITO_FONT_STACK,
+        }}
+      >
+        <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-60%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
+        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-8 py-10">
+          <Card className="rounded-3xl border-none bg-white/92 shadow-xl">
+            <div className="space-y-8">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-sm text-neutral-600">
                   <Button
-                    size="large"
-                    className="mt-4 h-12 w-full rounded-full bg-[#C7D425] text-neutral-900 border-none hover:!bg-[#b8c61d]"
-                    disabled={!currentSelected}
-                    onClick={handleContinue}
-                    icon={<ArrowRightOutlined />}
+                    type="link"
+                    onClick={() => navigate("/parent/billing/overview")}
+                    className="!p-0 !h-auto"
                   >
-                    {currentSelected ? "Continue to Checkout" : "Select a plan to continue"}
+                    Billing
                   </Button>
-                  {!currentSelected && (
-                    <Text type="secondary" className="text-xs text-center block mt-2">
-                      Please select a subscription plan above
+                  <span>/</span>
+                  <span className="text-neutral-400">Subscriptions</span>
+                </div>
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="text"
+                      icon={<ArrowLeftOutlined />}
+                      className="!p-0 !h-auto text-neutral-600"
+                      onClick={() => navigate("/parent/billing/overview")}
+                      aria-label="Back to billing overview"
+                    />
+                    <div>
+                      <Title level={3} className="!mb-0">
+                        Choose Your Subscription Plan
+                      </Title>
+                      <Text type="secondary">
+                        Select the billing rhythm and number of children. Change or cancel anytime.
+                      </Text>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {activeSubscription && (
+                <Alert
+                  message="You have an active subscription"
+                  description={
+                    <div>
+                      <p className="mb-1">
+                        You currently have an active subscription. Selecting a different plan will upgrade your subscription.
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Your current subscription will be replaced with the new plan you select.
+                      </p>
+                    </div>
+                  }
+                  type="info"
+                  showIcon
+                  closable
+                  className="rounded-2xl"
+                />
+              )}
+
+              <Card className="rounded-2xl bg-gradient-to-r from-[#C7D425]/15 via-white/40 to-[#6D8F00]/10 border-none shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="text-2xl" aria-hidden>ℹ️</div>
+                  <div className="flex-1">
+                    <Text strong className="block mb-1">
+                      What's included?
                     </Text>
+                    <Text type="secondary" className="text-sm">
+                      All plans include full platform access, homework assistance, AI-powered learning support, progress tracking, and unlimited educational content.
+                    </Text>
+                  </div>
+                </div>
+              </Card>
+
+              <div className="rounded-3xl bg-white/85 p-5 shadow-sm">
+                <div className="md:flex md:items-center md:justify-between">
+                  <div>
+                    <h2 className="text-xl md:text-2xl font-extrabold m-0">Select your plan</h2>
+                    <p className="mt-1 text-neutral-600">
+                      Adjust billing frequency and family size to see the plans that match your situation.
+                    </p>
+                  </div>
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row md:mt-0">
+                    <Segmented
+                      size="large"
+                      options={[
+                        { label: "Weekly", value: "week" },
+                        { label: "Monthly", value: "month" },
+                        { label: "Yearly", value: "year" },
+                      ]}
+                      value={interval}
+                      onChange={setInterval}
+                      aria-label="Billing interval"
+                    />
+                    <Radio.Group
+                      size="large"
+                      value={childrenCount}
+                      onChange={(e) => setChildrenCount(e.target.value)}
+                      className="rounded-full bg-white px-2 py-1"
+                      aria-label="Family size"
+                    >
+                      <Radio.Button value={1}>Starter (1 child)</Radio.Button>
+                      <Radio.Button value={2}>Family (2 children)</Radio.Button>
+                    </Radio.Group>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-3 lg:max-w-6xl xl:max-w-7xl mx-auto">
+                <div className="md:col-span-2 space-y-5">
+                  <div className="grid grid-cols-1 gap-4 md:hidden">
+                    {filtered.length === 0 ? (
+                      <Card className="py-8 text-center">
+                        <Text type="secondary" className="block mb-2">
+                          {products.length === 0
+                            ? "No subscription plans are currently available. Please contact support."
+                            : `No plans available for ${interval} billing with ${childrenCount} ${
+                                childrenCount === 1 ? "child" : "children"
+                              }. Try selecting a different option above.`}
+                        </Text>
+                      </Card>
+                    ) : (
+                      filtered.map((p) => (
+                        <PlanCard
+                          key={p.id}
+                          plan={p}
+                          selected={currentSelected?.id === p.id}
+                          onSelect={setSelectedPlan}
+                        />
+                      ))
+                    )}
+                  </div>
+
+                  <div className="hidden md:grid grid-cols-2 gap-5 xl:grid-cols-3">
+                    {filtered.length === 0 ? (
+                      <Card className="col-span-full py-8 text-center">
+                        <Text type="secondary" className="block mb-2">
+                          {products.length === 0
+                            ? "No subscription plans are currently available. Please contact support."
+                            : `No plans available for ${interval} billing with ${childrenCount} ${
+                                childrenCount === 1 ? "child" : "children"
+                              }. Try selecting a different option above.`}
+                        </Text>
+                      </Card>
+                    ) : (
+                      filtered.map((p) => (
+                        <PlanCard
+                          key={p.id}
+                          plan={p}
+                          selected={currentSelected?.id === p.id}
+                          onSelect={setSelectedPlan}
+                        />
+                      ))
+                    )}
+                  </div>
+
+                  {allForComparison.length > 0 && (
+                    <div className="hidden md:block">
+                      <Comparison plans={allForComparison} />
+                    </div>
                   )}
                 </div>
 
-                {/* Mobile */}
-                <div className="md:hidden">
-                  <PromoSummary
-                    selectedPlan={currentSelected}
-                    promoCode={promoCode}
-                    setPromoCode={setPromoCode}
-                  />
+                <div className="md:col-span-1 space-y-4">
+                  <div className="hidden md:block md:sticky md:top-20">
+                    <PromoSummary
+                      selectedPlan={currentSelected}
+                      promoCode={promoCode}
+                      setPromoCode={setPromoCode}
+                    />
+                    <Button
+                      size="large"
+                      className="mt-4 h-12 w-full rounded-full border-none bg-[#C7D425] text-neutral-900 hover:!bg-[#b8c61d]"
+                      disabled={!currentSelected}
+                      onClick={handleContinue}
+                      icon={<ArrowRightOutlined />}
+                    >
+                      {currentSelected ? "Continue to checkout" : "Select a plan to continue"}
+                    </Button>
+                    {!currentSelected && (
+                      <Text type="secondary" className="mt-2 block text-center text-xs">
+                        Please select a subscription plan above
+                      </Text>
+                    )}
+                  </div>
+
+                  <div className="md:hidden">
+                    <PromoSummary
+                      selectedPlan={currentSelected}
+                      promoCode={promoCode}
+                      setPromoCode={setPromoCode}
+                    />
+                  </div>
                 </div>
               </div>
+
+              <div className="h-10 md:h-6" />
             </div>
+          </Card>
+        </div>
 
-            {/* Give enough breathing room above the bottom bar */}
-            <div className="h-24 md:h-10" />
-          </div>
-        </main>
-
-        {/* Mobile sticky action bar — offset ABOVE the BottomTabBar */}
         <div
-          className="fixed inset-x-0 md:hidden z-40 bg-white/95 backdrop-blur border-t border-neutral-200 px-4 py-3"
+          className="fixed inset-x-0 z-40 border-t border-neutral-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden"
           style={{ bottom: "calc(80px + env(safe-area-inset-bottom))" }}
         >
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-xs text-neutral-500">Selected package</div>
-              <div className="text-sm font-semibold truncate">
+              <div className="truncate text-sm font-semibold">
                 {currentSelected
-                  ? `${currentSelected.name} · ${money(
-                      total || 0,
-                      "EUR"
-                    )}/${currentSelected.billing_interval}`
+                  ? `${currentSelected.name} · ${money(total || 0, "EUR")}/${currentSelected.billing_interval}`
                   : "None"}
               </div>
             </div>
             <Button
               type="primary"
-              className="bg-[#C7D425] text-neutral-900"
+              className="rounded-full bg-[#C7D425] text-neutral-900"
               size="large"
               shape="round"
               disabled={!currentSelected}
               onClick={handleContinue}
               icon={<ArrowRightOutlined />}
             >
-              {currentSelected ? "Continue" : "Select Plan"}
+              {currentSelected ? "Continue" : "Select plan"}
             </Button>
           </div>
           <div className="h-[env(safe-area-inset-bottom)]" />

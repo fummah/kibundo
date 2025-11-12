@@ -34,6 +34,7 @@ import api from "@/api/axios";
 
 // ParentShell is now handled at route level
 import globalBg from "@/assets/backgrounds/global-bg.png";
+import { NUNITO_FONT_STACK } from "@/constants/fonts";
 
 const { Title, Text } = Typography;
 
@@ -273,53 +274,57 @@ export default function Coupons() {
   };
 
   return (
-    <div className="w-full min-h-[100dvh]">
-        {/* Responsive layout - no frame */}
-        <main className="w-full max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
-            {/* header with back + refresh */}
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2">
+    <div
+      className="relative min-h-screen w-full overflow-hidden"
+      style={{
+        background: "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
+        fontFamily: NUNITO_FONT_STACK,
+      }}
+    >
+      <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-60%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
+      <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 py-10">
+        <Card className="rounded-3xl border-none bg-white/92 shadow-xl">
+          <div className="space-y-8">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-3">
                 <Button
+                  type="text"
                   icon={<ArrowLeftOutlined />}
-                  onClick={() => navigate(-1)}
+                  className="!p-0 !h-auto text-neutral-600"
                   aria-label={t("common.back")}
+                  onClick={() => navigate("/parent/settings")}
                 />
                 <div>
-                  <Title level={2} className="!m-0">
+                  <Title level={3} className="!mb-0">
                     {t("parent.billing.coupons.title")}
                   </Title>
-                  <p className="text-gray-600 m-0">
-                    {t("parent.billing.coupons.subtitle")}
-                  </p>
+                  <Text type="secondary">{t("parent.billing.coupons.subtitle")}</Text>
                 </div>
               </div>
-
               <Button icon={<ReloadOutlined />} onClick={refresh} aria-label="Refresh coupons">
                 {t("actions.refresh")}
               </Button>
             </div>
 
-            {/* rules */}
             <Space direction="vertical" className="w-full">
               <Alert type="info" showIcon message={t("parent.billing.coupons.rules.oneActiveOnly")} />
               <Alert type="warning" showIcon message={t("parent.billing.coupons.activeSubNoDiscount")} />
             </Space>
 
-            {/* KPIs */}
             <Row gutter={[12, 12]}>
-              <Col xs={8}>
+              <Col xs={24} sm={8}>
                 <Card className="rounded-2xl shadow-sm text-center" loading={loading}>
                   <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.active")}</div>
                   <div className="text-xl font-extrabold text-green-600">{kpis.actives}</div>
                 </Card>
               </Col>
-              <Col xs={8}>
+              <Col xs={24} sm={8}>
                 <Card className="rounded-2xl shadow-sm text-center" loading={loading}>
                   <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.upcoming")}</div>
                   <div className="text-xl font-extrabold text-blue-600">{kpis.upcoming}</div>
                 </Card>
               </Col>
-              <Col xs={8}>
+              <Col xs={24} sm={8}>
                 <Card className="rounded-2xl shadow-sm text-center" loading={loading}>
                   <div className="text-gray-500 text-xs">{t("parent.billing.coupons.kpi.expired")}</div>
                   <div className="text-xl font-extrabold text-red-500">{kpis.expired}</div>
@@ -327,7 +332,6 @@ export default function Coupons() {
               </Col>
             </Row>
 
-            {/* filters */}
             <Card className="rounded-2xl shadow-sm">
               <Row gutter={[12, 12]} align="middle">
                 <Col xs={24}>
@@ -361,7 +365,6 @@ export default function Coupons() {
               </Row>
             </Card>
 
-            {/* internal coupons list */}
             <Card className="rounded-2xl shadow-sm" loading={loading}>
               {loading ? (
                 <div className="py-8 text-center">
@@ -373,61 +376,59 @@ export default function Coupons() {
                 <List
                   dataSource={filtered}
                   renderItem={(c) => (
-                  <Card className="rounded-2xl shadow-sm mb-3" key={c.id}>
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-lime-200 grid place-items-center text-lime-800">
-                        <GiftOutlined />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold">{c.title}</span>
-                          {statusTag(c.status)}
-                          {c.min_spend > 0 && (
-                            <Tag color="purple" className="ml-1">
-                              {t("parent.billing.coupons.minSpend", {
-                                amount: money(c.min_spend, c.currency),
-                              })}
+                    <Card className="rounded-2xl shadow-sm mb-3" key={c.id}>
+                      <div className="flex items-start gap-3">
+                        <div className="grid h-10 w-10 place-items-center rounded-xl bg-[#FFEFD2] text-[#FF7F32]">
+                          <GiftOutlined />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold">{c.title}</span>
+                            {statusTag(c.status)}
+                            {c.min_spend > 0 && (
+                              <Tag color="purple">
+                                {t("parent.billing.coupons.minSpend", {
+                                  amount: money(c.min_spend, c.currency),
+                                })}
+                              </Tag>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-600">{c.description}</div>
+
+                          <div className="mt-2 flex flex-wrap items-center gap-3">
+                            <Badge color="#C7D425" text={<strong>{c.code}</strong>} />
+                            <Tag color="magenta">
+                              {discountLabel(c)} {t("parent.billing.coupons.off")}
                             </Tag>
-                          )}
-                        </div>
-                        <div className="text-gray-600 text-sm">{c.description}</div>
+                            <Text type="secondary" className="text-xs">
+                              {dayjs(c.start_at).format("MMM D")} – {fmtDate(c.end_at)}
+                            </Text>
+                          </div>
 
-                        <div className="mt-2 flex flex-wrap items-center gap-3">
-                          <Badge color="#c7d425" text={<strong>{c.code}</strong>} />
-                          <Tag color="magenta">
-                            {discountLabel(c)} {t("parent.billing.coupons.off")}
-                          </Tag>
-                          <Text type="secondary" className="text-xs">
-                            {dayjs(c.start_at).format("MMM D")} – {fmtDate(c.end_at)}
-                          </Text>
-                        </div>
-
-                        <Space className="mt-3">
-                          <Button onClick={() => copy(c.code)} icon={<CopyOutlined />} aria-label={`Copy ${c.code}`}>
-                            {t("actions.copy")}
-                          </Button>
-
-                          <Tooltip title={!canRedeem(c) ? blockedReason(c) : ""}>
-                            <Button
-                              type="primary"
-                              icon={<ArrowRightOutlined />}
-                              disabled={!canRedeem(c)}
-                              onClick={() => useNow(c)}
-                              aria-label={`Use ${c.code}`}
-                            >
-                              {t("actions.useNow")}
+                          <Space className="mt-3">
+                            <Button onClick={() => copy(c.code)} icon={<CopyOutlined />} aria-label={`Copy ${c.code}`}>
+                              {t("actions.copy")}
                             </Button>
-                          </Tooltip>
-                        </Space>
+                            <Tooltip title={!canRedeem(c) ? blockedReason(c) : ""}>
+                              <Button
+                                type="primary"
+                                icon={<ArrowRightOutlined />}
+                                disabled={!canRedeem(c)}
+                                onClick={() => useNow(c)}
+                                aria-label={`Use ${c.code}`}
+                              >
+                                {t("actions.useNow")}
+                              </Button>
+                            </Tooltip>
+                          </Space>
+                        </div>
                       </div>
-                    </div>
-                  </Card>
+                    </Card>
                   )}
                 />
               )}
             </Card>
 
-            {/* External offers */}
             <Card className="rounded-2xl shadow-sm">
               <div className="flex items-center justify-between mb-2">
                 <strong>{t("parent.billing.coupons.externalOffers.title")}</strong>
@@ -442,7 +443,7 @@ export default function Coupons() {
                     <List.Item key={o.id} className="!px-0">
                       <div className="flex-1">
                         <div className="font-semibold">{o.title}</div>
-                        <div className="text-gray-600 text-sm">{o.description}</div>
+                        <div className="text-sm text-gray-600">{o.description}</div>
                         <Text type="secondary" className="text-xs">
                           {t("parent.billing.coupons.validUntil", {
                             date: fmtDate(o.end_at),
@@ -465,7 +466,9 @@ export default function Coupons() {
                 />
               )}
             </Card>
-        </main>
+          </div>
+        </Card>
       </div>
+    </div>
   );
 }
