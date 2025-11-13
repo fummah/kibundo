@@ -96,7 +96,7 @@ export default function WelcomeIntro() {
         }}
       />
       {/* Tree/bush horizon */}
-      <div className="pointer-events-none absolute inset-x-0 top-[18%] -z-10 flex justify-center">
+      <div className="pointer-events-none absolute inset-x-0 top-[18%] -z-5 flex justify-center">
         <img
           src={bgTrees}
           alt=""
@@ -141,7 +141,7 @@ export default function WelcomeIntro() {
       </div>
 
       {/* Buddy + bubble */}
-      <div className="relative z-20 px-3 mt-2">
+      <div className="relative z-20 px-3 mt-[35vh] md:mt-[32vh]">
         <div className="relative min-h-[240px]">
           <img
             src={buddy?.img || buddyMascot}
@@ -163,7 +163,7 @@ export default function WelcomeIntro() {
       </div>
 
       {/* CTA */}
-      <div className="relative z-20 mt-[12vh] flex w-full justify-center px-6 pb-8">
+      <div className="relative z-20 mt-8 flex w-full justify-center px-6 pb-32 md:pb-24 lg:pb-8">
         <Button
           type="primary"
           size="large"

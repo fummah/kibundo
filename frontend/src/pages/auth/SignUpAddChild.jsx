@@ -60,7 +60,7 @@ export default function SignUpAddChild() {
 
   return (
     <div
-      className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 py-16"
+      className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pt-16 pb-32 md:pb-24 lg:pb-16"
       style={{
         background:
           "linear-gradient(180deg, rgba(244,190,155,1) 0%, rgba(242,214,177,1) 45%, rgba(237,226,203,1) 100%)",

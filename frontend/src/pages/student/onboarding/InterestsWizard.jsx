@@ -208,7 +208,7 @@ export default function InterestsWizard() {
           }}
         />
         {/* ---------- Page content ---------- */}
-        <div className="relative z-10 mx-auto flex min-h-[100svh] w-full max-w-[900px] flex-col px-5 pb-10 pt-8 md:px-10">
+        <div className="relative z-10 mx-auto flex min-h-[100svh] w-full max-w-[900px] flex-col px-5 pb-32 md:pb-24 lg:pb-32 xl:pb-10 pt-12 md:pt-16 lg:pt-8 md:px-10">
           {/* Header */}
           <div className="flex items-center justify-center">
             <Title level={2} className="!mb-0 text-center text-3xl font-bold tracking-wide text-[#5a4c3a]">
@@ -217,7 +217,7 @@ export default function InterestsWizard() {
           </div>
 
           {/* Hero + controls */}
-          <div className="mt-10 flex flex-1 flex-col items-center gap-6 md:gap-8">
+          <div className="mt-8 md:mt-12 flex flex-1 flex-col items-center gap-6 md:gap-8">
             <div className="flex w-full items-start justify-center gap-4 md:gap-8">
               <div className="relative flex flex-col items-center">
                 <BuddyAvatar src={buddy?.img || buddyMascot} size={150} />
@@ -366,7 +366,7 @@ export default function InterestsWizard() {
           </div>
 
           {/* Footer Actions */}
-          <div className="mt-10 flex w-full items-center justify-between gap-2">
+          <div className="mt-10 mb-4 md:mb-6 lg:mb-8 flex w-full items-center justify-between gap-2">
             <Button
               onClick={onBack}
               disabled={saving}

@@ -115,7 +115,7 @@ export default function BuddySelect() {
         }}
       />
       {/* ---------- CONTENT ---------- */}
-      <div className="relative px-4 py-6 flex flex-col min-h-[100svh]">
+      <div className="relative px-4 pt-6 pb-32 md:pb-6 flex flex-col min-h-[100svh]">
         {/* Header (Back + TTS/Skip if you want) */}
         <OnboardingHeader onBack={() => navigate(-1)} />
 
@@ -145,7 +145,7 @@ export default function BuddySelect() {
         </div>
 
         {/* Next button - Always visible at bottom */}
-        <div className="relative z-10 mt-auto pt-4 pb-6 bg-white/95 backdrop-blur-sm rounded-t-2xl -mx-4 px-4">
+        <div className="relative z-10 mt-auto pt-4 pb-32 md:pb-24 lg:pb-32 xl:pb-6 bg-white/95 backdrop-blur-sm rounded-t-2xl -mx-4 px-4">
           <Button
             ref={buttonRef}
             disabled={!selected}

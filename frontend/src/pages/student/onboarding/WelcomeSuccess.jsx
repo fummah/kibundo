@@ -44,7 +44,7 @@ export default function WelcomeSuccess() {
   }
 
   return (
-    <div className="relative min-h-[100dvh] flex flex-col items-center justify-center px-6 overflow-hidden">
+    <div className="relative min-h-[100dvh] flex flex-col items-center justify-center px-6 pb-32 md:pb-24 lg:pb-6 overflow-hidden">
       {/* Background layers matching interests */}
       <div className="absolute inset-0 pointer-events-none -z-30">
         <img

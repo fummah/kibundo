@@ -112,7 +112,7 @@ export default function WelcomeTour() {
         }}
       />
       {/* Static tree horizon */}
-      <div className="pointer-events-none absolute inset-x-0 top-[18%] -z-15 flex justify-center">
+      <div className="pointer-events-none absolute inset-x-0 top-[18%] -z-5 flex justify-center">
         <img
           src={bgTrees}
           alt=""
@@ -160,7 +160,7 @@ export default function WelcomeTour() {
       </div>
 
       {/* ---------- Content ---------- */}
-      <div className="relative z-20 mx-auto flex min-h-[calc(100dvh-120px)] w-full max-w-[640px] flex-col items-center px-6 pt-6 text-center">
+      <div className="relative z-20 mx-auto flex min-h-[calc(100dvh-120px)] w-full max-w-[640px] flex-col items-center px-6 pt-[35vh] md:pt-[32vh] pb-32 md:pb-24 lg:pb-6 text-center">
         <div className="w-full max-w-[210px] md:max-w-[240px]">
           <img
             src={buddy?.img || buddyImg}

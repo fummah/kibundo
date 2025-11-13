@@ -164,7 +164,7 @@ export default function SubscriptionChoice() {
 
   return (
     <div
-      className="relative flex min-h-screen flex-col items-center px-6 pb-20 pt-16"
+      className="relative flex min-h-screen flex-col items-center px-6 pb-32 md:pb-24 lg:pb-20 pt-16"
       style={{
         background:
           "linear-gradient(185deg, #F4BE9B 0%, #F2D6B1 45%, #EDE2CB 100%)",
