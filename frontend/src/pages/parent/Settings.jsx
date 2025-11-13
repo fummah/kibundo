@@ -30,6 +30,7 @@ import {
   LockOutlined,
   BellOutlined,
   SettingOutlined,
+  HomeOutlined,
 } from "@ant-design/icons";
 
 import { useAuthContext } from "@/context/AuthContext.jsx";
@@ -581,16 +582,25 @@ function SettingsContent({
       <div className="relative z-10 mx-auto w-full max-w-5xl px-4 py-10">
         <Card className="rounded-3xl border-none bg-white/90 shadow-xl">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <Button
-              type="text"
-              icon={<ArrowLeftOutlined />}
-              onClick={() => {
-                if (window.history.length > 1) navigate(-1);
-                else navigate("/parent");
-              }}
-              className="!p-0 !h-auto text-neutral-700"
-              aria-label="Back"
-            />
+            <Space>
+              <Button
+                type="text"
+                icon={<ArrowLeftOutlined />}
+                onClick={() => {
+                  if (window.history.length > 1) navigate(-1);
+                  else navigate("/parent");
+                }}
+                className="!p-0 !h-auto text-neutral-700"
+                aria-label="Back"
+              />
+              <Button
+                type="text"
+                icon={<HomeOutlined />}
+                onClick={() => navigate("/parent")}
+                className="!p-0 !h-auto text-neutral-700"
+                aria-label="Home"
+              />
+            </Space>
             <div className="flex flex-1 flex-col md:flex-row md:items-center md:gap-4">
               <Avatar size={64} className="bg-[#FF8400]" style={{ color: "#fff" }}>
                 {initials}
