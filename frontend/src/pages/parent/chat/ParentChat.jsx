@@ -139,8 +139,8 @@ export default function ParentChat() {
   useEffect(() => {
     const loadConversationHistory = async () => {
       if (!conversationId) {
-        // No conversation yet, show welcome message
-        setMessages([makeMsg({ type: "received", content: welcomeMessage, sender: agentName })]);
+        // No conversation yet, start with empty messages
+        setMessages([]);
         return;
       }
 
@@ -184,22 +184,20 @@ export default function ParentChat() {
           if (formattedMessages.length > 0) {
             setMessages(formattedMessages);
           } else {
-            // No history yet, show welcome
-            setMessages([makeMsg({ type: "received", content: welcomeMessage, sender: agentName })]);
+            // No history yet, start with empty messages
+            setMessages([]);
           }
         }
       } catch (error) {
-        // On error, show welcome message
-        setMessages([makeMsg({ type: "received", content: welcomeMessage, sender: agentName })]);
+        // On error, start with empty messages
+        setMessages([]);
       }
     };
 
     loadConversationHistory();
   }, [conversationId, user?.id, user?.name, agentName, welcomeMessage]);
 
-  const [messages, setMessages] = useState(() => [
-    makeMsg({ type: "received", content: welcomeMessage, sender: agentName }),
-  ]);
+  const [messages, setMessages] = useState(() => []);
 
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -379,8 +377,8 @@ export default function ParentChat() {
           // Reset conversationId state
           setConversationId(null);
           
-          // Clear messages and show welcome message
-          setMessages([makeMsg({ type: "received", content: welcomeMessage, sender: agentName })]);
+          // Clear messages (no greeting message)
+          setMessages([]);
           
           // Reset input
           setInput("");
@@ -431,8 +429,8 @@ export default function ParentChat() {
 
   return (
     <div className="flex flex-col bg-[#f3f7eb] z-50" style={containerStyle}>
-        {/* Header */}
-        <div className="flex items-center gap-3 p-4 bg-white/90 backdrop-blur border-b z-10 flex-shrink-0">
+        {/* Header - Separate section */}
+        <div className="flex items-center gap-3 p-4 z-10 flex-shrink-0 border-b border-gray-200">
             <Button
               type="text"
               icon={<ArrowLeftOutlined />}
@@ -446,7 +444,7 @@ export default function ParentChat() {
               </Badge>
               <div className="min-w-0">
                 <Title level={4} className="!m-0 truncate">Kibundo AI Assistant</Title>
-                <Text type="secondary" className="block truncate">Friendly • Fast • Private</Text>
+                <Text type="secondary" className="block truncate">Freundlich – Schnell – Privat</Text>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -462,9 +460,9 @@ export default function ParentChat() {
                 <Button type="text" icon={<ReloadOutlined />} onClick={handleRetryLast} />
               </Tooltip>
             </div>
-          </div>
+        </div>
 
-        {/* Messages Area (fills remaining height) */}
+        {/* Chat Screen - Separate section */}
         <div
           ref={chatRef}
           className="flex-1 overflow-y-auto px-3 pt-4 bg-[#f3f7eb]"
@@ -566,8 +564,8 @@ export default function ParentChat() {
             )}
         </div>
 
-        {/* Input Area (fixed at bottom) */}
-        <div className="w-full border-t bg-white z-10 flex-shrink-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        {/* Input Area - Separate section (fixed at bottom) */}
+        <div className="w-full z-10 flex-shrink-0 border-t border-gray-200 pt-3" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
           <div className="w-full p-3">
             <div className="flex gap-2 items-end">
               <TextArea

@@ -71,7 +71,7 @@ async function buildContext(req) {
                   {
           model: HomeworkScan,
           as: 'homeworkscan',
-          attributes: ['id', 'raw_text', 'file_url', 'created_at']
+          attributes: ['id', 'raw_text', 'file_url', 'created_at', 'completed_at', 'completion_photo_url', 'detected_subject']
         },
                 {
                   model: StudentSubjects,
@@ -167,6 +167,10 @@ async function buildContext(req) {
     console.log(`🔍 ParentContextBuilder: plainUser extracted`);
     console.log(`  - plainUser.id=${plainUser?.id}`);
     console.log(`  - plainUser.email=${plainUser?.email || 'N/A'}`);
+    console.log(`  - plainUser.first_name=${plainUser?.first_name || 'N/A'}`);
+    console.log(`  - plainUser.last_name=${plainUser?.last_name || 'N/A'}`);
+    console.log(`  - plainUser.name=${plainUser?.name || 'N/A'}`);
+    console.log(`  - plainUser keys=`, plainUser ? Object.keys(plainUser) : 'null');
     console.log(`  - plainUser.parent type=${Array.isArray(plainUser?.parent) ? 'array' : typeof plainUser?.parent}`);
     console.log(`  - plainUser.parent value=`, plainUser?.parent);
     console.log(`  - plainUser.parent length=${Array.isArray(plainUser?.parent) ? plainUser.parent.length : 'N/A'}`);
@@ -448,10 +452,146 @@ if (children.length === 0 && parents.length > 0) {
   console.log(`  After re-flatten: ${children.length} children`);
 }
 
+// 🔥 ULTIMATE FALLBACK: If still no children, try one more direct query with all parent IDs
+if (children.length === 0 && parents.length > 0) {
+  console.log(`⚠️ ParentContextBuilder: Children still empty after all fallbacks, trying ultimate fallback...`);
+  try {
+    const parentIds = parents.map(p => p.id).filter(Boolean);
+    if (parentIds.length > 0) {
+      console.log(`  Querying students for parent_ids:`, parentIds);
+      const ultimateStudents = await Student.findAll({
+        where: { parent_id: { [Op.in]: parentIds } },
+        include: [
+          {
+            model: User,
+            as: 'user',
+            attributes: { exclude: ['password'] }
+          },
+          {
+            model: Class,
+            as: 'class',
+            attributes: ['id', 'class_name']
+          },
+          {
+            model: HomeworkScan,
+            as: 'homeworkscan',
+            attributes: ['id', 'raw_text', 'file_url', 'created_at', 'completed_at', 'completion_photo_url', 'detected_subject']
+          },
+          {
+            model: StudentSubjects,
+            as: 'subject',
+            attributes: ['id'],
+            include: [
+              {
+                model: Subject,
+                as: 'subject',
+                attributes: ['id', 'subject_name']
+              }
+            ]
+          }
+        ]
+      });
+      
+      if (ultimateStudents.length > 0) {
+        console.log(`  ✅ Ultimate fallback found ${ultimateStudents.length} students!`);
+        children = ultimateStudents.map(s => s.get({ plain: true }));
+        // Also update parents array
+        parents.forEach(p => {
+          if (!p.student || p.student.length === 0) {
+            p.student = children.filter(c => c.parent_id === p.id);
+          }
+        });
+        console.log(`  ✅ Updated children array with ${children.length} total children`);
+      } else {
+        console.log(`  ⚠️ Ultimate fallback found 0 students for parent_ids:`, parentIds);
+      }
+    }
+  } catch (err) {
+    console.error(`  ❌ Error in ultimate fallback:`, err.message);
+  }
+}
+
+// 🔥 FINAL VERIFICATION: Log final state and ensure children are properly included
+console.log(`🔍 ParentContextBuilder: FINAL STATE - children.length=${children.length}`);
+if (children.length > 0) {
+  children.forEach((c, idx) => {
+    console.log(`  Child[${idx}]: id=${c.id}, parent_id=${c.parent_id}, name=${c.user?.first_name || 'N/A'} ${c.user?.last_name || ''}`);
+  });
+} else {
+  console.log(`  ⚠️ WARNING: No children found for parent! This might be incorrect.`);
+  if (parents.length > 0) {
+    console.log(`  Parent IDs:`, parents.map(p => p.id));
+    // One more attempt: check if students are in parent.student but not in children array
+    parents.forEach((p, pIdx) => {
+      if (p.student && Array.isArray(p.student) && p.student.length > 0) {
+        console.log(`  ⚠️ Parent[${pIdx}] has ${p.student.length} students in p.student but children array is empty!`);
+        console.log(`  Adding ${p.student.length} students from parent[${pIdx}].student to children array...`);
+        children = children.concat(p.student);
+      }
+    });
+    console.log(`  After final check: children.length=${children.length}`);
+  }
+}
+
+// Ensure children array is properly set even if it was empty
+if (children.length === 0 && parents.length > 0) {
+  // Last resort: try to get from any parent's student array
+  const allStudentsFromParents = parents.flatMap(p => p.student || []);
+  if (allStudentsFromParents.length > 0) {
+    console.log(`  ✅ Found ${allStudentsFromParents.length} students in parents[].student arrays, using them`);
+    children = allStudentsFromParents;
+  }
+}
+
+// 🔥 Ensure user object has all required fields, including name fields
+// If plainUser exists but name fields are missing/null, try to get from req.user as fallback
+if (plainUser) {
+  // If name fields are missing or null, try to get from req.user (JWT token) as fallback
+  if ((!plainUser.first_name && !plainUser.last_name && !plainUser.name) && req?.user) {
+    console.log(`⚠️ ParentContextBuilder: User found but name fields are missing, trying req.user fallback...`);
+    plainUser.first_name = req.user.first_name || plainUser.first_name || '';
+    plainUser.last_name = req.user.last_name || plainUser.last_name || '';
+    plainUser.name = req.user.name || req.user.first_name || plainUser.name || '';
+    console.log(`  ✅ Updated user name from req.user: first_name="${plainUser.first_name}", last_name="${plainUser.last_name}", name="${plainUser.name}"`);
+  }
+  // Log final user object for debugging
+  console.log(`🔍 ParentContextBuilder: Final plainUser:`, {
+    id: plainUser.id,
+    email: plainUser.email,
+    first_name: plainUser.first_name,
+    last_name: plainUser.last_name,
+    name: plainUser.name,
+    all_keys: Object.keys(plainUser)
+  });
+} else {
+  // If plainUser is null, create a minimal user object from req.user
+  console.log(`⚠️ ParentContextBuilder: plainUser is null, creating minimal user from req.user...`);
+  if (req?.user) {
+    plainUser = {
+      id: req.user.id || userId,
+      email: req.user.email || 'unknown',
+      first_name: req.user.first_name || req.user.name || '',
+      last_name: req.user.last_name || '',
+      name: req.user.name || req.user.first_name || '',
+      role_id: req.user.role_id || 2
+    };
+    console.log(`  ✅ Created user from req.user: first_name="${plainUser.first_name}", last_name="${plainUser.last_name}", name="${plainUser.name}"`);
+  } else {
+    plainUser = {
+      id: userId,
+      email: 'unknown',
+      first_name: '',
+      last_name: '',
+      name: '',
+      role_id: 2
+    };
+  }
+}
+
 const context = {
   user: plainUser,
   parent: parents,
-  children: children,
+  children: children, // 🔥 Ensure this is always an array, even if empty
   subscription: subscriptions, // Keep singular for backward compatibility with summarizeContextParent
   subscriptions: subscriptions, // Also include plural
   invoices: invoices,
@@ -459,6 +599,14 @@ const context = {
   last_active: new Date().toISOString(),
   preferences: { language: 'en', timezone: 'Africa/Johannesburg' }
 };
+
+// 🔥 FINAL FINAL CHECK: Log what we're returning
+console.log(`🔍 ParentContextBuilder: Returning context with ${context.children?.length || 0} children`);
+if (context.children && context.children.length > 0) {
+  context.children.forEach((c, idx) => {
+    console.log(`  Returning child[${idx}]: id=${c.id}, name=${c.user?.first_name || 'N/A'} ${c.user?.last_name || ''}`);
+  });
+}
 
     return context;
   } catch (error) {

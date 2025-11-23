@@ -26,7 +26,6 @@ import {
   Wand2,
   Palette,
   Volume2,
-  LogOut,
   User2,
   GraduationCap,
   Users,
@@ -96,29 +95,58 @@ export default function StudentSettings() {
 
   const { buddy, setBuddy, interests, setInterests, profile, setProfile, setTtsEnabled, setColorTheme } = useStudentApp();
   const auth = useAuthContext?.();
-  const { user, logout, signOut } = auth || {};
-  const userId = user?.id ?? user?._id ?? user?.user_id ?? null;
+  const { user, account, logout, signOut } = auth || {};
+  
+  // If parent has selected a child account (Netflix-style), use that child's ID
+  // Otherwise, use the logged-in student's ID
+  const userId = account?.type === "child" && account?.userId 
+    ? account.userId 
+    : (user?.id ?? user?._id ?? user?.user_id ?? null);
 
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.md;
   const avatarSize = screens.lg ? 96 : screens.md ? 80 : 64;
 
+  // local state - declare studentData first so it can be used in defaultName
+  const [studentData, setStudentData] = useState(null);
+
   const defaultName = useMemo(() => {
-    // Prioritize user's actual name over profile name
-    const firstName = user?.first_name || "";
-    const lastName = user?.last_name || "";
-    const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
-    if (fullName) return fullName;
+    // When parent is viewing child, use studentData instead of user (user is parent's data)
+    const isParentViewingChild = account?.type === "child" && account?.userId;
     
-    // Only use profile name if it's not a test value
+    // Priority 1: Use studentData (from server) if available - this is the actual student's data
+    if (studentData?.user) {
+      const studentFirstName = studentData.user.first_name || "";
+      const studentLastName = studentData.user.last_name || "";
+      const studentFullName = [studentFirstName, studentLastName].filter(Boolean).join(" ").trim();
+      if (studentFullName) return studentFullName;
+    }
+    
+    // Priority 2: Only use auth user's name if NOT parent viewing child (to avoid using parent's name)
+    if (!isParentViewingChild) {
+      const firstName = user?.first_name || "";
+      const lastName = user?.last_name || "";
+      const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+      if (fullName) return fullName;
+    }
+    
+    // Priority 3: Use profile name if it's not a test value or page name
     const profileName = profile?.name || "";
     const isTestName = profileName?.toLowerCase().includes("test");
-    if (profileName && !isTestName) return profileName;
+    const isPageName = ["settings", "profile", "appearance", "academic", "interests", "account"].includes(profileName?.toLowerCase());
+    if (profileName && !isTestName && !isPageName) return profileName;
     
-    if (user?.name) return user.name;
-    if (user?.email) return user.email.split("@")[0];
+    // Priority 4: Use user.name only if NOT parent viewing child
+    if (!isParentViewingChild && user?.name) {
+      const isUserPageName = ["settings", "profile", "appearance", "academic", "interests", "account"].includes(user.name?.toLowerCase());
+      if (!isUserPageName) return user.name;
+    }
+    
+    // Priority 5: Use email only if NOT parent viewing child
+    if (!isParentViewingChild && user?.email) return user.email.split("@")[0];
+    
     return "";
-  }, [profile?.name, user]);
+  }, [profile?.name, user, studentData, account?.type, account?.userId]);
 
   // local state
   const [name, setName] = useState(defaultName);
@@ -131,38 +159,103 @@ export default function StudentSettings() {
       setTTSEnabled(Boolean(profile.ttsEnabled));
     }
   }, [profile?.ttsEnabled]);
+
+  // Sync name state when defaultName or studentData changes (if name hasn't been manually edited or is empty)
+  useEffect(() => {
+    // When parent is viewing child, ALWAYS prioritize studentData to avoid using parent's name
+    const isParentViewingChild = account?.type === "child" && account?.userId;
+    
+    // Priority 1: If we have studentData (from server), use it - this is the actual student's data
+    if (studentData?.user) {
+      const studentFirstName = studentData.user.first_name || "";
+      const studentLastName = studentData.user.last_name || "";
+      const studentFullName = [studentFirstName, studentLastName].filter(Boolean).join(" ").trim();
+      if (studentFullName && studentFullName !== name) {
+        setName(studentFullName);
+        return;
+      }
+    }
+    
+    // Priority 2: For parent viewing child, NEVER use defaultName (it might contain parent's name)
+    if (isParentViewingChild) {
+      // If we don't have studentData yet, wait for it rather than using parent's name
+      return;
+    }
+    
+    // Priority 3: Only update if name is empty, matches old defaultName, or is a fallback value
+    if (!name || name === "Student" || name === defaultName || !defaultName) {
+      // Only update if defaultName has a meaningful value
+      if (defaultName && defaultName.trim() && defaultName !== "Student") {
+        setName(defaultName);
+      }
+    }
+  }, [defaultName, studentData, account?.type, account?.userId, name]);
   const [interestDraft, setInterestDraft] = useState("");
   const [buddyModal, setBuddyModal] = useState(false);
   const [pendingBuddy, setPendingBuddy] = useState(buddy || BUDDIES[0]);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [studentData, setStudentData] = useState(null);
 
   const [hasServerRecord, setHasServerRecord] = useState(false);
   const [serverStudentId, setServerStudentId] = useState(null);
   const [justUpdatedBuddy, setJustUpdatedBuddy] = useState(false);
   const [buddyImageKey, setBuddyImageKey] = useState(0);
   const [hasLocalBuddyChange, setHasLocalBuddyChange] = useState(false);
+  const [lastSavedTimestamp, setLastSavedTimestamp] = useState(0); // Track when last saved
 
-  // baseline
+  // Computed student ID - prioritize all available sources for consistency
+  const displayStudentId = useMemo(() => {
+    // Priority 1: serverStudentId (from API response)
+    if (serverStudentId) return serverStudentId;
+    // Priority 2: studentData.id (from student record)
+    if (studentData?.id) return studentData.id;
+    // Priority 3: account.id if it's a child account
+    if (account?.type === "child" && account?.id) return account.id;
+    // Priority 4: userId as fallback
+    if (userId) return userId;
+    return "N/A";
+  }, [serverStudentId, studentData?.id, account?.type, account?.id, userId]);
+
+  // baseline - tracks the last saved state
   const initialRef = useRef({
     name: defaultName,
     ttsEnabled: Boolean(profile?.ttsEnabled),
     theme,
     buddy,
+    interests: interests || [],
   });
 
   const isDirty = useMemo(() => {
     const a = initialRef.current;
-    return (
-      a.name !== name ||
-      a.ttsEnabled !== ttsEnabled ||
-      a.theme !== theme ||
-      (a.buddy?.id ?? null) !== (buddy?.id ?? null) ||
-      (interests?.length ?? 0) !== (profile?.interests?.length ?? 0)
-    );
-  }, [name, ttsEnabled, theme, buddy, interests, profile?.interests?.length]);
+    const currentInterests = interests || [];
+    const savedInterests = a.interests || [];
+    
+    // Compare interests arrays - deep comparison
+    const interestsChanged = 
+      currentInterests.length !== savedInterests.length ||
+      currentInterests.some((interest, idx) => interest !== savedInterests[idx]);
+    
+    // Compare buddy IDs (handle both object and null cases)
+    // Normalize both to null if missing id
+    const currentBuddyId = buddy?.id ?? null;
+    const savedBuddyId = a.buddy?.id ?? null;
+    const buddyChanged = currentBuddyId !== savedBuddyId;
+    
+    // Compare name (normalize empty strings)
+    const nameChanged = (a.name || "") !== (name || "");
+    
+    // Compare ttsEnabled (ensure boolean comparison)
+    const ttsChanged = Boolean(a.ttsEnabled) !== Boolean(ttsEnabled);
+    
+    // Compare theme (normalize to default)
+    const themeChanged = (a.theme || "indigo") !== (theme || "indigo");
+    
+    const dirty = nameChanged || ttsChanged || themeChanged || buddyChanged || interestsChanged;
+    
+    
+    return dirty;
+  }, [name, ttsEnabled, theme, buddy, interests, lastSavedTimestamp]); // Include lastSavedTimestamp to force recalculation
 
   // Warn on browser navigation (refresh, close tab, etc.)
   useEffect(() => {
@@ -223,6 +316,7 @@ export default function StudentSettings() {
             ttsEnabled: Boolean(profile?.ttsEnabled),
             theme: profile?.theme || "indigo",
             buddy: buddy ?? null,
+            interests: interests || [],
           };
           return;
         }
@@ -258,7 +352,19 @@ export default function StudentSettings() {
           img: srvBuddy.img || srvBuddy.avatar, // Keep both for compatibility
         } : null;
 
-        setStudentData(data);
+        // Set student data with explicit id and age fields
+        setStudentData({
+          ...data,
+          id: foundId, // Ensure id is set from the student record
+          age: data?.age ?? null, // Include age from student record
+        });
+
+        // Set name immediately from student data to avoid showing "Student"
+        const apiUser = data?.user ?? {};
+        const apiUserName = [apiUser.first_name, apiUser.last_name].filter(Boolean).join(" ").trim();
+        if (apiUserName) {
+          setName(apiUserName);
+        }
 
         setProfile({
           name: srvProfile.name ?? "",
@@ -292,16 +398,22 @@ export default function StudentSettings() {
         }
 
         const serverName = srvProfile.name ?? "";
-        const apiUser = data?.user ?? {};
-        const apiUserName = [apiUser.first_name, apiUser.last_name].filter(Boolean).join(" ").trim();
-        const fallbackName = defaultName ?? "";
+        // apiUser and apiUserName already declared above, reuse them
+        // When parent is viewing child, NEVER use defaultName/fallbackName as it might contain parent's name
+        const isParentViewingChild = account?.type === "child" && account?.userId;
         
         // Prioritize user's actual name (first_name + last_name) over profile name
-        // Only use profile name if user name is not available and profile name is not a test value
+        // Only use profile name if user name is not available and profile name is not a test value or page name
         const isTestName = serverName?.toLowerCase().includes("test");
-        const finalName = apiUserName || (!isTestName && serverName) || fallbackName;
+        const isPageName = ["settings", "profile", "appearance", "academic", "interests", "account"].includes(serverName?.toLowerCase());
+        
+        // For parent viewing child, only use apiUserName or valid serverName, never fallback to defaultName
+        const finalName = apiUserName || (!isTestName && !isPageName && serverName) || (isParentViewingChild ? "" : (defaultName ?? ""));
 
-        setName(finalName);
+        // Only set name if we have a valid value (not empty and not parent's name)
+        if (finalName && finalName.trim()) {
+          setName(finalName);
+        }
         const newTtsEnabled = Boolean(srvProfile.ttsEnabled);
         setTTSEnabled(newTtsEnabled);
         setTtsEnabled(newTtsEnabled); // Update context TTS
@@ -317,6 +429,7 @@ export default function StudentSettings() {
           ttsEnabled: Boolean(srvProfile.ttsEnabled),
           theme: srvProfile.theme || "indigo",
           buddy: srvBuddy,
+          interests: srvInterests || [],
         };
       } catch (e) {
         if (!cancelled) {
@@ -402,29 +515,57 @@ export default function StudentSettings() {
               setBuddyImageKey(prev => prev + 1);
             }
 
-            // Update local state
+            // Update student data with explicit id and age fields
+            setStudentData({
+              ...data,
+              id: foundId, // Ensure id is set from the student record
+              age: data?.age ?? null, // Include age from student record
+            });
+            
+            // Update local state - get student name from API data
             const apiUser = data?.user ?? {};
             const apiUserName = [apiUser.first_name, apiUser.last_name].filter(Boolean).join(" ").trim();
+            
+            // Set name immediately from student data to avoid showing "Student"
+            if (apiUserName) {
+              setName(apiUserName);
+            }
             const serverName = srvProfile.name ?? "";
+            
+            // When parent is viewing child, NEVER use defaultName as it might contain parent's name
+            const isParentViewingChild = account?.type === "child" && account?.userId;
+            
             const isTestName = serverName?.toLowerCase().includes("test");
-            const finalName = apiUserName || (!isTestName && serverName) || defaultName || "";
+            const isPageName = ["settings", "profile", "appearance", "academic", "interests", "account"].includes(serverName?.toLowerCase());
+            
+            // For parent viewing child, only use apiUserName or valid serverName, never fallback to defaultName
+            const finalName = apiUserName || (!isTestName && !isPageName && serverName) || (isParentViewingChild ? "" : (defaultName || ""));
 
-            setName(finalName);
+            // Only set name if we have a valid value (not empty and not parent's name)
+            if (finalName && finalName.trim()) {
+              setName(finalName);
+            }
             setTTSEnabled(Boolean(srvProfile.ttsEnabled));
             setTheme(srvProfile.theme || "indigo");
             setPendingBuddy(srvBuddy || BUDDIES[0]);
-            setStudentData(data);
+            // Set student data with explicit id and age fields
+            setStudentData({
+              ...data,
+              id: foundId, // Ensure id is set from the student record
+              age: data?.age ?? null, // Include age from student record
+            });
 
             initialRef.current = {
               name: srvProfile.name ?? (defaultName ?? ""),
               ttsEnabled: Boolean(srvProfile.ttsEnabled),
               theme: srvProfile.theme || "indigo",
               buddy: srvBuddy,
+              interests: srvInterests || [],
             };
           }
         }
       } catch (e) {
-        console.error("Error reloading settings:", e);
+        // Error reloading settings - silently fail
       }
     };
 
@@ -520,8 +661,23 @@ export default function StudentSettings() {
         message.success?.("Saved successfully");
       }
 
-      // Update initialRef after successful save
-      initialRef.current = { name, ttsEnabled, theme, buddy: buddyToSave };
+      // Update initialRef after successful save - this marks the state as "saved"
+      // This ensures the unsaved changes warning won't appear after save
+      const savedInterests = Array.isArray(interests) ? [...interests] : [];
+      
+      // Use the exact current values to update initialRef
+      // IMPORTANT: Use the current state values, not the saved structure
+      // This ensures isDirty will be false after save
+      initialRef.current = { 
+        name: name || "", // Use current name value from state
+        ttsEnabled: Boolean(ttsEnabled), // Use current ttsEnabled from state
+        theme: theme || "indigo", // Use current theme from state
+        // For buddy, use the current buddy from context (which has the same id as buddyToSave)
+        // This ensures the comparison in isDirty will match
+        buddy: buddy || null, // Use current buddy from context (has same id as buddyToSave)
+        interests: savedInterests // Use current interests from state
+      };
+      
       
       // Update context to ensure it matches saved state
       setTtsEnabled(ttsEnabled);
@@ -535,6 +691,13 @@ export default function StudentSettings() {
       // Reset flags after save - local changes are now saved
       setJustUpdatedBuddy(false);
       setHasLocalBuddyChange(false);
+      
+      // Update timestamp to force isDirty recalculation
+      setLastSavedTimestamp(Date.now());
+      
+      // Force a small delay to ensure state updates are processed
+      // This helps ensure isDirty recalculates with the new initialRef
+      await new Promise(resolve => setTimeout(resolve, 100));
     } catch (error) {
       message.error?.("Could not save settings. Please try again.");
     } finally {
@@ -547,6 +710,11 @@ export default function StudentSettings() {
     if (!v) return;
     if ((interests || []).includes(v)) {
       message.info?.("Already added.");
+      return;
+    }
+    // 🔥 Limit to maximum 2 focus topics
+    if ((interests || []).length >= 2) {
+      message.warning?.("Du kannst maximal 2 Fokusthemen auswählen. Bitte entferne zuerst ein Thema, bevor du ein neues hinzufügst.");
       return;
     }
     const newInterests = [...(interests || []), v];
@@ -619,12 +787,8 @@ export default function StudentSettings() {
   };
 
 
-  const doLogout = async () => {
-    try {
-      if (logout) await logout();
-      else if (signOut) await signOut();
-    } catch {}
-    navigate("/signin");
+  const handleSwitchProfile = () => {
+    navigate("/parent/account", { replace: true });
   };
 
   const ThemeOption = ({ value, label }) => (
@@ -649,7 +813,22 @@ export default function StudentSettings() {
             className="p-2 rounded-full hover:bg-neutral-100 active:scale-95" 
             aria-label="Back"
             onBeforeNavigate={() => {
-              if (isDirty) {
+              // Force recalculation of isDirty by reading initialRef directly
+              const a = initialRef.current;
+              const currentInterests = interests || [];
+              const savedInterests = a.interests || [];
+              const interestsChanged = 
+                currentInterests.length !== savedInterests.length ||
+                currentInterests.some((interest, idx) => interest !== savedInterests[idx]);
+              const currentBuddyId = buddy?.id ?? null;
+              const savedBuddyId = a.buddy?.id ?? null;
+              const buddyChanged = currentBuddyId !== savedBuddyId;
+              const nameChanged = (a.name || "") !== (name || "");
+              const ttsChanged = Boolean(a.ttsEnabled) !== Boolean(ttsEnabled);
+              const themeChanged = (a.theme || "indigo") !== (theme || "indigo");
+              const actuallyDirty = nameChanged || ttsChanged || themeChanged || buddyChanged || interestsChanged;
+              
+              if (actuallyDirty) {
                 return new Promise((resolve) => {
                   Modal.confirm({
                     title: "Unsaved Changes",
@@ -723,10 +902,28 @@ export default function StudentSettings() {
                       </Col>
                       <Col flex="auto">
                         <Title level={2} className="!mb-2 !text-white">
-                          {name || defaultName || "Student"}
+                          {(() => {
+                            // Priority 1: Use name state if valid
+                            if (name && name.trim() && name !== "Settings" && name !== "Profile" && name !== "Student") {
+                              return name;
+                            }
+                            // Priority 2: Use studentData directly if available (most reliable)
+                            if (studentData?.user) {
+                              const studentFirstName = studentData.user.first_name || "";
+                              const studentLastName = studentData.user.last_name || "";
+                              const studentFullName = [studentFirstName, studentLastName].filter(Boolean).join(" ").trim();
+                              if (studentFullName) return studentFullName;
+                            }
+                            // Priority 3: Use defaultName if valid
+                            if (defaultName && defaultName.trim() && defaultName !== "Settings" && defaultName !== "Profile" && defaultName !== "Student") {
+                              return defaultName;
+                            }
+                            // Fallback
+                            return "Student";
+                          })()}
                         </Title>
                         <Text className="text-white/90 text-lg">
-                          Student ID: {serverStudentId || studentData?.id || "N/A"}
+                          Student ID: {displayStudentId}
                         </Text>
                       </Col>
                     </Row>
@@ -756,9 +953,9 @@ export default function StudentSettings() {
                         </Col>
                         <Col xs={24} md={12}>
                           <div className="space-y-2">
-                            <Text strong className="text-base">Student ID</Text>
+                            <Text strong className="text-base">Grade</Text>
                             <Input 
-                              value={serverStudentId || studentData?.id || "N/A"} 
+                              value={studentData?.class?.class_name || studentData?.class_name || "N/A"} 
                               disabled 
                               className="rounded-xl" 
                               size="large"
@@ -1090,26 +1287,26 @@ export default function StudentSettings() {
                 <div className="py-4 space-y-6">
                   <Alert
                     message="Account Settings"
-                    description="Manage your account preferences and sign out options"
+                    description="Switch between profiles or manage your account preferences"
                     type="info"
                     showIcon
                     className="rounded-xl"
                   />
 
-                  <Card className="rounded-xl bg-red-50 border-red-200">
+                  <Card className="rounded-xl bg-blue-50 border-blue-200">
                     <div className="flex items-center justify-between flex-wrap gap-4">
                       <div>
-                        <Title level={5} className="!mb-1 !text-red-700">Sign Out</Title>
-                        <Text type="secondary">Sign out from this device</Text>
+                        <Title level={5} className="!mb-1 !text-blue-700">Switch Profile</Title>
+                        <Text type="secondary">Choose a different profile to continue</Text>
                       </div>
                       <Button 
-                        icon={<LogOut className="h-4 w-4" />} 
-                        danger 
-                        onClick={doLogout} 
+                        icon={<Users className="h-4 w-4" />} 
+                        type="primary"
+                        onClick={handleSwitchProfile} 
                         className="rounded-xl"
                         size="large"
                       >
-                        Log Out
+                        Switch Profile
                       </Button>
                     </div>
                   </Card>

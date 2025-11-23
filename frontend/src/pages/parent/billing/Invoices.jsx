@@ -3,7 +3,6 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button,
-  Card,
   Col,
   DatePicker,
   Drawer,
@@ -33,6 +32,7 @@ import {
 import dayjs from "dayjs";
 import api from "@/api/axios";
 import { NUNITO_FONT_STACK } from "@/constants/fonts";
+import PlainBackground from "@/components/layouts/PlainBackground";
 
 const { Title, Text } = Typography;
 
@@ -510,16 +510,9 @@ export default function Invoices() {
   ];
 
   return (
-    <div
-      className="relative min-h-screen w-full overflow-hidden"
-      style={{
-        background: "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
-        fontFamily: NUNITO_FONT_STACK,
-      }}
-    >
-      <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-60%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
-      <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 py-10">
-        <Card className="rounded-3xl border-none bg-white/92 shadow-xl">
+    <PlainBackground className="flex flex-col h-screen overflow-hidden">
+      <div className="flex-1 overflow-y-auto">
+        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 py-10">
           <div className="space-y-8">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-3">
@@ -544,26 +537,38 @@ export default function Invoices() {
 
             <Row gutter={[16, 16]}>
               <Col xs={24} sm={12} md={8}>
-                <Card className="rounded-2xl shadow-sm" loading={loading}>
-                  <div className="text-sm text-gray-500">Outstanding</div>
-                  <div className="text-2xl font-extrabold text-red-500">{money(kpis.outstanding, "EUR")}</div>
-                </Card>
+                <div className="rounded-2xl bg-white/80 backdrop-blur p-4 shadow-sm">
+                  {loading ? <Spin /> : (
+                    <>
+                      <div className="text-sm text-gray-500">Outstanding</div>
+                      <div className="text-2xl font-extrabold text-red-500">{money(kpis.outstanding, "EUR")}</div>
+                    </>
+                  )}
+                </div>
               </Col>
               <Col xs={24} sm={12} md={8}>
-                <Card className="rounded-2xl shadow-sm" loading={loading}>
-                  <div className="text-sm text-gray-500">Paid (30 days)</div>
-                  <div className="text-2xl font-extrabold text-green-600">{money(kpis.last30paid, "EUR")}</div>
-                </Card>
+                <div className="rounded-2xl bg-white/80 backdrop-blur p-4 shadow-sm">
+                  {loading ? <Spin /> : (
+                    <>
+                      <div className="text-sm text-gray-500">Paid (30 days)</div>
+                      <div className="text-2xl font-extrabold text-green-600">{money(kpis.last30paid, "EUR")}</div>
+                    </>
+                  )}
+                </div>
               </Col>
               <Col xs={24} sm={12} md={8}>
-                <Card className="rounded-2xl shadow-sm" loading={loading}>
-                  <div className="text-sm text-gray-500">Total invoices</div>
-                  <div className="text-2xl font-extrabold text-neutral-800">{kpis.count}</div>
-                </Card>
+                <div className="rounded-2xl bg-white/80 backdrop-blur p-4 shadow-sm">
+                  {loading ? <Spin /> : (
+                    <>
+                      <div className="text-sm text-gray-500">Total invoices</div>
+                      <div className="text-2xl font-extrabold text-neutral-800">{kpis.count}</div>
+                    </>
+                  )}
+                </div>
               </Col>
             </Row>
 
-            <Card className="rounded-2xl shadow-sm">
+            <div className="rounded-2xl bg-white/80 backdrop-blur p-4 shadow-sm">
               <Row gutter={[12, 12]} align="middle">
                 <Col xs={24} md={10}>
                   <Input
@@ -595,24 +600,24 @@ export default function Invoices() {
                   />
                 </Col>
               </Row>
-            </Card>
+            </div>
 
             <div className="mobile-only">
               {loading ? (
-                <Card className="rounded-2xl shadow-sm">
+                <div className="rounded-2xl bg-white/80 backdrop-blur p-4 shadow-sm">
                   <div className="py-8 text-center">
                     <Spin size="large" />
                   </div>
-                </Card>
+                </div>
               ) : filtered.length === 0 ? (
-                <Card className="rounded-2xl shadow-sm">
+                <div className="rounded-2xl bg-white/80 backdrop-blur p-4 shadow-sm">
                   <Empty description="No invoices match your filters." />
-                </Card>
+                </div>
               ) : (
                 <List
                   dataSource={filtered}
                   renderItem={(inv) => (
-                    <Card className="mb-3 rounded-2xl shadow-sm" key={inv.id}>
+                    <div className="mb-3 rounded-2xl bg-white/80 backdrop-blur p-4 shadow-sm" key={inv.id}>
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="font-semibold">{inv.id}</div>
@@ -675,15 +680,19 @@ export default function Invoices() {
                           </div>
                         </div>
                       </div>
-                    </Card>
+                    </div>
                   )}
                 />
               )}
             </div>
 
             <div className="desktop-only">
-              <Card className="rounded-2xl shadow-sm" loading={loading}>
-                {filtered.length === 0 ? (
+              <div className="rounded-2xl bg-white/80 backdrop-blur p-4 shadow-sm">
+                {loading ? (
+                  <div className="py-8 text-center">
+                    <Spin size="large" />
+                  </div>
+                ) : filtered.length === 0 ? (
                   <Empty description="No invoices match your filters." />
                 ) : (
                   <Table
@@ -699,10 +708,9 @@ export default function Invoices() {
                     size="middle"
                   />
                 )}
-              </Card>
+              </div>
             </div>
-          </div>
-        </Card>
+        </div>
       </div>
 
       <Drawer
@@ -720,7 +728,7 @@ export default function Invoices() {
                 <div>Status: {statusTag(active.status)}</div>
               </Space>
 
-              <Card size="small" className="rounded-xl">
+              <div className="rounded-xl bg-white/80 backdrop-blur p-4 shadow-sm">
                 <Row className="font-semibold mb-2">
                   <Col span={12}>Item</Col>
                   <Col span={4}>Qty</Col>
@@ -747,7 +755,7 @@ export default function Invoices() {
                     {money(active.amount, active.currency)}
                   </Col>
                 </Row>
-              </Card>
+              </div>
 
               <Space className="mt-4">
                 {["due", "overdue"].includes(active.status) && (
@@ -776,5 +784,6 @@ export default function Invoices() {
           )}
         </Drawer>
       </div>
+    </PlainBackground>
   );
 }

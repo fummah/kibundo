@@ -135,7 +135,29 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const [{ token, user }, setAuth] = useState(loadInitialAuth);
-  const [account, setAccount] = useState(null);
+  
+  // Load account from localStorage on mount
+  const [account, setAccountState] = useState(() => {
+    try {
+      const stored = localStorage.getItem("kibundo_selected_account");
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch {}
+    return null;
+  });
+  
+  // Wrapper to persist account to localStorage
+  const setAccount = useCallback((acc) => {
+    setAccountState(acc);
+    try {
+      if (acc) {
+        localStorage.setItem("kibundo_selected_account", JSON.stringify(acc));
+      } else {
+        localStorage.removeItem("kibundo_selected_account");
+      }
+    } catch {}
+  }, []);
 
   const logout = useCallback(() => {
     clearAxiosAuth();
@@ -144,10 +166,12 @@ export const AuthProvider = ({ children }) => {
       sessionStorage.removeItem(USER_SUMMARY_KEY);
       // Clear browser fingerprint on logout
       sessionStorage.removeItem(BROWSER_FINGERPRINT_KEY);
+      // Clear selected account on logout
+      localStorage.removeItem("kibundo_selected_account");
     } catch {}
     setAuth({ token: null, user: null });
     setAccount(null);
-  }, []);
+  }, [setAccount]);
 
   // Check browser fingerprint on mount and when token changes
   // If fingerprint doesn't match, log out the user (different browser detected)

@@ -319,6 +319,11 @@ const InterestsTab = ({ student, reload, onProfileSave }) => {
   
   const addInterestToDraft = () => {
     if (newInterestInput.trim()) {
+      // 🔥 Limit to maximum 2 focus topics
+      if (interestsDraft.length >= 2) {
+        message.warning("Du kannst maximal 2 Fokusthemen auswählen. Bitte entferne zuerst ein Thema, bevor du ein neues hinzufügst.");
+        return;
+      }
       setInterestsDraft([...interestsDraft, newInterestInput.trim()]);
       setNewInterestInput("");
     }
@@ -1098,8 +1103,6 @@ export default function StudentDetail() {
       { label: "Grade", name: "grade" },
       { label: "State", name: "state" },
       { label: "Status", name: "status" },
-      { label: "Portal Login", name: "username", editable: true },
-      { label: "Portal Password", name: "plain_pass", editable: true, type: "password" },
       { label: "Date added", name: "createdAt", editable: false },
     ],
 

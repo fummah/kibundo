@@ -28,15 +28,16 @@ function NewsCard({
   const baseClass =
     "block w-full bg-white/80 backdrop-blur rounded-2xl px-4 py-4 shadow-[0_10px_28px_rgba(0,0,0,0.08)] border border-white/70 transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500";
 
-  // Wrapper element selection
+  // Wrapper element selection - prioritize to (internal route), then href (external), then div
   const Wrapper = to ? Link : href ? "a" : "div";
   const wrapperProps = {
     className: [baseClass, className].join(" "),
-    onClick,
+    onClick: onClick || (to || href ? undefined : undefined), // Allow custom onClick
     ...(to ? { to } : {}),
     ...(href ? { href, target, rel } : {}),
     ...(onClick && !to && !href ? { role: "button", tabIndex: 0 } : {}),
-    "aria-label": title,
+    "aria-label": title || "News article",
+    style: to || href ? { cursor: "pointer" } : undefined, // Ensure pointer cursor for clickable cards
   };
 
   const imageBox = compact ? "w-24 h-20" : "w-28 h-24";
@@ -70,7 +71,20 @@ function NewsCard({
               "shrink-0 rounded-xl overflow-hidden ring-4 ring-white/60 self-center",
             ].join(" ")}
           >
-            <img src={image} alt={imageAlt} className="w-full h-full object-cover" />
+            <img 
+              src={image} 
+              alt={imageAlt || title || "News image"} 
+              className="w-full h-full object-cover"
+              loading="lazy"
+              onError={(e) => {
+                // If uploaded image fails to load, try to use a placeholder
+                // Only hide if it's not already a placeholder
+                if (!image.includes("blognews") && !image.includes("platnews") && !image.includes("unkcat")) {
+                  console.warn("Failed to load blog image:", image);
+                  // You could set a placeholder here if needed
+                }
+              }}
+            />
           </div>
         ) : null}
       </div>

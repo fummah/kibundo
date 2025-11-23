@@ -1,16 +1,14 @@
 // src/components/parent/BottomTabBar.jsx
 import React from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import {
   HomeOutlined,
-  PlusCircleOutlined,
-  ReadOutlined,
-  MessageOutlined,
+  UserAddOutlined,
+  FileTextOutlined,
+  StarOutlined,
   SettingOutlined,
-  CustomerServiceOutlined,
 } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
-import { useChatDock } from "@/context/ChatDockContext";
 
 // Use the imported spacer (and re-export for convenience)
 import ParentSpaceBar from "@/components/parent/ParentSpaceBar.jsx";
@@ -32,20 +30,17 @@ export default function BottomTabBar({
     "/parent/chat",
   ],
   className = "",
-  /** open the global chat dock inline instead of navigating to /parent/chat */
-  openChatInline = true,
   /** optional badges */
   unread = {
     news: 0,
-    chat: 0,
   },
 }) {
   const { t } = useTranslation();
   const { pathname } = useLocation();
-  const navigate = useNavigate();
-  const chatDock = useChatDock();
-  const openChat = chatDock?.openChat;
-  const expandChat = chatDock?.expandChat;
+
+  // Use the specified lime green color
+  const footerBgColor = "rgb(182, 188, 0)";
+  const footerBorderColor = "rgb(182, 188, 0)";
 
   const isHidden = hideOnRoutes?.some((r) => pathname.startsWith(r));
   const isIncluded =
@@ -54,47 +49,40 @@ export default function BottomTabBar({
   if (isHidden || !isIncluded) return null;
 
   const base =
-    "flex flex-col items-center justify-center gap-1 flex-1 py-2 text-[12px] font-semibold";
-  const item = "text-neutral-800 hover:text-neutral-900 transition-colors";
-  const active = "text-neutral-900 bg-lime-400 rounded-t-lg";
+    "flex flex-col items-center justify-center gap-1 flex-1 py-2 text-[12px] font-semibold transition-all";
+  const item = "text-white hover:text-white";
+  const active = "text-white rounded-t-lg bg-white/20";
 
   const TABS = [
     {
       key: "home",
       to: "/parent/home",
-      icon: <HomeOutlined className="text-xl" />,
+      icon: <HomeOutlined className="text-xl" style={{ color: "white" }} />,
       label: t("parent.nav.home", "Home"),
     },
     {
       key: "addChild",
       to: "/parent/myfamily/family?add-student=1",
-      icon: <PlusCircleOutlined className="text-xl" />,
+      icon: <UserAddOutlined className="text-xl" style={{ color: "white" }} />,
       label: t("parent.nav.addChild", "Kind anlegen"),
     },
     {
       key: "news",
       to: "/parent/communications/news",
-      icon: <ReadOutlined className="text-xl" />,
+      icon: <FileTextOutlined className="text-xl" style={{ color: "white" }} />,
       label: t("parent.nav.news", "News"),
       badge: unread?.news || 0,
     },
-    // Chats for messaging
     {
-      key: "chats",
-      to: "/parent/chat",
-      icon: <MessageOutlined className="text-xl" />,
-      label: t("parent.nav.chats", "Chats"),
-      badge: unread?.chat || 0,
-      onClick: (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        navigate("/parent/chat");
-      },
+      key: "feedback",
+      to: "/parent/feedback/tickets",
+      icon: <StarOutlined className="text-xl" style={{ color: "white" }} />,
+      label: t("parent.nav.feedback", "Feedback"),
     },
     {
       key: "settings",
       to: "/parent/settings",
-      icon: <SettingOutlined className="text-xl" />,
+      icon: <SettingOutlined className="text-xl" style={{ color: "white" }} />,
       label: t("parent.nav.settings", "Settings"),
     },
   ];
@@ -108,8 +96,12 @@ export default function BottomTabBar({
 
   const renderTabs = () => (
     <div
-      className="w-full flex bg-lime-500 border-t border-lime-600 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] rounded-none pointer-events-auto"
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      className="w-full flex shadow-[0_-10px_30px_rgba(0,0,0,0.08)] rounded-none pointer-events-auto"
+      style={{ 
+        backgroundColor: footerBgColor,
+        borderTop: `1px solid ${footerBorderColor}`,
+        paddingBottom: "env(safe-area-inset-bottom)"
+      }}
       role="navigation"
       aria-label="Parent bottom navigation"
     >
@@ -126,7 +118,7 @@ export default function BottomTabBar({
           <NavLink key={tab.key} to={tab.to} {...commonProps} end={false} style={{ pointerEvents: "auto" }}>
             <div className="relative flex flex-col items-center cursor-pointer">
               {tab.icon}
-              <span className="flex items-center">
+              <span className="flex items-center" style={{ color: "white" }}>
                 {tab.label}
                 <TabBadge count={tab.badge} />
               </span>

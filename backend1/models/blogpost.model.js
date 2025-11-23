@@ -6,12 +6,14 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true 
     },
     title: DataTypes.TEXT,
+    subtitle: DataTypes.TEXT,
     slug: { 
         type: DataTypes.TEXT, 
         unique: true 
     },
     body_md: DataTypes.TEXT,
     body_html: DataTypes.TEXT,
+    thumbnail_url: DataTypes.TEXT,
     audience: { 
       type: DataTypes.ENUM('parents','teachers','both'),
       defaultValue: 'parents'

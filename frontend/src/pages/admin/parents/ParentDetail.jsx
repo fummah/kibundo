@@ -162,7 +162,13 @@ export default function ParentDetail() {
         },
         { label: "Phone Number", name: "contact_number" },
         { label: "Bundesland", name: "bundesland" },
-        { label: "Portal Login", name: "username", editable: true },
+        { 
+          label: "Portal Login (Email)", 
+          name: "username", 
+          editable: true,
+          // For parents, username should be the email. Show email if username is not set.
+          render: (val, entity) => val || entity?.email || entity?.raw?.user?.email || "-"
+        },
         { label: "Portal Password", name: "plain_pass", editable: true, type: "password" },
         { label: "Member Since", name: "member_since", editable: false },
       ],

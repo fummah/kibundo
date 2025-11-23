@@ -287,17 +287,69 @@ export default function BlogPostEdit() {
     onError: () => messageApi.error("Failed to delete"),
   });
 
-  // editor image upload (mock)
+  // editor image upload - upload to server
   const uploadImage = async (file) => {
-    await new Promise((r) => setTimeout(r, 300));
-    return URL.createObjectURL(file);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await api.post("/upload", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      const uploadedUrl = response.data?.url || response.data?.fileUrl || response.data?.path;
+      if (uploadedUrl) {
+        // Return full URL if it's a relative path
+        return uploadedUrl.startsWith("http") ? uploadedUrl : `${window.location.origin}${uploadedUrl}`;
+      }
+      throw new Error("No URL returned from upload");
+    } catch (error) {
+      console.error("Image upload failed:", error);
+      messageApi.error("Failed to upload image. Using temporary URL.");
+      // Fallback to blob URL if upload fails
+      return URL.createObjectURL(file);
+    }
   };
 
+  // Thumbnail uploader - upload to server
   const handleThumbBeforeUpload = async (file) => {
-    const url = URL.createObjectURL(file);
-    form.setFieldsValue({ thumbnail_url: url });
-    setThumbPreview(url);
-    messageApi.success(`Thumbnail loaded: ${file.name}`);
+    try {
+      messageApi.loading({ content: "Uploading image...", key: "thumb-upload" });
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await api.post("/upload", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      const uploadedUrl = response.data?.url || response.data?.fileUrl || response.data?.path;
+      if (uploadedUrl) {
+        // Store relative URL in database (e.g., /uploads/filename.jpg)
+        // This works regardless of domain/port
+        const relativeUrl = uploadedUrl.startsWith("http") 
+          ? new URL(uploadedUrl).pathname 
+          : uploadedUrl.startsWith("/") 
+          ? uploadedUrl 
+          : `/${uploadedUrl}`;
+        
+        // Use full URL for preview only
+        const previewUrl = relativeUrl.startsWith("http") 
+          ? relativeUrl 
+          : `${window.location.origin}${relativeUrl}`;
+        
+        form.setFieldsValue({ thumbnail_url: relativeUrl });
+        setThumbPreview(previewUrl);
+        messageApi.success({ content: `Thumbnail uploaded: ${file.name}`, key: "thumb-upload" });
+      } else {
+        throw new Error("No URL returned from upload");
+      }
+    } catch (error) {
+      console.error("Thumbnail upload failed:", error);
+      messageApi.error({ content: "Failed to upload thumbnail. Please try again.", key: "thumb-upload" });
+      // Fallback to blob URL for preview only
+      const blobUrl = URL.createObjectURL(file);
+      setThumbPreview(blobUrl);
+    }
     return false;
   };
 
@@ -496,13 +548,6 @@ export default function BlogPostEdit() {
                     <Select mode="tags" tokenSeparators={[","]} placeholder="Add tags" />
                   </Form.Item>
                   <Form.Item
-                    name="seo"
-                    label="SEO (JSON)"
-                    tooltip='Optional JSON like {"title":"...","description":"...","image":"..."}'
-                  >
-                    <Input.TextArea autoSize={{ minRows: 6, maxRows: 16 }} placeholder="{ }" />
-                  </Form.Item>
-                  <Form.Item
                     name="scheduled_for"
                     label="Scheduled for"
                     tooltip="Optional date/time for scheduled publish"
@@ -538,13 +583,7 @@ export default function BlogPostEdit() {
                   <Upload.Dragger
                     multiple={false}
                     accept="image/*"
-                    beforeUpload={async (file) => {
-                      const url = URL.createObjectURL(file);
-                      form.setFieldsValue({ thumbnail_url: url });
-                      setThumbPreview(url);
-                      message.success(`Thumbnail loaded: ${file.name}`);
-                      return false;
-                    }}
+                    beforeUpload={handleThumbBeforeUpload}
                     showUploadList={false}
                     className="!p-4"
                   >

@@ -1,6 +1,9 @@
 // src/pages/student/homework/HomeworkLayout.jsx
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { useChatDock } from "@/context/ChatDockContext";
+import { useAuthContext } from "@/context/AuthContext";
+import { TASKS_KEY } from "@/context/ChatDockContext";
 
 import ProgressBar from "@/components/homework/ProgressBar";
 import HomeRibbon from "@/components/student/mobile/HomeRibbon";
@@ -16,21 +19,124 @@ const PROGRESS_KEY = "kibundo.homework.progress.v1";
 
 export default function HomeworkLayout() {
   const { pathname } = useLocation();
+  const { state: dockState } = useChatDock();
+  const { user: authUser, account } = useAuthContext();
+  const [localTaskState, setLocalTaskState] = useState({ hasScanId: false, isDone: false });
 
-  // Prefer persisted step from localStorage; fall back to route heuristics
+  // Check localStorage for task state (as fallback when dockState doesn't have task)
+  useEffect(() => {
+    const checkLocalStorage = () => {
+      try {
+        const effectiveUserId = account?.type === "child" && account?.userId 
+          ? account.userId 
+          : (authUser?.id ?? "anon");
+        const directStudentId = account?.type === "child" ? account.id : null;
+        const storageKey = directStudentId ?? effectiveUserId;
+        const TASKS_KEY_USER = `${TASKS_KEY}::u:${storageKey}`;
+        const tasksRaw = localStorage.getItem(TASKS_KEY_USER);
+        if (tasksRaw) {
+          const tasks = JSON.parse(tasksRaw);
+          const latestTask = Array.isArray(tasks) && tasks.length > 0 
+            ? tasks.find(t => t?.scanId) || tasks[0] 
+            : null;
+          if (latestTask) {
+            setLocalTaskState({
+              hasScanId: Boolean(latestTask?.scanId),
+              isDone: Boolean(latestTask?.done || latestTask?.completedAt)
+            });
+            return;
+          }
+        }
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+      setLocalTaskState({ hasScanId: false, isDone: false });
+    };
+
+    // Check localStorage when pathname changes or when dockState doesn't have task
+    if (!dockState?.task && pathname.endsWith("/doing")) {
+      checkLocalStorage();
+    }
+  }, [pathname, dockState?.task, authUser?.id, account]);
+
+  // Read progress from localStorage
+  const [storedProgress, setStoredProgress] = useState(null);
+  
+  useEffect(() => {
+    const readProgress = () => {
+      try {
+        const effectiveUserId = account?.type === "child" && account?.userId 
+          ? account.userId 
+          : (authUser?.id ?? "anon");
+        const directStudentId = account?.type === "child" ? account.id : null;
+        const storageKey = directStudentId ?? effectiveUserId;
+        const PROGRESS_KEY_USER = `${PROGRESS_KEY}::u:${storageKey}`;
+        const progressRaw = localStorage.getItem(PROGRESS_KEY_USER);
+        if (progressRaw) {
+          const progress = JSON.parse(progressRaw);
+          setStoredProgress(progress);
+          return;
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+      setStoredProgress(null);
+    };
+
+    readProgress();
+    
+    // Listen for progress updates
+    const handleStorage = (e) => {
+      if (e?.key?.includes(PROGRESS_KEY)) {
+        readProgress();
+      }
+    };
+    
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("kibundo:tasks-updated", readProgress);
+    
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("kibundo:tasks-updated", readProgress);
+    };
+  }, [pathname, authUser?.id, account, PROGRESS_KEY]);
+
+  // Determine current step based on route, task state, and stored progress
   const current = useMemo(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}");
-      if (Number.isInteger(saved.step)) return Math.max(0, Math.min(2, saved.step));
-    } catch {}
-    return pathname.endsWith("/doing")
-      ? 1
-      : pathname.includes("/chat")
-      ? 1
-      : pathname.includes("/feedback")
-      ? 2
-      : 0;
-  }, [pathname]);
+    const isOnDoing = pathname.endsWith("/doing");
+    const isOnChat = pathname.includes("/chat");
+    const isOnFeedback = pathname.includes("/feedback");
+    
+    // Get task from dockState first, then use localStorage state as fallback
+    const task = dockState?.task;
+    const isTaskDone = task?.done || task?.completedAt 
+      ? true 
+      : (task ? false : localTaskState.isDone);
+    
+    // Priority 1: Use stored progress if available (most accurate)
+    if (storedProgress?.step !== undefined && storedProgress?.step !== null) {
+      const storedStep = storedProgress.step;
+      // Map progress steps (0-3) to ProgressBar steps (0-2)
+      // 0 = collect, 1 = do, 2 = chat, 3 = feedback → map to 0, 1, 2
+      if (storedStep === 0) return 0;
+      if (storedStep === 1 || storedStep === 2) return 1; // doing or chat = step 1
+      if (storedStep === 3) return 2; // feedback = step 2
+    }
+    
+    // Priority 2: Use route and task state as fallback
+    // Step 2: Feedback page or task is completed
+    if (isOnFeedback || isTaskDone) {
+      return 2;
+    }
+    
+    // Step 1: On doing page (always, even before upload) OR on chat page
+    if (isOnDoing || isOnChat) {
+      return 1;
+    }
+    
+    // Step 0: Only on list page or other routes (not on /doing)
+    return 0;
+  }, [pathname, dockState?.task, localTaskState, storedProgress]);
 
   // Mascot: success on step 2; normal buddy otherwise
   const mascotSrc = current === 2 ? successMascot : buddyMascot;
@@ -71,14 +177,14 @@ export default function HomeworkLayout() {
       </div>
 
       {/* PROGRESS + MASCOT */}
-      <div className="w-full mx-auto px-6 mt-6">
+      <div className="w-full mx-auto px-4 sm:px-6 mt-6 overflow-visible">
         <ProgressBar current={current} />
-        <div className="w-full flex items-center justify-center mt-3">
+        <div className="w-full flex items-center justify-center mt-4 md:mt-6">
           <img
             src={mascotSrc}
             alt={mascotAlt}
             draggable={false}
-            className="w-[120px] h-auto select-none drop-shadow-[0_10px_18px_rgba(0,0,0,.18)]"
+            className="w-[100px] sm:w-[120px] md:w-[140px] h-auto select-none drop-shadow-[0_10px_18px_rgba(0,0,0,.18)]"
           />
         </div>
       </div>

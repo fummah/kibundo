@@ -49,11 +49,30 @@ export default function HomeworkDoing() {
 
   // write into chat storage directly so preview + status show instantly
   const { openChat, expandChat, getChatMessages, setChatMessages, closeChat } = useChatDock();
-  const { user: authUser } = useAuthContext();
+  const { user: authUser, account } = useAuthContext();
 
-  const studentId = authUser?.id ?? "anon";
-  const TASKS_KEY_USER = `${TASKS_KEY}::u:${studentId}`;
-  const PROGRESS_KEY_USER = `${PROGRESS_KEY}::u:${studentId}`;
+  // 🔥 Get the effective student context (handles parent viewing child)
+  // When parent views child: account.id = student_id, account.userId = user_id
+  // When student logs in directly: authUser.id = user_id, need to fetch student_id
+  
+  // If parent has selected a child account, account.id is the student_id
+  const directStudentId = account?.type === "child" ? account.id : null;
+  
+  // Get the user_id to fetch student_id if needed
+  const effectiveUserId = account?.type === "child" && account?.userId 
+    ? account.userId 
+    : (authUser?.id ?? "anon");
+  
+  // State to store the fetched student_id (when student logs in directly)
+  const [fetchedStudentId, setFetchedStudentId] = useState(null);
+  
+  // Final student_id to use - prefer direct from account, otherwise use fetched
+  const studentId = directStudentId ?? fetchedStudentId;
+  
+  // Build SCOPED storage keys per student (use studentId if available, otherwise effectiveUserId)
+  const storageKey = studentId ?? effectiveUserId;
+  const TASKS_KEY_USER = `${TASKS_KEY}::u:${storageKey}`;
+  const PROGRESS_KEY_USER = `${PROGRESS_KEY}::u:${storageKey}`;
 
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
@@ -64,13 +83,36 @@ export default function HomeworkDoing() {
   const [hasStarted, setHasStarted] = useState(false); // Track if user has started
   const [taskType, setTaskType] = useState(null); // 'solvable' (Type A) or 'creative' (Type B)
   const { buddy, ttsEnabled } = useStudentApp();
+
+  // Fetch student_id from user_id (only if not already available from account)
+  useEffect(() => {
+    const fetchStudentId = async () => {
+      if (effectiveUserId === "anon" || directStudentId) return; // Skip if already have student_id or not authenticated
+      
+      try {
+        const { data } = await api.get('/student-id', {
+          params: { user_id: effectiveUserId },
+          withCredentials: true,
+          validateStatus: (status) => status < 500,
+        });
+        
+        if (data?.student_id) {
+          setFetchedStudentId(data.student_id);
+        }
+      } catch (error) {
+        // Failed to fetch student_id - silently continue
+      }
+    };
+
+    fetchStudentId();
+  }, [effectiveUserId, directStudentId]);
   // Ensure ttsEnabled is explicitly true/false (defaults to true if undefined)
   const ttsEnabledValue = ttsEnabled !== false; // true if undefined, null, or true
   const { speak: speakTTS } = useTTS({ lang: "de-DE", enabled: ttsEnabledValue });
   const locationPathRef = useRef(null); // Track pathname to detect fresh navigations (null = not initialized)
 
   // Unique key per navigation (works with React Router)
-  const ttsOnceKey = `tts:doing:${studentId}:${location.key || location.pathname}`;
+  const ttsOnceKey = `tts:doing:${storageKey}:${location.key || location.pathname}`;
 
   // Close chat immediately on mount if no state is provided (for "Add New Scan" navigation)
   // This must run BEFORE any other effects to prevent FooterChat from auto-opening
@@ -133,6 +175,30 @@ export default function HomeworkDoing() {
     }
   }, []); // Run once on mount
 
+  // Save progress as step 1 when on doing page (even before upload) to persist after refresh
+  useEffect(() => {
+    const currentPath = typeof location?.pathname === 'string' ? location.pathname : String(location?.pathname || '');
+    if (currentPath.endsWith("/doing")) {
+      try {
+        const currentProgress = readProgressForUser();
+        // Only update if not already on step 2 or 3 (feedback/completed)
+        if (typeof currentProgress?.step !== "number" || currentProgress.step < 2) {
+          localStorage.setItem(
+            PROGRESS_KEY_USER,
+            JSON.stringify({
+              step: 1, // Always step 1 (machen) when on doing page
+              taskId: currentProgress?.taskId || null,
+              task: currentProgress?.task || null,
+            })
+          );
+        }
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location?.pathname]); // Run when pathname changes
+
   const loadTasks = () => {
     try {
       return JSON.parse(localStorage.getItem(TASKS_KEY_USER) || "[]");
@@ -154,7 +220,7 @@ export default function HomeworkDoing() {
     if (!openChat || resumeHandledRef.current) return;
 
     // Wait for authenticated student context before attempting resume
-    if (studentId === "anon" && !authUser?.id) {
+    if (!studentId && effectiveUserId === "anon" && !authUser?.id) {
       return;
     }
 
@@ -168,14 +234,19 @@ export default function HomeworkDoing() {
 
       const existingTask = tasksSnapshot.find((t) => t.id === pendingTaskId);
       if (!existingTask) return false;
+      
+      // 🔥 Don't open chat if task is completed - prevent new chats on completed tasks
+      if (existingTask?.done || existingTask?.completedAt) {
+        return false;
+      }
 
-      openChat?.({
-        mode: "homework",
-        task: existingTask,
-        key: `homework:${existingTask.id}::u:${studentId}`,
-        restore: true,
-        focus: "last",
-      });
+        openChat?.({
+          mode: "homework",
+          task: existingTask,
+          key: `homework:${existingTask.id}::u:${storageKey}`,
+          restore: true,
+          focus: "last",
+        });
       expandChat?.(true);
       resumeHandledRef.current = true;
       return true;
@@ -186,11 +257,16 @@ export default function HomeworkDoing() {
     if (taskId) {
       const existing = tasksSnapshot.find((t) => t.id === taskId);
       if (existing) {
+        // 🔥 Don't open chat if task is completed - prevent new chats on completed tasks
+        if (existing?.done || existing?.completedAt) {
+          resumeHandledRef.current = true;
+          return;
+        }
         // Open chat instead of navigating away
         openChat?.({
           mode: "homework",
           task: existing,
-          key: `homework:${taskId}::u:${studentId}`,
+          key: `homework:${taskId}::u:${storageKey}`,
           restore: true,
           focus: "last",
         });
@@ -205,12 +281,18 @@ export default function HomeworkDoing() {
     if (taskFromState?.id) {
       const existing = tasksSnapshot.find((t) => t.id === taskFromState.id);
       const t = existing || taskFromState;
+      
+      // 🔥 Don't open chat if task is completed - prevent new chats on completed tasks
+      if (t?.done || t?.completedAt) {
+        resumeHandledRef.current = true;
+        return;
+      }
 
       // Open chat instead of navigating away
       openChat?.({
         mode: "homework",
         task: t,
-        key: `homework:${t.id}::u:${studentId}`,
+        key: `homework:${t.id}::u:${storageKey}`,
         restore: true,
         focus: "last",
       });
@@ -250,6 +332,11 @@ export default function HomeworkDoing() {
 
     const fd = new FormData();
     fd.append("file", file, file.name);
+    // 🔥 Send student_id in FormData so backend knows which student this scan belongs to
+    // This is critical for parent viewing second child scenario
+    if (studentId) {
+      fd.append("student_id", studentId.toString());
+    }
     // Backend expects auth token in header, not userId in form data
     const { data } = await api.post("ai/upload", fd, {
       headers: { 
@@ -341,7 +428,7 @@ export default function HomeworkDoing() {
     openChat?.({
       mode: "homework",
       task: { id: taskId, userId: studentId, ...extraTaskData },
-      key: `homework:${taskId}::u:${studentId}`,
+      key: `homework:${taskId}::u:${storageKey}`,
       restore: true,
       focus: "last",
     });
@@ -357,7 +444,7 @@ export default function HomeworkDoing() {
     const id = existingTask?.id || makeId();
 
     const mode = "homework";
-    const scopedKey = `${id}::u:${studentId}`;
+    const scopedKey = `${id}::u:${storageKey}`;
 
     // Prepare loader message FIRST so the chat shows it immediately (no image preview)
     let loadingMsg = null;
@@ -367,9 +454,9 @@ export default function HomeworkDoing() {
       const fileType = file.type?.startsWith("image/") ? "Bild" : "Datei";
       loadingMsg = fmt(`Ich analysiere deine ${fileType}…`, "agent", "status", { transient: true, agentName: selectedAgent || "Kibundo" });
 
-      // Push only loader message (no image preview), then open & expand the dock right away
+      // Push only loader message (no image preview), but DON'T open chat yet - wait for scan to complete
       appendToChat(mode, scopedKey, [loadingMsg]);
-      openAndFocusChat(id);
+      // Don't open chat here - will open after scan completes
     } else {
       // No file: open chat without any initial message
       openAndFocusChat(id);
@@ -383,6 +470,9 @@ export default function HomeworkDoing() {
         // Compress large images before upload
         const fileToUpload = await compressImage(file);
         scanData = await uploadWithApi(fileToUpload);
+        
+        // 🔥 Hide overlay once we have results - chat will open below with results
+        setUploading(false);
       } catch (e) {
         const status = e?.response?.status;
         const serverMsg =
@@ -437,8 +527,8 @@ export default function HomeworkDoing() {
         }
 
         antdMessage.error(`Upload/Analyse fehlgeschlagen: ${errorDisplayMsg}`);
-      } finally {
-        setUploading(false); // hide overlay; chat keeps status bubble until result
+        setUploading(false); // Hide overlay on error
+        // Note: Chat will be opened in the else if block below if scanData is null
       }
     }
 
@@ -572,7 +662,7 @@ export default function HomeworkDoing() {
       scanId: scanData?.scan?.id ?? existingTask?.scanId ?? null,
       conversationId: scanData?.conversationId ?? existingTask?.conversationId ?? null,
       taskType: detectedTaskType, // 'solvable' or 'creative'
-      userId: studentId, // convenience only
+      userId: studentId || null, // 🔥 Use actual student_id (not user_id) - this is used for filtering
       completionPhotoUrl: existingTask?.completionPhotoUrl || null,
       completedAt: existingTask?.completedAt || null,
       grade: detectedGrade,
@@ -627,11 +717,13 @@ export default function HomeworkDoing() {
     } catch {}
 
     // progress is best-effort; keep it small
+    // Set step 0 (collect) if no scan yet, step 1 (machen) if scan completed
+    const progressStep = scanData ? 1 : 0;
     try {
       localStorage.setItem(
         PROGRESS_KEY_USER,
         JSON.stringify({
-          step: 1,
+          step: progressStep,
           taskId: id,
           task: { id, what: taskForStorage.what, hasImage: taskForStorage.hasImage, conversationId: taskForStorage.conversationId, scanId: taskForStorage.scanId },
         })
@@ -640,19 +732,35 @@ export default function HomeworkDoing() {
 
     // If analysis succeeded, update status + append result
     if (scanData) {
+      // Append extraction/table or fallback
+      const extracted = scanData?.scan?.raw_text ?? scanData?.extractedText ?? "";
+      const rawQa = Array.isArray(scanData?.parsed?.questions)
+        ? scanData.parsed.questions
+        : Array.isArray(scanData?.qa)
+        ? scanData.qa
+        : [];
+      const needsClearerImage = scanData?.needsClearerImage || scanData?.parsed?.unclear || scanData?.error;
+
+      // 🔥 Filter out answers - only keep questions for student display
+      // Create sanitized QA array with only question fields (no answers)
+      const qa = rawQa.map((item) => {
+        // Create a new object with only question-related fields
+        const sanitized = {};
+        if (item.text) sanitized.text = item.text;
+        if (item.question) sanitized.question = item.question;
+        // Preserve other metadata fields that might be useful (but not answers)
+        if (item.id) sanitized.id = item.id;
+        if (item.type) sanitized.type = item.type;
+        // Explicitly exclude answer fields (answer, answers, solution, etc.)
+        return sanitized;
+      });
+
       // Replace loader status
       if (loadingMsg) {
         replaceMessageInChat(mode, scopedKey, loadingMsg.id, () =>
           fmt("Analyse abgeschlossen.", "agent", "status", { transient: true, agentName: selectedAgent || "Kibundo" })
         );
       }
-      // Append extraction/table or fallback
-      const extracted = scanData?.scan?.raw_text ?? scanData?.extractedText ?? "";
-      const qa = Array.isArray(scanData?.parsed?.questions)
-        ? scanData.parsed.questions
-        : Array.isArray(scanData?.qa)
-        ? scanData.qa
-        : [];
 
       // Get detected subject from AI
       const aiDetectedSubject = scanData?.parsed?.subject || scanData?.scan?.detected_subject;
@@ -675,7 +783,7 @@ export default function HomeworkDoing() {
 
         messagesToAppend.push(
           fmt(
-            `${subjectEmoji} Fach erkannt: ${aiDetectedSubject}`,
+            `${subjectEmoji} Subject: ${aiDetectedSubject}`,
             "agent",
             "text",
             { agentName: selectedAgent || "Kibundo" }
@@ -688,7 +796,7 @@ export default function HomeworkDoing() {
         // Type B: Creative/Manual - Motivational mode
         messagesToAppend.push(
           fmt(
-            "🎨 Super! Das ist eine kreative Aufgabe! Ich werde dich dabei unterstützen und motivieren. Lass uns gemeinsam etwas Schönes schaffen! 💪",
+            "This is a creative task! I'll support and motivate you. Let's create something great together!",
             "agent",
             "text",
             { agentName: selectedAgent || "Kibundo" }
@@ -696,17 +804,10 @@ export default function HomeworkDoing() {
         );
       } else {
         // Type A: Solvable - Step-by-step help mode
-        messagesToAppend.push(
-          fmt(
-            "✅ Perfekt! Ich habe deine Aufgabe erkannt. Ich werde dir Schritt für Schritt helfen, sie zu lösen. Lass uns gemeinsam starten! 🚀",
-            "agent",
-            "text",
-            { agentName: selectedAgent || "Kibundo" }
-          )
-        );
+        // No need for extra message - the scan results table and subject notification are enough
       }
 
-      // Add extraction result
+      // Add extraction result - show questions WITHOUT answers
       const resultMsg =
         extracted || qa.length
           ? fmt({ extractedText: extracted, qa }, "agent", "table", { agentName: selectedAgent || "Kibundo" })
@@ -721,18 +822,18 @@ export default function HomeworkDoing() {
 
       appendToChat(mode, scopedKey, messagesToAppend);
 
-      // ⬇️ Update the chat with conversationId and scanId from upload response
-      // Re-open the chat with updated task data (conversationId, scanId)
-      if (scanData.conversationId || scanData?.scan?.id) {
-        const updatedTaskData = {
-          conversationId: scanData.conversationId,
-          scanId: scanData?.scan?.id,
-        };
+      // ⬇️ NOW open the chat after scan completes (with updated task data)
+      const updatedTaskData = {
+        conversationId: scanData.conversationId,
+        scanId: scanData?.scan?.id,
+      };
 
-        // Re-open chat with updated conversationId and scanId
-        openAndFocusChat(id, updatedTaskData);
+      // Progress is already updated above (step 1 when scanData exists)
+      // Open chat with scan results - this is the first time opening after scan completes
+      openAndFocusChat(id, updatedTaskData);
 
-        // Try to store in localStorage (optional fallback, ignore quota errors)
+      // Try to store conversationId in localStorage (optional fallback, ignore quota errors)
+      if (scanData.conversationId) {
         const convKey = `kibundo.convId.${mode}.${scopedKey}`;
         try {
           localStorage.setItem(convKey, String(scanData.conversationId));
@@ -755,6 +856,10 @@ export default function HomeworkDoing() {
           }
         }
       }
+    } else if (file) {
+      // Scan failed but file was uploaded - open chat anyway to show error message
+      // The error message was already added to chat in the catch block above
+      openAndFocusChat(id);
     }
 
     antdMessage.success("Aufgabe erstellt – der Chat zeigt jetzt die Analyse.");

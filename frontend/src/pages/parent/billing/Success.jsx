@@ -39,6 +39,13 @@ export default function Success() {
           // Mark that billing data needs to be refreshed
           sessionStorage.setItem("billing_refresh_needed", "true");
           sessionStorage.setItem("billing_refresh_time", Date.now().toString());
+          // Mark that parent should be redirected to account page to choose profile
+          sessionStorage.setItem("redirect_to_account_after_subscription", "true");
+          
+          // Auto-redirect to account page after 3 seconds
+          setTimeout(() => {
+            navigate("/parent/account", { replace: true });
+          }, 3000);
         } else if (sessionId) {
           // If we have a session ID, assume payment was successful
           // (Stripe redirects here only after successful payment)
@@ -46,6 +53,13 @@ export default function Success() {
           // Mark that billing data needs to be refreshed
           sessionStorage.setItem("billing_refresh_needed", "true");
           sessionStorage.setItem("billing_refresh_time", Date.now().toString());
+          // Mark that parent should be redirected to account page to choose profile
+          sessionStorage.setItem("redirect_to_account_after_subscription", "true");
+          
+          // Auto-redirect to account page after 3 seconds
+          setTimeout(() => {
+            navigate("/parent/account", { replace: true });
+          }, 3000);
         } else {
           setError("Payment not completed. Please contact support if you were charged.");
         }
@@ -58,6 +72,13 @@ export default function Success() {
           // Mark that billing data needs to be refreshed
           sessionStorage.setItem("billing_refresh_needed", "true");
           sessionStorage.setItem("billing_refresh_time", Date.now().toString());
+          // Mark that parent should be redirected to account page to choose profile
+          sessionStorage.setItem("redirect_to_account_after_subscription", "true");
+          
+          // Auto-redirect to account page after 3 seconds
+          setTimeout(() => {
+            navigate("/parent/account", { replace: true });
+          }, 3000);
         } else {
           setError("Unable to verify payment status. Please check your billing overview.");
         }
@@ -67,7 +88,7 @@ export default function Success() {
     };
 
     verifySession();
-  }, [sessionId]);
+  }, [sessionId, navigate]);
 
   if (loading) {
     return (
@@ -134,11 +155,14 @@ export default function Success() {
             extra={[
               <Button
                 type="primary"
-                key="home"
+                key="account"
                 icon={<HomeOutlined />}
-                onClick={() => navigate("/parent/home")}
+                onClick={() => {
+                  // Redirect to account page to choose profile
+                  navigate("/parent/account", { replace: true });
+                }}
               >
-                Go to Home
+                Choose Profile
               </Button>,
               <Button
                 key="billing"

@@ -4,14 +4,10 @@ import { useTranslation } from "react-i18next";
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import api from "@/api/axios";
 // ParentShell is now handled at route level
-import BuddyAvatar from "@/components/student/BuddyAvatar";
-import globalBg from "@/assets/backgrounds/global-bg.png";
-import monster1 from "@/assets/buddies/monster1.png";
-import monster2 from "@/assets/buddies/monster21.png";
+import CircularBackground from "@/components/layouts/CircularBackground";
 
 import {
   Button,
-  Card,
   Form,
   Input,
   Select,
@@ -25,6 +21,7 @@ import {
   PlusOutlined,
   LeftOutlined,
   CheckCircleFilled,
+  DownOutlined,
 } from "@ant-design/icons";
 
 const { Title, Text } = Typography;
@@ -39,14 +36,14 @@ export default function AddStudentFlow() {
   const { user } = useAuthContext();
   const [params] = useSearchParams();
 
-  // 0:intro, 1:list, 2:form, 3:success
+  // 0:form, 1:success (simplified flow - removed intro and list steps)
   const urlStep = Number(params.get("step"));
-  const initialStep = Number.isFinite(urlStep) ? Math.max(0, Math.min(3, urlStep)) : 0;
+  const initialStep = Number.isFinite(urlStep) ? Math.max(0, Math.min(1, urlStep)) : 0;
   const [step, setStep] = useState(initialStep);
   const [submitting, setSubmitting] = useState(false);
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
-  const [subjects, setSubjects] = useState([]);
+          // Removed subjects state - field removed per client feedback
   const [states, setStates] = useState([]);
   const [parentId, setParentId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -54,15 +51,14 @@ export default function AddStudentFlow() {
   const [checkingStudents, setCheckingStudents] = useState(true);
   const isInitialMountRef = React.useRef(true);
 
-  // Fetch dropdown options (classes, subjects, states) when on step 2
+  // Fetch dropdown options (classes, states) when on step 0 (form)
   useEffect(() => {
     const fetchDropdowns = async () => {
-      if (step === 2) {
+      if (step === 0) {
         setLoadingDropdowns(true);
         try {
-          const [classesRes, subjectsRes, statesRes] = await Promise.all([
+          const [classesRes, statesRes] = await Promise.all([
             api.get("/allclasses"),
-            api.get("/allsubjects"),
             api.get("/states")
           ]);
           
@@ -71,17 +67,12 @@ export default function AddStudentFlow() {
             : (classesRes.data?.data || []);
           setClasses(allClasses);
           
-          const allSubjects = Array.isArray(subjectsRes.data) 
-            ? subjectsRes.data 
-            : (subjectsRes.data?.data || []);
-          setSubjects(allSubjects);
-          
           const allStates = Array.isArray(statesRes.data) 
             ? statesRes.data 
             : (statesRes.data?.data || []);
           setStates(allStates);
         } catch (error) {
-          console.error("❌ Error fetching dropdown options:", error);
+          // Error fetching dropdown options - silently continue
         } finally {
           setLoadingDropdowns(false);
         }
@@ -124,19 +115,7 @@ export default function AddStudentFlow() {
           const parentStudents = allStudents.filter(s => s.parent_id === foundParentId);
           setStudents(parentStudents);
           
-          // Auto-skip to form if no students and on step 0 or 1
-          // Do this after setting students, but defer navigation to avoid render warnings
-          const currentUrlStep = params.get("step");
-          if (parentStudents.length === 0 && currentUrlStep !== "2" && currentUrlStep !== "3") {
-            const currentStepNum = Number(currentUrlStep);
-            const isValidStep = Number.isFinite(currentStepNum) ? Math.max(0, Math.min(3, currentStepNum)) : 0;
-            if (isValidStep === 0 || isValidStep === 1) {
-              // Defer navigation to next tick to avoid render warnings
-              setTimeout(() => {
-                navigate("/parent/myfamily/add-student-flow?step=2", { replace: true });
-              }, 0);
-            }
-          }
+          // Flow now starts directly at form (step 0), no auto-skip needed
         }
         
         // Fetch classes for display
@@ -146,7 +125,6 @@ export default function AddStudentFlow() {
           : (classesRes.data?.data || []);
         setClasses(allClasses);
       } catch (error) {
-        console.error("❌ Error fetching data:", error);
         message.error(t("parent.addStudent.fetchError", "Failed to load students."));
       } finally {
         setLoading(false);
@@ -177,28 +155,8 @@ export default function AddStudentFlow() {
 
 
   const goBack = () => {
-    setStep((s) => {
-      const newStep = Math.max(0, s - 1);
-      // If going back from step 2 and parent has no students, go to step 0 (intro) instead of step 1
-      if (s === 2 && newStep === 1 && students.length === 0) {
-        navigate("/parent/myfamily/add-student-flow?step=0", { replace: true });
-        return 0;
-      }
-      navigate(`/parent/myfamily/add-student-flow?step=${newStep}`, { replace: true });
-      return newStep;
-    });
-  };
-  
-  const goNext = () => {
-    setStep((s) => {
-      let newStep = Math.min(3, s + 1);
-      // If going from step 0 to step 1, but parent has no students, skip to step 2
-      if (s === 0 && newStep === 1 && students.length === 0) {
-        newStep = 2;
-      }
-      navigate(`/parent/myfamily/add-student-flow?step=${newStep}`, { replace: true });
-      return newStep;
-    });
+    // From form, go back to home
+    navigate("/parent/home");
   };
 
   const onCreate = async (values) => {
@@ -207,6 +165,9 @@ export default function AddStudentFlow() {
       if (!user?.id) {
         throw new Error("Not authenticated");
       }
+
+      // Check if this is the first child (before creating)
+      const isFirstChild = students.length === 0;
 
       // Get parent_id if not already set
       let finalParentId = parentId;
@@ -239,19 +200,15 @@ export default function AddStudentFlow() {
         state: values.state || "",
         class_id: values.class_id,
         parent_id: finalParentId, // Set parent_id so student is linked to parent
-        subjects: Array.isArray(values.subjects) ? values.subjects : [],
+        // Subjects field removed per client feedback
       };
 
-      console.log("📤 Creating student user:", userBody);
-      
       const userRes = await api.post("/adduser", userBody);
       const createdUser = userRes?.data?.user || userRes?.data;
       
       if (!createdUser?.id) {
         throw new Error("Failed to create user account");
       }
-
-      console.log("✅ User created:", createdUser.id);
 
       // Wait a bit for backend to create student record, then update it
       // Fetch students to find the newly created one
@@ -277,8 +234,7 @@ export default function AddStudentFlow() {
             await api.put(`/students/${newStudent.id}`, updatePayload);
           }
         } catch (updateError) {
-          console.warn("⚠️ Could not update student profile:", updateError);
-          // Continue anyway - student was created successfully
+          // Could not update student profile - continue anyway, student was created successfully
         }
       }
       
@@ -291,7 +247,15 @@ export default function AddStudentFlow() {
       setStudents(updatedParentStudents);
       
       message.success(t("parent.addStudent.toast.created", "Student created successfully!"));
-      setStep(3);
+      
+      // If this is the first child, redirect to add another child intro page
+      // For subsequent children, redirect to home (next step)
+      if (isFirstChild) {
+        navigate("/parent/myfamily/add-another-child-intro", { replace: true });
+      } else {
+        navigate("/parent/home", { replace: true });
+      }
+      return; // Exit early to prevent onboarding flow from interfering
 
       try {
         const onboardingActive = sessionStorage.getItem(ONBOARDING_FLAG_KEY) === "1";
@@ -317,7 +281,6 @@ export default function AddStudentFlow() {
         // ignore storage issues
       }
     } catch (e) {
-      console.error("❌ Error creating student:", e);
       message.error(
         t("parent.addStudent.toast.createFailed", "Could not create student.") + 
         (e?.response?.data?.message ? `: ${e.response.data.message}` : "")
@@ -328,186 +291,78 @@ export default function AddStudentFlow() {
   };
 
   // Show loading while checking if parent has students
-  if (checkingStudents && step !== 2 && step !== 3) {
+  if (checkingStudents && step !== 0 && step !== 1) {
     return (
-      <div className="mx-auto w-full max-w-[820px] py-6 px-4">
-        <Card className="rounded-2xl shadow-sm">
-          <div className="flex justify-center py-8">
-            <Spin size="large" />
-          </div>
-        </Card>
-      </div>
+      <CircularBackground>
+        <div className="flex flex-col items-center justify-center min-h-screen">
+          <Spin size="large" />
+        </div>
+      </CircularBackground>
     );
   }
 
+  const inputClass =
+    "h-11 sm:h-12 w-full rounded-2xl border border-[#E9DED2] bg-white px-3 sm:px-4 text-sm sm:text-base text-[#4F3A2D] placeholder:text-[#BCB1A8] shadow-[0_6px_16px_rgba(87,60,42,0.08)] focus:border-[#FF9A36] focus:shadow-[0_10px_24px_rgba(255,154,54,0.28)] transition";
+
   return (
-      <div className="mx-auto w-full max-w-[820px] py-6 px-4">
-        {/* ---------- Step 0: Intro (with mascot) ---------- */}
+    <CircularBackground>
+      <div className="flex flex-col items-center w-full px-4 sm:px-6 md:px-8">
+        {/* Back button and title */}
+        <div className="w-full max-w-7xl mb-4 sm:mb-6">
+          <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
+            <Button 
+              type="text" 
+              icon={<LeftOutlined />} 
+              onClick={() => navigate("/parent/home")}
+              className="!p-0 !h-auto text-neutral-700"
+            />
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-neutral-800 mb-0">
+              {t("parent.addStudent.formTitle", "Student Details")}
+            </h1>
+          </div>
+
+        {/* ---------- Step 0: Form ---------- */}
         {step === 0 && (
-          <Card 
-            className="rounded-2xl shadow-sm"
-            title={
-              <Space>
-                <Button 
-                  type="text" 
-                  icon={<LeftOutlined />} 
-                  onClick={() => navigate("/parent/home")}
-                />
-                <span className="font-semibold">
-                  {t("parent.addStudent.introTitle", "Create a student account")}
-                </span>
-              </Space>
-            }
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-              <div className="order-2 md:order-1">
-                <Text className="text-neutral-600">
-                  {t(
-                    "parent.addStudent.introText",
-                    "So your student can use the app independently and safely, create the student account now."
-                  )}
-                </Text>
-                <div className="mt-6">
-                  <Button
-                    type="primary"
-                    size="large"
-                    icon={<PlusOutlined />}
-                    onClick={() => {
-                      // Always go directly to form (step 2)
-                      setStep(2);
-                      navigate("/parent/myfamily/add-student-flow?step=2", { replace: true });
-                    }}
-                  >
-                    {t("parent.addStudent.add", "Add Student")}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="order-1 md:order-2 flex justify-center">
-              <BuddyAvatar src={monster1} size={160} ring={false} />
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {/* ---------- Step 1: Current Students ---------- */}
-        {step === 1 && (
-          <Card
-            className="rounded-2xl shadow-sm"
-            title={
-              <Space>
-                <Button type="text" icon={<LeftOutlined />} onClick={goBack} />
-                <span className="font-semibold">
-                  {t("parent.addStudent.currentTitle", "Your Students")}
-                </span>
-              </Space>
-            }
-          >
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <Spin size="large" />
-              </div>
-            ) : students.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {students.map((s) => {
-                  const studentUser = s.user || {};
-                  const firstName = studentUser.first_name || "";
-                  const lastName = studentUser.last_name || "";
-                  const fullName = `${firstName} ${lastName}`.trim() || `Student #${s.id}`;
-                  // Map student ID to monster image (cycle through monster1, monster2)
-                  const monsterImages = [monster1, monster2];
-                  const defaultAvatar = monsterImages[(s.id - 1) % 2];
-                  const avatar = studentUser.avatar || defaultAvatar;
-                  
-                  return (
-                    <div
-                      key={s.id}
-                      className="flex items-center gap-3 rounded-2xl border border-neutral-200 p-3"
-                    >
-                      <BuddyAvatar src={avatar} size={56} />
-                      <div className="leading-tight">
-                        <div className="font-semibold">{fullName}</div>
-                        <Text type="secondary">
-                          {s.status || (s.user?.status || "Active")}
-                        </Text>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <Empty description={t("parent.addStudent.noStudents", "No students yet.")} />
-            )}
-
-            <div className="mt-6 flex items-center justify-between">
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => {
-                setStep(2);
-                navigate("/parent/myfamily/add-student-flow?step=2", { replace: true });
-              }}>
-                {t("parent.addStudent.addAnother", "Add another student")}
-              </Button>
-              <Button onClick={() => navigate("/parent/home")}>
-                {t("common.cancel", "Cancel")}
-              </Button>
-            </div>
-          </Card>
-        )}
-
-        {/* ---------- Step 2: Form ---------- */}
-        {step === 2 && (
-          <Card
-            className="rounded-2xl shadow-sm"
-            title={
-              <Space>
-                <Button 
-                  type="text" 
-                  icon={<LeftOutlined />} 
-                  onClick={() => {
-                    // If parent has students, go back to student list (step 1)
-                    // Otherwise, go to home screen
-                    if (students.length > 0) {
-                      goBack();
-                    } else {
-                      navigate("/parent/home");
-                    }
-                  }}
-                />
-                <span className="font-semibold">
-                  {t("parent.addStudent.formTitle", "Student Details")}
-                </span>
-              </Space>
-            }
-          >
+          <div className="w-full max-w-7xl !pb-5" style={{ paddingBottom: '20px' }}>
             <Form
-              key="add-student-step2" // remounts if you leave & return
+              key="add-student-step2"
               layout="vertical"
-              requiredMark="optional"
+              requiredMark={false}
               onFinish={onCreate}
+              className="space-y-0 pb-0"
+              colon={false}
             >
               <Form.Item
-                label={t("parent.addStudent.firstName", "First name")}
                 name="first_name"
                 rules={[
                   { required: true, message: t("errors.required", "This field is required.") },
                   { min: 2, message: t("errors.minChars", { n: 2 }) },
                 ]}
+                className="mb-3"
+                label={<span className="hidden">First Name</span>}
               >
-                <Input placeholder={t("parent.addStudent.firstName_ph", "Enter first name")} />
+                <Input 
+                  placeholder={t("parent.addStudent.firstName_ph", "First Name")}
+                  className={inputClass}
+                />
               </Form.Item>
 
               <Form.Item
-                label={t("parent.addStudent.lastName", "Last name")}
                 name="last_name"
                 rules={[
                   { required: true, message: t("errors.required", "This field is required.") },
                   { min: 2, message: t("errors.minChars", { n: 2 }) },
                 ]}
+                className="mb-3"
+                label={<span className="hidden">Last Name</span>}
               >
-                <Input placeholder={t("parent.addStudent.lastName_ph", "Enter last name")} />
+                <Input 
+                  placeholder={t("parent.addStudent.lastName_ph", "Last Name")}
+                  className={inputClass}
+                />
               </Form.Item>
 
               <Form.Item
-                label={t("parent.addStudent.age", "Age")}
                 name="age"
                 rules={[
                   { required: true, message: t("errors.required", "This field is required.") },
@@ -521,53 +376,51 @@ export default function AddStudentFlow() {
                     },
                   },
                 ]}
+                className="mb-3"
+                label={<span className="hidden">Age</span>}
               >
-                <Input type="number" placeholder="8" min={4} max={18} />
+                <Input 
+                  type="number" 
+                  placeholder="8" 
+                  min={4} 
+                  max={18}
+                  className={inputClass}
+                />
               </Form.Item>
 
               <Form.Item
-                label="Class"
                 name="class_id"
                 rules={[{ required: true, message: t("errors.required", "This field is required.") }]}
+                className="mb-3"
+                label={<span className="hidden">Class</span>}
               >
                 <Select
-                  placeholder="Select class"
+                  placeholder="Select class (Grade 1-4 only)"
                   showSearch
                   filterOption={(input, option) =>
                     (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
                   }
-                  options={classes.map((c) => ({
-                    value: c.id,
-                    label: c.class_name || `Class ${c.id}`,
-                  }))}
+                  options={classes
+                    .filter((c) => {
+                      const className = (c.class_name || "").toLowerCase();
+                      return /(grade|klasse|class)\s*[1-4]|[1-4]\s*(grade|klasse|class)|^[1-4]$/.test(className);
+                    })
+                    .map((c) => ({
+                      value: c.id,
+                      label: c.class_name || `Class ${c.id}`,
+                    }))}
                   loading={loadingDropdowns}
+                  className="add-student-select"
+                  classNames={{ popup: "rounded-2xl" }}
+                  suffixIcon={<DownOutlined className="text-[#BCB1A8]" />}
                 />
               </Form.Item>
 
               <Form.Item
-                label="Subjects"
-                name="subjects"
-                rules={[{ required: true, message: t("errors.required", "This field is required.") }]}
-              >
-                <Select
-                  mode="multiple"
-                  placeholder="Select subjects"
-                  showSearch
-                  filterOption={(input, option) =>
-                    (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
-                  }
-                  options={subjects.map((s) => ({
-                    value: s.id,
-                    label: s.subject_name || s.name || `Subject ${s.id}`,
-                  }))}
-                  loading={loadingDropdowns}
-                />
-              </Form.Item>
-
-              <Form.Item
-                label="State"
                 name="state"
                 rules={[{ required: true, message: t("errors.required", "This field is required.") }]}
+                className="mb-3"
+                label={<span className="hidden">State</span>}
               >
                 <Select
                   placeholder="Select state"
@@ -580,76 +433,120 @@ export default function AddStudentFlow() {
                     label: s.state_name || s.name || String(s),
                   }))}
                   loading={loadingDropdowns}
+                  className="add-student-select"
+                  classNames={{ popup: "rounded-2xl" }}
+                  suffixIcon={<DownOutlined className="text-[#BCB1A8]" />}
                 />
               </Form.Item>
 
               <Form.Item
-                label="School (Optional)"
                 name="school"
+                className="mb-0"
+                label={<span className="hidden">School (Optional)</span>}
               >
-                <Input placeholder="Enter school name (optional)" />
+                <Input 
+                  placeholder="Enter school name (optional)"
+                  className={inputClass}
+                />
               </Form.Item>
 
-              <div className="flex items-center justify-end gap-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-4 sm:gap-3 mt-12 sm:mt-16">
                 <Button 
-                  onClick={() => {
-                    // If parent has students, go back to student list (step 1)
-                    // Otherwise, go to home screen
-                    if (students.length > 0) {
-                      goBack();
-                    } else {
-                      navigate("/parent/home");
-                    }
-                  }}
+                  onClick={() => navigate("/parent/home")}
+                  className="h-12 px-4 sm:px-6 rounded-2xl text-sm sm:text-base order-2 sm:order-1"
                 >
-                  {t("common.back", "Back")}
+                  {t("common.cancel", "Cancel")}
                 </Button>
-                <Button type="primary" htmlType="submit" loading={submitting}>
+                <Button 
+                  type="primary" 
+                  htmlType="submit" 
+                  loading={submitting}
+                  className="h-12 px-4 sm:px-6 rounded-2xl !bg-[#FF9A36] hover:!bg-[#FF8A1A] border-none text-sm sm:text-base order-1 sm:order-2"
+                >
                   {t("parent.addStudent.create", "Create")}
                 </Button>
               </div>
             </Form>
-          </Card>
+          </div>
         )}
 
-        {/* ---------- Step 3: Success ---------- */}
-        {step === 3 && (
-          <Card className="rounded-2xl shadow-sm">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-              <div className="order-2 md:order-1">
-                <Title level={3} className="!mb-2">
-                  <CheckCircleFilled className="text-emerald-500 mr-2" />
-                  {t("parent.addStudent.successTitle", "All set!")}
-                </Title>
-                <Text className="text-neutral-600 block mb-6">
-                  {t(
-                    "parent.addStudent.successText",
-                    "We’ll take you back to the home screen. Your student can log in independently from there."
-                  )}
-                </Text>
-                <Space>
-                  <Button type="primary" onClick={() => navigate("/parent/home")}>
-                    {t("parent.addStudent.backHome", "Continue")}
-                  </Button>
-                  <Button onClick={() => {
-                    setStep(2);
-                    navigate("/parent/myfamily/add-student-flow?step=2", { replace: true });
-                  }}>
-                    {t("parent.addStudent.addAnother", "Add another student")}
-                  </Button>
-                </Space>
-              </div>
-              <div className="order-1 md:order-2 flex justify-center">
-                <BuddyAvatar
-                  src={monster1}
-                  alt="Mascot"
-                  size={160}
-                  ring={false}
-                />
-              </div>
-            </div>
-          </Card>
+        {/* ---------- Step 1: Success ---------- */}
+        {step === 1 && (
+          <div className="w-full max-w-7xl flex flex-col items-center text-center">
+            <CheckCircleFilled className="text-emerald-500 mb-4" style={{ fontSize: "80px" }} />
+            <Title level={3} className="!mb-2">
+              {t("parent.addStudent.successTitle", "All set!")}
+            </Title>
+            <Text className="text-neutral-600 block mb-6">
+              {t(
+                "parent.addStudent.successText",
+                "We'll take you back to the home screen. Your student can log in independently from there."
+              )}
+            </Text>
+            <Space direction="vertical" className="w-full">
+              <Button 
+                type="primary" 
+                onClick={() => navigate("/parent/home")}
+                className="w-full h-12 rounded-2xl !bg-[#FF9A36] hover:!bg-[#FF8A1A] border-none"
+              >
+                {t("parent.addStudent.backHome", "Continue")}
+              </Button>
+              <Button 
+                onClick={() => {
+                  setStep(0);
+                  navigate("/parent/myfamily/add-student-flow?step=0", { replace: true });
+                }}
+                className="w-full h-12 rounded-2xl"
+              >
+                {t("parent.addStudent.addAnother", "Add another student")}
+              </Button>
+            </Space>
+          </div>
         )}
+        </div>
       </div>
+      
+      {/* Custom styles for Select components */}
+      <style>{`
+        .add-student-select .ant-select-selector {
+          height: 44px !important;
+          min-height: 44px !important;
+          border-radius: 1rem !important;
+          border: 1px solid #E9DED2 !important;
+          background-color: white !important;
+          box-shadow: 0 6px 16px rgba(87,60,42,0.08) !important;
+          padding: 0 16px !important;
+        }
+        .add-student-select .ant-select-selector:hover {
+          border-color: #E9DED2 !important;
+        }
+        .add-student-select.ant-select-focused .ant-select-selector {
+          border-color: #FF9A36 !important;
+          box-shadow: 0 10px 24px rgba(255,154,54,0.28) !important;
+        }
+        .add-student-select .ant-select-selection-item {
+          line-height: 42px !important;
+          color: #4F3A2D !important;
+          font-size: 16px !important;
+        }
+        .add-student-select .ant-select-selection-placeholder {
+          line-height: 42px !important;
+          color: #BCB1A8 !important;
+          font-size: 16px !important;
+        }
+        @media (max-width: 640px) {
+          .add-student-select .ant-select-selector {
+            height: 44px !important;
+            min-height: 44px !important;
+            padding: 0 12px !important;
+          }
+          .add-student-select .ant-select-selection-item,
+          .add-student-select .ant-select-selection-placeholder {
+            line-height: 42px !important;
+            font-size: 14px !important;
+          }
+        }
+      `}</style>
+    </CircularBackground>
   );
 }

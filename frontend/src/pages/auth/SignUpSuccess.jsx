@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
 import dinoImg from "@/assets/onboarding-dino.png";
 import cloudsImg from "@/assets/backgrounds/clouds.png";
+import CircularBackground from "@/components/layouts/CircularBackground";
 
 export default function SignUpSuccess() {
   const navigate = useNavigate();
@@ -22,13 +23,7 @@ export default function SignUpSuccess() {
   };
 
   return (
-    <div
-      className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pt-16 pb-32 md:pb-24 lg:pb-16"
-      style={{
-        background:
-          "linear-gradient(180deg, rgba(244,190,155,1) 0%, rgba(242,214,177,1) 55%, rgba(237,226,203,1) 100%)",
-      }}
-    >
+    <CircularBackground>
       <div
         className="pointer-events-none absolute inset-0 opacity-40"
         style={{
@@ -38,8 +33,6 @@ export default function SignUpSuccess() {
           backgroundSize: "cover",
         }}
       />
-      <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-65%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
-
       <div className="relative z-10 flex w-full max-w-[420px] flex-col items-center px-4 text-center">
         <img
           src={dinoImg}
@@ -66,7 +59,7 @@ export default function SignUpSuccess() {
           Weiter
         </button>
       </div>
-    </div>
+    </CircularBackground>
   );
 }
 

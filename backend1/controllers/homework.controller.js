@@ -203,11 +203,19 @@ async function handleConversation(req, res) {
       convId = r.rows[0].id;
     }
 
-    // Save user message
+    // Save user message with comprehensive metadata
+    const userMessageMeta = {
+      userId: userId || null,
+      scanId: scanId || null,
+      mode: "homework",
+      agentName: "Kibundo",
+      timestamp: new Date().toISOString(),
+      messageType: "text"
+    };
     await pool.query(
-      `INSERT INTO messages(conversation_id, sender, content)
-       VALUES($1,$2,$3)`,
-      [convId, "student", message]
+      `INSERT INTO messages(conversation_id, sender, content, meta)
+       VALUES($1,$2,$3,$4)`,
+      [convId, "student", message, JSON.stringify(userMessageMeta)]
     );
 
     // Add scan grounding context if exists
@@ -229,11 +237,30 @@ async function handleConversation(req, res) {
       max_tokens: 800,
     });
 
-    await pool.query(
-      `INSERT INTO messages(conversation_id, sender, content, meta)
-       VALUES($1,$2,$3,$4)`,
-      [convId, "bot", aiReply, raw]
-    );
+    // 🔥 CRITICAL: Store AI response IMMEDIATELY before sending response
+    // This ensures all chat exchanges are persisted even if response fails
+    try {
+      const aiMessageMeta = {
+        userId: userId || null,
+        scanId: scanId || null,
+        mode: "homework",
+        agentName: "Kibundo",
+        timestamp: new Date().toISOString(),
+        messageType: "text",
+        rawResponse: raw || null
+      };
+      await pool.query(
+        `INSERT INTO messages(conversation_id, sender, content, meta)
+         VALUES($1,$2,$3,$4)`,
+        [convId, "bot", aiReply, JSON.stringify(aiMessageMeta)]
+      );
+      console.log("✅ CRITICAL: Stored AI response in conversation:", convId, "with comprehensive metadata");
+    } catch (error) {
+      console.error('❌ CRITICAL: Failed to store AI response in conversation:', error);
+      console.error('❌ Error details:', { convId, aiReplyLength: aiReply?.length });
+      // Don't send response if storage fails - this is critical
+      throw new Error(`Failed to store AI response: ${error.message}`);
+    }
 
     res.json({ conversationId: convId, reply: aiReply });
   } catch (err) {

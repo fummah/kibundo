@@ -224,7 +224,9 @@ export function ChatDockProvider({ children }) {
   const getChatMessages = useCallback(
     (mode = "general", taskId = null) => {
       const key = getKey(mode, taskId);
-      return state.chatByKey[key] || [];
+      const messages = state.chatByKey[key] || [];
+      // Removed console.log to reduce noise - can be re-enabled for debugging if needed
+      return messages;
     },
     [state.chatByKey]
   );
@@ -317,6 +319,13 @@ export function ChatDockProvider({ children }) {
             : t
         );
         localStorage.setItem(TASKS_KEY, JSON.stringify(nextTasks));
+        
+        // 🔥 Update task in state to mark as completed
+        setState((s) => ({
+          ...s,
+          task: s.task ? { ...s.task, done: true, completedAt: new Date().toISOString() } : s.task,
+          readOnly: true, // Set chat to read-only when task is completed
+        }));
       }
       if (hasStorage) {
         const prevProgress = JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}");

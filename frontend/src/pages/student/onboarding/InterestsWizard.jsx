@@ -38,7 +38,7 @@ export default function InterestsWizard() {
   const { t, i18n } = useTranslation();
   const ready = useEnsureGerman(i18n);
   const navigate = useNavigate();
-  const { user } = useAuthContext();
+  const { user, account } = useAuthContext();
   const {
     buddy,
     interests,
@@ -49,6 +49,13 @@ export default function InterestsWizard() {
     setProfile,
     theme,
   } = useStudentApp();
+  
+  // Get the effective student ID (handles parent viewing child)
+  // If parent has selected a child account, use that child's user ID
+  // Otherwise, use the logged-in student's ID
+  const effectiveUserId = account?.type === "child" && account?.userId 
+    ? account.userId 
+    : (user?.id ?? user?._id ?? user?.user_id ?? null);
 
   const [stepIdx, setStepIdx] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -114,7 +121,9 @@ export default function InterestsWizard() {
     if (stepIdx < STEPS.length - 1) {
       setStepIdx((i) => i + 1);
     } else {
-      const final = answers.filter(Boolean);
+      // 🔥 Limit to maximum 2 focus topics - take only the first 2 answers
+      const allAnswers = answers.filter(Boolean);
+      const final = allAnswers.slice(0, 2);
       setInterests(final);
 
       try {
@@ -125,11 +134,14 @@ export default function InterestsWizard() {
       try {
         const allRes = await api.get("/allstudents", { validateStatus: (s) => s >= 200 && s < 500 });
         const all = Array.isArray(allRes?.data) ? allRes.data : [];
+        
+        // Find the student record matching the effective user ID
+        // This ensures we get the correct student when a parent is viewing a child
         const match = all.find(
           (s) =>
-            s?.user?.id === user?.id ||
-            s?.user_id === user?.id ||
-            s?.id === user?.id
+            s?.user?.id === effectiveUserId ||
+            s?.user_id === effectiveUserId ||
+            s?.id === effectiveUserId
         );
 
         if (match && match.id) {
@@ -144,11 +156,15 @@ export default function InterestsWizard() {
             buddy: buddy ? { id: buddy.id, name: buddy.name, img: buddy.img } : null,
           };
 
+          // Save to the correct student record
           await api.patch(`/student/${match.id}`, payload);
           message.success?.("Interessen erfolgreich gespeichert!");
+        } else {
+          message.error?.("Schülerdatensatz nicht gefunden. Bitte versuche es erneut.");
         }
       } catch (error) {
         console.error("Failed to save interests:", error);
+        message.error?.("Interessen konnten nicht gespeichert werden. Bitte versuche es erneut.");
       } finally {
         setSaving(false);
       }

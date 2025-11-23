@@ -6,6 +6,9 @@ import { RightOutlined } from "@ant-design/icons";
 
 // ParentShell is now handled at route level
 import api from "@/api/axios";
+import BottomTabBar from "@/components/parent/BottomTabBar.jsx";
+import ParentSpaceBar from "@/components/parent/ParentSpaceBar.jsx";
+import PlainBackground from "@/components/layouts/PlainBackground.jsx";
 
 // Background (optional: looks consistent with other parent screens)
 import globalBg from "@/assets/backgrounds/global-bg.png";
@@ -29,7 +32,7 @@ function buildArticleHref(p) {
 
 /* ---------- cards ---------- */
 function FeaturedCard({ article, onOpen }) {
-  const clickable = Boolean(article?.href);
+  const clickable = Boolean(article?.href || article?.id || article?.slug);
   return (
     <div
       className={[
@@ -51,10 +54,18 @@ function FeaturedCard({ article, onOpen }) {
 
         <div className="rounded-[18px] overflow-hidden ring-4 ring-white/70 mb-3 pointer-events-none">
           <img
-            src={article.image}
-            alt={article.title}
+            src={article.image && (article.image.startsWith("http") || article.image.startsWith("//") || article.image.startsWith("blob:"))
+              ? article.image 
+              : article.image && article.image.startsWith("/")
+              ? `${window.location.origin}${article.image}`
+              : article.image || ""}
+            alt={article.title || "Article image"}
             className="w-full h-[240px] sm:h-[320px] object-cover"
             loading="lazy"
+            onError={(e) => {
+              // Hide image if it fails to load
+              e.currentTarget.style.display = "none";
+            }}
           />
         </div>
 
@@ -84,7 +95,7 @@ function FeaturedCard({ article, onOpen }) {
 }
 
 function ListCard({ article, onOpen }) {
-  const clickable = Boolean(article?.href);
+  const clickable = Boolean(article?.href || article?.id || article?.slug);
   return (
     <div
       className={[
@@ -197,22 +208,49 @@ export default function NewsFeed() {
               ? p.tags.split(",").map((t) => t.trim()).filter(Boolean)
               : [];
 
+        // Helper to clean undefined/null strings
+        const cleanString = (val, fallback = "") => {
+          if (!val) return fallback;
+          const str = String(val).trim();
+          return str && str !== "undefined" && str !== "null" ? str : fallback;
+        };
+
+        // Use uploaded thumbnail_url if available, otherwise fallback to placeholder
+        // Check multiple possible field names
+        let imageUrl = p.thumbnail_url || p.thumbnail || p.image_url || p.cover_image || p.image || null;
+        
+        if (imageUrl) {
+          // Clean the URL - remove any whitespace
+          imageUrl = String(imageUrl).trim();
+          
+          // Convert relative URLs to absolute
+          if (!imageUrl.startsWith("http") && !imageUrl.startsWith("//") && !imageUrl.startsWith("blob:")) {
+            // Handle both /uploads/... and uploads/... formats
+            if (imageUrl.startsWith("/")) {
+              imageUrl = `${window.location.origin}${imageUrl}`;
+            } else {
+              imageUrl = `${window.location.origin}/${imageUrl}`;
+            }
+          }
+        } else {
+          // Fallback to placeholder images only if no image was uploaded
+          imageUrl = placeholders[idx % placeholders.length];
+        }
+
         const base = {
             id: p.id,
             featured: Boolean(p.featured || p.is_featured || idx === 0),
-            title: p.title || "Headline Article",
-            excerpt:
-              p.excerpt ||
-              p.summary ||
-              p.subtitle ||
-              "Explore the latest math games designed to make learning fun.",
-            image:
-              p.image_url || p.cover_image || p.thumbnail_url || p.image || placeholders[idx % placeholders.length],
+            title: cleanString(p.title, "Headline Article"),
+            excerpt: cleanString(
+              p.excerpt || p.summary || p.subtitle,
+              "Explore the latest math games designed to make learning fun."
+            ),
+            image: imageUrl,
             published_at: p.published_at || p.created_at || null,
             tags,
-            tag: p.category || p.audience || null,
-            slug: p.slug,
-            external_url: p.url || p.link || p.external_url || null,
+            tag: cleanString(p.category || p.audience, null),
+            slug: cleanString(p.slug, null),
+            external_url: cleanString(p.url || p.link || p.external_url, null),
           };
 
           const href = buildArticleHref(base);
@@ -355,7 +393,26 @@ export default function NewsFeed() {
   }, [page]);
 
   function openArticle(article) {
-    const href = article?.href?.trim?.();
+    if (!article) {
+      message.info("No article selected.");
+      return;
+    }
+
+    // Always build href from the clicked article's own data to ensure we open the correct one
+    let href = null;
+    
+    // Priority: external_url > slug > id
+    // Use slug first for SEO and UX benefits, fallback to ID for reliability
+    if (article?.external_url?.trim()) {
+      href = article.external_url.trim();
+    } else if (article?.slug?.trim()) {
+      // Prefer slug for SEO-friendly, human-readable URLs
+      href = `/parent/communications/news/${encodeURIComponent(article.slug.trim())}`;
+    } else if (article?.id && isNumericId(article.id)) {
+      // Fallback to ID if slug is not available (more reliable)
+      href = `/parent/communications/news/preview/${article.id}`;
+    }
+
     if (!href) {
       message.info("This is a demo article.");
       return;
@@ -371,7 +428,11 @@ export default function NewsFeed() {
     if (/^https?:\/\//i.test(href)) {
       window.location.assign(href);
     } else {
-      navigate(href);
+      // Navigate with state to ensure React Router treats this as a new navigation
+      navigate(href, { 
+        state: { articleId: article.id, timestamp: Date.now() },
+        replace: false 
+      });
       try {
         window.scrollTo({ top: 0, behavior: "auto" });
       } catch {}
@@ -379,92 +440,103 @@ export default function NewsFeed() {
   }
 
   return (
-    <div className="w-full flex justify-center">
-        <section className="relative w-full max-w-[520px] px-4 pt-4 mx-auto">
-          <div className="text-center mb-3">
-            <h1
-              className="text-[28px] font-extrabold text-neutral-800"
-              style={{ fontFamily: "system-ui, ui-rounded, 'SF Pro Rounded', ui-sans-serif" }}
-            >
-              Kibundo News
-            </h1>
-          </div>
-
-          <div className="mb-4">
-            <Input
-              allowClear
-              placeholder="search …"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              className="h-11 rounded-[14px] bg-[#FFE9D9]/60 border border-[#F4C9AE] placeholder:text-neutral-400"
-            />
-          </div>
-
-          <div className="text-neutral-700 font-extrabold text-[18px] mb-3">News</div>
-
-          {loading && !articles.length ? (
-            <div className="py-6 space-y-4">
-              <Skeleton active round />
-              <Skeleton active round />
-              <Skeleton active paragraph={{ rows: 2 }} round />
+    <PlainBackground className="flex flex-col h-screen overflow-hidden">
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 py-10 pb-24">
+          <div className="space-y-6">
+            <div className="text-center mb-3">
+              <h1
+                className="text-[28px] font-extrabold text-neutral-800"
+                style={{ fontFamily: "system-ui, ui-rounded, 'SF Pro Rounded', ui-sans-serif" }}
+              >
+                Kibundo News
+              </h1>
             </div>
-          ) : err && !filtered.length ? (
-            <div className="py-12">
-              <Empty description="Could not load news" />
-            </div>
-          ) : !filtered.length ? (
-            <div className="py-12">
-              <Empty description="No matching articles" />
-            </div>
-          ) : (
-            <>
-              {featured && (
-                <div className="mb-6">
-                  <FeaturedCard article={featured} onOpen={openArticle} />
-                </div>
-              )}
 
-              {rest.length > 0 && (
-                <div className="text-neutral-700 font-extrabold text-[18px] mb-3">
-                  Weitere Artikel
-                </div>
-              )}
+            <div className="mb-4">
+              <Input
+                allowClear
+                placeholder="search …"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                className="h-11 rounded-[14px] bg-[#FFE9D9]/60 border border-[#F4C9AE] placeholder:text-neutral-400"
+              />
+            </div>
 
-              {/* paginated list: 2 per page */}
-              <div className="space-y-4">
-                {visibleRest.map((a) => (
-                  <ListCard key={a.id ?? `a-${a.title}`} article={a} onOpen={openArticle} />
-                ))}
+            <div className="text-neutral-700 font-extrabold text-[18px] mb-3">News</div>
+
+            {loading && !articles.length ? (
+              <div className="py-6 space-y-4">
+                <Skeleton active round />
+                <Skeleton active round />
+                <Skeleton active paragraph={{ rows: 2 }} round />
               </div>
-
-              {/* pagination controls */}
-              {rest.length > PAGE_SIZE && (
-                <div className="mt-4 flex items-center justify-between">
-                  <Button
-                    shape="round"
-                    disabled={page === 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  >
-                    Previous
-                  </Button>
-
-                  <div className="text-sm text-neutral-600">
-                    {rangeStart}-{rangeEnd} of {rest.length}
+            ) : err && !filtered.length ? (
+              <div className="py-12">
+                <Empty description="Could not load news" />
+              </div>
+            ) : !filtered.length ? (
+              <div className="py-12">
+                <Empty description="No matching articles" />
+              </div>
+            ) : (
+              <>
+                {featured && (
+                  <div className="mb-6">
+                    <FeaturedCard article={featured} onOpen={openArticle} />
                   </div>
+                )}
 
-                  <Button
-                    type="primary"
-                    shape="round"
-                    disabled={page === totalPages}
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  >
-                    Next
-                  </Button>
+                {rest.length > 0 && (
+                  <div className="text-neutral-700 font-extrabold text-[18px] mb-3">
+                    Weitere Artikel
+                  </div>
+                )}
+
+                {/* paginated list: 2 per page */}
+                <div className="space-y-4">
+                  {visibleRest.map((a) => (
+                    <ListCard key={a.id ?? `a-${a.title}`} article={a} onOpen={openArticle} />
+                  ))}
                 </div>
-              )}
-            </>
-          )}
-        </section>
+
+                {/* pagination controls */}
+                {rest.length > PAGE_SIZE && (
+                  <div className="mt-4 flex items-center justify-between">
+                    <Button
+                      shape="round"
+                      disabled={page === 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </Button>
+
+                    <div className="text-sm text-neutral-600">
+                      {rangeStart}-{rangeEnd} of {rest.length}
+                    </div>
+
+                    <Button
+                      type="primary"
+                      shape="round"
+                      disabled={page === totalPages}
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+
+          </div>
+        </div>
       </div>
+
+      {/* Sticky bottom tab bar */}
+      <div className="flex-shrink-0">
+        <BottomTabBar />
+      </div>
+    </PlainBackground>
   );
 }

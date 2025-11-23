@@ -1,24 +1,28 @@
 // src/components/student/mobile/FooterChat.jsx
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useLocation } from "react-router-dom";
+import { App, message } from "antd";
 import { bottomChat } from "@/assets/mobile/tiles";
 import ChatLayer from "@/components/student/mobile/ChatLayer.jsx";
 import HomeworkChat from "@/components/student/mobile/HomeworkChat.jsx";
 import { useChatDock } from "@/context/ChatDockContext";
+import useASR from "@/lib/voice/useASR";
+import api from "@/api/axios";
+import { resolveStudentAgent } from "@/utils/studentAgent";
 
 /** Spacer so page content never hides behind footer. */
 export function ChatStripSpacer({ className = "" }) {
   return (
     <>
-      {/* Mobile spacer (safe-area aware) */}
+      {/* Mobile spacer (safe-area aware) - Made thinner per client feedback */}
       <div
-        className={["block md:hidden h-[72px]", className].join(" ")}
+        className={["block md:hidden h-[48px]", className].join(" ")}
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         aria-hidden
       />
-      {/* Desktop spacer for framed layout */}
+      {/* Desktop spacer for framed layout - Made thinner per client feedback */}
       <div
-        className={["hidden md:block h-[72px]", className].join(" ")}
+        className={["hidden md:block h-[48px]", className].join(" ")}
         aria-hidden
       />
     </>
@@ -35,9 +39,44 @@ export default function FooterChat({
   onChatClose,
 }) {
   const { pathname } = useLocation();
+  const { message: antdMessage } = App.useApp();
   const [open, setOpen] = useState(false);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
-  const { state: dockState, closeChat, expandChat } = useChatDock();
+  const { state: dockState, closeChat, expandChat, openChat } = useChatDock();
+  
+  // Voice input (ASR) - works even when chat is collapsed (per feedback H.4)
+  const { listening: isRecording, start: startRecording, stop: stopRecording } = useASR({
+    lang: "de-DE",
+    onTranscript: (transcript) => {
+      // Store transcript for when recording stops
+      if (transcript && transcript.trim()) {
+        transcriptRef.current = transcript;
+      }
+    },
+    onError: (error) => {
+      if (error === "not_supported") {
+        antdMessage.warning("Spracherkennung wird in diesem Browser nicht unterstützt.");
+      } else if (error === "no-speech") {
+        antdMessage.info("Keine Sprache erkannt. Versuche es nochmal.");
+      } else {
+        antdMessage.error("Fehler bei der Spracherkennung.");
+      }
+    }
+  });
+  
+  const transcriptRef = useRef("");
+  const [selectedAgent, setSelectedAgent] = useState({ name: "Kibundo", id: null });
+  
+  // Fetch selected agent
+  useEffect(() => {
+    const fetchAgent = async () => {
+      const agent = await resolveStudentAgent();
+      if (agent?.name) {
+        setSelectedAgent({ name: agent.name, id: agent.id });
+      }
+    };
+    fetchAgent();
+  }, []);
 
   // Track window width for responsive sheet height
   useEffect(() => {
@@ -93,8 +132,59 @@ export default function FooterChat({
     return m ? m[1] : null;
   }, [pathname]);
 
+  // Handle mic click from bottom bar - does NOT open chat if collapsed
+  const handleMicClickFromBar = useCallback(async () => {
+    if (isRecording) {
+      // Stop recording and send transcript directly to AI (even if chat is closed)
+      const transcript = await stopRecording();
+      if (transcript && transcript.trim()) {
+        try {
+          // Send message directly to AI API (works even when chat is closed)
+          const payload = {
+            question: transcript,
+            ai_agent: selectedAgent.name,
+            agent_id: selectedAgent.id,
+          };
+          
+          // Add scanId if we're on homework
+          if (isOnHomework && dockState?.task?.scanId) {
+            payload.scanId = dockState.task.scanId;
+          }
+          
+          const response = await api.post("ai/chat", payload, {
+            withCredentials: true,
+          });
+          
+          // Open chat to show the response
+          if (!open) {
+            setOpen(true);
+            expandChat?.();
+          }
+          
+          // Open chat with the conversation
+          openChat?.({
+            mode: isOnHomework ? "homework" : "general",
+            task: dockState?.task,
+          });
+          
+          antdMessage.success("Nachricht gesendet!");
+        } catch (error) {
+          console.error("Failed to send voice message:", error);
+          antdMessage.error("Fehler beim Senden der Nachricht.");
+        }
+      }
+    } else {
+      // Start recording - does NOT open chat (per feedback H.4)
+      transcriptRef.current = "";
+      startRecording();
+    }
+  }, [isRecording, startRecording, stopRecording, open, expandChat, openChat, isOnHomework, dockState?.task, selectedAgent, antdMessage]);
+
+  // Check if current route should show FooterChat
+  const isIncludedRoute = includeOnRoutes.some((r) => pathname.startsWith(r));
   const isHiddenRoute = hideOnRoutes.some((r) => pathname.startsWith(r));
-  const isHidden = isHiddenRoute && !(dockState?.visible || dockState?.expanded);
+  // Hide if: not in included routes OR in hidden routes (unless chat is open)
+  const isHidden = (!isIncludedRoute || isHiddenRoute) && !(dockState?.visible || dockState?.expanded);
 
   // Which component should the sheet show?
   const SheetContent = isOnHomework ? HomeworkChat : ChatLayer;
@@ -112,6 +202,35 @@ export default function FooterChat({
   const prevPathnameRef = useRef(pathname);
   const justNavigatedToDoingRef = useRef(false);
   const hasAnnouncedRef = useRef(false);
+  const userTriggeredOpenRef = useRef(false); // Track if user explicitly opened chat
+  const isInitialMountRef = useRef(true); // Track if this is the initial mount (hard refresh)
+  
+  // On initial mount (hard refresh), close chat and reset state to prevent auto-opening
+  useEffect(() => {
+    if (isInitialMountRef.current) {
+      // On hard refresh, close chat to prevent auto-opening from restored state
+      if (isOnHomeworkDoing || isOnHomeworkList) {
+        closeChat?.();
+        setOpen(false);
+        userTriggeredOpenRef.current = false;
+        // Mark as just navigated to prevent auto-opening from resume logic
+        // Keep this flag true for longer to allow resume logic to complete
+        if (isOnHomeworkDoing) {
+          justNavigatedToDoingRef.current = true;
+          setTimeout(() => {
+            justNavigatedToDoingRef.current = false;
+            // Also mark initial mount as complete after delay
+            isInitialMountRef.current = false;
+          }, 1000); // Longer delay to allow resume logic to complete
+        } else {
+          isInitialMountRef.current = false;
+        }
+      } else {
+        isInitialMountRef.current = false;
+      }
+    }
+  }, [isOnHomeworkDoing, isOnHomeworkList, closeChat]); // Run on mount and when route changes
+  
   useEffect(() => {
     // Only close if we just navigated TO the list page or doing page (not if we're already there)
     const justNavigatedToList = isOnHomeworkList && prevPathnameRef.current !== pathname;
@@ -122,6 +241,7 @@ export default function FooterChat({
       // The doing page will open chat explicitly if needed (e.g., when uploading a file)
       closeChat?.();
       setOpen(false);
+      userTriggeredOpenRef.current = false; // Reset user trigger flag
       // Track that we just navigated to doing page (reset after a short delay)
       if (justNavigatedToDoing) {
         justNavigatedToDoingRef.current = true;
@@ -141,19 +261,40 @@ export default function FooterChat({
       if ((!dockState?.task && !dockState?.visible && !dockState?.expanded)) {
         closeChat?.();
         setOpen(false);
+        userTriggeredOpenRef.current = false; // Reset user trigger flag
       }
     }
   }, [isOnHome, isOnHomework, dockState?.task, dockState?.visible, dockState?.expanded, closeChat]);
 
   // Sync the bottom sheet with global chat dock visibility/expansion and task changes
+  // Only open when explicitly triggered by user action (footer button click or task card click)
   useEffect(() => {
     // Small delay to ensure state updates are processed
     const timeoutId = setTimeout(() => {
-      // On list page: allow opening if dock is visible/expanded (either from card click or footer button)
+      // On list page: only open if user explicitly triggered it (clicked footer button or task card)
       if (isOnHomeworkList) {
-        // Allow opening if dock is visible/expanded (supports both card clicks and footer button)
-        if (dockState?.visible || dockState?.expanded) {
+        // 🔥 Don't open chat if task is completed - completed tasks should go to feedback page
+        const isTaskCompleted = Boolean(
+          dockState?.task?.done || 
+          dockState?.task?.completedAt ||
+          dockState?.task?.completed_at
+        );
+        
+        if (isTaskCompleted) {
+          setOpen(false);
+          return;
+        }
+        
+        // Only open if user explicitly triggered it (footer button click sets userTriggeredOpenRef)
+        // OR if there's a task (user clicked a task card which calls openChat)
+        // When a task card is clicked, openChat() is called which sets dockState.visible and dockState.task
+        // This is a user action, so we should allow opening
+        if (userTriggeredOpenRef.current || (dockState?.task && (dockState?.visible || dockState?.expanded))) {
           setOpen(true);
+          // Mark as user-triggered if task is set (indicates task card click)
+          if (dockState?.task) {
+            userTriggeredOpenRef.current = true;
+          }
         } else {
           setOpen(false);
         }
@@ -163,25 +304,55 @@ export default function FooterChat({
       // On doing page: only open if there's an explicit task (user uploaded a file or has task state)
       // Don't auto-open just because dock state is visible/expanded from a previous action
       // Check if we just navigated to this page - if so, don't auto-open
+      // Also check if this is initial mount (hard refresh) - if so, don't auto-open
       if (isOnHomeworkDoing) {
-        // Only open if there's a task AND dock is visible/expanded AND we didn't just navigate here
-        // This prevents auto-opening when navigating to the doing page
-        if (!justNavigatedToDoingRef.current && dockState?.task && (dockState?.visible || dockState?.expanded)) {
+        // Don't auto-open if:
+        // 1. We just navigated here (justNavigatedToDoingRef)
+        // 2. This is initial mount (isInitialMountRef) - prevents auto-open on hard refresh
+        const shouldPreventAutoOpen = justNavigatedToDoingRef.current || isInitialMountRef.current;
+        
+        // Allow opening if:
+        // 1. User explicitly triggered it (footer button click) OR
+        // 2. There's a task AND dock is visible/expanded (indicates scan completed - this is a user action)
+        // When a file is uploaded and scan completes, openChat() is called which sets dockState.visible and dockState.task
+        // This is a legitimate user action (they uploaded a file), so we should open the chat
+        const hasUserAction = userTriggeredOpenRef.current || (dockState?.task && (dockState?.visible || dockState?.expanded));
+        
+        if (!shouldPreventAutoOpen && hasUserAction) {
           setOpen(true);
+          // Mark as user-triggered if task is set (indicates file upload completed or user action)
+          if (dockState?.task) {
+            userTriggeredOpenRef.current = true;
+          }
         } else {
           setOpen(false);
         }
         return;
       }
       
-      // Only open on other homework detail routes when dock is explicitly set to visible/expanded
-      const shouldOpen = isOnHomework && (dockState?.visible || dockState?.expanded);
-      if (shouldOpen) setOpen(true);
-      if (!dockState?.visible && !dockState?.expanded) setOpen(false);
+      // On other homework detail routes: only open if user explicitly triggered it
+      // Don't auto-open just because dockState is visible/expanded from a previous action
+      if (isOnHomework) {
+        if (userTriggeredOpenRef.current && (dockState?.visible || dockState?.expanded)) {
+          setOpen(true);
+        } else if (!dockState?.visible && !dockState?.expanded) {
+          setOpen(false);
+        }
+        return;
+      }
+      
+      // On home screen: only open if user explicitly triggered it
+      if (isOnHome) {
+        if (userTriggeredOpenRef.current && (dockState?.visible || dockState?.expanded)) {
+          setOpen(true);
+        } else if (!dockState?.visible && !dockState?.expanded) {
+          setOpen(false);
+        }
+      }
     }, 0);
 
     return () => clearTimeout(timeoutId);
-  }, [isOnHomework, isOnHomeworkList, isOnHomeworkDoing, dockState?.visible, dockState?.expanded, dockState?.task?.id, dockState?.task?.updatedAt]);
+  }, [isOnHomework, isOnHomeworkList, isOnHomeworkDoing, isOnHome, dockState?.visible, dockState?.expanded, dockState?.task?.id, dockState?.task?.updatedAt]);
 
   useEffect(() => {
     if (!hasAnnouncedRef.current) {
@@ -212,22 +383,25 @@ export default function FooterChat({
           ].join(" ")}
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(true);
-              expandChat?.();
-            }}
-            className="block w-full pointer-events-auto active:scale-[0.98] transition"
-            aria-label="Open chat"
-          >
-            <img
-              src={bottomChat}
-              alt="Chat dock"
-              className="w-full h-auto select-none"
-              draggable={false}
-            />
-          </button>
+          <div className="relative w-full">
+            <button
+              type="button"
+              onClick={() => {
+                userTriggeredOpenRef.current = true; // Mark as user-triggered
+                setOpen(true);
+                expandChat?.();
+              }}
+              className="block w-full pointer-events-auto active:scale-[0.98] transition"
+              aria-label="Open chat"
+            >
+              <img
+                src={bottomChat}
+                alt="Chat dock"
+                className="w-full h-auto select-none"
+                draggable={false}
+              />
+            </button>
+          </div>
         </div>
       )}
 
@@ -242,22 +416,25 @@ export default function FooterChat({
             bottom: windowWidth >= 1024 ? "8px" : "4px", // Small offset on desktop to avoid taskbar overlap
           }}
         >
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(true);
-              expandChat?.();
-            }}
-            className="block w-full pointer-events-auto active:scale-[0.98] transition"
-            aria-label="Open chat"
-          >
-            <img
-              src={bottomChat}
-              alt="Chat dock"
-              className="w-full h-auto select-none"
-              draggable={false}
-            />
-          </button>
+          <div className="relative w-full">
+            <button
+              type="button"
+              onClick={() => {
+                userTriggeredOpenRef.current = true; // Mark as user-triggered
+                setOpen(true);
+                expandChat?.();
+              }}
+              className="block w-full pointer-events-auto active:scale-[0.98] transition"
+              aria-label="Open chat"
+            >
+              <img
+                src={bottomChat}
+                alt="Chat dock"
+                className="w-full h-auto select-none"
+                draggable={false}
+              />
+            </button>
+          </div>
         </div>
       )}
 
@@ -300,6 +477,7 @@ export default function FooterChat({
             aria-label="Close"
             className="absolute inset-0 bg-black/40"
             onClick={() => {
+              userTriggeredOpenRef.current = false; // Reset user trigger flag when closed
               setOpen(false);
               closeChat?.();
             }}
@@ -385,6 +563,7 @@ export default function FooterChat({
                 taskId={taskId}
                 readOnly={!!dockState?.readOnly}
                 onClose={() => {
+                  userTriggeredOpenRef.current = false; // Reset user trigger flag when closed
                   setOpen(false);
                   closeChat?.();
                 }}
@@ -393,6 +572,7 @@ export default function FooterChat({
             ) : (
               <SheetContent
                 onClose={() => {
+                  userTriggeredOpenRef.current = false; // Reset user trigger flag when closed
                   setOpen(false);
                   closeChat?.();
                 }}

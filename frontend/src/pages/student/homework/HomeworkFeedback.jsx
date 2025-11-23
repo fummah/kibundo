@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuthContext } from "@/context/AuthContext";
 import { useChatDock } from "@/context/ChatDockContext";
 import api from "@/api/axios";
+import ConfettiBurst from "@/components/common/ConfettiBurst";
 
 /* ✅ Backgrounds (relative to this file location) */
 import globalBg from "../../../assets/backgrounds/global-bg.png";
@@ -80,7 +81,7 @@ export default function HomeworkFeedback() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user: authUser } = useAuthContext();
-  const { openChat, expandChat } = useChatDock() || {};
+  const { openChat, expandChat, closeChat } = useChatDock() || {};
 
   const studentId = authUser?.id ?? "anon";
   const TASKS_KEY_USER = `${TASKS_KEY}::u:${studentId}`;
@@ -491,6 +492,9 @@ export default function HomeworkFeedback() {
         draggable={false}
       />
 
+      {/* Confetti animation when task is completed */}
+      {isCompleted && <ConfettiBurst taskId={activeTaskId} />}
+
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {Array.from({ length: 32 }).map((_, i) => (
           <div
@@ -550,85 +554,80 @@ export default function HomeworkFeedback() {
           </div>
         )}
 
-        {task && (
-          <div className="mt-8 max-w-md mx-auto bg-white/80 backdrop-blur rounded-xl p-4 shadow-sm">
-            <div className="text-left">
-              <div className="font-semibold text-[#2b6a5b]">
-                Zeig dein Ergebnis
-              </div>
-              <Text className="block text-sm text-[#5c6b6a] mt-1">
-                Lade ein Foto hoch, damit Kibundo deine erledigte Hausaufgabe
-                sehen kann.
-              </Text>
+        {/* Always show upload photo section - allow students to upload completion photo */}
+        <div className="mt-8 max-w-md mx-auto bg-white/80 backdrop-blur rounded-xl p-4 shadow-sm">
+          <div className="text-left">
+            <div className="font-semibold text-[#2b6a5b]">
+              Zeig dein Ergebnis
             </div>
+            <Text className="block text-sm text-[#5c6b6a] mt-1">
+              Lade ein Foto hoch, damit Kibundo deine erledigte Hausaufgabe
+              sehen kann.
+            </Text>
+          </div>
 
-            {completionPhotoUrl ? (
-              <img
-                src={completionPhotoUrl}
-                alt="Abschlussfoto"
-                className="mt-4 rounded-lg max-h-64 object-contain w-full border border-[#d9e5df]"
-              />
-            ) : (
-              <div className="mt-4 w-full rounded-lg border-2 border-dashed border-[#c7d7d1] bg-white/60 text-center py-10 text-[#7a8b85] text-sm">
-                Noch kein Abschlussfoto hochgeladen
-              </div>
-            )}
+          {completionPhotoUrl ? (
+            <img
+              src={completionPhotoUrl}
+              alt="Abschlussfoto"
+              className="mt-4 rounded-lg max-h-64 object-contain w-full border border-[#d9e5df]"
+            />
+          ) : (
+            <div className="mt-4 w-full rounded-lg border-2 border-dashed border-[#c7d7d1] bg-white/60 text-center py-10 text-[#7a8b85] text-sm">
+              Noch kein Abschlussfoto hochgeladen
+            </div>
+          )}
 
-            {completionDateLabel && (
-              <Text className="block text-xs text-[#2b6a5b] mt-3">
-                Erledigt am {completionDateLabel}
-              </Text>
-            )}
+          {completionDateLabel && (
+            <Text className="block text-xs text-[#2b6a5b] mt-3">
+              Erledigt am {completionDateLabel}
+            </Text>
+          )}
 
-            <div className="mt-5 flex flex-wrap gap-2 justify-center">
-              <Button
-                type="primary"
-                size="large"
-                className="rounded-xl !bg-[#2b6a5b] !border-none !px-6 !h-11 font-semibold"
-                onClick={handleSelectPhoto}
-                loading={savingPhoto}
-              >
-                {completionPhotoUrl ? "Foto ändern" : "Foto hinzufügen"}
-              </Button>
-              {completionPhotoUrl && (
-                <Button
-                  size="large"
-                  className="rounded-xl !px-6 !h-11"
-                  onClick={handleRemovePhoto}
-                  disabled={savingPhoto}
-                >
-                  Foto entfernen
-                </Button>
-              )}
+          <div className="mt-5 flex flex-wrap gap-2 justify-center">
+            <Button
+              type="primary"
+              size="large"
+              className="rounded-xl !bg-[#2b6a5b] !border-none !px-6 !h-11 font-semibold"
+              onClick={handleSelectPhoto}
+              loading={savingPhoto}
+              disabled={!activeTaskId}
+            >
+              {completionPhotoUrl ? "Foto ändern" : "Foto hinzufügen"}
+            </Button>
+            {completionPhotoUrl && (
               <Button
                 size="large"
                 className="rounded-xl !px-6 !h-11"
-                onClick={isCompleted ? handleMarkUndone : handleMarkCompleted}
-                disabled={savingPhoto}
-                type={isCompleted ? "default" : "primary"}
+                onClick={handleRemovePhoto}
+                disabled={savingPhoto || !activeTaskId}
               >
-                {isCompleted ? "Als offen markieren" : "Als erledigt markieren"}
+                Foto entfernen
               </Button>
-            </div>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={handlePhotoChange}
-            />
+            )}
+            {/* "Als erledigt markieren" button is now hidden - completion happens via rescan verification */}
           </div>
-        )}
 
-        <div className="mt-8 flex flex-wrap gap-2 justify-center pb-[env(safe-area-inset-bottom)]">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handlePhotoChange}
+          />
+        </div>
+
+        <div className="mt-8 flex flex-wrap gap-2 justify-center pb-24 md:pb-20" style={{ paddingBottom: `calc(6rem + env(safe-area-inset-bottom))` }}>
           <Button
             type="primary"
             size="large"
             className="rounded-xl !bg-[#FF7900] !border-none !px-8 !h-12 text-[16px] font-bold"
             onClick={() => {
-              navigate("/student/homework");
+              // Close chat explicitly before navigating to prevent auto-opening
+              closeChat?.();
+              // Navigate without any state to prevent auto-opening chat
+              navigate("/student/homework", { replace: false, state: null });
             }}
           >
             Zur Aufgabenliste

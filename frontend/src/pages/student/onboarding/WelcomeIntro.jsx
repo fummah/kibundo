@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
-import { markIntroSeen, markTourDone } from "./introFlags";
+import { markIntroSeen, markTourDone, hasSeenIntro } from "./introFlags";
 
 import bgGlobal from "@/assets/backgrounds/global-bg.png";
 import bgClouds from "@/assets/backgrounds/clouds.png";
@@ -24,16 +24,42 @@ const { Text } = Typography;
 export default function WelcomeIntro() {
   const navigate = useNavigate();
   const { buddy } = useStudentApp();
-  const { user } = useAuthContext();
+  const { user, account } = useAuthContext();
   const [speaking, setSpeaking] = useState(false);
   const { i18n } = useTranslation();
   const ready = useEnsureGerman(i18n);
 
-  const studentId = user?.id || user?.user_id || null;
+  // If parent has selected a child account (Netflix-style), use that child's ID
+  // Otherwise, use the logged-in student's ID
+  const studentId = account?.type === "child" && account?.userId 
+    ? account.userId 
+    : (user?.id || user?.user_id || null);
+  const isFirstLogin = !hasSeenIntro(studentId);
 
+  // DO NOT mark intro as seen until onboarding is complete
+  // This ensures first-time users cannot skip
+
+  // Automatic TTS greeting on first login - always enabled for first-time users
   useEffect(() => {
-    markIntroSeen(studentId);
-  }, [studentId]);
+    if (isFirstLogin && ready) {
+      // Small delay to ensure page is fully loaded
+      const timer = setTimeout(() => {
+        try {
+          const greeting = "Hallo! Ich bin Kibundo. Gemeinsam machen wir Hausaufgaben entspannt und spielerisch.";
+          const u = new SpeechSynthesisUtterance(greeting);
+          u.lang = "de-DE";
+          setSpeaking(true);
+          u.onend = () => setSpeaking(false);
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(u);
+        } catch {
+          setSpeaking(false);
+        }
+      }, 800); // Slightly longer delay to ensure page is ready
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFirstLogin, ready]);
 
   const speak = () => {
     try {
@@ -52,10 +78,13 @@ export default function WelcomeIntro() {
 
   const next = () => navigate("/student/onboarding/welcome-tour");
 
+  // Skip only allowed if onboarding has been completed before (not first login)
   const skip = () => {
-    markIntroSeen(studentId);
-    markTourDone(studentId);
-    navigate("/student/home");
+    if (!isFirstLogin) {
+      markIntroSeen(studentId);
+      markTourDone(studentId);
+      navigate("/student/home");
+    }
   };
 
   if (!ready) {
@@ -118,12 +147,15 @@ export default function WelcomeIntro() {
       />
       {/* Header */}
       <div className="relative z-30 flex items-center justify-end gap-2 px-3 pt-3">
-        <button
-          className="px-2 py-1 text-sm rounded-full bg-white/70 hover:bg-white shadow-sm transition"
-          onClick={skip}
-        >
-          Überspringen
-        </button>
+        {/* Only show skip button if not first login */}
+        {!isFirstLogin && (
+          <button
+            className="px-2 py-1 text-sm rounded-full bg-white/70 hover:bg-white shadow-sm transition"
+            onClick={skip}
+          >
+            Überspringen
+          </button>
+        )}
         <Button
           icon={
             <img

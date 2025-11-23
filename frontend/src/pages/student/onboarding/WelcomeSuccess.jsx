@@ -3,6 +3,8 @@ import { Typography, Button } from "antd";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
+import { useAuthContext } from "@/context/AuthContext.jsx";
+import { markIntroSeen, markTourDone } from "./introFlags";
 import BuddyAvatar from "@/components/student/BuddyAvatar.jsx";
 
 import bgGlobal from "@/assets/backgrounds/global-bg.png";
@@ -16,8 +18,23 @@ const { Title, Text } = Typography;
 export default function WelcomeSuccess() {
   const navigate = useNavigate();
   const { buddy, ttsEnabled } = useStudentApp();
+  const { user, account } = useAuthContext();
   const { i18n } = useTranslation();
   const ready = useEnsureGerman(i18n);
+
+  // If parent has selected a child account (Netflix-style), use that child's ID
+  // Otherwise, use the logged-in student's ID
+  const studentId = account?.type === "child" && account?.userId 
+    ? account.userId 
+    : (user?.id || user?.user_id || null);
+
+  // Mark onboarding as complete when reaching success page
+  useEffect(() => {
+    if (studentId) {
+      markIntroSeen(studentId);
+      markTourDone(studentId);
+    }
+  }, [studentId]);
 
   // Speak congratulations message when page loads (if TTS is enabled)
   useEffect(() => {

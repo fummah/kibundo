@@ -19,8 +19,10 @@ import {
   Tag,
   List,
   Typography,
+  message,
 } from "antd";
-import React from "react";
+import React, { useState, useEffect } from "react";
+import api from "@/api/axios";
 
 const { Text } = Typography;
 
@@ -125,6 +127,16 @@ export default function StudentDetail({
     timeSpent: student?.timeSpent || "0h 00m",
     status: student?.status || "Active",
   };
+
+  // State for interests
+  const [selectedInterests, setSelectedInterests] = useState([]);
+  const [savingInterests, setSavingInterests] = useState(false);
+
+  // Initialize interests from student data
+  useEffect(() => {
+    const studentInterests = Array.isArray(student?.interests) ? student.interests : [];
+    setSelectedInterests(studentInterests);
+  }, [student?.interests]);
 
   return (
     <div className="mx-auto w-full max-w-[1200px] pt-4 pb-28 md:pb-10">
@@ -249,12 +261,61 @@ export default function StudentDetail({
           <h2 className="text-xl font-extrabold text-neutral-800 mb-2">Focus Topics</h2>
           <div className="w-full bg-white/80 backdrop-blur rounded-2xl px-4 py-4 shadow-[0_10px_28px_rgba(0,0,0,0.08)] border border-white/70">
             <div className="text-neutral-700 mb-2">Choose two focus areas:</div>
-            <div className="grid gap-2">
-              <Checkbox defaultChecked>Math</Checkbox>
-              <Checkbox defaultChecked>German</Checkbox>
-              <Checkbox>Nature & Environment</Checkbox>
-              <Checkbox>Concentration</Checkbox>
-            </div>
+            <Checkbox.Group
+              value={selectedInterests}
+              onChange={async (vals) => {
+                // Strictly enforce 2 selection limit
+                if (vals.length > 2) {
+                  message.warning("Bitte wähle höchstens zwei Schwerpunkte.");
+                  return; // block extra selection
+                }
+                setSelectedInterests(vals);
+                // Auto-save interests
+                if (child.id && vals.length <= 2) {
+                  setSavingInterests(true);
+                  try {
+                    await api.patch(`/student/${child.id}`, {
+                      interests: vals,
+                    });
+                    message.success("Focus topics saved successfully!");
+                  } catch (err) {
+                    console.error("Error saving interests:", err);
+                    message.error("Failed to save focus topics.");
+                    // Revert on error
+                    setSelectedInterests(selectedInterests);
+                  } finally {
+                    setSavingInterests(false);
+                  }
+                }
+              }}
+              className="grid gap-2"
+              disabled={savingInterests}
+            >
+              <Checkbox 
+                value="math"
+                disabled={selectedInterests.length >= 2 && !selectedInterests.includes("math")}
+              >
+                Math
+              </Checkbox>
+              <Checkbox 
+                value="german"
+                disabled={selectedInterests.length >= 2 && !selectedInterests.includes("german")}
+              >
+                German
+              </Checkbox>
+              <Checkbox 
+                value="nature"
+                disabled={selectedInterests.length >= 2 && !selectedInterests.includes("nature")}
+              >
+                Nature & Environment
+              </Checkbox>
+              <Checkbox 
+                value="concentration"
+                disabled={selectedInterests.length >= 2 && !selectedInterests.includes("concentration")}
+              >
+                Concentration
+              </Checkbox>
+            </Checkbox.Group>
           </div>
         </div>
 
@@ -318,12 +379,21 @@ export default function StudentDetail({
           <Col xs={24} md={8}>
             <Card title="Focus Topics" className="shadow-sm rounded-2xl">
               <div className="text-neutral-700 mb-2">Choose two focus areas:</div>
-              <div className="grid gap-2">
-                <Checkbox defaultChecked>Math</Checkbox>
-                <Checkbox defaultChecked>German</Checkbox>
-                <Checkbox>Nature & Environment</Checkbox>
-                <Checkbox>Concentration</Checkbox>
-              </div>
+              <Checkbox.Group
+                defaultValue={["math", "german"]}
+                onChange={(vals) => {
+                  if (vals.length > 2) {
+                    message.warning("Bitte wähle höchstens zwei Schwerpunkte.");
+                    return; // block extra selection
+                  }
+                }}
+                className="grid gap-2"
+              >
+                <Checkbox value="math">Math</Checkbox>
+                <Checkbox value="german">German</Checkbox>
+                <Checkbox value="nature">Nature & Environment</Checkbox>
+                <Checkbox value="concentration">Concentration</Checkbox>
+              </Checkbox.Group>
             </Card>
           </Col>
         </Row>

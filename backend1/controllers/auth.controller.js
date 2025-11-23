@@ -6,6 +6,7 @@ const User = db.user;
 const Student = db.student;
 const Parent = db.parent;
 const Teacher = db.teacher;
+const emailService = require("../services/email.service");
 
 exports.signup = async (req, res) => {
   try {
@@ -96,8 +97,9 @@ exports.signup = async (req, res) => {
     // Role 2 = Parent
     else if (roleIdNum === 2) {
       console.log("🎯 Creating PARENT record for role_id = 2, user_id =", newUser.id);
+      let newParent = null;
       try {
-        const newParent = await Parent.create({
+        newParent = await Parent.create({
           user_id: newUser.id,
           created_by: newUser.id,
         });
@@ -106,6 +108,16 @@ exports.signup = async (req, res) => {
         console.error("❌ FAILED to create Parent record:", parentError);
         throw parentError;
       }
+      
+      // Store parent_id for email sending
+      newUser.parent_id = newParent.id;
+      
+      // For parents: email is the portal login (username)
+      await User.update(
+        { username: email },
+        { where: { id: newUser.id } }
+      );
+      console.log("✅ Set username to email for parent:", email);
     } 
     // Role 3 = Teacher
     else if (roleIdNum === 3) {
@@ -138,7 +150,29 @@ exports.signup = async (req, res) => {
     const userData = { ...newUser.toJSON() };
     delete userData.password;
 
-    console.log("✅ Signup successful:", { userId: newUser.id, role_id: roleIdNum, email: newUser.email });
+    console.log("✅ Signup successful:", { userId: newUser.id, role_id: roleIdNum, email: newUser.email, parent_id: newUser.parent_id || null });
+
+    // 8. Send welcome/confirmation email (non-blocking)
+    // Include plain password and parent_id for email
+    const emailData = {
+      ...userData,
+      password: password, // Include plain password for email
+      parent_id: newUser.parent_id || null, // Include parent_id for logging
+    };
+    
+    console.log("📧 Attempting to send welcome email to:", emailData.email, "with parent_id:", emailData.parent_id);
+    emailService.sendWelcomeEmail(emailData)
+      .then((result) => {
+        if (result.success) {
+          console.log("✅ Welcome email sent successfully to:", emailData.email, "Message ID:", result.messageId);
+        } else {
+          console.error("❌ Failed to send welcome email to:", emailData.email, "Error:", result.error);
+        }
+      })
+      .catch((emailError) => {
+        console.error("❌ Exception sending welcome email to:", emailData.email, "Error:", emailError);
+        // Don't fail the signup if email fails
+      });
 
     res.status(201).json({ 
       message: "User registered successfully", 
@@ -161,18 +195,40 @@ exports.login = async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({ message: "Email/Username and password are required." });
     }
-    // 1. Find user
-    // 2️⃣ Find user by email OR username
-    const user = await User.findOne({
-      where: {
-        [Op.or]: [{ email: username }, { username: username }]
-      }
+    
+    // 1. Find user - prioritize email, then username (handle null/empty username)
+    // Fix: Always try email first, then username (if not null/empty)
+    // This ensures login works even if username is changed or cleared in admin
+    let user = null;
+    
+    // First, try to find by email (most stable identifier)
+    user = await User.findOne({
+      where: { email: username }
     });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    
+    // If not found by email, try username (only if username field is not null/empty)
+    if (!user) {
+      const whereClause = {
+        [Op.and]: [
+          { username: username },
+          { username: { [Op.ne]: null } },
+          { username: { [Op.ne]: '' } }
+        ]
+      };
+      user = await User.findOne({
+        where: whereClause
+      });
+    }
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     // 2. Check password
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
+    if (!isMatch) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
 
     // 3. Generate token
     const token = jwt.sign(
@@ -188,6 +244,118 @@ exports.login = async (req, res) => {
     res.status(200).json({ message: "Login successful", user: userData, token });
   } catch (err) {
     console.error("❌ Login error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// Student avatar-based login (no password required)
+exports.studentLogin = async (req, res) => {
+  try {
+    const { studentId, name } = req.body;
+    
+    if (!studentId && !name) {
+      return res.status(400).json({ message: "Student ID or name is required." });
+    }
+
+    // Find student by ID or by name (first_name + last_name)
+    let student = null;
+    let user = null;
+    
+    if (studentId) {
+      student = await Student.findOne({
+        where: { id: studentId },
+        include: [{
+          model: User,
+          as: 'user'
+        }]
+      });
+      if (student && student.user) {
+        user = student.user;
+      }
+    } else if (name) {
+      // Try to find by first_name or first_name + last_name
+      const nameParts = name.trim().split(/\s+/);
+      const firstName = nameParts[0];
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
+      
+      const whereClause = lastName 
+        ? { first_name: firstName, last_name: lastName, role_id: 1 }
+        : { first_name: firstName, role_id: 1 };
+      
+      user = await User.findOne({
+        where: whereClause
+      });
+      
+      if (user) {
+        student = await Student.findOne({
+          where: { user_id: user.id }
+        });
+      }
+    }
+
+    if (!student || !user) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    if (user.role_id !== 1) {
+      return res.status(403).json({ message: "User is not a student" });
+    }
+
+    // Generate token (no password check for students)
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role_id: user.role_id },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    // Exclude password from response
+    const userData = { ...user.toJSON() };
+    delete userData.password;
+
+    res.status(200).json({ 
+      message: "Student login successful", 
+      user: userData, 
+      token,
+      student: {
+        id: student.id,
+        class_id: student.class_id
+      }
+    });
+  } catch (err) {
+    console.error("❌ Student login error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// Public endpoint to get list of students for login selection (avatar + name only)
+exports.getStudentsForLogin = async (req, res) => {
+  try {
+    const students = await Student.findAll({
+      include: [{
+        model: User,
+        as: 'user',
+        attributes: ['id', 'first_name', 'last_name', 'avatar', 'gender'],
+        where: { role_id: 1, status: 'Active' }
+      }],
+      attributes: ['id']
+    });
+    
+    const studentList = students
+      .filter(s => s.user) // Only include students with valid user records
+      .map(s => ({
+        id: s.id,
+        studentId: s.id,
+        userId: s.user.id,
+        name: `${s.user.first_name} ${s.user.last_name || ''}`.trim(),
+        firstName: s.user.first_name,
+        lastName: s.user.last_name,
+        avatar: s.user.avatar,
+        gender: s.user.gender
+      }));
+    
+    res.status(200).json({ students: studentList });
+  } catch (err) {
+    console.error("❌ Get students for login error:", err);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };

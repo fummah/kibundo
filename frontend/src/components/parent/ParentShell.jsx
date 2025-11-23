@@ -34,9 +34,11 @@ export default function ParentShell({
       <div
         className="min-h-[100svh] flex flex-col relative"
         style={{
-          backgroundImage: `url(${bgImage})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
+          ...(bgImage && bgImage !== "none" && {
+            backgroundImage: `url(${bgImage})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }),
           paddingTop: "env(safe-area-inset-top)",
           fontFamily: NUNITO_FONT_STACK,
         }}

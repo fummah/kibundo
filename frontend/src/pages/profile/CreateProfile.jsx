@@ -17,6 +17,9 @@ import {
   SoundOutlined,
   CheckCircleFilled,
 } from "@ant-design/icons";
+import { useAuthContext } from "@/context/AuthContext";
+import { useStudentApp } from "@/context/StudentAppContext";
+import api from "@/api/axios";
 
 const { useBreakpoint } = Grid;
 const { Title, Text } = Typography;
@@ -37,7 +40,10 @@ import a6 from "@/assets/avatars/a6.png";
 export default function CreateProfile() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { user } = useAuthContext();
+  const { setProfile } = useStudentApp();
   const [selected, setSelected] = useState(null);
+  const [saving, setSaving] = useState(false);
   const screens = useBreakpoint();
 
   const messageText = useMemo(
@@ -67,12 +73,45 @@ export default function CreateProfile() {
     } catch (_) {}
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!selected) {
       // Keep it gentle—AntD notification not strictly required
       alert(t("profile.selectAvatar", "Bitte wähle zuerst einen Avatar."));
       return;
     }
+    
+    // Get the selected avatar image
+    const selectedAvatar = avatars.find(a => a.id === selected);
+    if (!selectedAvatar) return;
+    
+    // Save avatar to user profile
+    try {
+      setSaving(true);
+      
+      // Update user's avatar in the database
+      if (user?.id) {
+        await api.put(`/users/${user.id}`, {
+          avatar: selectedAvatar.src
+        });
+      }
+      
+      // Also save to profile in context for immediate use
+      setProfile({
+        avatar: selectedAvatar.src
+      });
+      
+      // Store in localStorage for persistence
+      try {
+        localStorage.setItem("kibundo_selected_avatar", selectedAvatar.src);
+      } catch {}
+      
+    } catch (error) {
+      console.error("Failed to save avatar:", error);
+      // Continue anyway - don't block onboarding
+    } finally {
+      setSaving(false);
+    }
+    
     // Navigate to interests selection after avatar selection
     navigate("/student/onboarding/interests");
   };
@@ -272,6 +311,8 @@ export default function CreateProfile() {
           size="large"
           block
           onClick={handleCreate}
+          loading={saving}
+          disabled={saving}
           style={{
             height: 52,
             borderRadius: 999,
@@ -280,7 +321,7 @@ export default function CreateProfile() {
             fontWeight: 600,
           }}
         >
-          Profil erstellen
+          {saving ? "Speichern..." : "Profil erstellen"}
         </Button>
       </div>
 

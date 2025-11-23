@@ -6,9 +6,11 @@ import api from "@/api/axios";
 import { useChatDock } from "@/context/ChatDockContext";
 import { useAuthContext } from "@/context/AuthContext";
 import { resolveStudentAgent } from "@/utils/studentAgent";
+import useASR from "@/lib/voice/useASR";
 
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
+import micIcon from "@/assets/mobile/icons/mic.png";
 import studentIcon from "@/assets/mobile/icons/stud-icon.png";
 
 /** Text-only ChatLayer (no media capture/upload) */
@@ -401,6 +403,39 @@ export default function ChatLayer({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
+  
+  // Voice input (ASR) - works even when chat is collapsed
+  const { listening: isRecording, start: startRecording, stop: stopRecording } = useASR({
+    lang: "de-DE",
+    onTranscript: (transcript) => {
+      // Update draft with transcript as user speaks
+      if (transcript && transcript.trim()) {
+        setDraft(transcript);
+      }
+    },
+    onError: (error) => {
+      if (error === "not_supported") {
+        antdMessage.warning("Spracherkennung wird in diesem Browser nicht unterstützt.");
+      } else if (error === "no-speech") {
+        antdMessage.info("Keine Sprache erkannt. Versuche es nochmal.");
+      } else {
+        antdMessage.error("Fehler bei der Spracherkennung.");
+      }
+    }
+  });
+  
+  const handleMicClick = useCallback(async () => {
+    if (isRecording) {
+      // Stop recording and get final transcript
+      const transcript = await stopRecording();
+      if (transcript && transcript.trim()) {
+        setDraft(transcript);
+      }
+    } else {
+      // Start recording - does NOT open chat if collapsed (per feedback H.4)
+      startRecording();
+    }
+  }, [isRecording, startRecording, stopRecording]);
 
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -589,6 +624,30 @@ export default function ChatLayer({
   const renderMessageContent = (message) => {
     const type = (message?.type || "text").toLowerCase();
     
+    if (type === "tip") {
+      const tipContent = typeof message.content === "string" 
+        ? message.content 
+        : message.content?.text || message.content || "";
+      return (
+        <div className="w-full">
+          <div className="bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50 rounded-xl border-2 border-amber-300 shadow-sm p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-10 h-10 bg-amber-400 rounded-full flex items-center justify-center shadow-md">
+                <span className="text-amber-900 text-lg">💡</span>
+              </div>
+              <div className="flex-1">
+                <div className="font-bold text-amber-900 text-base mb-2 flex items-center gap-2">
+                  Tipp
+                </div>
+                <div className="text-amber-800 text-base leading-relaxed whitespace-pre-wrap">
+                  {tipContent}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     if (type === "image") {
       const src =
@@ -636,37 +695,40 @@ export default function ChatLayer({
           {qa.length > 0 && (
             <div>
               <div className="font-semibold mb-2 text-blue-700">
-                ❓ Erkannte Fragen und Antworten ({qa.length})
+                ❓ Erkannte Fragen ({qa.length})
               </div>
               <div className="bg-blue-50 rounded-lg border border-blue-200 overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-blue-100">
-                      <th className="text-left px-3 py-2 font-medium text-blue-800">
-                        Frage
+                      <th className="text-center px-3 py-2 font-medium text-blue-800 w-12">
+                        #
                       </th>
                       <th className="text-left px-3 py-2 font-medium text-blue-800">
-                        Antwort
+                        Frage
                       </th>
                     </tr>
                   </thead>
                   <tbody>
                     {qa.map((q, i) => (
                       <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-blue-25'}>
+                        <td className="align-top px-3 py-2 border-b border-blue-100 text-center font-medium text-blue-600">
+                          {i + 1}
+                        </td>
                         <td className="align-top px-3 py-2 whitespace-pre-wrap border-b border-blue-100">
                           <div className="font-medium text-gray-800">
                             {q?.text || q?.question || "-"}
-                          </div>
-                        </td>
-                        <td className="align-top px-3 py-2 whitespace-pre-wrap border-b border-blue-100">
-                          <div className="text-gray-700">
-                            {q?.answer || "(keine Antwort)"}
                           </div>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+              <div className="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                <div className="text-sm text-yellow-800">
+                  💡 <strong>Tipp:</strong> Versuche zuerst selbst, die Fragen zu beantworten. Wenn du Hilfe brauchst, frage mich einfach! 😊
+                </div>
               </div>
             </div>
           )}
@@ -714,11 +776,15 @@ export default function ChatLayer({
         }
       />
 
-      {/* Messages - Responsive padding */}
+      {/* Messages - Responsive padding with safe area support */}
       <div
         ref={listRef}
-        className="relative px-2 sm:px-3 pt-3 sm:pt-4 pb-24 sm:pb-28 overflow-y-auto bg-[#f3f7eb]"
-        style={{ height: `calc(100% - ${minimiseHeight}px)` }}
+        className="relative px-2 sm:px-3 overflow-y-auto bg-[#f3f7eb]"
+        style={{ 
+          height: `calc(100% - ${minimiseHeight}px)`,
+          paddingTop: "max(0.75rem, env(safe-area-inset-top, 0.75rem))", // Fix clipping at top - account for safe area
+          paddingBottom: "max(7rem, calc(6rem + env(safe-area-inset-bottom, 0px)))" // Extra bottom padding to prevent input box from covering last message
+        }}
         aria-live="polite"
       >
         {msgs.map((message, idx) => {
@@ -836,6 +902,26 @@ export default function ChatLayer({
           </div>
         ) : (
           <div className="mx-auto max-w-[900px] px-2 sm:px-3 py-2 flex items-center gap-2 sm:gap-3">
+            {/* Microphone button - mandatory for voice input (especially grade 1-2) */}
+            <button
+              onClick={handleMicClick}
+              className={`w-10 h-10 sm:w-11 sm:h-11 grid place-items-center rounded-full transition-all ${
+                isRecording 
+                  ? "bg-red-500 animate-pulse" 
+                  : "bg-white/30 hover:bg-white/50"
+              }`}
+              aria-label={isRecording ? "Aufnahme beenden" : "Spracheingabe starten"}
+              type="button"
+              disabled={sending}
+              title={isRecording ? "Aufnahme beenden" : "Spracheingabe (für Klasse 1-2 besonders wichtig)"}
+            >
+              <img 
+                src={micIcon} 
+                alt="" 
+                className={`w-6 h-6 ${isRecording ? "brightness-0 invert" : ""}`}
+              />
+            </button>
+            
             <div className="flex-1 h-10 sm:h-11 flex items-center px-2 sm:px-3 bg-white rounded-full">
               <input
                 ref={inputRef}

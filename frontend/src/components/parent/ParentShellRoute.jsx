@@ -32,6 +32,8 @@ export default function ParentShellRoute() {
     "/parent/billing/checkout",
     "/parent/billing/success",
     "/parent/myfamily/add-student-flow",
+    "/parent/myfamily/add-student-intro",
+    "/parent/myfamily/add-another-child-intro",
     "/parent/chat"
   ];
   
@@ -41,11 +43,31 @@ export default function ParentShellRoute() {
   const shouldHideBottomBar = hideOnRoutes.some(route => location.pathname.startsWith(route)) || 
                                (isOnParentHome && chatOpen);
 
+  // Routes that should not use ParentShell (use their own layout like CircularBackground)
+  const noShellRoutes = [
+    "/parent/myfamily/add-student-flow",
+    "/parent/myfamily/add-student-intro",
+    "/parent/myfamily/add-another-child-intro",
+    "/parent/settings",
+    "/parent/feedback"
+  ];
+  const shouldSkipShell = noShellRoutes.some(route => location.pathname.startsWith(route));
+
+  // If route should skip ParentShell, render Outlet directly
+  if (shouldSkipShell) {
+    return <Outlet />;
+  }
+
+  // Routes that use their own background (like CircularBackground)
+  const customBackgroundRoutes = ["/parent/myfamily/add-student-flow"];
+  const hasCustomBackground = customBackgroundRoutes.some(route => location.pathname.startsWith(route));
+  const bgImage = hasCustomBackground ? "none" : defaultBg;
+
   // BottomTabBar will use its default includeOnRoutes=["/parent"] which matches all parent routes
   // We only need to pass hideOnRoutes to control where it's hidden
   return (
     <ParentShell
-      bgImage={defaultBg}
+      bgImage={bgImage}
       hideBottomBar={shouldHideBottomBar}
       hideOnRoutes={hideOnRoutes}
       includeOnRoutes={["/parent"]}

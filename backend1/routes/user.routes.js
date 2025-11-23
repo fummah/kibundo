@@ -11,7 +11,7 @@ deleteProduct, addsubscription, getAllSubscriptions, getSubscriptionById, delete
 getBlogPostById, deleteBlogPost, addinvoice, getAllInvoices, getInvoiceById,deleteInvoice, addcoupon, 
 getAllCoupons, getCouponById,deleteCoupon, addrole, updateRole, deleteRole, adduser,addquiz,  getQuizzes, getQuizById,  deleteQuiz, 
 addcurriculum, getAllCurriculum,getCurriculumById, deleteCurriculum, addWorksheet, getAllWorksheets, getWorksheetById, deleteWorksheet,
-    getAllStates, getAllAgents, getAgentsForStudent, getPublicTables,addAgent, getHomeworks, getStudentApiUsage, getStudentUsageStats, getAiAgentSettings,updateAiAgentSettings,updateAgent, 
+    getAllStates, getAllAgents, getAgentsForStudent, getPublicTables,addAgent, getHomeworks, getStudentIdByUserId, getStudentApiUsage, getStudentUsageStats, getAiAgentSettings,updateAiAgentSettings,updateAgent, 
     updateHomeworkCompletion,
     getCurrentUser, debugUser, deleteAgent, editUser,editSubject,editClass,deleteClass,editProduct,editSubscription, editQuiz, editStudent, editTeacher, editParent, 
 updateStudentStatus, updateTeacherStatus, updateParentStatus, changePassword, adminUpdateCredentials, deleteUser } = require("../controllers/user.controller");
@@ -152,6 +152,7 @@ router.get('/games', verifyToken, (req, res) => {
 });
 router.post("/addagent",verifyToken, addAgent);
 router.get("/homeworkscans",verifyToken, getHomeworks);
+router.get("/student-id", verifyToken, getStudentIdByUserId);
 router.put("/homeworkscans/:id/completion", verifyToken, updateHomeworkCompletion);
 router.get("/student/:id/homeworkscans", verifyToken, async (req, res) => {
   try {

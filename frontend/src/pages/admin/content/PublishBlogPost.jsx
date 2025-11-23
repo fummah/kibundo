@@ -347,19 +347,70 @@ export default function PublishBlogPost() {
 
   const htmlPreview = useMemo(() => watchBodyHtml || "", [watchBodyHtml]);
 
-  // Editor image upload (replace with real API)
+  // Editor image upload - upload to server
   const uploadImage = async (file) => {
-    await new Promise((r) => setTimeout(r, 300));
-    return URL.createObjectURL(file);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await api.post("/upload", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      const uploadedUrl = response.data?.url || response.data?.fileUrl || response.data?.path;
+      if (uploadedUrl) {
+        // Return full URL if it's a relative path
+        return uploadedUrl.startsWith("http") ? uploadedUrl : `${window.location.origin}${uploadedUrl}`;
+      }
+      throw new Error("No URL returned from upload");
+    } catch (error) {
+      console.error("Image upload failed:", error);
+      messageApi.error("Failed to upload image. Using temporary URL.");
+      // Fallback to blob URL if upload fails
+      return URL.createObjectURL(file);
+    }
   };
 
-  // Thumbnail uploader
+  // Thumbnail uploader - upload to server
   const handleThumbBeforeUpload = async (file) => {
-    const url = URL.createObjectURL(file);
-    form.setFieldsValue({ thumbnail_url: url });
-    setThumbPreview(url);
-    messageApi.success(`Thumbnail loaded: ${file.name}`);
-    return false;
+    try {
+      messageApi.loading({ content: "Uploading image...", key: "thumb-upload" });
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await api.post("/upload", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      const uploadedUrl = response.data?.url || response.data?.fileUrl || response.data?.path;
+      if (uploadedUrl) {
+        // Store relative URL in database (e.g., /uploads/filename.jpg)
+        // This works regardless of domain/port
+        const relativeUrl = uploadedUrl.startsWith("http") 
+          ? new URL(uploadedUrl).pathname 
+          : uploadedUrl.startsWith("/") 
+          ? uploadedUrl 
+          : `/${uploadedUrl}`;
+        
+        // Use full URL for preview only
+        const previewUrl = relativeUrl.startsWith("http") 
+          ? relativeUrl 
+          : `${window.location.origin}${relativeUrl}`;
+        
+        form.setFieldsValue({ thumbnail_url: relativeUrl });
+        setThumbPreview(previewUrl);
+        messageApi.success({ content: `Thumbnail uploaded: ${file.name}`, key: "thumb-upload" });
+      } else {
+        throw new Error("No URL returned from upload");
+      }
+    } catch (error) {
+      console.error("Thumbnail upload failed:", error);
+      messageApi.error({ content: "Failed to upload thumbnail. Please try again.", key: "thumb-upload" });
+      // Fallback to blob URL for preview only
+      const blobUrl = URL.createObjectURL(file);
+      setThumbPreview(blobUrl);
+    }
+    return false; // Prevent default upload
   };
 
   const clearThumbnail = () => {
@@ -443,8 +494,9 @@ export default function PublishBlogPost() {
     const localSlug = (values?.slug || "").trim();
 
     if (editingId) {
-      if (localStatus === "published" && localSlug) {
-        window.open(`/blog/${localSlug}`, "_blank");
+      // Use slug if available (preferred), otherwise use ID
+      if (localSlug) {
+        window.open(`/admin/content/blog/${localSlug}`, "_blank");
       } else {
         // ✅ match nested route in AdminRoutes.jsx
         window.open(`/admin/content/blog/preview/${editingId}`, "_blank");
@@ -456,12 +508,12 @@ export default function PublishBlogPost() {
     if (!saved) return;
 
     const id = Number(saved?.id);
-    const status = saved?.status || localStatus;
     const slug = (saved?.slug || localSlug || "").trim();
 
     if (Number.isFinite(id)) {
-      if (status === "published" && slug) {
-        window.open(`/blog/${slug}`, "_blank");
+      // Use slug if available (preferred), otherwise use ID
+      if (slug) {
+        window.open(`/admin/content/blog/${slug}`, "_blank");
       } else {
         // ✅ match nested route in AdminRoutes.jsx
         window.open(`/admin/content/blog/preview/${id}`, "_blank");
@@ -642,16 +694,6 @@ export default function PublishBlogPost() {
                   </Form.Item>
                   <Form.Item name="tags" label="Tags">
                     <Select mode="tags" tokenSeparators={[","]} placeholder="Add tags" />
-                  </Form.Item>
-                  <Form.Item
-                    name="seo"
-                    label="SEO (JSON)"
-                    tooltip='Optional JSON like {"title":"...","description":"...","image":"..."}'
-                  >
-                    <Input.TextArea
-                      autoSize={{ minRows: 6, maxRows: 16 }}
-                      placeholder="{ }"
-                    />
                   </Form.Item>
                   <Form.Item
                     name="scheduled_for"

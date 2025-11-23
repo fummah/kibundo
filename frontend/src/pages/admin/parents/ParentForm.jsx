@@ -23,6 +23,7 @@ export default function ParentForm() {
             const email = String(payload.email).trim();
 
             // Build base user data for /adduser
+            // Note: Password is NOT set here - parents will set their own password during signup
             const userData = {
               first_name: payload.first_name,
               last_name: payload.last_name,
@@ -31,7 +32,7 @@ export default function ParentForm() {
               status: "active",
               role_id: 2,                              // Parent role
               isActive: true,
-              email,                                   // email is required
+              email,                                   // email is required (will be portal login)
             };
 
             // Try to reuse existing user by email
@@ -175,7 +176,7 @@ export default function ParentForm() {
           }
         },
 
-        // Email is now required
+        // Email is required (password is set by parent during signup)
         requiredKeys: ["first_name", "last_name", "email"],
       }}
 
@@ -183,7 +184,7 @@ export default function ParentForm() {
         { name: "first_name", label: "First Name", placeholder: "Enter parent's first name", rules: [{ required: true }] },
         { name: "last_name", label: "Last Name", placeholder: "Enter parent's last name", rules: [{ required: true }] },
 
-        // REQUIRED email
+        // REQUIRED email (this will be the portal login)
         {
           name: "email",
           label: "Email",
@@ -192,6 +193,7 @@ export default function ParentForm() {
             { type: "email", message: "Please enter a valid email" }
           ],
           placeholder: "parent@example.com",
+          extra: "This email will be used as the portal login. The parent will set their password during signup.",
         },
 
         { 
@@ -227,7 +229,7 @@ export default function ParentForm() {
         const out = {
           first_name: vals.first_name?.trim(),
           last_name: vals.last_name?.trim(),
-          email: vals.email?.trim(), // email is required
+          email: vals.email?.trim(), // email is required (will be portal login)
           contact_number: vals.contact_number?.replace(/\s/g, '') || null, // remove spaces
           state: vals.state || null,
         };

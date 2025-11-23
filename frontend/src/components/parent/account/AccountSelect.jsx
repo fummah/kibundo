@@ -9,7 +9,7 @@ import api from "@/api/axios";
 import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
 import buddyA from "@/assets/buddies/monster1.png";
 import buddyB from "@/assets/buddies/monster2.png";
-import cloudsImg from "@/assets/backgrounds/clouds.png";
+import PlainBackground from "@/components/layouts/PlainBackground";
 
 const fallbackBuddies = [buddyA, buddyB];
 
@@ -68,14 +68,24 @@ export default function AccountSelect() {
             .filter((s) => s.parent_id === parentId)
             .map((student, index) => {
               const studentUser = student.user || {};
+              
+              // Priority order for avatar:
+              // 1. User's avatar (selected during onboarding in CreateProfile)
+              // 2. Selected buddy image (from onboarding buddy selection)
+              // 3. Default buddy images
+              const userAvatar = studentUser.avatar || null;
+              const buddyImg = student.buddy?.img || student.buddy?.avatar || null;
+              
+              // Use user avatar first (from CreateProfile onboarding), then buddy, then default
+              const avatar = userAvatar || buddyImg || fallbackBuddies[index % fallbackBuddies.length];
+              
+              
               return {
                 id: student.id,
                 userId: studentUser.id || student.user_id,
                 type: "child",
                 name: formatName(studentUser) || `Kind ${index + 1}`,
-                avatar:
-                  studentUser.avatar ||
-                  fallbackBuddies[index % fallbackBuddies.length],
+                avatar: avatar,
                 raw: student,
               };
             });
@@ -93,7 +103,6 @@ export default function AccountSelect() {
           setAccounts([...children, parentAccount]);
         }
       } catch (err) {
-        console.error("Failed to load accounts", err);
         if (mounted) {
           setError("Konten konnten nicht geladen werden. Bitte versuche es erneut.");
           setAccounts([]);
@@ -132,31 +141,14 @@ export default function AccountSelect() {
       return;
     }
 
-    navigate(childDestination, {
-      state: { student: account },
-    });
+    // Netflix-style: When child is clicked, navigate directly to their dashboard
+    // The StudentAccessGate will allow parent access when account is set
+    navigate("/student/home", { replace: true });
   };
 
   return (
-    <div
-      className="relative flex min-h-screen flex-col items-center px-6 pb-20 pt-16"
-      style={{
-        background:
-          "linear-gradient(185deg, #F4BE9B 0%, #F2D6B1 45%, #EDE2CB 100%)",
-      }}
-    >
-      <div
-        className="pointer-events-none absolute inset-0 opacity-35"
-        style={{
-          backgroundImage: `url(${cloudsImg})`,
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "center top",
-          backgroundSize: "cover",
-        }}
-      />
-      <div className="pointer-events-none absolute inset-x-[-45%] bottom-[-80%] z-0 h-[160%] rounded-[50%] bg-[#F2E5D5]" />
-
-      <div className="relative z-10 w-full max-w-[620px]">
+    <PlainBackground>
+      <div className="relative z-10 w-full max-w-[620px] px-6 pb-20 pt-16">
         <button
           type="button"
           onClick={handleBack}
@@ -169,7 +161,9 @@ export default function AccountSelect() {
           Account
         </h1>
 
-        <p className="mt-6 text-lg font-semibold text-[#816B5B]">Wer bist Du?</p>
+        <p className="mt-6 text-lg font-semibold text-[#816B5B]">
+          Wer bist Du?
+        </p>
 
         {loading ? (
           <div className="mt-16 flex justify-center">
@@ -207,6 +201,6 @@ export default function AccountSelect() {
           </div>
         )}
       </div>
-    </div>
+    </PlainBackground>
   );
 }

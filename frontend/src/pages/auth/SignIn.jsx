@@ -1,18 +1,16 @@
 // src/pages/auth/SignIn.jsx
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { toast, Toaster } from "react-hot-toast";
-import { Form, Input, Button, Typography } from "antd";
-import { useTranslation } from "react-i18next";
+import { Toaster, toast } from "react-hot-toast";
+import { Input, Button, Typography } from "antd";
 import { UserOutlined, LockOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 import { useAuthContext } from "@/context/AuthContext";
 import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
 import api from "@/api/axios";
 import heroImage from "@/assets/onboarding-dino.png";
 import useEnsureGerman from "@/hooks/useEnsureGerman.js";
-import { NUNITO_FONT_STACK } from "@/constants/fonts.js";
-
-// Onboarding flags
+import CircularBackground from "@/components/layouts/CircularBackground";
 import {
   hasSeenIntro,
   hasDoneTour,
@@ -52,43 +50,36 @@ function normalizeRoleId(user) {
 
 /* ------------------------------ page ------------------------------- */
 export default function SignIn() {
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const ready = useEnsureGerman(i18n);
   const navigate = useNavigate();
   const { login } = useAuthContext();
   const [loading, setLoading] = useState(false);
-  const [form] = Form.useForm();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-  const goForgot = useCallback(
-    () => navigate("/forgot-password"),
-    [navigate]
-  );
+  const handleSubmit = async (e) => {
+    e?.preventDefault();
+    if (!email || !password) {
+      toast.error("Bitte gib deine E-Mail und dein Passwort ein");
+      return;
+    }
 
-  const handleFinish = async (values) => {
     try {
       setLoading(true);
-
-      // Always send as username field, whether it's email or username
-      const { email: emailOrUsername, password } = values;
-      
-      // Always use username field for backend
-      const loginPayload = { username: emailOrUsername, password };
+      const loginPayload = { username: email, password };
       const resp = await api.post("/auth/login", loginPayload);
       const user = resp?.data?.user ?? resp?.data?.data?.user ?? null;
       const token = extractToken(resp);
 
-
       if (!user || !token) {
-        // Let backend/interceptor handle errors; avoid duplicate frontend toasts
         return;
       }
 
-      // ✅ Update auth context (persists tiny summary and sets axios header/token)
       const roleId = normalizeRoleId(user);
       login(user, token);
       toast.success("Erfolgreich angemeldet!");
 
-      // ✅ Student onboarding flow - check user-specific flags
       if (roleId === ROLES.STUDENT) {
         const studentId = user?.id || user?.user_id || null;
         if (!hasSeenIntro(studentId)) {
@@ -101,23 +92,16 @@ export default function SignIn() {
         }
       }
 
-      // ✅ Role-based landing
+      if (roleId === ROLES.PARENT) {
+        sessionStorage.removeItem("redirect_to_account_after_subscription");
+        navigate("/parent/account", { replace: true });
+        return;
+      }
+
       const rolePath = ROLE_PATHS[roleId] || "/dashboard";
       navigate(rolePath, { replace: true });
     } catch (err) {
       const status = err?.response?.status;
-
-      // Map field errors (422) into the form
-      if (status === 422 && err?.response?.data?.errors) {
-        const fields = Object.entries(err.response.data.errors).map(
-          ([name, errors]) => ({
-            name,
-            errors: Array.isArray(errors) ? errors : [String(errors)],
-          })
-        );
-        form.setFields(fields);
-      }
-
       const msg =
         (status === 401 && "E-Mail oder Passwort ist ungültig.") ||
         err?.response?.data?.message ||
@@ -130,31 +114,13 @@ export default function SignIn() {
     }
   };
 
-  if (!ready) {
-    return (
-      <div
-        className="relative min-h-screen w-full overflow-hidden"
-        style={{
-          background:
-            "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
-          fontFamily: NUNITO_FONT_STACK,
-        }}
-      />
-    );
-  }
+  const goForgot = () => navigate("/forgot-password");
 
   return (
-    <div
-      className="relative min-h-screen w-full overflow-hidden"
-      style={{
-        background:
-          "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
-        fontFamily: NUNITO_FONT_STACK,
-      }}
-    >
+    <CircularBackground>
       <Toaster position="top-center" />
 
-      <div className="relative z-10 flex min-h-screen flex-col items-center justify-between px-4 py-10">
+      <div className="flex min-h-screen flex-col items-center justify-between w-full">
         <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
           <img
             src={heroImage}
@@ -166,7 +132,7 @@ export default function SignIn() {
             <Title
               level={1}
               className="!m-0 text-4xl font-bold tracking-[0.08em] md:text-5xl"
-              style={{ color: "#FF7F32" , fontSize: "60px"}}
+              style={{ color: "#FF7F32", fontSize: "60px" }}
             >
               Kibundo
             </Title>
@@ -181,77 +147,40 @@ export default function SignIn() {
           </div>
         </div>
 
-        <div className="w-full max-w-md rounded-[32px] bg-white/90 p-8 shadow-xl backdrop-blur-sm">
+        <div className="w-full max-w-[600px] md:max-w-[800px] mb-8">
           <Title
             level={3}
-            className="!mb-2 text-center text-2xl font-semibold text-[#5A4C3A]"
+            className="!mb-2 text-center text-2xl md:text-3xl font-semibold text-[#5A4C3A]"
           >
-            Willkommen zurück
+            Anmelden
           </Title>
-          <Text className="mb-6 block text-center text-sm text-[#8A8075]">
+          <Text className="mb-6 block text-center text-sm md:text-base text-[#8A8075]">
             Melde dich an, um mit Kibundo weiterzulernen.
           </Text>
 
-          <Form
-            layout="vertical"
-            form={form}
-            onFinish={handleFinish}
-            requiredMark={false}
-            className="space-y-4"
-          >
-            <Form.Item
-              name="email"
-              rules={[
-                {
-                  required: true,
-                  message: "Bitte gib deine E-Mail oder deinen Benutzernamen ein",
-                },
-                {
-                  validator: (_, value) => {
-                    if (!value) return Promise.resolve();
+          <div className="space-y-4">
+            <Input
+              size="large"
+              prefix={<UserOutlined />} 
+              placeholder="E-Mail oder Benutzername"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="rounded-full border-none bg-[#F6F1E8] py-2 text-base shadow-inner transition focus:bg-white focus:shadow-md"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+            />
 
-                    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-
-                    if (isEmail) {
-                      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-                        ? Promise.resolve()
-                        : Promise.reject(new Error("Ungültiges E-Mail-Format"));
-                    }
-
-                    return /^[a-zA-Z0-9_]+$/.test(value)
-                      ? Promise.resolve()
-                      : Promise.reject(
-                          new Error(
-                            "Der Benutzername darf nur Buchstaben, Zahlen und Unterstriche enthalten"
-                          )
-                        );
-                  },
-                },
-              ]}
-            >
-              <Input
-                size="large"
-                prefix={<UserOutlined />}
-                placeholder="E-Mail oder Benutzername"
-                className="rounded-full border-none bg-[#F6F1E8] py-2 text-base shadow-inner transition focus:bg-white focus:shadow-md"
-                autoComplete="username"
-                autoCapitalize="none"
-                autoCorrect="off"
-              />
-            </Form.Item>
-
-            <Form.Item
-              name="password"
-              rules={[{ required: true, message: "Bitte gib dein Passwort ein" }]}
-            >
-              <Input.Password
-                size="large"
-                prefix={<LockOutlined />}
-                placeholder="Passwort"
-                className="rounded-full border-none bg-[#F6F1E8] py-2 text-base shadow-inner transition focus:bg-white focus:shadow-md"
-                autoComplete="current-password"
-              />
-            </Form.Item>
+            <Input.Password
+              size="large"
+              prefix={<LockOutlined />}
+              placeholder="Passwort"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="rounded-full border-none bg-[#F6F1E8] py-2 text-base shadow-inner transition focus:bg-white focus:shadow-md"
+              autoComplete="current-password"
+              onPressEnter={handleSubmit}
+            />
 
             <div className="mb-3 text-right">
               <Text
@@ -262,30 +191,28 @@ export default function SignIn() {
               </Text>
             </div>
 
-            <Form.Item className="!mb-2">
-              <Button
-                type="primary"
-                htmlType="submit"
-                size="large"
-                className="w-full rounded-full border-none bg-[#FF7F32] text-lg font-semibold tracking-wide shadow-lg transition hover:bg-[#ff6c12]"
-                loading={loading}
-              >
-                {loading ? t("auth.signIn") : t("auth.signIn")}
-              </Button>
-            </Form.Item>
+            <Button
+              type="primary"
+              size="large"
+              onClick={handleSubmit}
+              className="w-full rounded-full border-none bg-[#FF7F32] text-lg font-semibold tracking-wide shadow-lg transition hover:bg-[#ff6c12]"
+              loading={loading}
+            >
+              {loading ? "Wird angemeldet..." : "Anmelden"}
+            </Button>
 
             <div className="text-center text-sm text-[#8A8075]">
-              {t("auth.noAccount")}{" "}
+              Noch kein Konto?{" "}
               <Link
                 to="/signup"
                 className="font-semibold text-[#FF7F32] hover:underline"
               >
-                {t("auth.signUp")}
+                Registrieren
               </Link>
             </div>
-          </Form>
+          </div>
         </div>
       </div>
-    </div>
+    </CircularBackground>
   );
 }

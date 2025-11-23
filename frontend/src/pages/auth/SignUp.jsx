@@ -2,18 +2,16 @@
 import { useState, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
-import { Form, Input, Select, Typography } from "antd";
-import { DownOutlined } from "@ant-design/icons";
+import { Form, Input, Select, Typography, Checkbox } from "antd";
+import { DownOutlined, LeftOutlined } from "@ant-design/icons";
 import api from "@/api/axios";
 import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
 import { useAuthContext } from "@/context/AuthContext";
-
-// Onboarding flags (clear them on fresh student signup)
 import { INTRO_LS_KEY, TOUR_LS_KEY } from "@/pages/student/onboarding/introFlags";
+import CircularBackground from "@/components/layouts/CircularBackground";
 
 const { Title, Text } = Typography;
 
-/** German Bundesländer */
 const BUNDESLAENDER = [
   "Baden-Württemberg",
   "Bayern",
@@ -33,7 +31,7 @@ const BUNDESLAENDER = [
   "Thüringen",
 ];
 
-/* ----------------------------- helpers ----------------------------- */
+/* helpers */
 function extractToken(resp) {
   const d = resp?.data || {};
   let t =
@@ -63,7 +61,7 @@ function normalizeRoleId(user, fallback) {
   return Number(user?.role_id ?? user?.roleId ?? user?.role?.id ?? fallback);
 }
 
-/* ------------------------------ page ------------------------------- */
+/* page */
 export default function SignUp() {
   const navigate = useNavigate();
   const { login } = useAuthContext();
@@ -88,7 +86,8 @@ export default function SignUp() {
       last_name,
       email,
       password,
-      bundesland, // required
+      confirm_password,
+      bundesland,
     } = values;
 
     const role_id = ROLES.PARENT;
@@ -100,33 +99,27 @@ export default function SignUp() {
       password,
       role_id,
       bundesland,
-      confirm_password: password,
+      confirm_password,
     };
 
     try {
       setLoading(true);
       const resp = await api.post("/auth/signup", payload);
 
-      // Normalize user & token from various backend response shapes
       const user = resp?.data?.user ?? resp?.data?.data?.user ?? null;
       const token = extractToken(resp) ?? resp?.data?.token ?? null;
 
-      if (!user || !token) {
-        return;
-      }
+      if (!user || !token) return;
 
-      // Log user into context (persists tiny summary and sets axios header/token)
       login(user, token);
-      
-      // Verify the user role matches what we expected
+
       const userRoleId = normalizeRoleId(user, role_id);
       if (userRoleId !== role_id) {
         toast.error(`Role mismatch! Expected ${role_id} but got ${userRoleId}`);
       }
-      
+
       toast.success("Account created!");
 
-      // Student onboarding (force fresh intro/tour)
       if (role_id === ROLES.STUDENT) {
         try {
           localStorage.removeItem(INTRO_LS_KEY);
@@ -136,8 +129,6 @@ export default function SignUp() {
         return;
       }
 
-      // Non-students → role landing
-      // Use the role_id we sent (not the user's role_id from response, in case of mismatch)
       const resolvedRoleId = normalizeRoleId(user, role_id);
       const finalRoleId = userRoleId === role_id ? resolvedRoleId : role_id;
       const finalPath = ROLE_PATHS[finalRoleId] || "/dashboard";
@@ -154,7 +145,6 @@ export default function SignUp() {
     } catch (err) {
       const status = err?.response?.status;
 
-      // Map backend validation errors (422) to form fields
       if (status === 422 && err?.response?.data?.errors) {
         const fields = Object.entries(err.response.data.errors).map(
           ([name, errors]) => ({
@@ -165,7 +155,6 @@ export default function SignUp() {
         form.setFields(fields);
       }
 
-      // Friendlier duplicate email/phone message
       const isConflict = status === 409;
       const msg =
         (isConflict && "An account with these details already exists.") ||
@@ -180,38 +169,43 @@ export default function SignUp() {
   };
 
   return (
-    <div
-      className="relative flex min-h-screen flex-col items-center px-6 pt-24 pb-32 md:pb-24 lg:pb-28"
-      style={{
-        background:
-          "linear-gradient(185deg, #F4BE9B 0%, #F2D6B1 45%, #EDE2CB 100%)",
-      }}
-    >
+    <CircularBackground>
       <Toaster position="top-center" />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-[-45%] bottom-[-82%] z-0 h-[150%] w-[190%] rounded-[50%] bg-[#F2E5D5]"
-      />
-      <div className="relative z-10 w-full max-w-[420px]">
-        <Title
-          level={2}
-          className="text-center font-semibold !text-[#4F3A2D]"
-        >
-          Sign up
-        </Title>
-        <Form
-          form={form}
-          onFinish={handleFinish}
-          autoComplete="off"
-          requiredMark={false}
-          layout="vertical"
-          className="mt-9 space-y-0"
-          colon={false}
-        >
+
+      <div className="w-full max-w-[600px] md:max-w-[800px] h-screen flex flex-col overflow-hidden mx-auto">
+        {/* Back button + centered title */}
+        <div className="mb-4 flex items-center flex-shrink-0 pt-2">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F4E3D3] shadow-[0_4px_10px_rgba(87,60,42,0.18)]"
+          >
+            <LeftOutlined className="text-base text-[#4F3A2D]" />
+          </button>
+          <div className="flex-1">
+            <Title
+              level={2}
+              className="m-0 text-center font-semibold !text-[#4F3A2D] text-xl md:text-2xl"
+            >
+              Registrieren
+            </Title>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto pr-2 -mr-2">
+          <Form
+            form={form}
+            onFinish={handleFinish}
+            autoComplete="off"
+            requiredMark={false}
+            layout="vertical"
+            className="space-y-0 pb-4"
+            colon={false}
+          >
           <Form.Item
             name="first_name"
             rules={[{ required: true, message: "Please enter your first name" }]}
-            className="mb-4"
+            className="mb-3"
             label={<span className="hidden">First Name</span>}
           >
             <Input
@@ -221,10 +215,11 @@ export default function SignUp() {
               className={inputClass}
             />
           </Form.Item>
+
           <Form.Item
             name="last_name"
             rules={[{ required: true, message: "Please enter your last name" }]}
-            className="mb-4"
+            className="mb-3"
             label={<span className="hidden">Last Name</span>}
           >
             <Input
@@ -237,48 +232,23 @@ export default function SignUp() {
 
           <Form.Item
             name="bundesland"
-            rules={[{ required: true, message: "Bitte Bundesland auswählen" }]}
-            className="mb-4"
-            label={<span className="hidden">Bundesland</span>}
+            rules={[{ required: false }]}
+            className="mb-3"
+            label={<span className="hidden">Bundesland (optional)</span>}
           >
-            <Select
-              placeholder="Bundesland"
-              disabled={loading}
-              showSearch
-              optionFilterProp="label"
-              options={bundeslandOptions}
-              className="custom-signup-select w-full text-base text-[#4F3A2D]"
-              styles={{
-                selector: {
-                  borderRadius: 16,
-                  border: "1px solid #E9DED2",
-                  background: "#FFFFFF",
-                  boxShadow: "0 6px 16px rgba(87, 60, 42, 0.08)",
-                  padding: "0 16px",
-                  height: 48,
-                  display: "flex",
-                  alignItems: "center",
-                },
-                selectionItem: {
-                  fontSize: 16,
-                  lineHeight: "48px",
-                  color: "#4F3A2D",
-                },
-                placeholder: {
-                  fontSize: 16,
-                  color: "#BCB1A8",
-                  lineHeight: "48px",
-                },
-                input: {
-                  height: 48,
-                },
-                dropdown: {
-                  borderRadius: 16,
-                },
-              }}
-              popupClassName="rounded-2xl"
-              suffixIcon={<DownOutlined className="text-[#BCB1A8]" />}
-            />
+            <div className={`${inputClass} flex items-center !px-0`}>
+              <Select
+                placeholder="Bundesland (optional)"
+                disabled={loading}
+                showSearch
+                optionFilterProp="label"
+                options={bundeslandOptions}
+                variant="borderless"
+                className="h-full w-full text-base text-[#4F3A2D]"
+                classNames={{ popup: "rounded-2xl" }}
+                suffixIcon={<DownOutlined className="text-[#BCB1A8]" />}
+              />
+            </div>
           </Form.Item>
 
           <Form.Item
@@ -287,7 +257,7 @@ export default function SignUp() {
               { required: true, message: "Email is required" },
               { type: "email", message: "Invalid email" },
             ]}
-            className="mb-4"
+            className="mb-1"
             label={<span className="hidden">Email</span>}
           >
             <Input
@@ -301,43 +271,116 @@ export default function SignUp() {
             />
           </Form.Item>
 
+          <Form.Item className="mb-3">
+            <Text className="text-xs text-[#816B5B]">
+              This email address will also be your username when logging in.
+            </Text>
+          </Form.Item>
+
           <Form.Item
             name="password"
-            rules={[{ required: true, message: "Enter a password" }]}
-            className="mb-6"
+            rules={[
+              { required: true, message: "Please enter a password" },
+              {
+                min: 6,
+                message: "The password must be at least 6 characters long",
+              },
+            ]}
+            className="mb-3"
             label={<span className="hidden">Password</span>}
           >
-            <Input
-              type="password"
-              placeholder="Passwort"
+            <Input.Password
+              placeholder="Password"
               autoComplete="new-password"
               disabled={loading}
               className={inputClass}
             />
           </Form.Item>
 
-          <div className="mt-10 text-center text-sm font-medium text-[#816B5B] tracking-wide" style={{ paddingTop: "60px" }}>XX Tage kostenlos testen und dann entscheiden!</div>
+          <Form.Item
+            name="confirm_password"
+            dependencies={["password"]}
+            rules={[
+              { required: true, message: "Please confirm your password" },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue("password") === value) {
+                    return Promise.resolve();
+                  }
+                  return Promise.reject(
+                    new Error("Passwords do not match")
+                  );
+                },
+              }),
+            ]}
+            className="mb-4"
+            label={<span className="hidden">Confirm Password</span>}
+          >
+            <Input.Password
+              placeholder="Confirm password"
+              autoComplete="new-password"
+              disabled={loading}
+              className={inputClass}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="acceptTerms"
+            valuePropName="checked"
+            rules={[
+              {
+                validator: (_, value) =>
+                  value
+                    ? Promise.resolve()
+                    : Promise.reject(
+                        new Error(
+                          "Please accept the Privacy Policy and Terms & Conditions"
+                        )
+                      ),
+              },
+            ]}
+            className="mb-4"
+          >
+            <Checkbox disabled={loading} className="text-sm text-[#4F3A2D]">
+              I accept the{" "}
+              <Link
+                to="/privacy-policy"
+                className="text-[#FF8400] underline hover:text-[#FF7600]"
+              >
+                Privacy Policy
+              </Link>{" "}
+              and{" "}
+              <Link
+                to="/terms"
+                className="text-[#FF8400] underline hover:text-[#FF7600]"
+              >
+                Terms &amp; Conditions
+              </Link>
+              .
+            </Checkbox>
+          </Form.Item>
+
+          <div className="mt-6 text-center text-sm font-medium text-[#816B5B] tracking-wide">
+            7 days free trial without any risk!
+          </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="mt-7 h-14 w-full rounded-full bg-[#FF8400] text-lg font-semibold text-white shadow-[0_12px_24px_rgba(255,132,0,0.35)] transition hover:bg-[#FF7600] disabled:cursor-not-allowed disabled:opacity-80"
+            className="mt-5 h-14 w-full rounded-full bg-[#FF8400] text-lg font-semibold text-white shadow-[0_12px_24px_rgba(255,132,0,0.35)] transition hover:bg-[#FF7600] disabled:cursor-not-allowed disabled:opacity-80"
           >
-            {loading ? "Signing up..." : "Sign up"}
+            {loading ? "Wird registriert..." : "Registrieren"}
           </button>
 
-          <Text className="mt-7 block text-center text-sm text-[#816B5B]">
+          <Text className="mt-5 block text-center text-sm text-[#816B5B]">
             Already have an account?{" "}
             <Link to="/signin" className="font-semibold text-[#FF8400]">
               Sign In
             </Link>
           </Text>
-
-          <div className="pt-2 text-center text-sm font-medium text-[#816B5B]">
-            {/* placeholder for spacing previously */}
-          </div>
         </Form>
+        </div>
       </div>
-    </div>
+    </CircularBackground>
   );
 }

@@ -86,7 +86,7 @@ exports.debugUser = async (req, res) => {
 exports.adduser = async (req, res) => {
   try {
     const bcrypt = require("bcryptjs");
-    const { first_name, last_name, email, contact_number, role_id, state, class_id, parent_id, subjects } = req.body;
+    const { first_name, last_name, email, contact_number, role_id, state, class_id, parent_id, subjects, password: providedPassword } = req.body;
 
     // 2. Check if user exists
     const existingUser = await db.user.findOne({ where: { email } });
@@ -106,8 +106,28 @@ exports.adduser = async (req, res) => {
       return password;
     };
 
-const temppass = generateRandomPassword();
-     const password = await bcrypt.hash(temppass, 10);
+    // For parents (role_id == 2), password is set during signup, not by admin
+    // For other roles, auto-generate password if not provided
+    let temppass;
+    let password;
+    
+    if (role_id == 2) {
+      // Parent: If password is provided (admin setting it), use it. Otherwise, generate a temporary one.
+      // In practice, parents should sign up themselves, so password should be set during signup.
+      // For admin-created parent accounts, we'll generate a temporary password that parent can reset.
+      if (providedPassword && providedPassword.trim() !== '') {
+        temppass = providedPassword;
+        password = await bcrypt.hash(providedPassword, 10);
+      } else {
+        // Generate temporary password for admin-created accounts (parent should reset it)
+        temppass = generateRandomPassword();
+        password = await bcrypt.hash(temppass, 10);
+      }
+    } else {
+      // Other roles: auto-generate if not provided
+      temppass = providedPassword || generateRandomPassword();
+      password = await bcrypt.hash(temppass, 10);
+    }
 
     const newUser = await db.user.create({
       role_id,
@@ -170,8 +190,19 @@ const temppass = generateRandomPassword();
     } else if (role_id == 2) {
       const newParent = await db.parent.create({
         user_id: newUser.id,
-      created_by,
-    });
+        created_by,
+      });
+      
+      // For parents created by admin: email is the portal login (username)
+      // Password is set by parent during signup, or temporary password if admin-created
+      // Set username to email for portal login
+      await db.user.update(
+        { 
+          username: email, // Email is the portal login for parents
+          plain_pass: temppass // Store temporary password (parent should reset during signup)
+        },
+        { where: { id: newUser.id } }
+      );
     } else if (role_id == 3) {
       const newTeacher = await db.teacher.create({
         user_id: newUser.id,
@@ -182,7 +213,11 @@ const temppass = generateRandomPassword();
        
   const userData = { ...newUser.toJSON() };
     delete userData.password;
-    userData.password = generateRandomPassword();
+    // Only include plain password in response for non-parent roles (for security)
+    // For parents, password is set by admin and should not be returned
+    if (role_id != 2) {
+      userData.password = temppass;
+    }
 
     res.status(201).json({ message: "User registered", user: userData });
   } catch (err) {
@@ -237,6 +272,13 @@ exports.editUser = async (req, res) => {
       const bcrypt = require('bcryptjs');
       updatedFields.password = await bcrypt.hash(plain_pass, 10);
       console.log('🔐 [editUser] Hashing password for user');
+    }
+    
+    // Fix: Handle username updates - if username is being set to empty string, set to null instead
+    // This prevents login issues when username is cleared
+    if (updatedFields.username === '') {
+      updatedFields.username = null;
+      console.log('📝 [editUser] Converting empty username to null');
     }
     
     // Remove undefined values to avoid overwriting with null
@@ -409,10 +451,48 @@ exports.adminUpdateCredentials = async (req, res) => {
 
 exports.getAllProducts = async (req, res) => {
   try {
+    console.log('🛒 [getAllProducts] Fetching active products for subscription selection...');
+    // Filter to only return active products (per client feedback)
     const products = await db.product.findAll({
       order: [['id', 'ASC']],
-      where: {}
+      where: {
+        active: true  // Only show active products
+      }
     });
+    
+    // Sort by metadata.sort_order after fetching (simpler approach)
+    products.sort((a, b) => {
+      const aMeta = typeof a.metadata === 'string' ? JSON.parse(a.metadata) : (a.metadata || {});
+      const bMeta = typeof b.metadata === 'string' ? JSON.parse(b.metadata) : (b.metadata || {});
+      const aOrder = aMeta.sort_order ?? 999;
+      const bOrder = bMeta.sort_order ?? 999;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return a.id - b.id;
+    });
+    
+    console.log(`✅ [getAllProducts] Found ${products.length} active products`);
+    if (products.length > 0) {
+      console.log('📦 [getAllProducts] Products:', products.map(p => {
+        const prod = p.toJSON();
+        const metadata = typeof prod.metadata === 'string' ? JSON.parse(prod.metadata) : (prod.metadata || {});
+        return { 
+          id: prod.id, 
+          name: prod.name, 
+          active: prod.active, 
+          price: prod.price,
+          sort_order: metadata.sort_order || 999,
+          display_name: metadata.display_name || prod.name
+        };
+      }));
+    } else {
+      console.warn('⚠️ [getAllProducts] No active products found. Checking all products...');
+      const allProducts = await db.product.findAll({ order: [['id', 'ASC']] });
+      console.log(`ℹ️ [getAllProducts] Total products in database: ${allProducts.length}`);
+      if (allProducts.length > 0) {
+        console.log('📦 [getAllProducts] All products:', allProducts.map(p => ({ id: p.id, name: p.name, active: p.active })));
+        console.log('💡 [getAllProducts] Tip: Make sure products have active=true to appear in subscription selection');
+      }
+    }
     
     // Ensure metadata is an object
     const formattedProducts = products.map(p => {
@@ -421,16 +501,20 @@ exports.getAllProducts = async (req, res) => {
         try {
           product.metadata = JSON.parse(product.metadata);
         } catch (e) {
+          console.warn(`⚠️ [getAllProducts] Failed to parse metadata for product ${product.id}:`, e.message);
           product.metadata = {};
         }
+      } else if (!product.metadata) {
+        product.metadata = {};
       }
       return product;
     });
     
+    console.log(`✅ [getAllProducts] Returning ${formattedProducts.length} formatted products for parent to choose from`);
     res.json(formattedProducts);
   } catch (error) {
-    console.error('Error fetching products:', error);
-    console.error('Error stack:', error.stack);
+    console.error('❌ [getAllProducts] Error fetching products:', error);
+    console.error('❌ [getAllProducts] Error stack:', error.stack);
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };
@@ -463,10 +547,130 @@ exports.getProductById = async (req, res) => {
 exports.addproduct = async (req, res) => {
   try {
     const productData = req.body;
-    const product = await db.product.create(productData);
-    res.status(201).json(product);
+    
+    // Get the current user ID from the authenticated request
+    const created_by = req.user?.id ? String(req.user.id) : null;
+    console.log('🛒 [addproduct] Creating product:', { 
+      name: productData.name, 
+      price: productData.price,
+      created_by: created_by 
+    });
+    
+    // Parse metadata if it's a string
+    let metadata = productData.metadata || {};
+    if (typeof metadata === 'string') {
+      try {
+        metadata = JSON.parse(metadata);
+      } catch (e) {
+        console.warn('⚠️ [addproduct] Failed to parse metadata, using empty object');
+        metadata = {};
+      }
+    }
+    
+    // Validate Stripe API key is configured
+    if (!process.env.STRIPE_SECRET_KEY) {
+      console.error('❌ [addproduct] STRIPE_SECRET_KEY is not configured in environment variables');
+      return res.status(500).json({ 
+        message: 'Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.',
+        error: 'STRIPE_SECRET_KEY missing'
+      });
+    }
+    
+    // Create product in Stripe first
+    let stripeProductId = null;
+    try {
+      console.log('💳 [addproduct] Creating Stripe product...');
+      const stripeProduct = await stripe.products.create({
+        name: productData.name || 'Subscription Product',
+        description: productData.description || '',
+        active: productData.active !== undefined ? productData.active : true,
+        metadata: {
+          ...metadata,
+          db_product_id: 'pending' // Will be updated after DB creation
+        }
+      });
+      
+      stripeProductId = stripeProduct.id;
+      console.log('✅ [addproduct] Stripe product created:', stripeProductId);
+    } catch (stripeError) {
+      console.error('❌ [addproduct] Failed to create Stripe product:', stripeError.message);
+      console.error('❌ [addproduct] Stripe error details:', {
+        type: stripeError.type,
+        code: stripeError.code,
+        message: stripeError.message
+      });
+      // Don't continue if Stripe fails - return error
+      return res.status(500).json({ 
+        message: 'Failed to create product in Stripe. Please check your Stripe configuration.',
+        error: stripeError.message,
+        stripeError: {
+          type: stripeError.type,
+          code: stripeError.code
+        }
+      });
+    }
+    
+    // Create product in database with Stripe ID and created_by
+    const dbProductData = {
+      ...productData,
+      stripe_product_id: stripeProductId,
+      created_by: created_by,
+      metadata: metadata
+    };
+    
+    // Remove any undefined values that might cause issues
+    Object.keys(dbProductData).forEach(key => {
+      if (dbProductData[key] === undefined) {
+        delete dbProductData[key];
+      }
+    });
+    
+    console.log('💾 [addproduct] Saving to database:', {
+      name: dbProductData.name,
+      stripe_product_id: dbProductData.stripe_product_id,
+      created_by: dbProductData.created_by
+    });
+    
+    const product = await db.product.create(dbProductData);
+    console.log('✅ [addproduct] Database product created:', product.id, 'with stripe_product_id:', product.stripe_product_id);
+    
+    // Update Stripe product metadata with the database ID
+    if (stripeProductId && product.id) {
+      try {
+        await stripe.products.update(stripeProductId, {
+          metadata: {
+            ...metadata,
+            db_product_id: String(product.id)
+          }
+        });
+        console.log('✅ [addproduct] Updated Stripe product metadata with DB ID');
+      } catch (stripeError) {
+        console.warn('⚠️ [addproduct] Failed to update Stripe product metadata:', stripeError.message);
+        // Non-critical, continue
+      }
+    }
+    
+    // Return the created product with parsed metadata
+    const productResponse = product.toJSON();
+    if (typeof productResponse.metadata === 'string') {
+      try {
+        productResponse.metadata = JSON.parse(productResponse.metadata);
+      } catch (e) {
+        productResponse.metadata = {};
+      }
+    }
+    
+    console.log('✅ [addproduct] Product creation complete:', {
+      id: productResponse.id,
+      name: productResponse.name,
+      stripe_product_id: productResponse.stripe_product_id,
+      created_by: productResponse.created_by
+    });
+    
+    res.status(201).json(productResponse);
   } catch (error) {
-    console.error('Error creating product:', error);
+    console.error('❌ [addproduct] Error creating product:', error);
+    console.error('❌ [addproduct] Error stack:', error.stack);
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };
@@ -668,10 +872,44 @@ exports.getSubscriptionById = async (req, res) => {
 exports.addsubscription = async (req, res) => {
   try {
     const subscriptionData = req.body;
+    console.log('📝 [addsubscription] Creating subscription with data:', subscriptionData);
     const subscription = await db.subscription.create(subscriptionData);
-    res.status(201).json(subscription);
+    
+    console.log('✅ [addsubscription] Subscription created with ID:', subscription.id);
+    
+    // 🔥 CRITICAL: Re-fetch subscription with all associations to match getAllSubscriptions format
+    // This ensures newly created subscriptions appear in the list with the same structure
+    const subscriptionWithAssociations = await db.subscription.findOne({
+      where: { id: subscription.id },
+      include: [
+        {
+          model: db.product,
+          as: 'product'
+        },
+        {
+          model: db.parent,
+          as: 'parent',
+          include: [
+            {
+              model: db.user,
+              as: 'user',
+              attributes: { exclude: ['password'] }
+            }
+          ]
+        }
+      ]
+    });
+    
+    if (!subscriptionWithAssociations) {
+      console.error('❌ [addsubscription] Failed to fetch created subscription with associations');
+      return res.status(500).json({ message: 'Subscription created but failed to fetch with associations' });
+    }
+    
+    console.log('✅ [addsubscription] Returning subscription with associations (ID:', subscriptionWithAssociations.id, ')');
+    res.status(201).json(subscriptionWithAssociations);
   } catch (error) {
-    console.error('Error creating subscription:', error);
+    console.error('❌ [addsubscription] Error creating subscription:', error);
+    console.error('❌ [addsubscription] Error stack:', error.stack);
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };
@@ -1119,6 +1357,13 @@ exports.editParent = async (req, res) => {
       console.log('🔐 [editParent] Hashing password for parent');
     }
     
+    // Fix: Handle username updates - if username is being set to empty string, set to null instead
+    // This prevents login issues when username is cleared
+    if (userUpdateFields.username === '') {
+      userUpdateFields.username = null;
+      console.log('📝 [editParent] Converting empty username to null');
+    }
+    
     // Remove undefined values
     Object.keys(userUpdateFields).forEach(key => {
       if (userUpdateFields[key] === undefined) {
@@ -1252,6 +1497,7 @@ exports.updateParentStatus = async (req, res) => {
 exports.getAllStudents = async (req, res) => {
   try {
     const students = await db.student.findAll({
+      // All attributes are included by default, but we ensure JSONB fields are properly serialized
       include: [
         {
           model: db.user,
@@ -1283,14 +1529,16 @@ exports.getAllStudents = async (req, res) => {
     // Convert Sequelize instances to plain objects to ensure associations are serialized
     const plainStudents = students.map(s => s.get({ plain: true }));
     
-    // Debug: Log first student's class and parent data
+    // Debug: Log first student's buddy data
     if (plainStudents.length > 0) {
       console.log('📊 [getAllStudents] First student sample:', {
         id: plainStudents[0].id,
         hasClass: !!plainStudents[0].class,
         className: plainStudents[0].class?.class_name || 'N/A',
         hasParent: !!plainStudents[0].parent,
-        parentName: plainStudents[0].parent?.user ? `${plainStudents[0].parent.user.first_name} ${plainStudents[0].parent.user.last_name}` : 'N/A'
+        parentName: plainStudents[0].parent?.user ? `${plainStudents[0].parent.user.first_name} ${plainStudents[0].parent.user.last_name}` : 'N/A',
+        hasBuddy: !!plainStudents[0].buddy,
+        buddy: plainStudents[0].buddy || 'N/A'
       });
     }
     
@@ -1388,6 +1636,11 @@ exports.getStudentById = async (req, res) => {
 exports.addstudent = async (req, res) => {
   try {
     const studentData = req.body;
+    // 🔥 Validate: Limit interests to maximum 2 focus topics
+    if (studentData.interests && Array.isArray(studentData.interests) && studentData.interests.length > 2) {
+      console.warn(`⚠️ [addstudent] Trying to create student with ${studentData.interests.length} interests, limiting to 2`);
+      studentData.interests = studentData.interests.slice(0, 2);
+    }
     const student = await db.student.create(studentData);
     res.status(201).json(student);
   } catch (error) {
@@ -1451,6 +1704,13 @@ exports.editStudent = async (req, res) => {
       console.log('🔐 [editStudent] Hashing password for student');
     }
     
+    // Fix: Handle username updates - if username is being set to empty string, set to null instead
+    // This prevents login issues when username is cleared
+    if (userUpdateFields.username === '') {
+      userUpdateFields.username = null;
+      console.log('📝 [editStudent] Converting empty username to null');
+    }
+    
     // Remove undefined values
     Object.keys(userUpdateFields).forEach(key => {
       if (userUpdateFields[key] === undefined) {
@@ -1475,7 +1735,15 @@ exports.editStudent = async (req, res) => {
     
     // Update JSONB fields (profile, interests, buddy)
     if (profile !== undefined) studentUpdateFields.profile = profile;
-    if (interests !== undefined) studentUpdateFields.interests = interests;
+    if (interests !== undefined) {
+      // 🔥 Validate: Limit interests to maximum 2 focus topics
+      if (Array.isArray(interests) && interests.length > 2) {
+        console.warn(`⚠️ [editStudent] Student ${id} tried to save ${interests.length} interests, limiting to 2`);
+        studentUpdateFields.interests = interests.slice(0, 2);
+      } else {
+        studentUpdateFields.interests = interests;
+      }
+    }
     if (buddy !== undefined) studentUpdateFields.buddy = buddy;
     
     // Only update student fields if there are fields to update
@@ -1736,6 +2004,13 @@ exports.editTeacher = async (req, res) => {
       const bcrypt = require('bcryptjs');
       userUpdateFields.password = await bcrypt.hash(plain_pass, 10);
       console.log('🔐 [editTeacher] Hashing password for teacher');
+    }
+    
+    // Fix: Handle username updates - if username is being set to empty string, set to null instead
+    // This prevents login issues when username is cleared
+    if (userUpdateFields.username === '') {
+      userUpdateFields.username = null;
+      console.log('📝 [editTeacher] Converting empty username to null');
     }
     
     // Remove undefined values
@@ -2579,10 +2854,23 @@ exports.addblogpost = async (req, res) => {
   try {
     const db = require("../models");
     const blogPostData = req.body;
+    
+    // Handle update if id is provided
+    if (blogPostData.id) {
+      const existingPost = await db.blogpost.findByPk(blogPostData.id);
+      if (existingPost) {
+        // Update existing post
+        await existingPost.update(blogPostData);
+        const updated = await db.blogpost.findByPk(blogPostData.id);
+        return res.status(200).json(updated);
+      }
+    }
+    
+    // Create new post
     const blogPost = await db.blogpost.create(blogPostData);
     res.status(201).json(blogPost);
   } catch (error) {
-    console.error('Error creating blog post:', error);
+    console.error('Error creating/updating blog post:', error);
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };
@@ -2590,7 +2878,7 @@ exports.addblogpost = async (req, res) => {
 exports.getAllBlogPosts = async (req, res) => {
   try {
     const db = require("../models");
-    const { status, audience } = req.query;
+    const { status, audience, slug } = req.query;
     
     const where = {};
     if (status) {
@@ -2598,6 +2886,9 @@ exports.getAllBlogPosts = async (req, res) => {
     }
     if (audience) {
       where.audience = audience;
+    }
+    if (slug) {
+      where.slug = slug;
     }
     
     const blogPosts = await db.blogpost.findAll({
@@ -3237,10 +3528,45 @@ exports.getHomeworks = async (req, res) => {
       order: [['created_at', 'DESC']]
     });
     
-    console.log("📚 Found", homeworks.length, "homework submissions for student", studentId);
+    console.log("📚 Found", homeworks.length, "homework submissions for student_id:", studentId);
     res.json(homeworks);
   } catch (err) {
     console.error("❌ Error fetching homework scans:", err);
+    res.status(500).json({ message: err.message || 'Internal server error' });
+  }
+};
+
+// Get student_id from user_id
+exports.getStudentIdByUserId = async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    
+    if (!user_id) {
+      return res.status(400).json({ message: 'user_id query parameter is required' });
+    }
+    
+    const userId = parseInt(user_id, 10);
+    if (isNaN(userId)) {
+      return res.status(400).json({ message: 'user_id must be a valid number' });
+    }
+    
+    console.log("🔍 Looking up student_id for user_id:", userId);
+    
+    // Find student record by user_id
+    const student = await db.student.findOne({
+      where: { user_id: userId },
+      attributes: ['id']
+    });
+    
+    if (!student) {
+      console.log("⚠️ No student record found for user_id:", userId);
+      return res.status(404).json({ message: 'Student not found for this user' });
+    }
+    
+    console.log("✅ Found student_id:", student.id, "for user_id:", userId);
+    res.json({ student_id: student.id });
+  } catch (err) {
+    console.error("❌ Error fetching student_id:", err);
     res.status(500).json({ message: err.message || 'Internal server error' });
   }
 };
@@ -3258,17 +3584,75 @@ exports.updateHomeworkCompletion = async (req, res) => {
     }
 
     const userId = req.user?.id;
+    const userRoleId = req.user?.role_id;
     if (!userId) {
       return res.status(401).json({ message: "Authentication required" });
     }
 
-    const studentRecord = await db.student.findOne({
-      where: { user_id: userId },
-      attributes: ["id"],
+    // 🔥 Handle both student and parent users
+    let allowedStudentIds = [];
+    
+    console.log("🔍 updateHomeworkCompletion authorization check:", {
+      userId,
+      userRoleId,
+      scanId
     });
+    
+    if (userRoleId === 1) {
+      // User is a student - check if they own this homework
+      const studentRecord = await db.student.findOne({
+        where: { user_id: userId },
+        attributes: ["id"],
+      });
 
-    if (!studentRecord) {
-      return res.status(403).json({ message: "Student profile not found for user" });
+      if (!studentRecord) {
+        console.log("❌ Student profile not found for user_id:", userId);
+        return res.status(403).json({ message: "Student profile not found for user" });
+      }
+      
+      allowedStudentIds = [studentRecord.id];
+      console.log("✅ Student authorized - student_id:", studentRecord.id);
+    } else if (userRoleId === 2) {
+      // User is a parent - check if homework belongs to any of their children
+      const parentRecord = await db.parent.findOne({
+        where: { user_id: userId },
+        include: [
+          {
+            model: db.student,
+            as: 'student',
+            attributes: ['id']
+          }
+        ]
+      });
+
+      if (!parentRecord) {
+        console.log("❌ Parent profile not found for user_id:", userId);
+        return res.status(403).json({ message: "Parent profile not found for user" });
+      }
+      
+      // Get all student IDs for this parent's children
+      const children = parentRecord.student || [];
+      allowedStudentIds = children.map(child => child.id);
+      
+      // 🔥 Fallback: If association didn't load properly, query directly
+      if (allowedStudentIds.length === 0) {
+        console.log("⚠️ No children from association, querying directly...");
+        const directChildren = await db.student.findAll({
+          where: { parent_id: parentRecord.id },
+          attributes: ['id']
+        });
+        allowedStudentIds = directChildren.map(child => child.id);
+      }
+      
+      if (allowedStudentIds.length === 0) {
+        console.log("❌ No children found for parent_id:", parentRecord.id);
+        return res.status(403).json({ message: "No children found for this parent" });
+      }
+      
+      console.log("✅ Parent authorized - children student_ids:", allowedStudentIds);
+    } else {
+      console.log("❌ Invalid role_id:", userRoleId, "for user_id:", userId);
+      return res.status(403).json({ message: "Only students and parents can update homework completion" });
     }
 
     const scanRecord = await db.homeworkScan.findByPk(scanId);
@@ -3276,11 +3660,73 @@ exports.updateHomeworkCompletion = async (req, res) => {
       return res.status(404).json({ message: "Homework scan not found" });
     }
 
-    if (
-      scanRecord.student_id &&
-      Number(scanRecord.student_id) !== Number(studentRecord.id)
-    ) {
-      return res.status(403).json({ message: "You do not have access to this homework scan" });
+    console.log("🔍 updateHomeworkCompletion check:", {
+      scanId,
+      scanStudentId: scanRecord.student_id,
+      userId,
+      userRoleId,
+      allowedStudentIds,
+      scanBelongsToAllowed: scanRecord.student_id && allowedStudentIds.includes(Number(scanRecord.student_id))
+    });
+
+    // 🔥 Scan must always have a student_id
+    if (!scanRecord.student_id) {
+      // If scan has no student_id and user is a student, assign it to them
+      if (userRoleId === 1 && allowedStudentIds.length > 0) {
+        console.log("⚠️ Scan has no student_id - will assign to student:", allowedStudentIds[0]);
+        // We'll set the student_id in the updates below
+      } else {
+        console.log("🚫 Access denied - scan has no student_id and cannot be assigned");
+        return res.status(403).json({ message: "Homework scan must have a student assignment" });
+      }
+    } else {
+      // Scan has a student_id - must match one of the allowed student IDs
+      const scanStudentId = Number(scanRecord.student_id);
+      let needsStudentIdCorrection = false;
+      
+      if (!allowedStudentIds.includes(scanStudentId)) {
+        // 🔥 For parents: Double-check if this student actually belongs to them (in case association didn't load)
+        if (userRoleId === 2) {
+          console.log("⚠️ Student not in association list, checking directly...");
+          const parentRecord = await db.parent.findOne({
+            where: { user_id: userId },
+            attributes: ['id']
+          });
+          if (parentRecord) {
+            const directCheck = await db.student.findOne({
+              where: { 
+                id: scanStudentId,
+                parent_id: parentRecord.id
+              },
+              attributes: ['id']
+            });
+            if (directCheck) {
+              console.log("✅ Student found via direct check - allowing access");
+              // Allow the update
+            } else {
+              // 🔥 Scan has wrong student_id - will correct it below
+              if (allowedStudentIds.length > 0) {
+                needsStudentIdCorrection = true;
+                console.log(`⚠️ Scan has wrong student_id (${scanStudentId}), will correct to one of:`, allowedStudentIds);
+              } else {
+                console.log("🚫 Access denied - scan student_id:", scanStudentId, "does not belong to parent_id:", parentRecord.id);
+                return res.status(403).json({ message: "You do not have access to this homework scan" });
+              }
+            }
+          } else {
+            console.log("🚫 Access denied - parent not found");
+            return res.status(403).json({ message: "You do not have access to this homework scan" });
+          }
+        } else {
+          console.log("🚫 Access denied - scan student_id:", scanStudentId, "allowed IDs:", allowedStudentIds, "userRoleId:", userRoleId);
+          return res.status(403).json({ message: "You do not have access to this homework scan" });
+        }
+      }
+      
+      // Store flag for later use in updates
+      if (needsStudentIdCorrection) {
+        scanRecord._needsStudentIdCorrection = true;
+      }
     }
 
     const updates = {};
@@ -3290,6 +3736,20 @@ exports.updateHomeworkCompletion = async (req, res) => {
     }
     if (completionPhotoUrl !== undefined) {
       updates.completion_photo_url = completionPhotoUrl || null;
+    }
+    
+    // 🔥 If scan has no student_id and user is a student, assign it to them
+    if (!scanRecord.student_id && userRoleId === 1 && allowedStudentIds.length > 0) {
+      updates.student_id = allowedStudentIds[0];
+      console.log("✅ Assigning scan to student_id:", allowedStudentIds[0]);
+    }
+    
+    // 🔥 If scan has wrong student_id and user is a parent, correct it to one of their children
+    if (scanRecord._needsStudentIdCorrection && allowedStudentIds.length > 0) {
+      // Use the first child's ID (or if only one child, use that)
+      const correctStudentId = allowedStudentIds[0];
+      updates.student_id = correctStudentId;
+      console.log(`✅ Correcting scan student_id from ${scanRecord.student_id} to ${correctStudentId}`);
     }
 
     if (!Object.keys(updates).length) {

@@ -5,6 +5,7 @@ import { Suspense } from "react";
 // 🌐 Public/Auth Pages
 import AuthLanding from "@/pages/auth/AuthLanding.jsx";
 import SignIn from "@/pages/auth/SignIn.jsx";
+import StudentLogin from "@/pages/auth/StudentLogin.jsx";
 import SignUp from "@/pages/auth/SignUp.jsx";
 import SignUpSuccess from "@/pages/auth/SignUpSuccess.jsx";
 import SignUpAddChild from "@/pages/auth/SignUpAddChild.jsx";
@@ -36,6 +37,7 @@ export default function AppRoutes() {
         <Route path="/splash" element={<SplashScreen />} />
         <Route path="/" element={<AuthLanding />} />
         <Route path="/signin" element={<SignIn />} />
+        <Route path="/student-login" element={<StudentLogin />} />
         <Route path="/signup" element={<SignUp />} />
         <Route
           path="/signup/success"

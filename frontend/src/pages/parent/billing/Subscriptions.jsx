@@ -18,6 +18,8 @@ import { ArrowRightOutlined, CheckCircleOutlined, ArrowLeftOutlined } from "@ant
 import { useNavigate } from "react-router-dom";
 import api from "@/api/axios";
 import { NUNITO_FONT_STACK } from "@/constants/fonts";
+import PlainBackground from "@/components/layouts/PlainBackground";
+import BottomTabBar from "@/components/parent/BottomTabBar.jsx";
 
 const { Text, Title } = Typography;
 
@@ -390,33 +392,20 @@ export default function Subscription() {
 
   if (loading) {
     return (
-      <div
-        className="relative min-h-screen w-full overflow-hidden"
-        style={{
-          background: "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
-          fontFamily: NUNITO_FONT_STACK,
-        }}
-      >
-        <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-60%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
-        <div className="relative z-10 flex min-h-screen items-center justify-center px-4">
+      <PlainBackground className="flex flex-col h-screen overflow-hidden">
+        <div className="flex-1 overflow-y-auto flex items-center justify-center">
           <Spin size="large" />
         </div>
-      </div>
+      </PlainBackground>
     );
   }
 
   return (
     <App>
-      <div
-        className="relative min-h-screen w-full overflow-hidden"
-        style={{
-          background: "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
-          fontFamily: NUNITO_FONT_STACK,
-        }}
-      >
-        <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-60%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
-        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-8 py-10">
-          <Card className="rounded-3xl border-none bg-white/92 shadow-xl">
+      <PlainBackground className="flex flex-col h-screen overflow-hidden">
+        {/* Scrollable content area */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-8 py-10 pb-24">
             <div className="space-y-8">
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2 text-sm text-neutral-600">
@@ -609,37 +598,14 @@ export default function Subscription() {
 
               <div className="h-10 md:h-6" />
             </div>
-          </Card>
+          </div>
         </div>
 
-        <div
-          className="fixed inset-x-0 z-40 border-t border-neutral-200 bg-white/95 px-4 py-3 backdrop-blur md:hidden"
-          style={{ bottom: "calc(80px + env(safe-area-inset-bottom))" }}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-xs text-neutral-500">Selected package</div>
-              <div className="truncate text-sm font-semibold">
-                {currentSelected
-                  ? `${currentSelected.name} · ${money(total || 0, "EUR")}/${currentSelected.billing_interval}`
-                  : "None"}
-              </div>
-            </div>
-            <Button
-              type="primary"
-              className="rounded-full bg-[#C7D425] text-neutral-900"
-              size="large"
-              shape="round"
-              disabled={!currentSelected}
-              onClick={handleContinue}
-              icon={<ArrowRightOutlined />}
-            >
-              {currentSelected ? "Continue" : "Select plan"}
-            </Button>
-          </div>
-          <div className="h-[env(safe-area-inset-bottom)]" />
-        </div>
+      {/* Sticky bottom tab bar */}
+      <div className="flex-shrink-0">
+        <BottomTabBar />
       </div>
+    </PlainBackground>
     </App>
   );
 }

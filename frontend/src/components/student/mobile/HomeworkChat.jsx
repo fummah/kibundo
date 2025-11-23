@@ -1,20 +1,23 @@
 // src/components/student/mobile/HomeworkChat.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { App } from "antd";
-import { CheckOutlined } from "@ant-design/icons";
+import { App, Modal } from "antd";
+import { CheckOutlined, SoundOutlined, BulbOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import api from "@/api/axios";
 import { useChatDock, TASKS_KEY } from "@/context/ChatDockContext";
 import { useAuthContext } from "@/context/AuthContext";
 import { useStudentApp } from "@/context/StudentAppContext";
 import useTTS from "@/lib/voice/useTTS";
+import useASR from "@/lib/voice/useASR";
 import { resolveStudentAgent } from "@/utils/studentAgent";
 
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
 import cameraIcon from "@/assets/mobile/icons/camera.png";
 import galleryIcon from "@/assets/mobile/icons/galary.png";
+import micIcon from "@/assets/mobile/icons/mic.png";
 import studentIcon from "@/assets/mobile/icons/stud-icon.png";
+import buddyMascot from "@/assets/buddies/kibundo-buddy.png";
 
 const FALLBACK_IMAGE_DATA_URL =
   "data:image/svg+xml;utf8," +
@@ -36,6 +39,57 @@ const formatMessage = (content, from = "agent", type = "text", meta = {}) => ({
   timestamp: new Date().toISOString(),
   ...meta,
 });
+
+// Parse AI response to extract tips and split into multiple messages
+const parseResponseWithTips = (response, agentName = "Kibundo") => {
+  if (!response || typeof response !== "string") {
+    return [formatMessage(response || "", "agent", "text", { agentName })];
+  }
+  
+  const tipRegex = /\[TIP\](.*?)\[\/TIP\]/gs;
+  const messages = [];
+  let lastIndex = 0;
+  let match;
+  
+  // Find all tips
+  const tips = [];
+  while ((match = tipRegex.exec(response)) !== null) {
+    tips.push({
+      content: match[1].trim(),
+      start: match.index,
+      end: match.index + match[0].length
+    });
+  }
+  
+  // If no tips found, return single message
+  if (tips.length === 0) {
+    return [formatMessage(response, "agent", "text", { agentName })];
+  }
+  
+  // Split response into text parts and tips
+  tips.forEach((tip, index) => {
+    // Add text before tip
+    const textBefore = response.substring(lastIndex, tip.start).trim();
+    if (textBefore) {
+      messages.push(formatMessage(textBefore, "agent", "text", { agentName }));
+    }
+    
+    // Add tip
+    messages.push(formatMessage(tip.content, "agent", "tip", { agentName }));
+    
+    lastIndex = tip.end;
+    
+    // If this is the last tip, add remaining text
+    if (index === tips.length - 1) {
+      const textAfter = response.substring(tip.end).trim();
+      if (textAfter) {
+        messages.push(formatMessage(textAfter, "agent", "text", { agentName }));
+      }
+    }
+  });
+  
+  return messages.length > 0 ? messages : [formatMessage(response, "agent", "text", { agentName })];
+};
 
 /** stable signature for de-dupe */
 const msgSig = (m) => {
@@ -78,7 +132,12 @@ const mergeById = (serverMessages = [], localMessages = []) => {
       keys.push(`student:${content}`);
     }
     
-    // Key 5: Timestamp-based key for very recent messages
+    // Key 5: Agent-specific key for better matching agent message duplicates
+    if (from === "agent") {
+      keys.push(`agent:${content}`);
+    }
+    
+    // Key 6: Timestamp-based key for very recent messages
     if (m?.timestamp) {
       keys.push(`time:${from}|${content}|${new Date(m.timestamp).getTime()}`);
     }
@@ -103,7 +162,9 @@ const mergeById = (serverMessages = [], localMessages = []) => {
       // For student messages, also check without type prefix for better matching
       isStudentMessage ? `student:${content}` : null,
       // Add timestamp-based key for very recent messages
-      m?.timestamp ? `time:${from}|${content}|${new Date(m.timestamp).getTime()}` : null
+      m?.timestamp ? `time:${from}|${content}|${new Date(m.timestamp).getTime()}` : null,
+      // 🔥 CRITICAL: Also check by content alone for agent messages (catches duplicates from local + backend)
+      from === "agent" ? `agent:${content}` : null
     ].filter(Boolean);
     
     return keys.some(key => seen.has(key));
@@ -129,18 +190,26 @@ const mergeById = (serverMessages = [], localMessages = []) => {
   pushUnique(serverMessages);
   pushUnique(localMessages);
   
-  // Final cleanup: remove any remaining duplicates by content for student messages
+  // Final cleanup: remove any remaining duplicates by content for ALL messages (not just student)
   const finalDedup = [];
-  const studentContentSeen = new Set();
+  const contentSeen = new Set();
   
   for (const msg of out) {
-    if (msg.from === "student") {
-      const contentKey = typeof msg.content === 'string' ? msg.content.trim().toLowerCase() : String(msg.content || "").trim().toLowerCase();
-      if (contentKey && studentContentSeen.has(contentKey)) {
+    const contentKey = typeof msg.content === 'string' 
+      ? msg.content.trim().toLowerCase() 
+      : String(msg.content || "").trim().toLowerCase();
+    const from = (msg?.from ?? msg?.sender ?? "agent").toLowerCase();
+    
+    // Create a unique key for this message: from + content
+    // This catches duplicates even if they have different IDs or timestamps
+    const uniqueKey = `${from}|${contentKey}`;
+    
+    // Skip if we've already seen this exact message (same sender + same content)
+    if (contentKey && contentSeen.has(uniqueKey)) {
         continue;
       }
-      if (contentKey) studentContentSeen.add(contentKey);
-    }
+    
+    if (contentKey) contentSeen.add(uniqueKey);
     finalDedup.push(msg);
   }
   
@@ -174,16 +243,25 @@ export default function HomeworkChat({
     setChatMessages,
     clearChatMessages,
     setReadOnly: setDockReadOnly,
+    closeChat,
   } = useChatDock();
   const { user: authUser } = useAuthContext();
 
-  const effectiveReadOnly = Boolean(readOnly || dockState?.readOnly);
+  // Check if task is completed
+  const isTaskCompleted = useMemo(() => {
+    return Boolean(dockState?.task?.done || dockState?.task?.completedAt);
+  }, [dockState?.task?.done, dockState?.task?.completedAt]);
+  
+  // Chat is read-only if explicitly set OR if task is completed
+  const effectiveReadOnly = Boolean(readOnly || dockState?.readOnly || isTaskCompleted);
 
   // per-student scoping
   const mode = "homework";
   const taskId = dockState?.task?.id ?? null;
+  // 🔥 CRITICAL: Prioritize task.userId first - this is the student_id used when creating the task
+  // This ensures messages are retrieved using the same studentId that was used when storing them
   const studentId =
-    authUser?.id ?? dockState?.task?.userId ?? dockState?.student?.id ?? "anon";
+    dockState?.task?.userId ?? dockState?.student?.id ?? authUser?.id ?? "anon";
 
   const scopedTaskKey = useMemo(
     () => `${taskId ?? "global"}::u:${studentId}`,
@@ -192,6 +270,22 @@ export default function HomeworkChat({
 
   const stableModeRef = useRef(mode);
   const stableTaskIdRef = useRef(scopedTaskKey);
+  
+  // Clear processed refs when task changes
+  useEffect(() => {
+    if (stableTaskIdRef.current !== scopedTaskKey) {
+      // Task changed, clear processed refs
+      lastProcessedScanIdRef.current = null;
+      lastProcessedTaskKeyRef.current = null;
+      scanResultsLoadedRef.current.clear();
+      scanResultsLoadingRef.current = false; // Reset loading state
+      lastSyncedMessageCountRef.current = 0;
+      lastSyncedTaskKeyRef.current = null;
+      lastSyncedMessageIdsRef.current.clear();
+      isNavigatingAwayRef.current = false; // Reset navigation flag when task changes
+      stableTaskIdRef.current = scopedTaskKey;
+    }
+  }, [scopedTaskKey]);
 
   // conversation id per thread
   const convKey = useMemo(
@@ -218,20 +312,41 @@ export default function HomeworkChat({
   }, [dockState?.task?.conversationId]);
 
   const [scanId, setScanId] = useState(() => dockState?.task?.scanId ?? null);
+  
+  // Refs to prevent infinite loops in scan results loading
+  const scanResultsLoadingRef = useRef(false); // Prevent multiple simultaneous scan result loads
+  const isNavigatingAwayRef = useRef(false); // Track if we're navigating away (e.g., to feedback page)
+  const scanResultsAbortControllerRef = useRef(null); // AbortController to cancel ongoing scan results loading
+  const scanResultsLoadedRef = useRef(new Set()); // Track which scanIds have been loaded
+  const lastProcessedScanIdRef = useRef(null); // Track the last scanId we processed
+  const lastProcessedTaskKeyRef = useRef(null); // Track the last task key we processed
+  
+  // Refs to track last synced message count and IDs to prevent unnecessary updates
+  const lastSyncedMessageCountRef = useRef(0);
+  const lastSyncedTaskKeyRef = useRef(null);
+  const lastSyncedMessageIdsRef = useRef(new Set());
+  const lastSyncRef = useRef({ key: null, count: 0, ids: new Set() });
+  
+  // Update scanId when dockState changes (but only if it's actually different)
+  useEffect(() => {
+    const newScanId = dockState?.task?.scanId;
+    if (newScanId && newScanId !== scanId) {
+      console.log("📋 FOOTERCHAT: scanId updated from dockState:", newScanId);
+      setScanId(newScanId);
+      // Clear processed refs when scanId changes from dockState
+      lastProcessedScanIdRef.current = null;
+      lastProcessedTaskKeyRef.current = null;
+    } else if (dockState?.task && !newScanId) {
+      console.log("⚠️ FOOTERCHAT: Task exists but no scanId:", dockState.task);
+    }
+  }, [dockState?.task?.scanId, scanId]);
   const [selectedAgent, setSelectedAgent] = useState("Kibundo"); // Default fallback
   const [agentMeta, setAgentMeta] = useState(null);
   
   // TTS integration
-  const { profile } = useStudentApp();
+  const { profile, buddy } = useStudentApp();
   const ttsEnabled = profile?.ttsEnabled !== false; // Default to true if not set
   const { speak, stop: stopTTS } = useTTS({ lang: "de-DE", enabled: ttsEnabled });
-  
-  // Update scanId when dockState changes
-  useEffect(() => {
-    if (dockState?.task?.scanId) {
-      setScanId(dockState.task.scanId);
-    }
-  }, [dockState?.task?.scanId]);
 
   // Fetch selected agent from backend
   useEffect(() => {
@@ -249,10 +364,19 @@ export default function HomeworkChat({
   const [backendMessages, setBackendMessages] = useState([]);
   const [loadingBackendMessages, setLoadingBackendMessages] = useState(false);
 
+  // Ref to track if we're currently fetching to prevent infinite loops
+  const fetchingBackendMessagesRef = useRef(false);
+  const lastFetchedConvIdRef = useRef(null);
+
   // Fetch messages from backend
   const fetchBackendMessages = useCallback(async (convId) => {
-    if (!convId || loadingBackendMessages) return;
+    if (!convId || loadingBackendMessages || fetchingBackendMessagesRef.current) return;
+    if (lastFetchedConvIdRef.current === convId) {
+      // Already fetched this conversation, skip
+      return;
+    }
     
+    fetchingBackendMessagesRef.current = true;
     setLoadingBackendMessages(true);
     try {
       const response = await api.get(`conversations/${convId}/messages`, {
@@ -270,14 +394,16 @@ export default function HomeworkChat({
           }
         ));
         setBackendMessages(formattedMessages);
+        lastFetchedConvIdRef.current = convId;
       }
     } catch (error) {
       console.error("❌ FOOTERCHAT: Error fetching messages:", error);
       setBackendMessages([]);
     } finally {
       setLoadingBackendMessages(false);
+      fetchingBackendMessagesRef.current = false;
     }
-  }, [loadingBackendMessages, selectedAgent]);
+  }, [selectedAgent]); // Remove loadingBackendMessages from deps to prevent recreation
 
   // 🔥 Search for existing conversation by scanId when task is opened
   useEffect(() => {
@@ -303,18 +429,347 @@ export default function HomeworkChat({
     loadConversationByScanId();
   }, [scanId, conversationId, loadingBackendMessages]);
 
-  // Fetch backend messages when conversationId is available
+  // 🔥 Load scan results into chat if not already present
   useEffect(() => {
-    if (conversationId) {
-      fetchBackendMessages(conversationId);
+    // Early exit if we're navigating away - prevent scan results check after navigation
+    if (isNavigatingAwayRef.current) {
+      // Silently exit - navigation is in progress, no need to log
+      return;
     }
-  }, [conversationId, fetchBackendMessages]);
+    
+    // Early exit if we've already processed this exact combination
+    // Also check if we're currently loading to prevent duplicate runs
+    if (scanResultsLoadingRef.current) {
+      return;
+    }
+    
+    const currentKey = `${scopedTaskKey}::scan:${scanId || 'null'}`;
+    // Check if we've already processed this exact combination
+    if (lastProcessedTaskKeyRef.current === currentKey && lastProcessedScanIdRef.current === scanId) {
+      // Already processed this exact combination, skip
+      return;
+    }
+    
+    // Check if scan results are already loaded for this scanId
+    if (scanId) {
+      const scanKey = `${scopedTaskKey}::scan:${scanId}`;
+      if (scanResultsLoadedRef.current.has(scanKey)) {
+        // Already loaded, just mark as processed
+        lastProcessedScanIdRef.current = scanId;
+        lastProcessedTaskKeyRef.current = currentKey;
+        return;
+      }
+    }
+    
+    // Mark as loading IMMEDIATELY to prevent duplicate runs
+    scanResultsLoadingRef.current = true;
+    // Mark as processed IMMEDIATELY to prevent re-runs
+    lastProcessedScanIdRef.current = scanId;
+    lastProcessedTaskKeyRef.current = currentKey;
+    
+    // Create AbortController for this scan results load
+    const abortController = new AbortController();
+    scanResultsAbortControllerRef.current = abortController;
+    
+    const loadScanResultsIfNeeded = async () => {
+      // Check if we're navigating away before starting any async operations
+      if (isNavigatingAwayRef.current || abortController.signal.aborted) {
+        // Silently exit - navigation is in progress
+        scanResultsLoadingRef.current = false;
+        return;
+      }
+      
+      // This check is redundant now since we set it above, but keep for safety
+      if (scanResultsLoadingRef.current === false) {
+        // This shouldn't happen, but if it does, mark as loading
+        scanResultsLoadingRef.current = true;
+      }
+      
+      // If no scanId but we have a task, try to extract it from task.id or find from homework scans
+      let effectiveScanId = scanId || dockState?.task?.scanId;
+      
+      // Try to extract scanId from task.id if it's in format "scan_XXX"
+      if (!effectiveScanId && dockState?.task?.id) {
+        const taskId = dockState.task.id;
+        const scanIdMatch = taskId.match(/^scan_(\d+)$/);
+        if (scanIdMatch) {
+          effectiveScanId = parseInt(scanIdMatch[1], 10);
+          console.log("✅ FOOTERCHAT: Extracted scanId from task.id:", effectiveScanId);
+          if (effectiveScanId !== scanId) {
+            setScanId(effectiveScanId);
+          }
+        }
+      }
+      
+      // If still no scanId, try to find it from homework scans (fallback)
+      if (!effectiveScanId && dockState?.task?.id && dockState?.task?.userId) {
+        // Check if aborted before making API call
+        if (isNavigatingAwayRef.current || abortController.signal.aborted) {
+          // Silently exit - navigation is in progress
+          scanResultsLoadingRef.current = false;
+          return;
+        }
+        
+        try {
+          console.log("🔍 FOOTERCHAT: No scanId in task, searching for scan...");
+          const studentId = dockState.task.userId;
+          const { data: scanData } = await api.get(`/homeworkscans`, {
+            params: { student_id: studentId },
+            withCredentials: true,
+            signal: abortController.signal, // Add abort signal to API call
+          });
+          
+          if (Array.isArray(scanData) && scanData.length > 0) {
+            // Try to match by task.id first (if it's scan_XXX format)
+            let matchedScan = null;
+            if (dockState.task.id && dockState.task.id.startsWith('scan_')) {
+              const scanIdFromTask = parseInt(dockState.task.id.replace('scan_', ''), 10);
+              matchedScan = scanData.find(s => s.id === scanIdFromTask || s.id === String(scanIdFromTask));
+            }
+            
+            // If no match, use the most recent scan
+            if (!matchedScan) {
+              matchedScan = scanData.sort((a, b) => 
+                new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0)
+              )[0];
+            }
+            
+            if (matchedScan?.id) {
+              effectiveScanId = matchedScan.id;
+              console.log("✅ FOOTERCHAT: Found scanId from homework scans:", effectiveScanId);
+              // Only set scanId if it's different to avoid triggering the effect again
+              if (effectiveScanId !== scanId) {
+                setScanId(effectiveScanId);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("❌ FOOTERCHAT: Failed to fetch scanId from homework scans:", error);
+        }
+      }
+      
+      if (!effectiveScanId) {
+        console.log("⚠️ FOOTERCHAT: No scanId available, cannot load scan results");
+        return;
+      }
+      
+      // Check if we've already loaded results for this scanId
+      const scanKey = `${scopedTaskKey}::scan:${effectiveScanId}`;
+      if (scanResultsLoadedRef.current.has(scanKey)) {
+        console.log("ℹ️ FOOTERCHAT: Scan results already loaded for this scanId, skipping");
+        return;
+      }
+      
+      scanResultsLoadingRef.current = true;
+      
+      // Wait for backend messages to finish loading first
+      if (loadingBackendMessages) {
+        // Wait a bit and try again
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        if (loadingBackendMessages) return; // Still loading, skip this time
+      }
+      
+      // Wait a bit for any existing messages to load
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Check if we're navigating away - if so, don't proceed with scan results check
+      // This check happens after the delay, so we need to verify again
+      if (isNavigatingAwayRef.current || abortController.signal.aborted) {
+        // Silently exit - navigation is in progress
+        scanResultsLoadingRef.current = false;
+        return;
+      }
+      
+      const existingMessages = getChatMessages?.("homework", scopedTaskKey) || [];
+      
+      // Final check before logging - navigation might have started during message retrieval
+      if (isNavigatingAwayRef.current || abortController.signal.aborted) {
+        // Silently exit - navigation is in progress
+        scanResultsLoadingRef.current = false;
+        return;
+      }
+      
+      // Check if scan results are already present (check for table type or extractedText in content)
+      // Also check for common scan result message patterns
+      const hasScanResults = existingMessages.some(msg => {
+        if (msg?.type === "table") return true;
+        if (typeof msg?.content === "object" && (msg.content?.extractedText || msg.content?.qa)) return true;
+        // Check if message content contains scan result indicators
+        const contentStr = typeof msg?.content === "string" ? msg.content : JSON.stringify(msg?.content || "");
+        if (contentStr.includes("What I saw in your picture") || 
+            contentStr.includes("What I saw in your picture:") ||
+            contentStr.includes("Fertig! Ich habe deine Hausaufgabe gelesen") ||
+            contentStr.includes("Done! I've read your homework") ||
+            contentStr.includes("I've read your homework") ||
+            contentStr.includes("Super! Ich habe deine Hausaufgabe gefunden") ||
+            contentStr.includes("Subject:") ||
+            contentStr.includes("Fach erkannt:")) {
+          return true;
+        }
+        return false;
+      });
+      
+      // Final check before logging - navigation might have started during async operations
+      if (isNavigatingAwayRef.current) {
+        // Silently exit - navigation is in progress
+        scanResultsLoadingRef.current = false;
+        return;
+      }
+      
+      console.log("🔍 FOOTERCHAT: Checking for scan results. hasScanResults:", hasScanResults, "message count:", existingMessages.length);
+      
+      // If we don't have scan results in messages, fetch and display them
+      if (!hasScanResults) {
+        try {
+          console.log("🔍 FOOTERCHAT: Loading scan results for scanId:", effectiveScanId);
+          
+          // Fetch scan details from API - use studentId from task
+          const studentId = dockState?.task?.userId || null;
+          
+          if (!studentId) {
+            console.warn("⚠️ FOOTERCHAT: No studentId available, cannot fetch scan");
+            return;
+          }
+          
+          const { data: scanData } = await api.get(`/homeworkscans`, {
+            params: { student_id: studentId },
+            withCredentials: true,
+          });
+          
+          console.log("📊 FOOTERCHAT: Fetched scan data:", scanData);
+          
+          if (Array.isArray(scanData)) {
+            // Ensure scanId is a number for comparison
+            const scanIdNum = typeof effectiveScanId === 'number' ? effectiveScanId : parseInt(effectiveScanId, 10);
+            const scan = scanData.find(s => s.id === scanIdNum || s.id === effectiveScanId);
+            console.log("📋 FOOTERCHAT: Searching for scanId:", effectiveScanId, "as number:", scanIdNum, "Found scan:", scan);
+            
+            if (scan && scan.raw_text) {
+              const extracted = scan.raw_text || "";
+              
+              // Check if this exact scan result already exists in messages
+              const exists = existingMessages.some(msg => {
+                // Check for table type with matching extracted text
+                if (msg?.type === "table" && typeof msg?.content === "object") {
+                  return msg.content?.extractedText === extracted;
+                }
+                // Check if message content contains the extracted text
+                const contentStr = typeof msg?.content === "string" ? msg.content : JSON.stringify(msg?.content || "");
+                return contentStr.includes(extracted.slice(0, 50)); // Check first 50 chars to avoid exact match issues
+              });
+              
+              if (!exists && extracted) {
+                console.log("✅ FOOTERCHAT: Adding scan results to chat");
+                setChatMessages?.("homework", scopedTaskKey, (prev) => {
+                  const prevMsgs = prev || [];
+                  
+                  // Check again before adding to prevent race conditions
+                  const alreadyHasResults = prevMsgs.some(msg => {
+                    if (msg?.type === "table" && typeof msg?.content === "object") {
+                      return msg.content?.extractedText === extracted;
+                    }
+                    const contentStr = typeof msg?.content === "string" ? msg.content : JSON.stringify(msg?.content || "");
+                    return contentStr.includes(extracted.slice(0, 50));
+                  });
+                  
+                  if (alreadyHasResults) {
+                    console.log("⚠️ FOOTERCHAT: Scan results already added (race condition prevented)");
+                    return prevMsgs;
+                  }
+                  
+                  // Add success message and scan results
+                  const successMsg = formatMessage(
+                    "I've read your homework!",
+                    "agent",
+                    "text",
+                    { agentName: selectedAgent || "Kibundo" }
+                  );
+                  const scanResultMsg = formatMessage(
+                    { extractedText: extracted, qa: [] },
+                    "agent",
+                    "table",
+                    { agentName: selectedAgent || "Kibundo" }
+                  );
+                  const encouragementMsg = formatMessage(
+                    "Try to answer the questions yourself first. If you need help or get stuck, just ask me!",
+                    "agent",
+                    "text",
+                    { agentName: selectedAgent || "Kibundo" }
+                  );
+                  return [...prevMsgs, successMsg, scanResultMsg, encouragementMsg];
+                });
+                
+                // Mark as loaded to prevent re-loading
+                scanResultsLoadedRef.current.add(scanKey);
+                // Mark as processed
+                lastProcessedScanIdRef.current = effectiveScanId;
+                lastProcessedTaskKeyRef.current = `${scopedTaskKey}::scan:${effectiveScanId}`;
+              } else {
+                console.log("ℹ️ FOOTERCHAT: Scan results already exist in messages, skipping");
+                // Mark as loaded even if already exists
+                scanResultsLoadedRef.current.add(scanKey);
+                // Mark as processed
+                lastProcessedScanIdRef.current = effectiveScanId;
+                lastProcessedTaskKeyRef.current = `${scopedTaskKey}::scan:${effectiveScanId}`;
+              }
+            } else {
+              // Scan exists but doesn't have raw_text yet - it might still be processing
+              console.warn("⚠️ FOOTERCHAT: Scan found but no raw_text (scan may still be processing):", {
+                id: scan.id,
+                hasFile: !!scan.file_url,
+                processedAt: scan.processed_at,
+                createdAt: scan.created_at
+              });
+              // Mark as processed to prevent repeated attempts, but don't add scan results
+              scanResultsLoadedRef.current.add(scanKey);
+              lastProcessedScanIdRef.current = effectiveScanId;
+              lastProcessedTaskKeyRef.current = `${scopedTaskKey}::scan:${effectiveScanId}`;
+            }
+          } else {
+            console.warn("⚠️ FOOTERCHAT: Scan data is not an array:", scanData);
+          }
+        } catch (error) {
+          console.error("❌ FOOTERCHAT: Failed to load scan results:", error);
+        } finally {
+          scanResultsLoadingRef.current = false;
+        }
+      } else {
+        console.log("ℹ️ FOOTERCHAT: Scan results already present in messages");
+        // Mark as loaded even if already present
+        if (effectiveScanId) {
+          const scanKey = `${scopedTaskKey}::scan:${effectiveScanId}`;
+          scanResultsLoadedRef.current.add(scanKey);
+          // Mark as processed
+          lastProcessedScanIdRef.current = effectiveScanId;
+          lastProcessedTaskKeyRef.current = scanKey;
+        }
+        scanResultsLoadingRef.current = false;
+      }
+    };
+    
+    // Run the async function
+    loadScanResultsIfNeeded();
+    
+    // Cleanup function: cancel any ongoing operations if component unmounts or navigation starts
+    return () => {
+      // Abort any ongoing scan results loading
+      if (scanResultsAbortControllerRef.current) {
+        scanResultsAbortControllerRef.current.abort();
+        scanResultsAbortControllerRef.current = null;
+      }
+      isNavigatingAwayRef.current = true;
+      scanResultsLoadingRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanId, scopedTaskKey]); // Only depend on scanId and scopedTaskKey to prevent excessive re-runs
 
   useEffect(() => {
     if (scopedTaskKey !== stableTaskIdRef.current) {
       stableTaskIdRef.current = scopedTaskKey;
       didSeedRef.current = false;
       uploadNudgeShownRef.current = false;
+      // Clear fetch tracking when task changes
+      lastFetchedConvIdRef.current = null;
     }
   }, [scopedTaskKey]);
 
@@ -345,17 +800,19 @@ export default function HomeworkChat({
     } catch {}
   }, [conversationId, convKey]);
 
-  // Fetch backend messages when conversation ID changes
+  // Fetch backend messages when conversation ID changes (ONCE, with guards)
   useEffect(() => {
-    if (conversationId) {
+    if (conversationId && lastFetchedConvIdRef.current !== conversationId) {
       // Reset initial load flag when a new conversation starts
       isInitialLoadRef.current = true;
       fetchBackendMessages(conversationId);
-    } else {
+    } else if (!conversationId) {
       setBackendMessages([]);
       isInitialLoadRef.current = true;
+      lastFetchedConvIdRef.current = null;
     }
-  }, [conversationId, fetchBackendMessages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]); // Only depend on conversationId, not fetchBackendMessages
 
   // Local buffer
   const [localMessages, setLocalMessages] = useState(() => {
@@ -400,13 +857,75 @@ export default function HomeworkChat({
     scopedTaskKey,
   ]);
 
+  // 🔥 Sync localMessages with persisted messages when they change
+  // Only sync when scopedTaskKey changes or when we detect new messages
+  useEffect(() => {
+    if (controlledMessagesProp) return;
+    if (!getChatMessages) return;
+    
+    // Use current scopedTaskKey (not ref) to get latest messages
+    const persisted = getChatMessages(stableModeRef.current, scopedTaskKey) || [];
+    const persistedCount = persisted.length;
+    
+    // Get current message IDs
+    const currentMessageIds = new Set(persisted.map(m => m?.id).filter(Boolean));
+    
+    // Only sync if task changed or if message count/IDs actually changed
+    const taskChanged = lastSyncedTaskKeyRef.current !== scopedTaskKey;
+    const countChanged = persistedCount !== lastSyncedMessageCountRef.current;
+    const idsChanged = taskChanged || persisted.some(m => m?.id && !lastSyncedMessageIdsRef.current.has(m.id));
+    const messagesChanged = taskChanged || (countChanged && idsChanged);
+    
+    // Use a ref to track the last sync to prevent duplicate syncs
+    const syncKey = `${scopedTaskKey}::${persistedCount}::${Array.from(currentMessageIds).sort().join(',')}`;
+    
+    // Prevent duplicate syncs - check if we already synced with this exact key
+    if (lastSyncRef.current.key === syncKey) {
+      return;
+    }
+    
+    if (messagesChanged) {
+      lastSyncRef.current = { key: syncKey, count: persistedCount, ids: currentMessageIds };
+      
+      setLocalMessages((prev) => {
+        const merged = mergeById(persisted, prev);
+        // Only update if there's a real change (new messages added or changed)
+        if (merged.length !== prev.length || merged.some((m, i) => m.id !== prev[i]?.id)) {
+          lastSyncedMessageCountRef.current = merged.length;
+          lastSyncedTaskKeyRef.current = scopedTaskKey;
+          lastSyncedMessageIdsRef.current = currentMessageIds;
+          return merged;
+        }
+        return prev;
+      });
+    } else {
+      // Update refs even if no change to track current state
+      lastSyncedMessageCountRef.current = persistedCount;
+      lastSyncedTaskKeyRef.current = scopedTaskKey;
+      lastSyncedMessageIdsRef.current = currentMessageIds;
+      // Update sync key to prevent re-running
+      lastSyncRef.current = { key: syncKey, count: persistedCount, ids: currentMessageIds };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopedTaskKey, controlledMessagesProp]); // Only depend on scopedTaskKey to prevent excessive re-runs
+
   // Recompute messages (merge backend with existing messages to avoid duplicates)
   const msgs = useMemo(() => {
     if (controlledMessagesProp) return controlledMessagesProp;
     
-    // Get existing messages
-    const persisted = getChatMessages?.(stableModeRef.current, stableTaskIdRef.current) || [];
+    // Get existing messages - use current scopedTaskKey directly (not ref)
+    const persisted = getChatMessages?.(stableModeRef.current, scopedTaskKey) || [];
     const existingLocal = localMessages || [];
+    
+    // Debug logging (commented out to reduce console noise)
+    // console.log("📊 HomeworkChat msgs useMemo:", {
+    //   persisted: persisted.length,
+    //   localMessages: existingLocal.length,
+    //   backendMessages: backendMessages.length,
+    //   scopedTaskKey,
+    //   taskId: dockState?.task?.id,
+    //   taskUserId: dockState?.task?.userId,
+    // });
     
     // If we have backend messages, merge them with existing messages
     if (backendMessages.length > 0) {
@@ -420,7 +939,7 @@ export default function HomeworkChat({
       return existingLocal;
     }
     return merged;
-  }, [controlledMessagesProp, backendMessages, getChatMessages, localMessages, conversationId, scanId]);
+  }, [controlledMessagesProp, backendMessages, localMessages, conversationId, scanId, scopedTaskKey, dockState?.chatByKey]); // Removed getChatMessages from deps to prevent re-renders
 
   // never persist transient/base64 previews
   const filterForPersist = useCallback((arr) => {
@@ -475,6 +994,47 @@ export default function HomeworkChat({
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [showRescanModal, setShowRescanModal] = useState(false);
+  const [isRescanUpload, setIsRescanUpload] = useState(false);
+  
+  // Voice input (ASR) - works even when chat is collapsed
+  const { listening: isRecording, start: startRecording, stop: stopRecording, reset: resetRecording } = useASR({
+    lang: "de-DE",
+    onTranscript: (transcript) => {
+      // Update draft with transcript as user speaks (interim results)
+      setDraft(prev => {
+        // Only update if we got new content
+        if (transcript && transcript.trim()) {
+          return transcript;
+        }
+        return prev;
+      });
+    },
+    onError: (error) => {
+      if (error === "not_supported") {
+        antdMessage.warning("Spracherkennung wird in diesem Browser nicht unterstützt.");
+      } else if (error === "no-speech") {
+        antdMessage.info("Keine Sprache erkannt. Versuche es nochmal.");
+      } else {
+        antdMessage.error("Fehler bei der Spracherkennung. Bitte versuche es erneut.");
+      }
+    }
+  });
+  
+  const handleMicClick = useCallback(async () => {
+    if (isRecording) {
+      // Stop recording and get final transcript
+      const transcript = await stopRecording();
+      if (transcript && transcript.trim()) {
+        setDraft(transcript);
+        // Auto-send if there's content (optional - can be changed to manual send)
+        // For now, just put it in the input so user can review/edit before sending
+      }
+    } else {
+      // Start recording - does NOT open chat if collapsed (per feedback H.4)
+      startRecording();
+    }
+  }, [isRecording, startRecording, stopRecording]);
 
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -505,21 +1065,40 @@ export default function HomeworkChat({
     return [];
   };
   const mapServerToInternal = (arr) => {
-    const messages = toArray(arr).map((m) =>
-      formatMessage(
+    const allMessages = [];
+    toArray(arr).forEach((m) => {
+      const from = (m?.sender || "agent").toLowerCase() === "student" ? "student" : "agent";
+      const agentName = m?.agent_name || "Kibundo";
+      
+      if (from === "agent" && typeof m?.content === "string") {
+        // Parse tips from agent messages
+        const parsed = parseResponseWithTips(m.content, agentName);
+        parsed.forEach(msg => {
+          allMessages.push({
+            ...msg,
+            id: m.id ? `${m.id}_${msg.id}` : msg.id, // Preserve original ID if available
+            timestamp: m.created_at || m.timestamp || msg.timestamp,
+            agentName: agentName
+          });
+        });
+      } else {
+        // Regular message (student or non-text agent message)
+        allMessages.push(formatMessage(
         m?.content ?? "",
-        (m?.sender || "agent").toLowerCase() === "student" ? "student" : "agent",
+          from,
         "text",
         { 
           id: m.id,
           timestamp: m.created_at || m.timestamp,
-          agentName: m?.agent_name || "Kibundo" // Include agent name from server
-        }
-      )
-    );
+            agentName: agentName
+          }
+        ));
+      }
+    });
+    
     const seen = new Set();
-    return messages.filter((m) => {
-      const key = `${m.from}|${m.content}`;
+    return allMessages.filter((m) => {
+      const key = `${m.from}|${m.type}|${m.content}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -535,7 +1114,12 @@ export default function HomeworkChat({
 
   const handleSendText = useCallback(
     async (text) => {
-      if (effectiveReadOnly) return;
+      if (effectiveReadOnly) {
+        if (isTaskCompleted) {
+          antdMessage?.warning("Diese Aufgabe ist bereits abgeschlossen. Du kannst keine weiteren Nachrichten senden.");
+        }
+        return;
+      }
       const t = (text || "").trim();
       if (!t) return;
       if (sendingRef.current || sending) return;
@@ -582,7 +1166,7 @@ export default function HomeworkChat({
 
         let resp;
         try {
-          resp = await api.post(firstUrl, { message: t, scanId, agentName: selectedAgent }, {
+          resp = await api.post(firstUrl, { message: t, scanId, agentName: selectedAgent, mode: "homework" }, {
             withCredentials: true,
           });
         } catch (err) {
@@ -612,10 +1196,10 @@ export default function HomeworkChat({
             const r = await api.post("ai/chat", payload, {
               withCredentials: true,
             });
-            const agentMessage = formatMessage(r?.data?.answer || "Okay!", "agent", "text", { agentName: r?.data?.agentName || selectedAgent });
+            const parsedMessages = parseResponseWithTips(r?.data?.answer || "Okay!", r?.data?.agentName || selectedAgent);
             updateMessages((m) => [
               ...m.filter((x) => !x?.pending),
-              agentMessage,
+              ...parsedMessages,
             ]);
             
             // Speak agent response if TTS is enabled
@@ -625,7 +1209,7 @@ export default function HomeworkChat({
             return;
           }
           if (conversationId && (code === 400 || code === 404)) {
-            resp = await api.post(`conversations/message`, { message: t, scanId, agentName: selectedAgent }, {
+            resp = await api.post(`conversations/message`, { message: t, scanId, agentName: selectedAgent, mode: "homework" }, {
               withCredentials: true,
             });
           } else {
@@ -661,10 +1245,10 @@ export default function HomeworkChat({
             return merged;
           });
         } else if (j?.answer) {
-          const agentMessage = formatMessage(j.answer, "agent", "text", { agentName: j?.agentName || selectedAgent });
+          const parsedMessages = parseResponseWithTips(j.answer, j?.agentName || selectedAgent);
           updateMessages((current) => [
             ...current.filter((m) => !m?.pending),
-            agentMessage,
+            ...parsedMessages,
           ]);
           
           // Speak agent response if TTS is enabled
@@ -732,6 +1316,14 @@ export default function HomeworkChat({
             } else {
               const formData = new FormData();
               formData.append("file", file);
+              
+              // 🔥 Pass existing conversationId and scanId to continue the conversation
+              if (conversationId) {
+                formData.append("conversationId", String(conversationId));
+              }
+              if (scanId) {
+                formData.append("scanId", String(scanId));
+              }
 
               const res = await api.post(`ai/upload`, formData, {
                 headers: { "Content-Type": "multipart/form-data" },
@@ -746,6 +1338,7 @@ export default function HomeworkChat({
                 ? data.qa
                 : [];
               const needsClearerImage = data?.needsClearerImage || data?.parsed?.unclear || data?.error;
+              const isDifferentHomework = data?.isDifferentHomework || false; // 🔥 Check if this is a different homework
 
               updateMessages((m) => {
                 const arr = [...m];
@@ -770,20 +1363,67 @@ export default function HomeworkChat({
                       { agentName: selectedAgent }
                     )
                   );
-                } else if (extracted || qa.length > 0) {
-                  // Handle successful analysis
+                } else if (isDifferentHomework) {
+                  // 🔥 Handle different homework detected
                   if (idx !== -1)
-                    arr[idx] = formatMessage("🎉 Fertig! Ich habe deine Hausaufgabe gelesen!", "agent", "text", { agentName: selectedAgent });
+                    arr[idx] = formatMessage("🔍 Ich habe das Bild analysiert...", "agent", "text", { agentName: selectedAgent });
                   
-                  arr.push(formatMessage({ extractedText: extracted, qa }, "agent", "table", { agentName: selectedAgent }));
                   arr.push(
                     formatMessage(
-                      "🎉 Super! Ich habe deine Hausaufgabe gefunden! Du kannst mir jetzt Fragen stellen oder um Hilfe bitten. Ich helfe dir gerne! 😊",
+                      "⚠️ **Das ist eine andere Hausaufgabe!**\n\n" +
+                      "Ich sehe, dass dieses Bild zu einer anderen Hausaufgabe gehört als die, über die wir gerade sprechen.\n\n" +
+                      "Möchtest du:\n" +
+                      "• Mit dieser neuen Hausaufgabe weitermachen? (Ich werde die neue Hausaufgabe analysieren)\n" +
+                      "• Zur vorherigen Hausaufgabe zurückkehren?\n\n" +
+                      "Sag mir einfach, was du möchtest! 😊",
                       "agent",
                       "text",
                       { agentName: selectedAgent }
                     )
                   );
+                  
+                  // Still show the extracted content so student can see what was detected
+                  if (extracted || qa.length > 0) {
+                    arr.push(formatMessage({ extractedText: extracted, qa }, "agent", "table", { agentName: selectedAgent }));
+                  }
+                } else if (extracted || qa.length > 0) {
+                  // Handle successful analysis (same homework continuation)
+                  if (idx !== -1)
+                    arr[idx] = formatMessage("🎉 Fertig! Ich habe dein Bild analysiert!", "agent", "text", { agentName: selectedAgent });
+                  
+                  arr.push(formatMessage({ extractedText: extracted, qa }, "agent", "table", { agentName: selectedAgent }));
+                  
+                  // If this was a rescan upload, show completion message and navigate to feedback
+                  if (isRescanUpload) {
+                    arr.push(
+                      formatMessage(
+                        "✅ Perfekt! Ich habe dein fertiges Arbeitsblatt gesehen. Jetzt kann ich dir eine Rückmeldung geben! 🎉",
+                        "agent",
+                        "text",
+                        { agentName: selectedAgent }
+                      )
+                    );
+                    // Close chat and navigate to feedback after a short delay
+                    setTimeout(() => {
+                      setIsRescanUpload(false); // Reset flag
+                      onClose?.(); // Close chat
+                      // Navigate to feedback page
+                      const taskId = dockState?.task?.id || taskId;
+                      navigate("/student/homework/feedback", { 
+                        state: { taskId: taskId || null },
+                        replace: false 
+                      });
+                    }, 2000); // 2 second delay to show the message
+                  } else {
+                    arr.push(
+                      formatMessage(
+                        "✅ Perfekt! Ich habe dein neues Bild zur Hausaufgabe hinzugefügt. Du kannst mir weiter Fragen stellen! 😊",
+                        "agent",
+                        "text",
+                        { agentName: selectedAgent }
+                      )
+                    );
+                  }
                 } else {
                   // Handle other cases
                   if (idx !== -1)
@@ -808,6 +1448,10 @@ export default function HomeworkChat({
 
               const newCid = data?.conversationId;
               if (newCid && newCid !== conversationId) setConversationId(newCid);
+              
+              // Update scanId if provided in response
+              const newScanId = data?.scan?.id;
+              if (newScanId && newScanId !== scanId) setScanId(newScanId);
 
               // Upsert task in local storage
               try {
@@ -911,7 +1555,7 @@ export default function HomeworkChat({
         setTyping(false); // Hide thinking indicator when upload is done
       }
     },
-    [onSendMedia, updateMessages, antdMessage, uploading, conversationId, studentId, taskId, effectiveReadOnly]
+    [onSendMedia, updateMessages, antdMessage, uploading, conversationId, studentId, taskId, effectiveReadOnly, isRescanUpload, selectedAgent, dockState?.task?.id, onClose, navigate, scanId]
   );
 
   const sendText = useCallback(() => {
@@ -931,6 +1575,137 @@ export default function HomeworkChat({
     if (typeof onClose === "function") onClose();
     else navigate(minimiseTo);
   };
+
+  // Handle rescan upload - bypasses chat and goes directly to completion
+  const handleRescanUpload = useCallback(async (file) => {
+    if (!file || !dockState?.task) {
+      console.error("❌ handleRescanUpload: Missing file or task", { file: !!file, task: !!dockState?.task });
+      return;
+    }
+    
+    console.log("🔄 handleRescanUpload: Starting rescan upload", { taskId: dockState.task.id, scanId: dockState.task.scanId });
+    
+    try {
+      setUploading(true);
+      
+      // Upload the completion photo
+      const formData = new FormData();
+      formData.append("file", file);
+      const uploadResponse = await api.post("/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const uploadedUrl = uploadResponse?.data?.fileUrl || uploadResponse?.data?.url;
+      
+      if (!uploadedUrl) {
+        throw new Error("Foto konnte nicht hochgeladen werden");
+      }
+      
+      const timestamp = new Date().toISOString();
+      const task = dockState.task;
+      const taskId = task.id;
+      const scanId = task.scanId;
+      
+      // Update task in localStorage
+      try {
+        const effectiveStudentId = task.userId || studentId || "anon";
+        const tasksKeyUser = `${TASKS_KEY}::u:${effectiveStudentId}`;
+        const load = () => {
+          try {
+            return JSON.parse(localStorage.getItem(tasksKeyUser) || "[]");
+          } catch {
+            return [];
+          }
+        };
+        const save = (arr) => {
+          try {
+            localStorage.setItem(tasksKeyUser, JSON.stringify(arr));
+            return true;
+          } catch {
+            return false;
+          }
+        };
+        
+        const tasks = load();
+        const idx = tasks.findIndex((t) => t?.id === taskId);
+        const baseTask = idx >= 0 ? tasks[idx] : task;
+        
+        const updatedTask = {
+          ...baseTask,
+          completionPhotoUrl: uploadedUrl,
+          completedAt: timestamp,
+          done: true,
+        };
+        
+        const next = [...tasks];
+        if (idx >= 0) {
+          next[idx] = updatedTask;
+        } else {
+          next.unshift(updatedTask);
+        }
+        save(next);
+        
+        // Dispatch event to update homework list
+        try {
+          window.dispatchEvent(new Event("kibundo:tasks-updated"));
+        } catch {}
+      } catch (storageError) {
+        console.error("Error updating task in storage:", storageError);
+      }
+      
+      // Sync to server
+      if (scanId) {
+        try {
+          await api.put(`/homeworkscans/${scanId}/completion`, {
+            completedAt: timestamp,
+            completionPhotoUrl: uploadedUrl,
+          }, {
+            meta: { toast5xx: false },
+          });
+        } catch (serverError) {
+          console.error("Error syncing completion to server:", serverError);
+        }
+      }
+      
+      // Close chat and navigate to feedback
+      console.log("✅ handleRescanUpload: Upload complete, navigating to feedback", { taskId, scanId });
+      setIsRescanUpload(false);
+      
+      // Mark that we're navigating away to prevent scan results check from running
+      isNavigatingAwayRef.current = true;
+      // Also stop any ongoing scan results loading
+      scanResultsLoadingRef.current = false;
+      // Abort any ongoing scan results API calls
+      if (scanResultsAbortControllerRef.current) {
+        scanResultsAbortControllerRef.current.abort();
+        scanResultsAbortControllerRef.current = null;
+      }
+      
+      // Close chat first
+      if (onClose) {
+        console.log("🔄 Closing chat via onClose");
+        onClose();
+      }
+      if (closeChat) {
+        console.log("🔄 Closing chat via closeChat");
+        closeChat();
+      }
+      
+      // Navigate to feedback page with a small delay to ensure chat closes
+      setTimeout(() => {
+        console.log("🚀 Navigating to feedback page", { taskId });
+        navigate("/student/homework/feedback", {
+          state: { taskId: taskId || null },
+          replace: false,
+        });
+      }, 200);
+    } catch (error) {
+      console.error("❌ Fehler beim Hochladen des Abschlussfotos:", error);
+      antdMessage.error("Abschlussfoto konnte nicht hochgeladen werden.");
+      setIsRescanUpload(false);
+    } finally {
+      setUploading(false);
+    }
+  }, [dockState?.task, studentId, onClose, navigate, antdMessage, closeChat]);
 
   const startNewChat = useCallback(() => {
     setDockReadOnly?.(false);
@@ -954,18 +1729,59 @@ export default function HomeworkChat({
   const handleCameraChange = (e) => {
     if (effectiveReadOnly) return;
     const file = e.target.files?.[0];
-    if (file) handleMediaUpload([file]);
+    if (file) {
+      // If this is a rescan upload, use the rescan handler instead
+      if (isRescanUpload) {
+        console.log("📸 Camera: Rescan upload detected, calling handleRescanUpload", { isRescanUpload, fileName: file.name });
+        handleRescanUpload(file);
+      } else {
+        console.log("📸 Camera: Regular upload, calling handleMediaUpload");
+        handleMediaUpload([file]);
+      }
+    }
     e.target.value = "";
   };
   const handleGalleryChange = (e) => {
     if (effectiveReadOnly) return;
     const files = Array.from(e.target.files || []);
-    if (files.length) handleMediaUpload(files);
+    if (files.length) {
+      // If this is a rescan upload, use the rescan handler instead (only first file)
+      if (isRescanUpload) {
+        console.log("🖼️ Gallery: Rescan upload detected, calling handleRescanUpload", { isRescanUpload, fileCount: files.length });
+        handleRescanUpload(files[0]);
+      } else {
+        console.log("🖼️ Gallery: Regular upload, calling handleMediaUpload");
+        handleMediaUpload(files);
+      }
+    }
     e.target.value = "";
   };
 
   const renderMessageContent = (message) => {
     switch (message.type) {
+      case "tip":
+        const tipContent = typeof message.content === "string" 
+          ? message.content 
+          : message.content?.text || message.content || "";
+        return (
+          <div className="w-full">
+            <div className="bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50 rounded-xl border-2 border-amber-300 shadow-sm p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-10 h-10 bg-amber-400 rounded-full flex items-center justify-center shadow-md">
+                  <BulbOutlined className="text-amber-900 text-lg" />
+                </div>
+                <div className="flex-1">
+                  <div className="font-bold text-amber-900 text-base mb-2 flex items-center gap-2">
+                    💡 Tipp
+                  </div>
+                  <div className="text-amber-800 text-base leading-relaxed whitespace-pre-wrap">
+                    {tipContent}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
       case "image":
         return (
           <div className="relative">
@@ -1006,8 +1822,25 @@ export default function HomeworkChat({
           <div className="w-full">
             {extracted && (
               <div className="mb-4">
-                <div className="font-bold mb-2 text-green-600 text-base flex items-center gap-2">
+                <div className="font-bold mb-2 text-green-600 text-base flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
                   📖 <span>Was ich in deinem Bild gesehen habe:</span>
+                  </div>
+                  {/* TTS button for extracted text */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (extracted && extracted.trim()) {
+                        speak(extracted);
+                      }
+                    }}
+                    className="flex-shrink-0 w-8 h-8 grid place-items-center rounded-full bg-green-100 hover:bg-green-200 transition-colors"
+                    aria-label="Text vorlesen"
+                    title="Text vorlesen"
+                  >
+                    <SoundOutlined className="text-green-600 text-sm" />
+                  </button>
                 </div>
                 <div className="p-4 bg-green-50 rounded-xl border-2 border-green-200 whitespace-pre-wrap text-base leading-relaxed">
                   {extracted}
@@ -1016,8 +1849,28 @@ export default function HomeworkChat({
             )}
             {qa.length > 0 && (
               <div>
-                <div className="font-bold mb-3 text-blue-600 text-base flex items-center gap-2">
+                <div className="font-bold mb-3 text-blue-600 text-base flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
                   🎯 <span>Deine Aufgaben ({qa.length}):</span>
+                  </div>
+                  {/* TTS button to read all questions */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const allQuestions = qa
+                        .map((q, idx) => `Frage ${idx + 1}: ${q?.text || q?.question || ""}`)
+                        .join(". ");
+                      if (allQuestions && allQuestions.trim()) {
+                        speak(allQuestions);
+                      }
+                    }}
+                    className="flex-shrink-0 w-8 h-8 grid place-items-center rounded-full bg-blue-100 hover:bg-blue-200 transition-colors"
+                    aria-label="Alle Fragen vorlesen"
+                    title="Alle Fragen vorlesen"
+                  >
+                    <SoundOutlined className="text-blue-600 text-sm" />
+                  </button>
                 </div>
                 <div className="space-y-3">
                   {qa.map((q, i) => (
@@ -1027,26 +1880,39 @@ export default function HomeworkChat({
                           {i + 1}
                         </div>
                         <div className="flex-1">
-                          <div className="mb-2">
+                          <div>
                             <div className="font-bold text-blue-800 text-base mb-1 flex items-center gap-2">
                               💭 <span>Frage:</span>
                             </div>
-                            <div className="text-gray-800 text-base leading-relaxed pl-6">
-                              {q?.text || q?.question || "-"}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="font-bold text-green-700 text-base mb-1 flex items-center gap-2">
-                              ✅ <span>Antwort:</span>
-                            </div>
-                            <div className="text-gray-700 text-base leading-relaxed pl-6 bg-white rounded-lg p-3 border border-green-200">
-                              {q?.answer || "(Keine Antwort gefunden)"}
+                            <div className="text-gray-800 text-base leading-relaxed pl-6 flex items-start gap-2">
+                              <span className="flex-1">{q?.text || q?.question || "-"}</span>
+                              {/* TTS replay icon - allows students to replay the question text */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const questionText = q?.text || q?.question || "";
+                                  if (questionText && questionText !== "-") {
+                                    speak(questionText);
+                                  }
+                                }}
+                                className="flex-shrink-0 w-6 h-6 grid place-items-center rounded-full bg-blue-100 hover:bg-blue-200 transition-colors"
+                                aria-label="Frage vorlesen"
+                                title="Frage vorlesen"
+                              >
+                                <SoundOutlined className="text-blue-600 text-xs" />
+                              </button>
                             </div>
                           </div>
                         </div>
                       </div>
                     </div>
                   ))}
+                </div>
+                <div className="mt-4 p-4 bg-yellow-50 rounded-xl border-2 border-yellow-200">
+                  <div className="text-base text-yellow-800">
+                    💡 <strong>Tipp:</strong> Versuche zuerst selbst, die Fragen zu beantworten. Wenn du Hilfe brauchst oder nicht weiterkommst, frage mich einfach! Ich helfe dir gerne Schritt für Schritt. 😊
+                  </div>
                 </div>
               </div>
             )}
@@ -1116,8 +1982,12 @@ export default function HomeworkChat({
       {/* Messages */}
       <div
         ref={listRef}
-        className="relative px-3 pt-2 pb-32 md:pb-28 overflow-y-auto bg-[#f3f7eb]"
-        style={{ height: `calc(100% - ${minimiseHeight}px)` }}
+        className="relative px-3 overflow-y-auto bg-[#f3f7eb]"
+        style={{ 
+          height: `calc(100% - ${minimiseHeight}px)`,
+          paddingTop: "max(0.5rem, env(safe-area-inset-top, 0.5rem))", // Fix clipping at top - account for safe area
+          paddingBottom: "max(7rem, calc(6rem + env(safe-area-inset-bottom, 0px)))" // Extra bottom padding to prevent input box from covering last message
+        }}
         aria-live="polite"
       >
         {msgs.map((message, idx) => {
@@ -1201,7 +2071,9 @@ export default function HomeworkChat({
           {effectiveReadOnly ? (
             <div className="rounded-3xl bg-[#b2c10a] text-white px-4 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shadow-lg">
               <div className="text-sm md:text-base leading-snug text-center md:text-left">
-                Dieser Chat gehört zu einer abgeschlossenen Aufgabe. Du kannst ihn lesen, aber keine neuen Nachrichten senden.
+                {isTaskCompleted 
+                  ? "Diese Aufgabe ist bereits abgeschlossen. Du kannst den Chatverlauf lesen, aber keine neuen Nachrichten senden."
+                  : "Dieser Chat gehört zu einer abgeschlossenen Aufgabe. Du kannst ihn lesen, aber keine neuen Nachrichten senden."}
               </div>
               <button
                 type="button"
@@ -1232,6 +2104,26 @@ export default function HomeworkChat({
                   disabled={sending || uploading}
                 >
                   <img src={galleryIcon} alt="" className="w-6 h-6" />
+                </button>
+                
+                {/* Microphone button - mandatory for voice input (especially grade 1-2) */}
+                <button
+                  onClick={handleMicClick}
+                  className={`w-10 h-10 grid place-items-center rounded-full transition-all ${
+                    isRecording 
+                      ? "bg-red-500 animate-pulse" 
+                      : "bg-white/30 hover:bg-white/50"
+                  }`}
+                  aria-label={isRecording ? "Aufnahme beenden" : "Spracheingabe starten"}
+                  type="button"
+                  disabled={sending || uploading}
+                  title={isRecording ? "Aufnahme beenden" : "Spracheingabe (für Klasse 1-2 besonders wichtig)"}
+                >
+                  <img 
+                    src={micIcon} 
+                    alt="" 
+                    className={`w-6 h-6 ${isRecording ? "brightness-0 invert" : ""}`}
+                  />
                 </button>
 
                 <div className="flex-1 h-10 flex items-center px-3 bg-white rounded-full">
@@ -1287,21 +2179,211 @@ export default function HomeworkChat({
                 </button>
 
                 {dockState?.mode === "homework" && (
-                  <button
-                    onClick={() => markHomeworkDone?.()}
-                    className="w-11 h-11 grid place-items-center rounded-full"
-                    style={{ backgroundColor: "#8fd85d" }}
-                    aria-label="Aufgabe abschließen"
-                    type="button"
-                    disabled={sending || uploading}
-                  >
-                    <CheckOutlined style={{ color: "#fff", fontSize: 16 }} />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setShowRescanModal(true)}
+                      className="w-11 h-11 grid place-items-center rounded-full"
+                      style={{ backgroundColor: "#8fd85d" }}
+                      aria-label="Aufgabe abschließen"
+                      type="button"
+                      disabled={sending || uploading}
+                    >
+                      <CheckOutlined style={{ color: "#fff", fontSize: 16 }} />
+                    </button>
+                    
+                    {/* Complete Task Confirmation Modal */}
+                    <Modal
+                      open={showRescanModal}
+                      onCancel={() => setShowRescanModal(false)}
+                      footer={null}
+                      centered
+                      className="rescan-modal"
+                      width="90%"
+                      style={{ maxWidth: 500 }}
+                    >
+                      <div className="py-6 px-2">
+                        <div className="text-center mb-6">
+                          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
+                            <CheckOutlined style={{ color: "#8fd85d", fontSize: 32 }} />
+                          </div>
+                          <h3 className="text-xl font-bold text-gray-800 mb-2">
+                            Aufgabe abschließen
+                          </h3>
+                        </div>
+                        
+                        <div className="bg-green-50 rounded-xl border-2 border-green-200 p-5 mb-6">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden bg-green-200 flex items-center justify-center">
+                              <img 
+                                src={buddyMascot} 
+                                alt="Kibundo" 
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-base text-gray-800 leading-relaxed whitespace-pre-wrap">
+                                {`Hallo! 🎉
+
+Du bist dabei, deine Aufgabe abzuschließen. 
+
+Nach der Bestätigung wirst du zur Rückmeldung weitergeleitet, wo du dein fertiges Arbeitsblatt hochladen kannst.`}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex flex-col gap-3">
+                          <button
+                            onClick={async () => {
+                              setShowRescanModal(false);
+                              
+                              const task = dockState?.task;
+                              const currentTaskId = task?.id ?? null;
+                              const scanId = task?.scanId;
+                              const timestamp = new Date().toISOString();
+                              
+                              // Mark task as complete in localStorage
+                              if (currentTaskId) {
+                                try {
+                                  const effectiveStudentId = task?.userId || studentId || "anon";
+                                  const tasksKeyUser = `${TASKS_KEY}::u:${effectiveStudentId}`;
+                                  const PROGRESS_KEY_USER = `kibundo.homework.progress.v1::u:${effectiveStudentId}`;
+                                  
+                                  // Update task in storage
+                                  const loadTasks = () => {
+                                    try {
+                                      return JSON.parse(localStorage.getItem(tasksKeyUser) || "[]");
+                                    } catch {
+                                      return [];
+                                    }
+                                  };
+                                  const saveTasks = (arr) => {
+                                    try {
+                                      localStorage.setItem(tasksKeyUser, JSON.stringify(arr));
+                                      return true;
+                                    } catch {
+                                      return false;
+                                    }
+                                  };
+                                  
+                                  const tasks = loadTasks();
+                                  const idx = tasks.findIndex((t) => t?.id === currentTaskId);
+                                  const baseTask = idx >= 0 ? tasks[idx] : task;
+                                  
+                                  const updatedTask = {
+                                    ...baseTask,
+                                    done: true,
+                                    completedAt: timestamp,
+                                    // Preserve existing completionPhotoUrl if it exists
+                                    completionPhotoUrl: baseTask?.completionPhotoUrl || task?.completionPhotoUrl || null,
+                                  };
+                                  
+                                  const next = [...tasks];
+                                  if (idx >= 0) {
+                                    next[idx] = updatedTask;
+                                  } else {
+                                    next.unshift(updatedTask);
+                                  }
+                                  saveTasks(next);
+                                  
+                                  // Update progress to step 3 (feedback)
+                                  try {
+                                    localStorage.setItem(
+                                      PROGRESS_KEY_USER,
+                                      JSON.stringify({
+                                        step: 3,
+                                        taskId: currentTaskId,
+                                        task: updatedTask,
+                                        completedAt: timestamp,
+                                        done: true,
+                                      })
+                                    );
+                                  } catch {}
+                                  
+                                  // Dispatch event to update homework list
+                                  try {
+                                    window.dispatchEvent(new Event("kibundo:tasks-updated"));
+                                  } catch {}
+                                  
+                                  // Sync to server if there's a scanId
+                                  if (scanId) {
+                                    try {
+                                      await api.put(`/homeworkscans/${scanId}/completion`, {
+                                        completedAt: timestamp,
+                                        completionPhotoUrl: updatedTask?.completionPhotoUrl || null,
+                                      }, {
+                                        meta: { toast5xx: false },
+                                      });
+                                    } catch (serverError) {
+                                      console.error("Error syncing completion to server:", serverError);
+                                    }
+                                  }
+                                } catch (error) {
+                                  console.error("Error marking task as complete:", error);
+                                }
+                              }
+                              
+                              // Close the homework chat - call both onClose and closeChat to ensure it closes
+                              if (onClose) {
+                                onClose();
+                              }
+                              if (closeChat) {
+                                closeChat();
+                              }
+                              
+                              // Small delay to ensure chat closes before navigation
+                              setTimeout(() => {
+                                // Navigate to feedback page with taskId
+                                if (currentTaskId) {
+                                  navigate("/student/homework/feedback", { 
+                                    state: { taskId: currentTaskId } 
+                                  });
+                                } else {
+                                  navigate("/student/homework/feedback");
+                                }
+                              }, 100);
+                            }}
+                            className="w-full py-3 px-4 rounded-xl bg-[#8fd85d] text-white font-semibold text-base hover:bg-[#7fc84d] transition-colors flex items-center justify-center gap-2"
+                          >
+                            <CheckOutlined style={{ fontSize: 18 }} />
+                            Ja, Aufgabe abschließen
+                          </button>
+                          
+                          <button
+                            onClick={() => setShowRescanModal(false)}
+                            className="w-full py-2 px-4 rounded-xl text-gray-600 font-medium text-sm hover:bg-gray-50 transition-colors"
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
+                      </div>
+                    </Modal>
+                  </>
                 )}
               </div>
 
               {/* Bottom row: Scan buttons (mobile only) */}
               <div className="flex items-center justify-center gap-3 md:hidden">
+                {/* Microphone button - mandatory for voice input (especially grade 1-2) */}
+                <button
+                  onClick={handleMicClick}
+                  className={`w-12 h-12 grid place-items-center rounded-full transition-all ${
+                    isRecording 
+                      ? "bg-red-500 animate-pulse" 
+                      : "bg-white/30 hover:bg-white/50"
+                  }`}
+                  aria-label={isRecording ? "Aufnahme beenden" : "Spracheingabe starten"}
+                  type="button"
+                  disabled={sending || uploading}
+                  title={isRecording ? "Aufnahme beenden" : "Spracheingabe (für Klasse 1-2 besonders wichtig)"}
+                >
+                  <img 
+                    src={micIcon} 
+                    alt="" 
+                    className={`w-7 h-7 ${isRecording ? "brightness-0 invert" : ""}`}
+                  />
+                </button>
+                
                 <button
                   onClick={() => cameraInputRef.current?.click()}
                   className="w-12 h-12 grid place-items-center rounded-full bg-white/30"

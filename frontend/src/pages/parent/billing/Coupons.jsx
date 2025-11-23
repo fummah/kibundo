@@ -33,7 +33,8 @@ import { useTranslation } from "react-i18next";
 import api from "@/api/axios";
 
 // ParentShell is now handled at route level
-import globalBg from "@/assets/backgrounds/global-bg.png";
+import PlainBackground from "@/components/layouts/PlainBackground";
+import BottomTabBar from "@/components/parent/BottomTabBar.jsx";
 import { NUNITO_FONT_STACK } from "@/constants/fonts";
 
 const { Title, Text } = Typography;
@@ -274,16 +275,10 @@ export default function Coupons() {
   };
 
   return (
-    <div
-      className="relative min-h-screen w-full overflow-hidden"
-      style={{
-        background: "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
-        fontFamily: NUNITO_FONT_STACK,
-      }}
-    >
-      <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-60%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
-      <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 py-10">
-        <Card className="rounded-3xl border-none bg-white/92 shadow-xl">
+    <PlainBackground className="flex flex-col h-screen overflow-hidden">
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 py-10 pb-24">
           <div className="space-y-8">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-3">
@@ -467,8 +462,13 @@ export default function Coupons() {
               )}
             </Card>
           </div>
-        </Card>
+        </div>
       </div>
-    </div>
+
+      {/* Sticky bottom tab bar */}
+      <div className="flex-shrink-0">
+        <BottomTabBar />
+      </div>
+    </PlainBackground>
   );
 }

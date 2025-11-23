@@ -127,14 +127,30 @@ function deriveSubjectFromText(text = "") {
 export default function HomeworkList() {
   const navigate = useNavigate();
   const { openChat, expandChat, getChatMessages, closeChat } = useChatDock(); // ⬅️ we read analysis from chat
-  const { user: authUser } = useAuthContext();
+  const { user: authUser, account } = useAuthContext();
 
-  // derive current student id (scope everything by this)
-  const studentId = authUser?.id ?? "anon";
+  // 🔥 Get the effective student context (handles parent viewing child)
+  // When parent views child: account.id = student_id, account.userId = user_id
+  // When student logs in directly: authUser.id = user_id, need to fetch student_id
+  
+  // If parent has selected a child account, account.id is the student_id
+  const directStudentId = account?.type === "child" ? account.id : null;
+  
+  // Get the user_id to fetch student_id if needed
+  const effectiveUserId = account?.type === "child" && account?.userId 
+    ? account.userId 
+    : (authUser?.id ?? "anon");
+  
+  // State to store the fetched student_id (when student logs in directly)
+  const [fetchedStudentId, setFetchedStudentId] = useState(null);
+  
+  // Final student_id to use - prefer direct from account, otherwise use fetched
+  const studentId = directStudentId ?? fetchedStudentId;
 
-  // Build SCOPED storage keys per student
-  const TASKS_KEY_USER = `${TASKS_KEY}::u:${studentId}`;
-  const PROGRESS_KEY_USER = `${PROGRESS_KEY}::u:${studentId}`;
+  // Build SCOPED storage keys per student (use studentId if available, otherwise effectiveUserId)
+  const storageKey = studentId ?? effectiveUserId;
+  const TASKS_KEY_USER = `${TASKS_KEY}::u:${storageKey}`;
+  const PROGRESS_KEY_USER = `${PROGRESS_KEY}::u:${storageKey}`;
 
   // Candidate keys: scoped, legacy unscoped, anon-scoped
   const FALLBACK_KEYS = useMemo(
@@ -187,13 +203,69 @@ export default function HomeworkList() {
     } catch {}
   };
 
+  // State to store student information map (student_id -> student data)
+  const [studentsMap, setStudentsMap] = useState({});
+
+  // Fetch student information for all unique student_ids in tasks
+  const fetchStudentInfo = useCallback(async () => {
+    const studentIds = new Set();
+    
+    // Collect all unique student_ids from tasks
+    [...localStorageTasks, ...apiTasks].forEach(task => {
+      const sid = task?.userId || task?.student_id;
+      if (sid) studentIds.add(Number(sid));
+    });
+
+    if (studentIds.size === 0) return;
+
+    try {
+      const studentsRes = await api.get("/allstudents");
+      const allStudents = Array.isArray(studentsRes.data) 
+        ? studentsRes.data 
+        : (studentsRes.data?.data || []);
+      
+      const map = {};
+      allStudents.forEach(student => {
+        if (studentIds.has(student.id)) {
+          const studentUser = student.user || {};
+          map[student.id] = {
+            id: student.id,
+            name: studentUser.first_name && studentUser.last_name
+              ? `${studentUser.first_name} ${studentUser.last_name}`.trim()
+              : studentUser.first_name || studentUser.last_name || `Student #${student.id}`,
+            number: student.id, // Student number is the student_id
+          };
+        }
+      });
+      
+      setStudentsMap(map);
+    } catch (error) {
+      console.error("Failed to fetch student info:", error);
+    }
+  }, [localStorageTasks, apiTasks]);
+
+  // Fetch student info when tasks change
+  useEffect(() => {
+    fetchStudentInfo();
+  }, [fetchStudentInfo]);
+
   // Merge and deduplicate tasks from both sources
   const tasks = useMemo(() => {
     const merged = [];
     const seen = new Set();
 
+    // 🔥 Filter localStorage tasks by student_id to only show current student's homework
+    const filteredLocalTasks = localStorageTasks.filter((task) => {
+      // If task has userId, it must match current studentId or storageKey
+      if (task?.userId) {
+        return task.userId === studentId || task.userId === storageKey || task.userId === String(studentId) || task.userId === String(storageKey);
+      }
+      // If no userId, include it (legacy tasks - will be filtered out if they don't match API data)
+      return true;
+    });
+
     // Add local tasks first so student updates (done/photo) override API snapshots
-    for (const task of localStorageTasks) {
+    for (const task of filteredLocalTasks) {
       const key = task?.scanId ? `scan_${task.scanId}` : task?.id;
       if (!key || seen.has(key)) continue;
       seen.add(key);
@@ -201,6 +273,7 @@ export default function HomeworkList() {
     }
 
     // Add API tasks if they are not already represented locally
+    // API tasks are already filtered by student_id from the backend
     for (const task of apiTasks) {
       const key = task?.scanId ? `scan_${task.scanId}` : task?.id;
       if (!key || seen.has(key)) continue;
@@ -211,11 +284,32 @@ export default function HomeworkList() {
     return merged.sort(
       (a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0)
     );
-  }, [apiTasks, localStorageTasks]);
+  }, [apiTasks, localStorageTasks, studentId, storageKey]);
+
+  // Fetch student_id from user_id (only if not already available from account)
+  const fetchStudentId = useCallback(async () => {
+    if (effectiveUserId === "anon" || directStudentId) return; // Skip if already have student_id or not authenticated
+    
+    try {
+      const { data } = await api.get('/student-id', {
+        params: { user_id: effectiveUserId },
+        withCredentials: true,
+        validateStatus: (status) => status < 500,
+      });
+      
+      if (data?.student_id) {
+        setFetchedStudentId(data.student_id);
+      }
+    } catch (error) {
+      // Failed to fetch student_id - silently continue
+    }
+  }, [effectiveUserId, directStudentId]);
 
   // Fetch homework scans from API
   const fetchHomeworkScans = useCallback(async () => {
-    if (studentId === "anon") return; // Skip if not authenticated
+    if (effectiveUserId === "anon" || !studentId) {
+      return; // Skip if not authenticated or student_id not loaded
+    }
     
     // Skip request if we already know endpoint is not implemented (persisted in sessionStorage)
     if (isEndpointNotImplemented()) {
@@ -232,7 +326,7 @@ export default function HomeworkList() {
     try {
       setLoading(true);
       const { data, status } = await api.get('/homeworkscans', {
-        params: { student_id: studentId },
+        params: { student_id: studentId }, // 🔥 Use student_id
         withCredentials: true, // Include auth headers
         validateStatus: (status) => status < 600, // Accept all status codes (including 501)
       });
@@ -258,9 +352,6 @@ export default function HomeworkList() {
       if (error?.response?.status === 501) {
         // Cache that endpoint is not implemented in sessionStorage
         setEndpointNotImplemented(true);
-      } else {
-        // Only log non-501 errors
-        console.warn('Failed to fetch homework scans:', error?.message || 'Unknown error');
       }
       setApiTasks([]); // Set empty array on error
     } finally {
@@ -279,10 +370,17 @@ export default function HomeworkList() {
     closeChat?.();
   }, [closeChat]);
 
-  // Fetch on mount and when studentId changes
+  // Fetch student_id on mount and when userId changes
   useEffect(() => {
-    fetchHomeworkScans();
-  }, [fetchHomeworkScans]);
+    fetchStudentId();
+  }, [fetchStudentId]);
+
+  // Fetch homework scans when studentId is available
+  useEffect(() => {
+    if (studentId) {
+      fetchHomeworkScans();
+    }
+  }, [studentId, fetchHomeworkScans]);
 
   // Refresh when window regains focus (user returns from another screen)
   useEffect(() => {
@@ -335,7 +433,7 @@ export default function HomeworkList() {
   // Enrich tasks with derived subject/description from latest analysis (if needed)
   const enhancedRows = useMemo(() => {
     return tasks.map((t) => {
-      const chatKey = `${t.id}::u:${studentId}`;
+      const chatKey = `${t.id}::u:${storageKey}`;
       const msgs = getChatMessages?.("homework", chatKey) || [];
 
       // Find latest analysis table (agent message with content.extractedText/qa)
@@ -372,13 +470,18 @@ export default function HomeworkList() {
           ? analysisText.slice(0, 120)
           : "";
 
+      // Get student information for this task
+      const taskStudentId = t?.userId || t?.student_id;
+      const studentInfo = taskStudentId ? studentsMap[Number(taskStudentId)] : null;
+
       return {
         ...t,
         subject: derivedSubject,
         description: derivedDescription,
+        studentInfo: studentInfo || null, // Add student info to task
       };
     });
-  }, [tasks, getChatMessages, studentId]);
+  }, [tasks, getChatMessages, storageKey, studentsMap]);
 
   const pageSize = 7;
   const [page, setPage] = useState(1);
@@ -391,14 +494,24 @@ export default function HomeworkList() {
 
   // Clicking a task → open FooterChat with the task context
   const openTask = (task) => {
-    try {
-      localStorage.setItem(
-        PROGRESS_KEY_USER,
-        JSON.stringify({ step: task.done ? 3 : 1, taskId: task.id })
-      );
-    } catch {}
-
-    if (task?.done) {
+    if (!task) return;
+    
+    // 🔥 Check if task is completed - must navigate to feedback page, not open chat
+    const isCompleted = Boolean(
+      task.done || 
+      task.completedAt || 
+      task.completed_at ||
+      (task.completionPhotoUrl && task.completedAt)
+    );
+    
+    if (isCompleted) {
+      try {
+        localStorage.setItem(
+          PROGRESS_KEY_USER,
+          JSON.stringify({ step: 3, taskId: task.id })
+        );
+      } catch {}
+      
       closeChat?.();
       navigate("/student/homework/feedback", {
         state: {
@@ -410,13 +523,29 @@ export default function HomeworkList() {
       });
       return;
     }
+    
+    // Task is not completed - open chat normally
+    try {
+      localStorage.setItem(
+        PROGRESS_KEY_USER,
+        JSON.stringify({ step: 1, taskId: task.id })
+      );
+    } catch {}
 
-    const chatKey = `homework:${task.id}::u:${studentId}`;
+    const chatKey = `homework:${task.id}::u:${storageKey}`;
 
     // 🔥 Open the FooterChat with task context
+    // Ensure scanId is preserved if task has it (for scan-based tasks)
+    const taskWithContext = { 
+      ...task, 
+      userId: storageKey,
+      // Preserve scanId if it exists (for tasks created from homework scans)
+      scanId: task.scanId || (task.id?.startsWith('scan_') ? parseInt(task.id.replace('scan_', ''), 10) : undefined)
+    };
+    
     openChat?.({
       mode: "homework",
-      task: { ...task, userId: studentId },
+      task: taskWithContext,
       key: chatKey,
       restore: true,
       focus: "last",
@@ -478,7 +607,7 @@ export default function HomeworkList() {
               updatedTaskRef?.completionPhotoUrl || task?.completionPhotoUrl || null,
           });
         } catch (error) {
-          console.error("❌ Fehler beim Aktualisieren des Abschlussstatus:", error);
+          // Error updating completion status - silently fail
         }
       }
     },
@@ -516,6 +645,7 @@ export default function HomeworkList() {
               <HomeworkCard
                 key={r.id || `${r.subject}-${r.what}`}
                 {...r}
+                studentInfo={r.studentInfo}
                 onOpen={() => openTask(r)}
                 onEdit={() => handleEditTask(r)}
                 onDelete={() => handleDeleteTask(r)}

@@ -37,6 +37,8 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { NUNITO_FONT_STACK } from "@/constants/fonts";
+import PlainBackground from "@/components/layouts/PlainBackground";
+import BottomTabBar from "@/components/parent/BottomTabBar.jsx";
 
 // ParentShell is now handled at route level
 
@@ -656,17 +658,11 @@ export default function BillingOverview() {
   ];
 
   return (
-    <div
-      className="relative min-h-screen w-full overflow-hidden"
-      style={{
-        background: "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
-        fontFamily: NUNITO_FONT_STACK,
-      }}
-    >
-      <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-60%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
-      <div className="relative z-10 w-full min-h-[100dvh] flex justify-center px-4 md:px-6 py-10">
-        <div className="w-full max-w-7xl">
-          <Card className="rounded-3xl border-none bg-white/92 shadow-xl">
+    <PlainBackground className="flex flex-col h-screen overflow-hidden">
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="relative z-10 w-full flex justify-center px-4 md:px-6 py-10 pb-24">
+          <div className="w-full max-w-7xl">
             <div className="space-y-8">
             {/* Header */}
             <div className="flex flex-col gap-4">
@@ -1003,8 +999,6 @@ export default function BillingOverview() {
               </Card>
             </div>
 
-          </div>
-
         {/* View Subscription Drawer */}
         <Drawer
           title="Subscription Details"
@@ -1327,9 +1321,15 @@ export default function BillingOverview() {
             <Empty description="No subscription data available" />
           )}
         </Drawer>
-      </Card>
-    </div>
-  </div>
-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sticky bottom tab bar */}
+      <div className="flex-shrink-0">
+        <BottomTabBar />
+      </div>
+    </PlainBackground>
 );
 }

@@ -104,7 +104,10 @@ export default function GlobalNavBar({ onToggleSidebar }) {
   /* --------------- Actions --------------- */
   const handleLogout = useCallback(() => {
     logout();
-    navigate("/signin");
+    // Navigate to signin after logout
+    setTimeout(() => {
+      navigate("/signin", { replace: true });
+    }, 100);
   }, [logout, navigate]);
 
   const goToDashboard = useCallback(() => {

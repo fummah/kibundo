@@ -21,7 +21,7 @@ async function fetchEntityData(entities = [], options = {}) {
       let Model = null;
       let normalizedName = entityName.toLowerCase().trim();
       
-      // Map common variations
+      // Map common variations - expanded to include all models
       const entityMap = {
         'users': 'user',
         'students': 'student',
@@ -31,14 +31,39 @@ async function fetchEntityData(entities = [], options = {}) {
         'subjects': 'subject',
         'homeworkscans': 'homeworkscan',
         'homework_scans': 'homeworkscan',
+        'homeworkscanevents': 'homeworkscanevent',
+        'homework_scan_events': 'homeworkscanevent',
         'blogposts': 'blogpost',
         'blog_posts': 'blogpost',
         'invoices': 'invoice',
         'subscriptions': 'subscription',
         'products': 'product',
+        'prices': 'price',
+        'coupons': 'coupon',
         'curricula': 'curriculum',
         'quizzes': 'quiz',
-        'states': 'state'
+        'quizitems': 'quizitem',
+        'quiz_items': 'quizitem',
+        'states': 'state',
+        'roles': 'role',
+        'billingevents': 'billingevent',
+        'billing_events': 'billingevent',
+        'emailtemplates': 'emailtemplate',
+        'email_templates': 'emailtemplate',
+        'segments': 'segment',
+        'campaigns': 'campaign',
+        'emaillogs': 'emaillog',
+        'email_logs': 'emaillog',
+        'newsletteroptins': 'newsletteroptin',
+        'newsletter_opt_ins': 'newsletteroptin',
+        'student_subjects': 'student_subjects',
+        'studentsubjects': 'student_subjects',
+        'agentpromptsets': 'agentPromptSet',
+        'agent_prompt_sets': 'agentPromptSet',
+        'agenttests': 'agentTest',
+        'agent_tests': 'agentTest',
+        'aiagentsettings': 'aiagentsettings',
+        'ai_agent_settings': 'aiagentsettings'
       };
       
       // Try direct match first
@@ -69,9 +94,8 @@ async function fetchEntityData(entities = [], options = {}) {
         whereClause.state = options.state;
       }
 
-      // 🔥 Filter by user/parent context for parent agents
-      // For parent agents, filter entities to only include data related to the current parent
-      if (options.userId || options.parentId) {
+      // 🔥 Filter by user/parent/student context
+      if (options.userId || options.parentId || options.studentId) {
         const normalizedEntityName = mappedName.toLowerCase();
         
         // Filter STUDENTS by parent_id
@@ -92,23 +116,68 @@ async function fetchEntityData(entities = [], options = {}) {
           console.log(`🔍 Filtering INVOICES by parent_id: ${options.parentId}`);
         }
         
-        // Filter HOMEWORK_SCANS by student's parent_id (via student relationship)
-        if (normalizedEntityName === 'homeworkscan' && options.parentId) {
-          // We'll need to filter via student relationship
-          // For now, we'll fetch all and filter in memory, or use include
+        // 🔥 Filter HOMEWORK_SCANS by student_id (for students - highest priority)
+        if (normalizedEntityName === 'homeworkscan' && options.studentId) {
+          whereClause.student_id = options.studentId;
+          console.log(`🔍 Filtering HOMEWORK_SCANS by student_id: ${options.studentId}`);
+        }
+        
+        // Filter HOMEWORK_SCANS by student's parent_id (via student relationship) - only if no studentId
+        if (normalizedEntityName === 'homeworkscan' && options.parentId && !options.studentId) {
+          // We'll handle this below with the include logic
           console.log(`🔍 Filtering HOMEWORK_SCANS by parent_id: ${options.parentId}`);
         }
         
-        // Filter USERS - for parents, only return the current user
+        // Filter USERS - for parents/students, only return the current user
         if (normalizedEntityName === 'user' && options.userId) {
           whereClause.id = options.userId;
           console.log(`🔍 Filtering USERS by user_id: ${options.userId}`);
         }
       }
 
-      // For HOMEWORK_SCANS with parent filter, we need to filter by student_id where student belongs to parent
+      // 🔥 Set up include options for models that need relationships
       let includeOptions = undefined;
-      if (normalizedName === 'homeworkscan' && options.parentId) {
+      
+      // For STUDENTS, always include user, class, and subjects relationships to get names and subjects
+      if (normalizedName === 'student') {
+        const User = db.user;
+        const Class = db.class;
+        const StudentSubjects = db.student_subjects;
+        const Subject = db.subject;
+        includeOptions = [
+          {
+            model: User,
+            as: 'user',
+            attributes: { exclude: ['password'] },
+            required: false // Allow students without user records
+          },
+          {
+            model: Class,
+            as: 'class',
+            attributes: ['id', 'class_name'],
+            required: false // Allow students without class
+          },
+          {
+            model: StudentSubjects,
+            as: 'subject',
+            attributes: ['id'],
+            required: false,
+            include: [
+              {
+                model: Subject,
+                as: 'subject',
+                attributes: ['id', 'subject_name'],
+                required: false
+              }
+            ]
+          }
+        ];
+        console.log(`🔍 Including user, class, and subjects relationships for STUDENTS`);
+      }
+      
+      // For HOMEWORK_SCANS with parent filter, we need to filter by student_id where student belongs to parent
+      // 🔥 Only do this if studentId is NOT already set (studentId takes priority)
+      if (normalizedName === 'homeworkscan' && options.parentId && !options.studentId) {
         // First, get all student IDs for this parent
         const Student = db.student;
         const students = await Student.findAll({
@@ -120,7 +189,7 @@ async function fetchEntityData(entities = [], options = {}) {
         if (studentIds.length > 0) {
           // Filter homework scans by student_id
           whereClause.student_id = { [Op.in]: studentIds };
-          console.log(`🔍 Filtering HOMEWORK_SCANS by student_ids: ${studentIds.length} students`);
+          console.log(`🔍 Filtering HOMEWORK_SCANS by student_ids (via parent): ${studentIds.length} students`);
         } else {
           // No students for this parent, return empty result
           whereClause.student_id = { [Op.in]: [] };
@@ -128,10 +197,14 @@ async function fetchEntityData(entities = [], options = {}) {
       }
 
       // Fetch all records (limit to reasonable number to avoid huge context)
+      // For parent agents, use smaller limit to prevent context overflow
+      // Only fetch most recent/relevant records
+      const limit = options.parentId ? 50 : 100; // Reduced limit to prevent context overflow
+      
       const records = await Model.findAll({
         where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
         include: includeOptions,
-        limit: 1000, // Limit to prevent context from being too large
+        limit: limit, // Limit to prevent context from being too large
         order: [['id', 'DESC']], // Most recent first
         attributes: { exclude: ['password'] } // Always exclude passwords
       });
@@ -142,13 +215,20 @@ async function fetchEntityData(entities = [], options = {}) {
         return plain;
       });
 
+      // For large datasets, only include summaries instead of full data
+      // This prevents context overflow while still providing useful information
+      const shouldIncludeFullData = plainRecords.length <= 20; // Only include full data for small datasets
+      
       entityData[entityName] = {
         count: plainRecords.length,
-        data: plainRecords,
+        // Only include full data for small datasets, otherwise just summaries
+        data: shouldIncludeFullData ? plainRecords : plainRecords.slice(0, 5), // Include only first 5 as samples
         // Add summary for AI understanding
         summary: plainRecords.length > 0 ? 
           `Contains ${plainRecords.length} records. Sample keys: ${Object.keys(plainRecords[0] || {}).slice(0, 5).join(', ')}` :
-          'No records available'
+          'No records available',
+        // Indicate if data is truncated
+        truncated: !shouldIncludeFullData && plainRecords.length > 5
       };
 
       console.log(`✅ Fetched ${plainRecords.length} records from entity "${entityName}"`);
@@ -170,29 +250,75 @@ async function fetchEntityData(entities = [], options = {}) {
 }
 
 /**
- * Fetches agent from database and returns its entities
+ * Fetches agent from database and returns its entities and prompts
  * @param {string} agentName - Name of the agent
- * @returns {Object|null} - Agent object with entities, or null if not found
+ * @returns {Object|null} - Agent object with entities, prompts, grade, state, or null if not found
  */
 async function getAgentEntities(agentName) {
-  if (!agentName) return null;
+  if (!agentName) {
+    console.log('⚠️ [getAgentEntities] No agent name provided');
+    return null;
+  }
   
   try {
+    console.log(`🔍 [getAgentEntities] Fetching agent "${agentName}" from database...`);
     const AgentPromptSet = db.agentPromptSet;
     const agent = await AgentPromptSet.findOne({
       where: { name: agentName },
-      attributes: ['id', 'name', 'entities', 'grade', 'state']
+      attributes: ['id', 'name', 'entities', 'grade', 'state', 'prompts', 'description', 'version', 'stage']
     });
 
     if (!agent) {
-      console.log(`⚠️ Agent "${agentName}" not found in database`);
+      console.log(`⚠️ [getAgentEntities] Agent "${agentName}" not found in database`);
       return null;
     }
 
     const plainAgent = agent.get ? agent.get({ plain: true }) : agent;
+    
+    // 🔥 CRITICAL: Log prompt information for debugging
+    console.log(`✅ [getAgentEntities] Agent "${agentName}" found:`, {
+      id: plainAgent.id,
+      name: plainAgent.name,
+      hasEntities: !!plainAgent.entities,
+      entitiesCount: Array.isArray(plainAgent.entities) ? plainAgent.entities.length : 0,
+      hasPrompts: !!plainAgent.prompts,
+      promptsType: typeof plainAgent.prompts,
+      promptsIsObject: typeof plainAgent.prompts === 'object',
+      promptsKeys: typeof plainAgent.prompts === 'object' && plainAgent.prompts !== null ? Object.keys(plainAgent.prompts) : null,
+      grade: plainAgent.grade,
+      state: plainAgent.state,
+      version: plainAgent.version,
+      stage: plainAgent.stage
+    });
+    
+    // Parse prompts if it's a string (JSONB might be stored as string)
+    if (plainAgent.prompts && typeof plainAgent.prompts === 'string') {
+      try {
+        plainAgent.prompts = JSON.parse(plainAgent.prompts);
+        console.log(`✅ [getAgentEntities] Parsed prompts JSON string for agent "${agentName}"`);
+      } catch (parseError) {
+        console.error(`❌ [getAgentEntities] Failed to parse prompts JSON for agent "${agentName}":`, parseError.message);
+        plainAgent.prompts = null;
+      }
+    }
+    
+    // Log prompt content (truncated for readability)
+    if (plainAgent.prompts && typeof plainAgent.prompts === 'object') {
+      const systemPrompt = plainAgent.prompts.system || plainAgent.prompts.systemPrompt || null;
+      if (systemPrompt) {
+        console.log(`📝 [getAgentEntities] Agent "${agentName}" has custom system prompt (length: ${systemPrompt.length} chars)`);
+        console.log(`📝 [getAgentEntities] System prompt preview: ${systemPrompt.substring(0, 200)}...`);
+      } else {
+        console.log(`⚠️ [getAgentEntities] Agent "${agentName}" has prompts object but no system/systemPrompt field`);
+      }
+    } else if (!plainAgent.prompts) {
+      console.log(`⚠️ [getAgentEntities] Agent "${agentName}" has no prompts field`);
+    }
+    
     return plainAgent;
   } catch (error) {
-    console.error(`❌ Error fetching agent "${agentName}":`, error.message);
+    console.error(`❌ [getAgentEntities] Error fetching agent "${agentName}":`, error.message);
+    console.error(`❌ [getAgentEntities] Error stack:`, error.stack);
     return null;
   }
 }

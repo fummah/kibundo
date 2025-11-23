@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import cloudsImg from "@/assets/backgrounds/clouds.png";
 import dinoImg from "@/assets/onboarding-dino.png";
 import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
+import CircularBackground from "@/components/layouts/CircularBackground";
 
 const CTA_ROUTE = "/parent/myfamily/add-student-flow";
 const ONBOARDING_FLAG_KEY = "parent.onboarding.active";
@@ -73,16 +74,8 @@ export default function SignUpAddAnotherChild() {
   );
 
   return (
-    <div
-      className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pt-16 pb-32 md:pb-24 lg:pb-16"
-      style={{
-        background:
-          "linear-gradient(180deg, rgba(244,190,155,1) 0%, rgba(242,214,177,1) 45%, rgba(237,226,203,1) 100%)",
-      }}
-    >
+    <CircularBackground>
       {CloudBackground}
-      <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-60%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
-
       <div className="relative z-10 flex w-full max-w-[520px] flex-col items-center px-6 text-center">
         <button
           type="button"
@@ -118,8 +111,7 @@ export default function SignUpAddAnotherChild() {
         </p>
 
         <p className="mt-6 text-base text-[#6F5A4A]">
-          Du kannst für mehrere Kinder Konten hinzufügen. Das hinzufügen ist jederzeit auch
-          nachträglich möglich. Für jedes weitere Kind erhältst Du eine Vergünstigung.
+          Du kannst mehrere Kinder anlegen. Das Hinzufügen ist jederzeit auch nachträglich möglich.
         </p>
 
         <button
@@ -141,7 +133,7 @@ export default function SignUpAddAnotherChild() {
           Skip
         </button>
       </div>
-    </div>
+    </CircularBackground>
   );
 }
 

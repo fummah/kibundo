@@ -188,10 +188,11 @@ export default function ContentOverview() {
             }
 
             if (key === "view-post") {
-              if (isPublished(row) && hasSlug(row)) {
-                window.location.href = `/blog/${row.slug}`;
-              } else {
-                window.location.href = `/blog/preview/${row.id}`;
+              // Use slug if available (preferred), otherwise use ID
+              if (hasSlug(row)) {
+                window.location.href = `/admin/content/blog/${row.slug}`;
+              } else if (row.id) {
+                window.location.href = `/admin/content/blog/preview/${row.id}`;
               }
               return;
             }

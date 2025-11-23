@@ -135,7 +135,7 @@ export default function AIAgent() {
       displayName: "",
       initialMessages: [],
       suggestedMessages: [],
-      placeholder: "Type your message...",
+      placeholder: "Gib deine Nachricht ein...",
       userMessageColor: "#1677ff",
       theme: "light",
       footer: "",
@@ -855,7 +855,7 @@ export default function AIAgent() {
                     },
                   }))
                 }
-                placeholder="One per line (e.g., 'Show billing', 'Progress report', …)"
+                placeholder="Eine pro Zeile (z.B. 'Abrechnung anzeigen', 'Fortschrittsbericht', …)"
               />
             </div>
 
@@ -871,7 +871,7 @@ export default function AIAgent() {
                       settings: { ...s.settings, placeholder: e.target.value },
                     }))
                   }
-                  placeholder="Message…"
+                  placeholder="Nachricht…"
                 />
               </div>
 
@@ -1419,7 +1419,7 @@ export default function AIAgent() {
 
   const items = [
     { key: "sources", label: "Sources", children: Sources },
-    { key: "settings", label: "Settings", children: Settings },
+    { key: "settings", label: "Einstellungen", children: Settings },
   ];
 
   return (

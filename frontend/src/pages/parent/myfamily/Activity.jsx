@@ -29,6 +29,7 @@ import isToday from "dayjs/plugin/isToday";
 import isYesterday from "dayjs/plugin/isYesterday";
 import GradientShell from "@/components/GradientShell";
 import api from "@/api/axios";
+import { useAuthContext } from "@/context/AuthContext";
 
 dayjs.extend(isToday);
 dayjs.extend(isYesterday);
@@ -88,35 +89,115 @@ const typeIcon = (t) => TYPE_ICON[t] || TYPE_ICON.Default;
 // Friendly group header
 function formatGroupLabel(d) {
   const m = dayjs(d);
-  if (m.isToday()) return "Today";
-  if (m.isYesterday()) return "Yesterday";
-  return m.format("ddd, MMM D");
+  if (m.isToday()) return "Heute";
+  if (m.isYesterday()) return "Gestern";
+  return m.format("ddd, D. MMM");
 }
 
 export default function Activity() {
+  const { account } = useAuthContext();
   const [loading, setLoading] = useState(true);
   const [all, setAll] = useState([]); // raw activities
   const [q, setQ] = useState("");
   const [range, setRange] = useState(null); // [dayjs, dayjs] | null
+
+  // 🔥 Get the currently selected student_id from account context
+  // When parent views child: account.id = student_id, account.userId = user_id
+  const selectedStudentId = account?.type === "child" ? account.id : null;
 
   // Load data (API with dummy fallback)
   const refresh = async () => {
     setLoading(true);
     try {
       let data = [];
+      
+      // 🔥 Always fetch activities for ALL children (even when a specific child is selected)
+      // This allows parents to see all their children's activities at once
       try {
-        const r = await api.get("/parent/activity");
-        data = Array.isArray(r?.data) ? r.data : r?.data?.activities || [];
-      } catch {
-        const r2 = await api.get("/parent/myfamily/activity");
-        data = Array.isArray(r2?.data) ? r2.data : r2?.data?.activities || [];
+        // First, get the current user to find their parent_id
+        const currentUserRes = await api.get("/current-user");
+        const currentUser = currentUserRes.data || {};
+        
+        let parentId = null;
+        if (Array.isArray(currentUser?.parent) && currentUser.parent.length > 0) {
+          parentId = currentUser.parent[0].id;
+        } else if (currentUser?.parent?.id) {
+          parentId = currentUser.parent.id;
+        } else if (currentUser?.parent_id) {
+          parentId = currentUser.parent_id;
+        }
+        
+        if (parentId) {
+          // Fetch all children (students) for this parent
+          const studentsRes = await api.get("/allstudents");
+          const allStudents = Array.isArray(studentsRes.data) 
+            ? studentsRes.data 
+            : (studentsRes.data?.data || []);
+          
+          const children = allStudents.filter(s => s.parent_id === parentId);
+          
+          // Fetch activities for each child
+          const allActivities = [];
+          for (const child of children) {
+            try {
+              const childId = child.id;
+              const childName = child.user 
+                ? `${child.user.first_name || ''} ${child.user.last_name || ''}`.trim() || `Student #${childId}`
+                : `Student #${childId}`;
+              const childAvatar = child.user?.avatar || null;
+              
+              const r = await api.get(`/student/${childId}/usage-stats`);
+              const activities = r?.data?.activities || [];
+              
+              // Add child info to each activity
+              const activitiesWithChildInfo = activities.map(activity => ({
+                ...activity,
+                child_id: childId,
+                child_name: childName,
+                avatar: childAvatar,
+              }));
+              
+              allActivities.push(...activitiesWithChildInfo);
+            } catch (err) {
+              // Continue with other children if one fails
+            }
+          }
+          
+          data = allActivities;
+        } else {
+          // Fallback to parent activity endpoint
+          try {
+            const r = await api.get("/parent/activity");
+            data = Array.isArray(r?.data) ? r.data : r?.data?.activities || [];
+          } catch {
+            const r2 = await api.get("/parent/myfamily/activity");
+            data = Array.isArray(r2?.data) ? r2.data : r2?.data?.activities || [];
+          }
+        }
+      } catch (err) {
+        // Fallback to parent activity endpoint
+        try {
+          const r = await api.get("/parent/activity");
+          data = Array.isArray(r?.data) ? r.data : r?.data?.activities || [];
+        } catch {
+          const r2 = await api.get("/parent/myfamily/activity");
+          data = Array.isArray(r2?.data) ? r2.data : r2?.data?.activities || [];
+        }
       }
+      
+      // Sort activities by date (most recent first)
+      data.sort((a, b) => {
+        const dateA = new Date(a.when || a.created_at || 0);
+        const dateB = new Date(b.when || b.created_at || 0);
+        return dateB - dateA;
+      });
+      
       if (!data || data.length === 0) data = DUMMY;
       setAll(Array.isArray(data) ? data : DUMMY);
     } catch (e) {
       console.error("Load activities failed:", e);
       setAll(DUMMY);
-      message.error("Couldn’t load activities. Showing recent items.");
+      message.error("Aktivitäten konnten nicht geladen werden. Zeige kürzliche Einträge.");
     } finally {
       setLoading(false);
     }
@@ -124,7 +205,7 @@ export default function Activity() {
 
   useEffect(() => {
     refresh();
-  }, []);
+  }, []); // 🔥 Always show all children's activities - refresh on mount only
 
   // For a little helper hint
   const childNames = useMemo(
@@ -181,14 +262,14 @@ export default function Activity() {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
           <div>
-            <h1 className="text-2xl md:text-3xl font-extrabold m-0">Activities</h1>
+            <h1 className="text-2xl md:text-3xl font-extrabold m-0">Aktivitäten</h1>
             <p className="text-gray-600 m-0">
-              Track what your children are learning across subjects.
+              Verfolge, was deine Kinder in verschiedenen Fächern lernen.
             </p>
           </div>
           <div className="flex gap-2">
             <Button icon={<ReloadOutlined />} onClick={refresh}>
-              Refresh
+              Aktualisieren
             </Button>
           </div>
         </div>
@@ -200,7 +281,7 @@ export default function Activity() {
               <Input
                 allowClear
                 prefix={<SearchOutlined />}
-                placeholder="Search by child, type, text, or ID"
+                placeholder="Suche nach Kind, Typ, Text oder ID"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 className="rounded-xl"
@@ -211,7 +292,7 @@ export default function Activity() {
                 allowEmpty={[true, true]}
                 onChange={(vals) => setRange(vals && vals[0] && vals[1] ? vals : null)}
                 className="w-full rounded-xl"
-                placeholder={["From", "To"]}
+                placeholder={["Von", "Bis"]}
                 suffixIcon={<CalendarOutlined />}
               />
             </Col>
@@ -243,7 +324,7 @@ export default function Activity() {
           </Row>
         ) : grouped.length === 0 ? (
           <Card className="shadow-sm rounded-2xl">
-            <Empty description="No activities found for your current filters." />
+            <Empty description="Keine Aktivitäten für deine aktuellen Filter gefunden." />
           </Card>
         ) : (
           grouped.map((group) => (

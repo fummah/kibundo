@@ -15,16 +15,29 @@ i18n
       de: { translation: de },
       en: { translation: en },
     },
-    lng: "de", // Default language is German
-    fallbackLng: "de",
+    lng: "de", // Primary language is German
+    fallbackLng: "de", // Fallback to German if translation missing
     supportedLngs: ["de", "en"],
     detection: {
-      order: ["localStorage", "cookie", "htmlTag", "navigator"], // no ?lng=
+      order: ["localStorage", "cookie"], // Only check stored preferences, not browser language
       caches: ["localStorage", "cookie"],
       lookupLocalStorage: "i18nextLng",
+      lookupCookie: "i18next",
+      // Only use detected language if it's in the supported list
+      checkWhitelist: true,
     },
+    // Ensure German is always the default
+    load: "languageOnly", // "de-DE" -> "de"
+    nonExplicitSupportedLngs: false,
     interpolation: { escapeValue: false },
     debug: false,
   });
+
+// Force German as default if no language is stored or if detected language is not supported
+const storedLang = localStorage.getItem("i18nextLng");
+if (!storedLang || (storedLang !== "de" && storedLang !== "en")) {
+  i18n.changeLanguage("de");
+  localStorage.setItem("i18nextLng", "de");
+}
 
 export default i18n;

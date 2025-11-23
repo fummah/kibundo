@@ -7,6 +7,7 @@ import cloudsImg from "@/assets/backgrounds/clouds.png";
 import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
 import api from "@/api/axios";
 import { productToPlan } from "@/pages/parent/billing/planUtils";
+import CircularBackground from "@/components/layouts/CircularBackground";
 
 const MONTHLY_PLAN_SLUG = "monthly";
 const YEARLY_PLAN_SLUG = "yearly";
@@ -53,21 +54,40 @@ function useResolvedPlans(products = []) {
 
         const pillLabel = metadata.badge || (plan.is_best_value ? "best value" : null);
 
+        // German translations for default features
+        const defaultFeatures = [
+          "Jederzeit kündbar",
+          "Voller Zugriff auf die Plattform",
+        ];
+        
         const bulletPoints =
           (Array.isArray(plan.features) && plan.features.length > 0
-            ? plan.features
-            : [
-                "Cancel anytime",
-                "Full platform access",
-              ]).slice(0, 3);
+            ? plan.features.map(f => {
+                // Translate common English features to German
+                if (typeof f === 'string') {
+                  const lower = f.toLowerCase();
+                  if (lower.includes('cancel') || lower.includes('anytime')) return "Jederzeit kündbar";
+                  if (lower.includes('full') && lower.includes('access')) return "Voller Zugriff auf die Plattform";
+                  if (lower.includes('child') || lower.includes('children')) return f; // Keep as is
+                  if (lower.includes('trial')) return f; // Keep as is
+                }
+                return f;
+              })
+            : defaultFeatures).slice(0, 3);
 
+        // Better name fallback - capitalize and format
+        const rawName = metadata.display_name || plan.name || product.name || "Subscription";
+        const displayName = rawName === "admin" || rawName.toLowerCase() === "admin" 
+          ? (metadata.display_name || "Abonnement") 
+          : rawName.charAt(0).toUpperCase() + rawName.slice(1).toLowerCase();
+        
         return {
           slug,
           plan,
           product,
           productId: plan.id,
           priceId: plan.stripe_price_id,
-          name: metadata.display_name || plan.name || product.name || "Subscription",
+          name: displayName,
           price: formatPrice(plan.price_amount, plan.currency),
           intervalLabel,
           buttonColor,
@@ -82,10 +102,14 @@ function useResolvedPlans(products = []) {
 
 async function fetchProducts() {
   try {
+    console.log("🛒 Fetching products from /products endpoint...");
     const response = await api.get("/products");
-    return Array.isArray(response.data) ? response.data : [];
+    const products = Array.isArray(response.data) ? response.data : [];
+    console.log(`✅ Loaded ${products.length} products:`, products.map(p => ({ id: p.id, name: p.name, active: p.active })));
+    return products;
   } catch (err) {
-    console.error("Failed to load products:", err);
+    console.error("❌ Failed to load products:", err);
+    console.error("❌ Error details:", err.response?.data || err.message);
     return [];
   }
 }
@@ -97,23 +121,25 @@ export default function SubscriptionChoice() {
   const resolvedPlans = useResolvedPlans(products);
 
   const plans = useMemo(() => {
-    const bySlug = new Map();
-    resolvedPlans.forEach((entry) => {
-      if (!entry?.slug) return;
-      if (!bySlug.has(entry.slug)) {
-        bySlug.set(entry.slug, entry);
-      }
+    console.log(`📋 [SubscriptionChoice] Processing ${resolvedPlans.length} resolved plans from ${products.length} products`);
+    
+    // Display ALL products from database, not just monthly/yearly
+    // Sort by sort_order from metadata, then by id
+    const sorted = [...resolvedPlans].sort((a, b) => {
+      const orderA = a.plan?.sort_order ?? a.product?.metadata?.sort_order ?? 999;
+      const orderB = b.plan?.sort_order ?? b.product?.metadata?.sort_order ?? 999;
+      if (orderA !== orderB) return orderA - orderB;
+      return (a.productId || 0) - (b.productId || 0);
     });
-    const ordered = [];
-    [MONTHLY_PLAN_SLUG, YEARLY_PLAN_SLUG].forEach((slug) => {
-      if (bySlug.has(slug)) {
-        ordered.push(bySlug.get(slug));
-        bySlug.delete(slug);
-      }
-    });
-    bySlug.forEach((entry) => ordered.push(entry));
-    return ordered;
-  }, [resolvedPlans]);
+    
+    console.log(`✅ [SubscriptionChoice] Final plans count: ${sorted.length}`, sorted.map(p => ({ 
+      id: p.productId, 
+      slug: p.slug, 
+      name: p.name,
+      price: p.price 
+    })));
+    return sorted;
+  }, [resolvedPlans, products.length]);
 
   const nextPath =
     (location.state && typeof location.state.next === "string" && location.state.next.startsWith("/")
@@ -121,10 +147,27 @@ export default function SubscriptionChoice() {
       : null) || ROLE_PATHS[ROLES.PARENT] || "/parent";
   const backPath = location.state?.back || "/signup/add-child/another";
 
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
   useEffect(() => {
     let mounted = true;
+    setLoading(true);
+    setError(null);
     fetchProducts().then((list) => {
-      if (mounted) setProducts(list);
+      if (mounted) {
+        setProducts(list);
+        if (list.length === 0) {
+          setError("Keine Abonnements verfügbar. Bitte kontaktiere den Support.");
+        }
+        setLoading(false);
+      }
+    }).catch((err) => {
+      if (mounted) {
+        console.error("Error fetching products:", err);
+        setError("Fehler beim Laden der Abonnements. Bitte versuche es später erneut.");
+        setLoading(false);
+      }
     });
     return () => {
       mounted = false;
@@ -132,17 +175,34 @@ export default function SubscriptionChoice() {
   }, []);
 
   const resolvePlan = useCallback(
-    (slug) => plans.find((plan) => plan.slug === slug) || null,
+    (identifier) => {
+      // Support both productId (preferred) and slug (fallback)
+      if (typeof identifier === 'number' || (typeof identifier === 'string' && /^\d+$/.test(identifier))) {
+        // It's a product ID
+        return plans.find((plan) => plan.productId === Number(identifier)) || null;
+      } else {
+        // It's a slug - but this can be ambiguous if multiple products have same slug
+        return plans.find((plan) => plan.slug === identifier) || null;
+      }
+    },
     [plans]
   );
 
   const handleSelectPlan = useCallback(
-    async (planKey) => {
-      const resolved = resolvePlan(planKey);
+    async (productId) => {
+      // Use productId directly instead of slug to avoid ambiguity
+      const resolved = resolvePlan(productId);
       if (!resolved?.productId) {
+        console.error('❌ [handleSelectPlan] Plan not found for productId:', productId);
         message.error("Dieses Abonnement ist momentan nicht verfügbar. Bitte versuche es später erneut.");
         return;
       }
+
+      console.log('✅ [handleSelectPlan] Selected plan:', { 
+        productId: resolved.productId, 
+        name: resolved.name, 
+        price: resolved.price 
+      });
 
       const search = new URLSearchParams();
       search.set("plan", resolved.productId);
@@ -158,18 +218,10 @@ export default function SubscriptionChoice() {
     [navigate, nextPath, resolvePlan]
   );
 
-  const handleSkip = () => {
-    navigate(nextPath, { replace: true });
-  };
+  // Removed handleSkip - subscription is now mandatory
 
   return (
-    <div
-      className="relative flex min-h-screen flex-col items-center px-6 pb-32 md:pb-24 lg:pb-20 pt-16"
-      style={{
-        background:
-          "linear-gradient(185deg, #F4BE9B 0%, #F2D6B1 45%, #EDE2CB 100%)",
-      }}
-    >
+    <CircularBackground>
       <div
         className="pointer-events-none absolute inset-0 opacity-35"
         style={{
@@ -179,8 +231,6 @@ export default function SubscriptionChoice() {
           backgroundSize: "cover",
         }}
       />
-      <div className="pointer-events-none absolute inset-x-[-45%] bottom-[-80%] z-0 h-[160%] rounded-[50%] bg-[#F2E5D5]" />
-
       <div className="relative z-10 w-full max-w-[620px]">
         <button
           type="button"
@@ -199,13 +249,25 @@ export default function SubscriptionChoice() {
         </p>
 
         <div className="mt-8 space-y-5">
-          {plans.length === 0 && (
+          {loading && (
+            <article className="rounded-[32px] bg-white/90 p-6 text-center text-sm text-[#6F5A4A] shadow-[0_12px_28px_rgba(79,58,45,0.12)]">
+              Lade Abonnements...
+            </article>
+          )}
+          
+          {!loading && error && (
+            <article className="rounded-[32px] bg-white/90 p-6 text-center text-sm text-[#6F5A4A] shadow-[0_12px_28px_rgba(79,58,45,0.12)]">
+              {error}
+            </article>
+          )}
+          
+          {!loading && !error && plans.length === 0 && (
             <article className="rounded-[32px] bg-white/90 p-6 text-center text-sm text-[#6F5A4A] shadow-[0_12px_28px_rgba(79,58,45,0.12)]">
               Aktuell stehen keine Abonnements zur Verfügung. Bitte versuche es später erneut oder kontaktiere den Support.
             </article>
           )}
 
-          {plans.map((plan) => (
+          {!loading && !error && plans.map((plan) => (
             <article
               key={plan.slug}
               className="rounded-[32px] bg-white/95 p-6 shadow-[0_18px_48px_rgba(79,58,45,0.15)]"
@@ -233,7 +295,7 @@ export default function SubscriptionChoice() {
 
               <button
                 type="button"
-                onClick={() => handleSelectPlan(plan.slug)}
+                onClick={() => handleSelectPlan(plan.productId)}
                 className="mt-6 w-full rounded-full py-3 text-lg font-semibold text-[#4F3A2D] shadow-[0_16px_36px_rgba(0,0,0,0.12)]"
                 style={{ backgroundColor: plan.buttonColor }}
               >
@@ -253,19 +315,10 @@ export default function SubscriptionChoice() {
         </div>
 
         <p className="mt-8 text-center text-sm text-[#6F5A4A]">
-          Start your free trial today and enjoy XX days of unlimited access to our entire library of
-          learning. You can cancel anytime!
+          7 Tage kostenlos testen ohne Risiko! Du kannst jederzeit kündigen.
         </p>
-
-        <button
-          type="button"
-          onClick={handleSkip}
-          className="mt-6 w-full rounded-full bg-[#FF8400] py-3 text-lg font-semibold text-white shadow-[0_18px_38px_rgba(255,132,0,0.35)] transition hover:bg-[#FF7600]"
-        >
-          Skip
-        </button>
       </div>
-    </div>
+    </CircularBackground>
   );
 }
 

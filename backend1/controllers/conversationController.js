@@ -20,10 +20,18 @@ export const handleConversation = async (req, res) => {
       console.log("✅ Created new conversation:", convId);
     }
 
-    // Store the current user message
+    // Store the current user message with comprehensive metadata
+    const userMessageMeta = {
+      userId: userId || null,
+      scanId: scanId || null,
+      mode: "homework", // This is the homework conversation controller
+      agentName: agentName || "Kibundo",
+      timestamp: new Date().toISOString(),
+      messageType: "text"
+    };
     await pool.query(
-      `INSERT INTO messages(conversation_id, sender, content) VALUES($1,$2,$3)`,
-      [convId, "student", message]
+      `INSERT INTO messages(conversation_id, sender, content, meta) VALUES($1,$2,$3,$4)`,
+      [convId, "student", message, JSON.stringify(userMessageMeta)]
     );
 
     // 🔥 RETRIEVE FULL CONVERSATION HISTORY (excluding the message we just inserted)
@@ -35,8 +43,44 @@ export const handleConversation = async (req, res) => {
       [convId]
     );
     
-    const conversationHistory = historyResult.rows || [];
+    let conversationHistory = historyResult.rows || [];
     console.log(`✅ Retrieved ${conversationHistory.length} messages from history`);
+
+    // 🔥 CRITICAL: Fetch child's name and interests from database to persist in system prompt
+    let childFirstName = "Schüler";
+    let childFullName = "der Schüler";
+    let childInterests = [];
+    if (userId) {
+      try {
+        const userResult = await pool.query(
+          `SELECT first_name, last_name FROM users WHERE id=$1`,
+          [userId]
+        );
+        if (userResult.rows[0]) {
+          childFirstName = userResult.rows[0].first_name || "Schüler";
+          childFullName = `${childFirstName} ${userResult.rows[0].last_name || ''}`.trim();
+          console.log(`✅ Fetched child name: ${childFullName} (firstName: ${childFirstName})`);
+        }
+        
+        // Fetch student interests (focus topics)
+        const studentResult = await pool.query(
+          `SELECT interests FROM students WHERE user_id=$1`,
+          [userId]
+        );
+        if (studentResult.rows[0] && studentResult.rows[0].interests) {
+          const interestsData = studentResult.rows[0].interests;
+          if (Array.isArray(interestsData)) {
+            childInterests = interestsData;
+          } else if (typeof interestsData === 'object' && interestsData !== null) {
+            // Handle case where interests might be stored as object
+            childInterests = Object.values(interestsData).filter(Boolean);
+          }
+          console.log(`✅ Fetched child interests: ${childInterests.join(', ')}`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch child name/interests from database:', error);
+      }
+    }
 
     // Fetch homework context if scanId is provided
     let grounding = "";
@@ -51,14 +95,14 @@ export const handleConversation = async (req, res) => {
           const gradeNumberMatch = String(gradeRaw).match(/(\d+)/);
           const gradeNumber = gradeNumberMatch ? gradeNumberMatch[1] : null;
           if (gradeNumber) {
-            gradeInstruction = `Der Schüler ist in Klasse ${gradeNumber}. Passe deine Erklärung an dieses Niveau an – verwende kurze, einfache Sätze und Beispiele, die ein Kind in dieser Klassenstufe versteht.\n\n`;
+            gradeInstruction = `Der Schüler ${childFirstName} ist in Klasse ${gradeNumber}. Passe deine Erklärung an dieses Niveau an – verwende kurze, einfache Sätze und Beispiele, die ein Kind in dieser Klassenstufe versteht.\n\n`;
           } else {
-            gradeInstruction = `Nutze eine einfache, kindgerechte Sprache (Klassenstufe 1–7), damit der Schüler es gut versteht.\n\n`;
+            gradeInstruction = `Nutze eine einfache, kindgerechte Sprache (Klassenstufe 1–7), damit ${childFirstName} es gut versteht.\n\n`;
           }
         } else {
-          gradeInstruction = `Nutze eine einfache, kindgerechte Sprache (Klassenstufe 1–7), damit der Schüler es gut versteht.\n\n`;
+          gradeInstruction = `Nutze eine einfache, kindgerechte Sprache (Klassenstufe 1–7), damit ${childFirstName} es gut versteht.\n\n`;
         }
-        grounding = `${gradeInstruction}HAUSAUFGABEN-KONTEXT - Dies ist die gescannte Hausaufgabe, an der der Schüler arbeitet:\n\n${rawText}\n\nWICHTIG: Beantworte Fragen immer basierend auf diesem Hausaufgabeninhalt. Sage niemals, dass du keinen Hausaufgabenkontext hast - du hast immer den oben genannten Kontext.\n\n`;
+        grounding = `${gradeInstruction}🔥🔥🔥 CRITICAL - HOMEWORK CONTEXT - ABSOLUTE PRIORITY 🔥🔥🔥\n\nTHIS IS THE ACTUAL HOMEWORK CONTENT THE STUDENT IS WORKING ON:\n\n${rawText}\n\n⚠️⚠️⚠️ ABSOLUTE REQUIREMENTS ⚠️⚠️⚠️:\n- You MUST ALWAYS reference this specific homework content when answering questions.\n- If the student asks "what is my homework about" or "what are the questions", you MUST describe the homework content shown above.\n- NEVER say "I don't have homework context" or "I can't see the homework" - the homework is provided above.\n- NEVER talk about different homework (like flashcards, mental math, etc.) unless it matches the content above.\n- When the student asks about "question 1", "question 2", etc., you MUST refer to the questions in the homework content above.\n- Always answer questions based on THIS SPECIFIC homework content, not generic examples.\n\n`;
         console.log("✅ Homework context found:", rawText?.substring(0, 100) + "...");
       } else {
         console.log("❌ No homework context found for scanId:", scanId);
@@ -67,8 +111,46 @@ export const handleConversation = async (req, res) => {
       console.log("❌ No scanId provided in request");
     }
 
+    // 🔥 PREPEND HOMEWORK CONTEXT TO THE LAST (CURRENT) MESSAGE IF IT EXISTS
+    // The current message should be the last one in the history (we just inserted it)
+    if (scanId && grounding && conversationHistory.length > 0) {
+      const lastMessage = conversationHistory[conversationHistory.length - 1];
+      // Check if this is a student message (should be the current one we just inserted)
+      if (lastMessage.sender === "student") {
+        // Extract just the homework text from grounding
+        const homeworkText = grounding.replace(/.*?HAUSAUFGABEN-KONTEXT - Dies ist die gescannte Hausaufgabe, an der.*?arbeitet:\n\n/, '').replace(/\n\nWICHTIG:.*$/, '').trim();
+        // Prepend homework context to the message
+        lastMessage.content = `[HOMEWORK CONTEXT - This is the student's actual homework they are working on:\n\n${homeworkText}\n\n]\n\nStudent's question: ${lastMessage.content}`;
+        console.log("✅ Prepended homework context to current message");
+      }
+    }
+
     const systemPrompt = `
       Du bist Kibundo, ein geduldiger und freundlicher Hausaufgabenhelfer für Schüler der Klassen 1-7.
+      
+      SCHÜLERINFORMATIONEN:
+      - Vollständiger Name des Schülers: ${childFullName}
+      - Vorname des Schülers: ${childFirstName}
+      
+      ABSOLUTE ANFORDERUNGEN - BEACHTE DIESE GENAU:
+      1. Begrüße den Schüler IMMER mit seinem Vornamen: "${childFirstName}"
+      2. Verwende NIEMALS generische Begriffe wie "Schüler" oder "du" - verwende IMMER seinen Namen: "${childFirstName}"
+      3. Sage NIEMALS "Ich habe keinen Zugriff auf deinen Namen" - sein Name ist "${childFirstName}"
+      4. Sei IMMER persönlich und sprich den Schüler in JEDER Antwort mit seinem Namen an
+      5. Du hast ALLE seine Informationen einschließlich Klasse, Fächer und Hausaufgabenverlauf
+      ${childInterests && childInterests.length > 0 ? `
+      
+      🔥🔥🔥 WICHTIG - FOKUS-THEMEN (INTERESSEN) - HÖCHSTE PRIORITÄT 🔥🔥🔥:
+      Der Schüler ${childFirstName} hat folgende Fokus-Themen/Interessen ausgewählt: ${childInterests.join(', ')}
+      - Diese Themen sind SEHR WICHTIG für ${childFirstName} und sollten in deinen Antworten IMMER berücksichtigt werden
+      - Wenn möglich, beziehe Beispiele, Vergleiche oder Erklärungen auf diese Interessen
+      - Verwende diese Themen, um die Hausaufgaben interessanter und relevanter für ${childFirstName} zu machen
+      - Wenn eine Hausaufgabe mit einem dieser Themen zusammenhängt, betone das besonders
+      - Diese Fokus-Themen haben HÖCHSTE PRIORITÄT bei der Personalisierung deiner Antworten
+      - Beispiel: Wenn ${childFirstName} "Dinosaurier" als Interesse hat und eine Matheaufgabe löst, könntest du sagen: "Stell dir vor, ${childFirstName}, du zählst Dinosaurier..."
+      - Beispiel: Wenn ${childFirstName} "Fußball" als Interesse hat, verwende Fußball-Beispiele in deinen Erklärungen
+      - BEACHTE: Diese Interessen sind von ${childFirstName} selbst ausgewählt und sind daher besonders wichtig für seine Motivation und das Lernen
+      ` : ''}
       
       ${grounding}
       
@@ -91,9 +173,37 @@ export const handleConversation = async (req, res) => {
       - Wenn Hausaufgabenkontext vorhanden ist, beantworte Fragen spezifisch zu diesen Hausaufgaben
       - Sage niemals "Ich habe keinen Hausaufgabenkontext" oder "keine spezifischen Hausaufgaben bereitgestellt"
       - Beziehe deine Antworten immer auf den gescannten Hausaufgabeninhalt
+      
+      🔥🔥🔥 PÄDAGOGISCHER ANSATZ - MOTIVATION ZUM SELBSTDENKEN 🔥🔥🔥:
+      - MOTIVIERE ZUERST: Wenn der Schüler eine Frage stellt, motiviere ihn ZUERST, selbst nachzudenken
+        * "Versuche es zuerst selbst! Du schaffst das! 💪"
+        * "Ich glaube an dich! Denk nochmal nach! 🌟"
+        * "Super, dass du es versuchst! Denk an das, was wir gelernt haben!"
+      
+      - GIB TIPPS BEI SCHWIERIGKEITEN: Wenn der Schüler Schwierigkeiten hat oder um Hilfe bittet, gib ZUERST TIPPS:
+        * Gib leitende Hinweise, keine vollständigen Antworten
+        * WICHTIG: Formatierte Tipps müssen mit speziellen Tags markiert werden:
+          * Format: [TIP] Dein Tipp-Text hier [/TIP]
+          * Beispiel: "Versuche es nochmal! [TIP] Denk daran, was du über Formen gelernt hast. Wie viele Seiten hat ein Quadrat? [/TIP]"
+          * Beispiel: "Lass uns zusammen nachdenken. [TIP] Schau dir die Bilder genau an. Was fällt dir auf? [/TIP]"
+        * Tipps werden automatisch schön formatiert mit einem Tipp-Icon angezeigt
+      
+      - ANTWORT NUR ALS LETZTE OPTION: Gib die vollständige Antwort NUR wenn:
+        * Der Schüler mehrmals um Hilfe gebeten hat (nach 2-3 Hinweisen)
+        * Der Schüler explizit sagt "Ich kann es nicht", "Ich weiß es wirklich nicht"
+        * Der Schüler frustriert ist oder aufgibt
+        * Selbst dann: Erkläre den Lösungsweg Schritt für Schritt
+      
       - Biete schrittweise Hilfe für die spezifischen Aufgaben in den Hausaufgaben
       - Verwende eine warme, ermutigende und sehr einfache Sprache, damit Kinder sie verstehen
-      - Beginne deine Antwort direkt mit der Erklärung oder Lösung. Wiederhole nicht die Frage des Schülers und verwende keine Sätze wie "Du hast gefragt ..." oder "Die Frage lautet ...".
+      - 🔥🔥🔥 KRITISCH - ANTWORTFORMAT - ABSOLUTE PRIORITÄT 🔥🔥🔥:
+        * Beginne deine Antwort DIREKT mit der Erklärung oder Lösung
+        * Wiederhole NIEMALS die Frage des Schülers
+        * Verwende KEINE Sätze wie "Du hast gefragt...", "Die Frage lautet...", "You asked...", "You asked, '...'", "You asked, \"...\"" oder ähnliche Phrasen
+        * Antworte einfach direkt auf die Frage, OHNE die Frage zu wiederholen
+        * Beispiel FALSCH: "You asked, 'What is my homework about?' Your homework is about..."
+        * Beispiel RICHTIG: "Your homework is about..."
+        * Prüfe JEDE Antwort: Wenn du die Frage wiederholst, entferne sie SOFORT
       - Antworte kurz, klar und kindgerecht. Nutze Beispiele oder Vergleiche, wenn sie helfen.
       - Wenn du etwas erklärst, stelle sicher, dass es für die angegebene Klassenstufe verständlich ist.
       - Erinnere dich an vorherige Fragen und Antworten in dieser Unterhaltung, um kontextbezogene Hilfe zu bieten
@@ -104,16 +214,37 @@ export const handleConversation = async (req, res) => {
       Wenn der Schüler nach etwas fragt, das nicht in den Hausaufgaben steht, leite ihn zu den Hausaufgabenaufgaben zurück.
     `;
 
-    // 🔥 SEND FULL CONVERSATION HISTORY TO OPENAI
+    // 🔥 SEND FULL CONVERSATION HISTORY TO OPENAI (homework context already prepended to current message)
     const { text: aiReply, raw } = await askOpenAI(systemPrompt, conversationHistory, { max_tokens: 800 });
 
     const displayAgentName = agentName || "Kibundo";
     console.log("🎯 Backend storing agentName:", displayAgentName);
     
-    await pool.query(
-      `INSERT INTO messages(conversation_id, sender, content, meta) VALUES($1,$2,$3,$4)`,
-      [convId, "bot", aiReply, JSON.stringify({ ...raw, agentName: displayAgentName })]
-    );
+    // 🔥 CRITICAL: Store AI response IMMEDIATELY before sending response
+    // This ensures all chat exchanges are persisted even if response fails
+    try {
+      const aiMessageMeta = {
+        userId: userId || null,
+        scanId: scanId || null,
+        mode: "homework",
+        agentName: displayAgentName,
+        timestamp: new Date().toISOString(),
+        messageType: "text",
+        rawResponse: raw || null,
+        interests: childInterests.length > 0 ? childInterests : null,
+        childName: childFirstName || null
+      };
+      await pool.query(
+        `INSERT INTO messages(conversation_id, sender, content, meta) VALUES($1,$2,$3,$4)`,
+        [convId, "bot", aiReply, JSON.stringify(aiMessageMeta)]
+      );
+      console.log("✅ CRITICAL: Stored AI response in conversation:", convId, "with comprehensive metadata");
+    } catch (error) {
+      console.error('❌ CRITICAL: Failed to store AI response in conversation:', error);
+      console.error('❌ Error details:', { convId, aiReplyLength: aiReply?.length });
+      // Don't send response if storage fails - this is critical
+      throw new Error(`Failed to store AI response: ${error.message}`);
+    }
 
     res.json({ 
       conversationId: convId, 

@@ -4,9 +4,8 @@ import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { Spin, Tag, Empty, Button, Typography, message } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import BottomTabBar from "@/components/parent/BottomTabBar";
-import ParentSpaceBar from "@/components/parent/ParentSpaceBar";
+import PlainBackground from "@/components/layouts/PlainBackground";
 import api from "@/api/axios";
-import globalBg from "@/assets/backgrounds/global-bg.png";
 
 const { Text, Title } = Typography;
 
@@ -36,7 +35,7 @@ export default function NewsArticle() {
 
     const cover_image =
       raw.cover_image || raw.image_url || raw.thumbnail_url || raw.image || null;
-    const content = raw.content ?? raw.body ?? "";
+    const content = raw.content ?? raw.body_html ?? raw.body ?? "";
 
     const tags = Array.isArray(raw.tags)
       ? raw.tags.filter(Boolean)
@@ -45,7 +44,11 @@ export default function NewsArticle() {
       : [];
 
     const published_at = raw.published_at || raw.created_at || raw.updated_at || null;
-    const author = raw.author || raw.author_name || "";
+    const created_at = raw.created_at || null;
+    const updated_at = raw.updated_at || null;
+    const author = (raw.author || raw.author_name || raw.created_by || "").toString().trim();
+    // Filter out "undefined" string
+    const authorClean = author && author !== "undefined" && author !== "null" ? author : "";
 
     // Collect additional images for a gallery
     const imagesCandidates = [
@@ -67,7 +70,30 @@ export default function NewsArticle() {
 
     const gallery = uniq(imagesCandidates).filter((u) => u !== cover_image);
 
-    return { ...raw, cover_image, content, tags, published_at, author, gallery };
+    // Clean all fields to avoid "undefined" strings
+    const title = (raw.title || "").toString().trim();
+    const titleClean = title && title !== "undefined" && title !== "null" ? title : "";
+    const subtitle = (raw.subtitle || "").toString().trim();
+    const subtitleClean = subtitle && subtitle !== "undefined" && subtitle !== "null" ? subtitle : "";
+    const excerpt = (raw.excerpt || raw.summary || raw.subtitle || "").toString().trim();
+    const excerptClean = excerpt && excerpt !== "undefined" && excerpt !== "null" ? excerpt : "";
+
+    return { 
+      ...raw, 
+      title: titleClean || raw.title || "",
+      subtitle: subtitleClean,
+      excerpt: excerptClean,
+      cover_image, 
+      content, 
+      tags, 
+      published_at,
+      created_at,
+      updated_at,
+      author: authorClean,
+      status: raw.status || null,
+      audience: raw.audience || null,
+      gallery 
+    };
   };
 
   // Fetch a single article by id or slug
@@ -77,26 +103,38 @@ export default function NewsArticle() {
         setLoading(true);
         setErr(null);
         setArticle(null);
+        setSanitizedHTML(""); // Clear previous content
 
         let data = null;
 
-        // 1) Preferred: by ID (preview route)
-        if (id) {
+        // 1) Try slug first (for SEO-friendly URLs)
+        if (slug) {
+          const decoded = decodeURIComponent(slug);
           try {
-            const r = await api.get(`/blogpost/${id}`);
-            data = r?.data || null;
+            const r = await api.get(`/blogposts`, { params: { slug: decoded, status: "published" } });
+            // Handle different response structures: data.results, data.data, or data array
+            const responseData = r?.data;
+            let arr = [];
+            if (Array.isArray(responseData)) {
+              arr = responseData;
+            } else if (Array.isArray(responseData?.results)) {
+              arr = responseData.results;
+            } else if (Array.isArray(responseData?.data)) {
+              arr = responseData.data;
+            }
+            data = arr[0] || null;
           } catch (e) {
-            if (e?.response?.status !== 404) throw e;
+            if (e?.response?.status !== 404) {
+              console.error("Error fetching by slug:", e);
+            }
           }
         }
 
-        // 2) Fallback: by slug via list filter
-        if (!data && slug) {
-          const decoded = decodeURIComponent(slug);
+        // 2) Fallback: by ID (preview route) if slug didn't work
+        if (!data && id) {
           try {
-            const r = await api.get(`/blogposts`, { params: { slug: decoded } });
-            const arr = Array.isArray(r?.data) ? r.data : [];
-            data = arr[0] || null;
+            const r = await api.get(`/blogpost/${id}`);
+            data = r?.data?.data ?? r?.data ?? null;
           } catch (e) {
             if (e?.response?.status !== 404) throw e;
           }
@@ -118,7 +156,7 @@ export default function NewsArticle() {
         if (alive.current) setLoading(false);
       }
     })();
-  }, [id, slug, location.key]);
+  }, [id, slug, location.pathname]); // Use pathname instead of location.key for more reliable updates
 
   // Update title + sanitize HTML
   useEffect(() => {
@@ -150,21 +188,25 @@ export default function NewsArticle() {
     });
   }, [article?.published_at]);
 
+  const formatDate = (dateString) => {
+    if (!dateString) return "";
+    const dt = new Date(dateString);
+    if (isNaN(+dt)) return "";
+    return dt.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   return (
-    // Desktop mock container with shared background
-    <div className="relative mx-auto max-w-[720px] w-full lg:shadow-2xl lg:rounded-[32px] overflow-hidden">
-      <div
-        className="min-h-screen flex flex-col"
-        style={{
-          backgroundImage: `url(${globalBg})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          paddingTop: "env(safe-area-inset-top)",
-        }}
-      >
-        {/* Scrollable area; sticky bottom tabs live inside this element */}
-        <main className="flex-1 overflow-y-auto">
-          <section className="relative w-full max-w-[520px] px-4 pt-6 mx-auto space-y-6">
+    <PlainBackground className="flex flex-col h-screen overflow-hidden">
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 py-10 pb-24">
+          <div className="space-y-6">
             {/* Back / Breadcrumb (with icon) */}
             <div className="flex items-center gap-2">
               <Button
@@ -201,33 +243,82 @@ export default function NewsArticle() {
               </div>
             ) : (
               <>
-                {!!article.tags?.length && (
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    {article.tags.map((t, i) => (
-                      <Tag key={`${t}-${i}`} color="blue">
-                        {t}
-                      </Tag>
-                    ))}
+                {/* Blog Post Details Header */}
+                <div className="mb-6 space-y-4">
+                  {/* Tags */}
+                  {!!article.tags?.length && (
+                    <div className="flex flex-wrap gap-2">
+                      {article.tags.map((t, i) => (
+                        <Tag key={`${t}-${i}`} color="blue" className="rounded-full px-3 py-1">
+                          {t}
+                        </Tag>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Title */}
+                  <Title level={1} className="!mb-2 !text-3xl md:!text-4xl leading-tight">
+                    {article.title}
+                  </Title>
+
+                  {/* Subtitle */}
+                  {article.subtitle && (
+                    <Text className="text-lg text-neutral-600 block mb-3">
+                      {article.subtitle}
+                    </Text>
+                  )}
+
+                  {/* Meta Information */}
+                  <div className="flex flex-wrap items-center gap-4 text-sm text-neutral-500 border-b border-neutral-200 pb-4">
+                    {article.author && article.author !== "undefined" && article.author !== "null" && (
+                      <div className="flex items-center gap-1">
+                        <Text type="secondary" strong>Author:</Text>
+                        <Text type="secondary">{article.author}</Text>
+                      </div>
+                    )}
+                    {publishedLabel && (
+                      <div className="flex items-center gap-1">
+                        <Text type="secondary" strong>Published:</Text>
+                        <Text type="secondary">{publishedLabel}</Text>
+                      </div>
+                    )}
+                    {article.audience && (
+                      <div className="flex items-center gap-1">
+                        <Text type="secondary" strong>Audience:</Text>
+                        <Text type="secondary" className="capitalize">{article.audience}</Text>
+                      </div>
+                    )}
+                    {article.status && (
+                      <div className="flex items-center gap-1">
+                        <Text type="secondary" strong>Status:</Text>
+                        <Tag color={article.status === "published" ? "green" : "orange"} className="m-0">
+                          {article.status}
+                        </Tag>
+                      </div>
+                    )}
                   </div>
-                )}
 
-                <Title level={3} className="!mb-2">
-                  {article.title}
-                </Title>
-
-                <div className="mb-4">
-                  <Text type="secondary">
-                    {article.author ? `${article.author} • ` : ""}
-                    {publishedLabel}
-                  </Text>
+                  {/* Additional Dates */}
+                  {(article.created_at || article.updated_at) && (
+                    <div className="text-xs text-neutral-400 space-y-1">
+                      {article.created_at && article.created_at !== article.published_at && (
+                        <div>Created: {formatDate(article.created_at)}</div>
+                      )}
+                      {article.updated_at && article.updated_at !== article.published_at && (
+                        <div>Last updated: {formatDate(article.updated_at)}</div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Cover image */}
                 {article.cover_image && (
                   <div className="rounded-2xl overflow-hidden ring-4 ring-white/60 mb-6">
                     <img
-                      src={article.cover_image}
-                      alt={article.title}
+                      src={article.cover_image.startsWith("http") || article.cover_image.startsWith("//") 
+                        ? article.cover_image 
+                        : `${window.location.origin}${article.cover_image.startsWith("/") ? "" : "/"}${article.cover_image}`}
+                      alt={article.title || "Article image"}
                       className="w-full max-h-[420px] object-cover"
                       onError={(e) => (e.currentTarget.style.display = "none")}
                     />
@@ -273,14 +364,14 @@ export default function NewsArticle() {
               </>
             )}
 
-            {/* Space so content never hides behind the sticky bottom tabs */}
-            <ParentSpaceBar />
-          </section>
-
-          {/* Sticky bottom nav INSIDE the scroller */}
-          <BottomTabBar />
-        </main>
+          </div>
+        </div>
       </div>
-    </div>
+
+      {/* Sticky bottom tab bar */}
+      <div className="flex-shrink-0">
+        <BottomTabBar />
+      </div>
+    </PlainBackground>
   );
 }

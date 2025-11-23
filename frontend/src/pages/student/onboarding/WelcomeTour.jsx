@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
-import { markIntroSeen, markTourDone } from "./introFlags";
+import { markIntroSeen, markTourDone, hasSeenIntro } from "./introFlags";
 
 import buddyImg from "@/assets/buddies/kibundo-buddy.png";
 
@@ -25,11 +25,15 @@ const { Title, Text } = Typography;
 export default function WelcomeTour() {
   const navigate = useNavigate();
   const { buddy } = useStudentApp();
-  const { user } = useAuthContext();
+  const { user, account } = useAuthContext();
   const { i18n } = useTranslation();
   const ready = useEnsureGerman(i18n);
 
-  const studentId = user?.id || user?.user_id || null;
+  // If parent has selected a child account (Netflix-style), use that child's ID
+  // Otherwise, use the logged-in student's ID
+  const studentId = account?.type === "child" && account?.userId 
+    ? account.userId 
+    : (user?.id || user?.user_id || null);
 
   const current = useMemo(
     () => ({
@@ -39,9 +43,8 @@ export default function WelcomeTour() {
     []
   );
 
-  useEffect(() => {
-    markIntroSeen(studentId);
-  }, [studentId]);
+  // Check if this is first login - don't mark as seen until onboarding is complete
+  const isFirstLogin = !hasSeenIntro(studentId);
 
   const speak = () => {
     try {
@@ -59,11 +62,15 @@ export default function WelcomeTour() {
   }, []);
 
   const onSkip = () => {
-    markTourDone(studentId);
-    navigate("/student/home");
+    // Only allow skip if not first login
+    if (!isFirstLogin) {
+      markTourDone(studentId);
+      navigate("/student/home");
+    }
   };
 
   const onNext = () => {
+    // Mark tour as done when proceeding to next step
     markTourDone(studentId);
     navigate("/student/onboarding/buddy");
   };
@@ -143,12 +150,15 @@ export default function WelcomeTour() {
         </button>
 
         <div className="flex items-center gap-3">
-          <button
-            className="rounded-full border border-white/40 bg-white/60 px-4 py-1 text-sm font-medium text-[#5b4f3f] transition hover:bg-white"
-            onClick={onSkip}
-          >
-            Überspringen
-          </button>
+          {/* Only show skip button if not first login */}
+          {!isFirstLogin && (
+            <button
+              className="rounded-full border border-white/40 bg-white/60 px-4 py-1 text-sm font-medium text-[#5b4f3f] transition hover:bg-white"
+              onClick={onSkip}
+            >
+              Überspringen
+            </button>
+          )}
           <button
             onClick={onNext}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-[#ff7a00] shadow-sm transition hover:bg-white"

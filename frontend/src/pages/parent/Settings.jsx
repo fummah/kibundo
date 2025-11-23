@@ -31,10 +31,13 @@ import {
   BellOutlined,
   SettingOutlined,
   HomeOutlined,
+  SwapOutlined,
 } from "@ant-design/icons";
 
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import api from "@/api/axios";
+import PlainBackground from "@/components/layouts/PlainBackground";
+import BottomTabBar from "@/components/parent/BottomTabBar.jsx";
 
 const { useBreakpoint } = Grid;
 
@@ -182,6 +185,10 @@ export default function Settings() {
     }
   };
 
+  const handleSwitchProfile = () => {
+    navigate("/parent/account", { replace: true });
+  };
+
   const confirmLogout = () => {
     Modal.confirm({
       title: "Log out?",
@@ -190,8 +197,12 @@ export default function Settings() {
       onOk: async () => {
         try {
           await logout?.();
+          // Navigate to signin after logout
+          setTimeout(() => {
+            navigate("/signin", { replace: true });
+          }, 100);
         } catch {
-          navigate("/parent");
+          navigate("/signin", { replace: true });
         }
       },
     });
@@ -222,6 +233,7 @@ export default function Settings() {
       twoFA={twoFA}
       setTwoFA={setTwoFA}
       confirmLogout={confirmLogout}
+      handleSwitchProfile={handleSwitchProfile}
       save={save}
       openBilling={openBilling}
       goOverview={goOverview}
@@ -243,6 +255,7 @@ export default function Settings() {
 function SettingsContent({
   form,
   confirmLogout,
+  handleSwitchProfile,
   save,
   openBilling,
   goOverview,
@@ -395,8 +408,8 @@ function SettingsContent({
               </Form.Item>
             </Col>
           </Row>
-      <Card className="rounded-2xl border border-orange-100 bg-orange-50/70">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <Card className="rounded-2xl border border-orange-100 bg-orange-50/70" styles={{ body: { padding: 0 } }}>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-6">
           <div>
             <h3 className="font-semibold text-orange-800 m-0">Two-factor Authentication</h3>
             <p className="text-sm text-orange-700 m-0">
@@ -412,81 +425,104 @@ function SettingsContent({
           />
         </div>
       </Card>
+      <Card className="rounded-2xl border border-red-100 bg-red-50/70" styles={{ body: { padding: 0 } }}>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-6">
+          <div>
+            <h3 className="font-semibold text-red-800 m-0">Logout</h3>
+            <p className="text-sm text-red-700 m-0">
+              Sign out of your account. You'll need to log in again to access your account.
+            </p>
+          </div>
+          <Button
+            danger
+            icon={<LogoutOutlined />}
+            onClick={confirmLogout}
+            className="w-full md:w-auto"
+          >
+            Logout
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 
   const renderBillingTab = (
     <div className="space-y-4">
-      <Card
-        className="rounded-2xl shadow-sm hover:shadow transition cursor-pointer"
-        onClick={() => navigate("/parent/billing")}
-      >
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-lime-100 text-lime-700 text-lg">
-            <CreditCardOutlined />
+      <Card className="rounded-2xl shadow-sm border border-neutral-100" styles={{ body: { padding: 0 } }}>
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <FileTextOutlined className="text-xl text-amber-500" />
+            <h3 className="text-lg font-semibold m-0">Plan Overview</h3>
           </div>
-            <div>
-            <h3 className="m-0 text-base font-semibold">Billing &amp; Payments</h3>
-            <p className="m-0 text-gray-600 text-sm">
-              Manage your plan, payment methods, and invoices.
-            </p>
-          </div>
-          </div>
-          <Button type="primary" icon={<CreditCardOutlined />} onClick={openBilling}>
-            Open billing
+          <p className="text-sm text-gray-600 mb-4">
+            Review your active plan and trial period.
+          </p>
+          <Button 
+            icon={<FileTextOutlined />}
+            onClick={goOverview}
+            className="w-full md:w-auto"
+          >
+            View Plan Overview
           </Button>
         </div>
       </Card>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} md={12}>
-          <Card className="rounded-2xl shadow-sm hover:shadow cursor-pointer" onClick={goOverview}>
-            <Space direction="vertical">
-              <FileTextOutlined className="text-xl text-amber-500" />
-              <span className="font-semibold">Plan overview</span>
-              <span className="text-xs text-gray-500">
-                Review your active plan and trial period.
-              </span>
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={24} md={12}>
-          <Card
-            className="rounded-2xl shadow-sm hover:shadow cursor-pointer"
+
+      <Card className="rounded-2xl shadow-sm border border-neutral-100" styles={{ body: { padding: 0 } }}>
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <CreditCardOutlined className="text-xl text-emerald-500" />
+            <h3 className="text-lg font-semibold m-0">Subscription Options</h3>
+          </div>
+          <p className="text-sm text-gray-600 mb-4">
+            Upgrade or adjust your subscription preferences.
+          </p>
+          <Button 
+            icon={<CreditCardOutlined />}
             onClick={goSubscription}
+            className="w-full md:w-auto"
           >
-            <Space direction="vertical">
-              <CreditCardOutlined className="text-xl text-emerald-500" />
-              <span className="font-semibold">Subscription options</span>
-              <span className="text-xs text-gray-500">
-                Upgrade or adjust your subscription preferences.
-              </span>
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={24} md={12}>
-          <Card className="rounded-2xl shadow-sm hover:shadow cursor-pointer" onClick={goInvoices}>
-            <Space direction="vertical">
-              <SolutionOutlined className="text-xl text-blue-500" />
-              <span className="font-semibold">Invoices</span>
-              <span className="text-xs text-gray-500">
-                Download receipts for your accounting.
-              </span>
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={24} md={12}>
-          <Card className="rounded-2xl shadow-sm hover:shadow cursor-pointer" onClick={goCoupons}>
-            <Space direction="vertical">
-              <GiftOutlined className="text-xl text-pink-500" />
-              <span className="font-semibold">Coupons</span>
-              <span className="text-xs text-gray-500">
-                Redeem promo codes or share vouchers with friends.
-              </span>
-            </Space>
-          </Card>
-        </Col>
-      </Row>
+            Manage Subscription
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="rounded-2xl shadow-sm border border-neutral-100" styles={{ body: { padding: 0 } }}>
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <SolutionOutlined className="text-xl text-blue-500" />
+            <h3 className="text-lg font-semibold m-0">Invoices</h3>
+          </div>
+          <p className="text-sm text-gray-600 mb-4">
+            Download receipts for your accounting.
+          </p>
+          <Button 
+            icon={<SolutionOutlined />}
+            onClick={goInvoices}
+            className="w-full md:w-auto"
+          >
+            View Invoices
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="rounded-2xl shadow-sm border border-neutral-100" styles={{ body: { padding: 0 } }}>
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <GiftOutlined className="text-xl text-pink-500" />
+            <h3 className="text-lg font-semibold m-0">Coupons</h3>
+          </div>
+          <p className="text-sm text-gray-600 mb-4">
+            Redeem promo codes or share vouchers with friends.
+          </p>
+          <Button 
+            icon={<GiftOutlined />}
+            onClick={goCoupons}
+            className="w-full md:w-auto"
+          >
+            View Coupons
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 
@@ -514,8 +550,8 @@ function SettingsContent({
           description: "Hear about new features and betas before anyone else.",
         },
       ].map((pref) => (
-        <Card key={pref.key} className="rounded-2xl shadow-sm border border-neutral-100">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <Card key={pref.key} className="rounded-2xl shadow-sm border border-neutral-100" styles={{ body: { padding: 0 } }}>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between p-6">
             <div>
               <h3 className="text-base font-semibold m-0">{pref.label}</h3>
               <p className="text-sm text-gray-600 m-0">{pref.description}</p>
@@ -577,30 +613,11 @@ function SettingsContent({
   ];
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-[#F4BE9B] via-[#F2D6B1] to-[#EDE2CB]">
-      <div className="pointer-events-none absolute inset-x-[-40%] bottom-[-60%] h-[130%] rounded-[50%] bg-[#F2E5D5]" />
-      <div className="relative z-10 mx-auto w-full max-w-5xl px-4 py-10">
-        <Card className="rounded-3xl border-none bg-white/90 shadow-xl">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <Space>
-              <Button
-                type="text"
-                icon={<ArrowLeftOutlined />}
-                onClick={() => {
-                  if (window.history.length > 1) navigate(-1);
-                  else navigate("/parent");
-                }}
-                className="!p-0 !h-auto text-neutral-700"
-                aria-label="Back"
-              />
-              <Button
-                type="text"
-                icon={<HomeOutlined />}
-                onClick={() => navigate("/parent")}
-                className="!p-0 !h-auto text-neutral-700"
-                aria-label="Home"
-              />
-            </Space>
+    <PlainBackground className="flex flex-col h-screen overflow-hidden">
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="relative z-10 mx-auto w-full max-w-5xl px-4 py-10 pb-24">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-1 flex-col md:flex-row md:items-center md:gap-4">
               <Avatar size={64} className="bg-[#FF8400]" style={{ color: "#fff" }}>
                 {initials}
@@ -612,14 +629,15 @@ function SettingsContent({
                 </p>
               </div>
             </div>
-            <Space wrap>
-              <Button icon={<GiftOutlined />} onClick={() => navigate("/parent/billing/coupons")}>
-                Redeem code
+            <div className="flex justify-end">
+              <Button
+                icon={<SwapOutlined />}
+                onClick={handleSwitchProfile}
+                className="w-full md:w-auto"
+              >
+                Switch Profile
               </Button>
-              <Button type="primary" icon={<CreditCardOutlined />} onClick={openBilling}>
-                Manage billing
-              </Button>
-            </Space>
+            </div>
           </div>
 
           <div className="mt-6 rounded-2xl bg-gradient-to-r from-[#FF8400] via-[#FF9A36] to-[#FFC46B] p-6 text-white shadow-inner">
@@ -653,39 +671,24 @@ function SettingsContent({
 
             <Divider />
 
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
               <Button
-                danger
-                icon={<LogoutOutlined />}
-                onClick={confirmLogout}
+                type="primary"
+                icon={<SaveOutlined />}
+                onClick={save}
                 className="w-full md:w-auto"
               >
-                Logout
+                Save changes
           </Button>
-              <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                <Button
-                  icon={<SettingOutlined />}
-                  onClick={() => {
-                    form.resetFields();
-                    setTwoFA(Boolean(displayUser?.mfa_enabled));
-                  }}
-                  className="w-full md:w-auto"
-                >
-                  Reset changes
-          </Button>
-                <Button
-                  type="primary"
-                  icon={<SaveOutlined />}
-                  onClick={save}
-                  className="w-full md:w-auto"
-                >
-                  Save changes
-          </Button>
-        </div>
             </div>
           </Form>
-      </Card>
+        </div>
       </div>
-    </div>
+
+      {/* Sticky bottom tab bar */}
+      <div className="flex-shrink-0">
+        <BottomTabBar />
+      </div>
+    </PlainBackground>
   );
 }

@@ -106,16 +106,30 @@ export default function SSOReceiver() {
 
     // 2) postMessage fallback
     function onMsg(e) {
-      const data = e.data || {};
-      if (data?.type !== "KIBUNDO_SSO") return;
-      if (!data?.token) return;
-      if (done) return;
-      done = true;
-      handleToken(data.token, data.redirect || "/");
+      try {
+        // Ignore messages from browser extensions or unexpected origins
+        if (!e.data || typeof e.data !== 'object') return;
+        
+        const data = e.data || {};
+        if (data?.type !== "KIBUNDO_SSO") return;
+        if (!data?.token) return;
+        if (done) return;
+        done = true;
+        handleToken(data.token, data.redirect || "/");
+      } catch (err) {
+        // Silently ignore errors from browser extensions
+        console.debug("Message listener error (likely from extension):", err);
+      }
     }
 
     window.addEventListener("message", onMsg, false);
-    return () => window.removeEventListener("message", onMsg);
+    return () => {
+      try {
+        window.removeEventListener("message", onMsg);
+      } catch (err) {
+        // Ignore cleanup errors
+      }
+    };
   }, []);
 
   return (

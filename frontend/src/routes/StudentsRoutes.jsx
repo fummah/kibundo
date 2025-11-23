@@ -2,7 +2,7 @@
 import { Suspense, lazy, useEffect } from "react";
 import { Route, Navigate, Outlet, useLocation, useSearchParams } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
-import { ROLES } from "@/utils/roleMapper";
+import { ROLES, toRoleId } from "@/utils/roleMapper";
 import { StudentAppProvider } from "@/context/StudentAppContext.jsx";
 import MobileShell from "@/components/student/mobile/MobileShell.jsx";
 import IntroGate from "@/routes/IntroGate.jsx";
@@ -57,9 +57,13 @@ const Fallback = <div className="p-4">Loading…</div>;
 
 // Onboarding gate (for /student/home)
 function HomeGate() {
-  // Get user ID from auth context
-  const { user } = useAuthContext();
-  const studentId = user?.id || user?.user_id || null;
+  // Get user ID from auth context - use selected child account if parent is viewing child
+  const { user, account } = useAuthContext();
+  
+  // If parent has selected a child account (Netflix-style), use that child's ID
+  const studentId = account?.type === "child" && account?.userId 
+    ? account.userId 
+    : (user?.id || user?.user_id || null);
   
   if (!hasSeenIntro(studentId)) return <Navigate to="/student/onboarding/welcome-intro" replace />;
   if (!hasDoneTour(studentId))  return <Navigate to="/student/onboarding/welcome-tour" replace />;
@@ -68,18 +72,34 @@ function HomeGate() {
 
 /**
  * StudentAccessGate
- * Allows access if a portal token exists in sessionStorage (SSO tab),
- * otherwise falls back to your regular ProtectedRoute.
+ * Allows access if:
+ * 1. Portal token exists in sessionStorage (SSO tab), OR
+ * 2. Parent has selected a child account (Netflix-style), OR
+ * 3. User has student role (normal flow)
  */
 function StudentAccessGate({ allowedRoles }) {
+  const { isAuthenticated, user, account } = useAuthContext?.() || {};
   const hasPortalToken =
     typeof window !== "undefined" &&
     !!sessionStorage.getItem("portal.token");
 
+  // Allow portal token access (SSO)
   if (hasPortalToken) {
-    // Allow straight in (token will be picked by axios on /student/*)
     return <Outlet />;
   }
+
+  // Allow parent with selected child account (Netflix-style)
+  if (isAuthenticated && user && account) {
+    const roleId = toRoleId(user?.role_id ?? user?.roleId ?? user?.role?.id);
+    const isParent = roleId === ROLES.PARENT;
+    const hasChildAccount = account?.type === "child" && account?.userId;
+    
+    if (isParent && hasChildAccount) {
+      // Parent accessing child's account - allow it
+      return <Outlet />;
+    }
+  }
+
   // Fallback to your normal auth/roles flow
   return <ProtectedRoute allowedRoles={allowedRoles} />;
 }
@@ -220,3 +240,4 @@ export default function StudentRoutes() {
     </>
   );
 }
+

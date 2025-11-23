@@ -144,6 +144,7 @@ export default function AdminRoutes() {
             <Route path="publish/:id" element={<PublishBlogPost />} />
             <Route path="new" element={<PublishBlogPost />} />
             <Route path="blog/preview/:id" element={<BlogPreviewPage />} />
+            <Route path="blog/:slug" element={<BlogPreviewPage />} />
             <Route path="edit/:id" element={<BlogPostEdit />} />
           </Route>
 

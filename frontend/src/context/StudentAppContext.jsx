@@ -1,12 +1,13 @@
 // src/context/StudentAppContext.jsx
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-// Use the asset via Vite import (don’t hardcode Windows paths in code)
+// Use the asset via Vite import (don't hardcode Windows paths in code)
 import monster1 from "@/assets/buddies/monster1.png";
+import { useStudentId } from "@/hooks/useStudentId";
 
 const StudentAppContext = createContext(null);
 
-// Persist everything under one key (we'll also migrate old keys on first load)
-const LS_KEY = "student_app_state_v1";
+// Base key - will be scoped per student
+const LS_KEY_BASE = "student_app_state_v1";
 
 // Default state (supports both new and legacy fields)
 const DEFAULT_STATE = {
@@ -18,15 +19,26 @@ const DEFAULT_STATE = {
   colorTheme: "indigo",
 };
 
-function migrateFromLegacyKeys() {
+function migrateFromLegacyKeys(studentId) {
   try {
-    const b = localStorage.getItem("kibundo_buddy");
-    const i = localStorage.getItem("kibundo_interests");
-    const p = localStorage.getItem("kibundo_profile");
+    // Try scoped legacy keys first (for multi-child support)
+    const scopedBuddyKey = studentId ? `kibundo_buddy::u:${studentId}` : null;
+    const scopedInterestsKey = studentId ? `kibundo_interests::u:${studentId}` : null;
+    const scopedProfileKey = studentId ? `kibundo_profile::u:${studentId}` : null;
+    
+    // Fallback to unscoped legacy keys
+    const b = scopedBuddyKey ? localStorage.getItem(scopedBuddyKey) : null;
+    const i = scopedInterestsKey ? localStorage.getItem(scopedInterestsKey) : null;
+    const p = scopedProfileKey ? localStorage.getItem(scopedProfileKey) : null;
+    
+    // If no scoped keys found, try unscoped legacy keys
+    const bUnscoped = b ? null : localStorage.getItem("kibundo_buddy");
+    const iUnscoped = i ? null : localStorage.getItem("kibundo_interests");
+    const pUnscoped = p ? null : localStorage.getItem("kibundo_profile");
 
-    const buddy = b ? JSON.parse(b) : null;
-    const interests = i ? JSON.parse(i) : null;
-    const profile = p ? JSON.parse(p) : null;
+    const buddy = (b ? JSON.parse(b) : null) || (bUnscoped ? JSON.parse(bUnscoped) : null);
+    const interests = (i ? JSON.parse(i) : null) || (iUnscoped ? JSON.parse(iUnscoped) : null);
+    const profile = (p ? JSON.parse(p) : null) || (pUnscoped ? JSON.parse(pUnscoped) : null);
 
     if (!buddy && !interests && !profile) return null;
 
@@ -62,43 +74,91 @@ function migrateFromLegacyKeys() {
 }
 
 export function StudentAppProvider({ children }) {
-  const [state, setState] = useState(() => {
-    // 1) Try unified key
+  // Get the current student ID to scope storage per student
+  const studentId = useStudentId();
+  
+  // Build scoped storage key
+  const storageKey = studentId ?? "anon";
+  
+  // Initialize with default state - will be loaded from storage in useEffect
+  const [state, setState] = useState(DEFAULT_STATE);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Load state from scoped storage when studentId is available or changes
+  useEffect(() => {
+    const currentStorageKey = studentId ?? "anon";
+    const scopedLS_KEY = `${LS_KEY_BASE}::u:${currentStorageKey}`;
+    
     try {
-      const raw = localStorage.getItem(LS_KEY);
+      // 1) Try scoped unified key
+      const raw = localStorage.getItem(scopedLS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        // ensure avatar always points to our asset if missing
         const buddy = parsed.buddy || DEFAULT_STATE.buddy;
         if (!buddy.avatar) buddy.avatar = monster1;
-
-        // ensure profile mirrors are present
         const profile = parsed.profile || DEFAULT_STATE.profile;
-        return {
+        
+        setState({
           ...DEFAULT_STATE,
           ...parsed,
           buddy,
           profile,
           ttsEnabled: typeof parsed.ttsEnabled === "boolean" ? parsed.ttsEnabled : profile.ttsEnabled,
           colorTheme: parsed.colorTheme || profile.theme || "indigo",
-        };
+        });
+        setIsInitialized(true);
+        return;
       }
     } catch {}
 
-    // 2) Migrate from legacy scattered keys (kibundo_*)
-    const migrated = migrateFromLegacyKeys();
-    if (migrated) return migrated;
+    // 2) Try unscoped unified key (for backward compatibility - only on first load for anon)
+    if (!isInitialized && !studentId) {
+      try {
+        const unscopedKey = LS_KEY_BASE;
+        const raw = localStorage.getItem(unscopedKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const buddy = parsed.buddy || DEFAULT_STATE.buddy;
+          if (!buddy.avatar) buddy.avatar = monster1;
+          const profile = parsed.profile || DEFAULT_STATE.profile;
+          
+          setState({
+            ...DEFAULT_STATE,
+            ...parsed,
+            buddy,
+            profile,
+            ttsEnabled: typeof parsed.ttsEnabled === "boolean" ? parsed.ttsEnabled : profile.ttsEnabled,
+            colorTheme: parsed.colorTheme || profile.theme || "indigo",
+          });
+          setIsInitialized(true);
+          return;
+        }
+      } catch {}
+    }
 
-    // 3) Default
-    return DEFAULT_STATE;
-  });
+    // 3) Migrate from legacy scattered keys (kibundo_*)
+    const migrated = migrateFromLegacyKeys(studentId);
+    if (migrated) {
+      setState(migrated);
+      setIsInitialized(true);
+      return;
+    }
 
-  // Persist unified state
+    // 4) Default - reset to default for this student
+    setState(DEFAULT_STATE);
+    setIsInitialized(true);
+  }, [studentId]); // Only depend on studentId - reload whenever it changes
+
+  // Persist unified state to scoped key whenever state changes
   useEffect(() => {
+    if (!isInitialized) return; // Don't persist until we've loaded initial state
+    
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify(state));
+      const currentStorageKey = studentId ?? "anon";
+      const scopedLS_KEY = `${LS_KEY_BASE}::u:${currentStorageKey}`;
+      localStorage.setItem(scopedLS_KEY, JSON.stringify(state));
     } catch {}
-  }, [state]);
+  }, [state, studentId, isInitialized]);
 
   // Convenience setters (keep legacy mirrors in sync)
   const setBuddy = (buddy) =>

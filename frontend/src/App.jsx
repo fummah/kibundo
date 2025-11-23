@@ -49,7 +49,7 @@ function AppContent() {
               <div className="fixed bottom-0 left-0 right-0 z-20">
                 <FooterChat
                   includeOnRoutes={["/student/home", "/student/homework"]}
-                  hideOnRoutes={["/student/homework/feedback"]}
+                  hideOnRoutes={["/student/homework/feedback", "/student/onboarding", "/student-login", "/signin", "/signup"]}
                 />
               </div>
             </div>
@@ -69,29 +69,8 @@ function AppContent() {
                 <div className="absolute bottom-0 left-0 right-0 z-20">
                   <FooterChat
                     includeOnRoutes={["/student/home", "/student/homework"]}
-                    hideOnRoutes={["/student/homework/feedback"]}
+                    hideOnRoutes={["/student/homework/feedback", "/student/onboarding", "/student-login", "/signin", "/signup"]}
                   />
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : isParentRoute ? (
-          // Parent routes: full width on mobile, centered container starting from iPad (same as student)
-          <div className="w-full min-h-screen flex flex-col">
-            {/* Mobile: full width (< 768px) */}
-            <div className="md:hidden w-full flex-1 relative">
-              {/* Chat portal mount point for mobile */}
-              <div id="chat-root" className="absolute inset-0 pointer-events-none" />
-              <AppRoutes />
-            </div>
-            
-            {/* iPad and larger: centered container with max-width */}
-            <div className="hidden md:flex md:justify-center md:min-h-screen md:bg-gray-50">
-              <div className="w-full max-w-[1024px] bg-white shadow-lg flex flex-col min-h-screen relative">
-                {/* Chat portal mount point for desktop - inside device frame */}
-                <div id="chat-root" className="absolute inset-0 pointer-events-none" />
-                <div className="flex-1 overflow-y-auto">
-                  <AppRoutes />
                 </div>
               </div>
             </div>

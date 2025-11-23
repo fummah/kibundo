@@ -90,6 +90,7 @@ const HomeworkCard = ({
   done,
   completedAt,
   createdAt,
+  studentInfo,
   onOpen,
   onEdit,
   onDelete,

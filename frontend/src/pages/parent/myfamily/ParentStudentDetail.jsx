@@ -1,13 +1,16 @@
 // src/pages/parent/myfamily/ParentStudentDetail.jsx
 import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Button, Checkbox } from "antd";
+import { Button, Checkbox, message } from "antd";
 import { StarFilled, ArrowLeftOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import api from "@/api/axios";
 import childOne from "@/assets/parent/childone.png";
 import childTwo from "@/assets/parent/childtwo.png";
 import { formatDayLabel } from "@/utils/dateFormat";
+import BottomTabBar from "@/components/parent/BottomTabBar.jsx";
+import ParentSpaceBar from "@/components/parent/ParentSpaceBar.jsx";
+import PlainBackground from "@/components/layouts/PlainBackground.jsx";
 
 /* ---------- Progress bars component ---------- */
 function ProgressBars({ data, labels }) {
@@ -75,6 +78,8 @@ export default function ParentStudentDetail() {
   const [usageStats, setUsageStats] = useState(null);
   const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedInterests, setSelectedInterests] = useState([]);
+  const [savingInterests, setSavingInterests] = useState(false);
 
   // Fetch student data and usage stats
   useEffect(() => {
@@ -86,6 +91,9 @@ export default function ParentStudentDetail() {
         const studentRes = await api.get(`/student/${id}`);
         const studentData = studentRes.data;
         setStudent(studentData);
+        // Initialize interests from student data
+        const studentInterests = Array.isArray(studentData?.interests) ? studentData.interests : [];
+        setSelectedInterests(studentInterests);
 
         // Fetch student usage statistics
         try {
@@ -233,9 +241,26 @@ export default function ParentStudentDetail() {
 
   // Format age display
   const ageDisplay = studentAge ? `Age ${studentAge}` : "Age X";
+  
+  // Format grade/class display
+  const gradeDisplay = student?.class?.class_name || 
+                       student?.student?.class?.class_name || 
+                       (student?.class_id ? `Grade ${student.class_id}` : null) ||
+                       (student?.student?.class_id ? `Grade ${student.student.class_id}` : null) ||
+                       "Grade N/A";
+  
+  // Format student ID display
+  const studentIdDisplay = student?.id || 
+                           student?.student_id || 
+                           id || 
+                           "N/A";
 
   return (
-    <div className="w-full max-w-[520px] mx-auto pt-4 pb-6 space-y-6 px-4">
+    <PlainBackground className="flex flex-col h-screen overflow-hidden">
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 py-10 pb-24">
+          <div className="space-y-6">
         {/* Header with back button and centered title */}
         <div className="flex items-center justify-center relative mb-4">
           <Button
@@ -264,6 +289,8 @@ export default function ParentStudentDetail() {
               {studentName}
             </div>
             <div className="text-neutral-600">{ageDisplay}</div>
+            <div className="text-neutral-600">{gradeDisplay}</div>
+            <div className="text-neutral-600">ID: {studentIdDisplay}</div>
           </div>
         </div>
 
@@ -434,14 +461,72 @@ export default function ParentStudentDetail() {
             <div className="text-neutral-700 mb-3">
               Wähle zwei Schwerpunkte aus:
             </div>
-            <div className="grid gap-2">
-              <Checkbox defaultChecked>Mathe</Checkbox>
-              <Checkbox defaultChecked>Deutsch</Checkbox>
-              <Checkbox>Natur und Umwelt</Checkbox>
-              <Checkbox>Konzentration</Checkbox>
-            </div>
+            <Checkbox.Group
+              value={selectedInterests}
+              onChange={async (vals) => {
+                // Strictly enforce 2 selection limit
+                if (vals.length > 2) {
+                  message.warning("Bitte wähle höchstens zwei Schwerpunkte.");
+                  return; // block extra selection
+                }
+                setSelectedInterests(vals);
+                // Auto-save interests
+                if (id && vals.length <= 2) {
+                  setSavingInterests(true);
+                  try {
+                    await api.patch(`/student/${id}`, {
+                      interests: vals,
+                    });
+                    message.success("Fokusthemen erfolgreich gespeichert!");
+                  } catch (err) {
+                    console.error("Error saving interests:", err);
+                    message.error("Fehler beim Speichern der Fokusthemen.");
+                    // Revert on error
+                    setSelectedInterests(selectedInterests);
+                  } finally {
+                    setSavingInterests(false);
+                  }
+                }
+              }}
+              className="grid gap-2"
+              disabled={savingInterests}
+            >
+              <Checkbox 
+                value="math"
+                disabled={selectedInterests.length >= 2 && !selectedInterests.includes("math")}
+              >
+                Mathe
+              </Checkbox>
+              <Checkbox 
+                value="german"
+                disabled={selectedInterests.length >= 2 && !selectedInterests.includes("german")}
+              >
+                Deutsch
+              </Checkbox>
+              <Checkbox 
+                value="nature"
+                disabled={selectedInterests.length >= 2 && !selectedInterests.includes("nature")}
+              >
+                Natur und Umwelt
+              </Checkbox>
+              <Checkbox 
+                value="concentration"
+                disabled={selectedInterests.length >= 2 && !selectedInterests.includes("concentration")}
+              >
+                Konzentration
+              </Checkbox>
+            </Checkbox.Group>
+          </div>
+        </div>
+
           </div>
         </div>
       </div>
+
+      {/* Sticky bottom tab bar */}
+      <div className="flex-shrink-0">
+        <BottomTabBar />
+      </div>
+    </PlainBackground>
   );
 }

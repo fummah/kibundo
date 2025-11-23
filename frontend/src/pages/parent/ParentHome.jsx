@@ -7,6 +7,9 @@ import { useAuthContext } from "@/context/AuthContext";
 
 // ✅ explicit extension + alias to avoid any shadowing
 import ParentNewsCard from "@/components/parent/NewsCard.jsx";
+import BottomTabBar from "@/components/parent/BottomTabBar.jsx";
+import ParentSpaceBar from "@/components/parent/ParentSpaceBar.jsx";
+import PlainBackground from "@/components/layouts/PlainBackground.jsx";
 
 /* Assets */
 import globalBg from "@/assets/backgrounds/global-bg.png";
@@ -36,6 +39,32 @@ const formatStudentMeta = (student) => {
   const age = ageValue ? `Age ${ageValue}` : "Age X";
   const grade = student?.class?.class_name || student?.student?.class?.class_name || `Grade ${student?.class_id || student?.student?.class_id || "N/A"}`;
   return `${age}, ${grade}`;
+};
+
+// Strip HTML tags from content
+const stripHtml = (html) => {
+  if (!html || typeof html !== "string") return "";
+  try {
+    // Remove script and style tags and their content
+    let text = html.replace(/<script[\s\S]*?<\/script>/gi, "");
+    text = text.replace(/<style[\s\S]*?<\/style>/gi, "");
+    // Remove HTML tags
+    text = text.replace(/<[^>]+>/g, "");
+    // Decode HTML entities (basic common ones)
+    text = text
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+    // Clean up whitespace
+    text = text.replace(/\s+/g, " ").trim();
+    return text;
+  } catch (e) {
+    // Fallback: just remove tags
+    return html.replace(/<[^>]+>/g, "").trim();
+  }
 };
 
 /* ---------------- Small mobile cards ---------------- */
@@ -111,6 +140,10 @@ export default function ParentHome() {
   const [children, setChildren] = useState([]);
   const [activities, setActivities] = useState([]);
   const [news, setNews] = useState([]);
+  const [allBlogPosts, setAllBlogPosts] = useState([]); // Store all blog posts
+  const [newsPage, setNewsPage] = useState(1);
+  const [totalNewsPages, setTotalNewsPages] = useState(1);
+  const NEWS_PER_PAGE = 3;
   const [loading, setLoading] = useState(true);
   const [selectedAgent, setSelectedAgent] = useState("ParentAgent"); // Default fallback
 
@@ -194,11 +227,18 @@ export default function ParentHome() {
           setChildren(formattedStudents);
           
           // Fetch recent activities (homework scans) with student avatars
+          // Get activities from ALL children, not just the first 2 overall
           const activitiesList = [];
           students.forEach((student, studentIdx) => {
             const user = student?.user || {};
             const scans = Array.isArray(student.homeworkscan) ? student.homeworkscan : [];
-            scans.slice(0, 2).forEach(scan => {
+            
+            // Take up to 2 most recent scans per student to ensure we get activities from all children
+            const recentScans = scans
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+              .slice(0, 2);
+            
+            recentScans.forEach(scan => {
               // Determine default avatar based on gender
               const getDefaultAvatar = () => {
                 if (user.gender === 'male') return childOne;
@@ -219,11 +259,11 @@ export default function ParentHome() {
               
               // Generate activity text based on scan content to match design
               const scanText = scan.raw_text || "";
-              let activityText = "Completed a math lesson for homework";
+              let activityText = "Mit Blitzaufgaben rechnen. Datum: ______...";
               if (scanText.toLowerCase().includes("reading") || scanText.toLowerCase().includes("lesen")) {
                 activityText = "Started a reading exercise";
-              } else if (scanText.toLowerCase().includes("math") || scanText.toLowerCase().includes("mathe")) {
-                activityText = "Completed a math lesson for homework";
+              } else if (scanText.toLowerCase().includes("math") || scanText.toLowerCase().includes("mathe") || scanText.toLowerCase().includes("blitzaufgaben")) {
+                activityText = "Mit Blitzaufgaben rechnen. Datum: ______...";
               } else if (scanText.length > 0) {
                 activityText = scanText.substring(0, 40) + "...";
               }
@@ -233,43 +273,47 @@ export default function ParentHome() {
                 childId: student.id,
                 child: formatStudentName(student),
                 text: activityText,
-                when: new Date(scan.created_at).toLocaleDateString(),
+                when: new Date(scan.created_at),
+                createdAt: scan.created_at, // Keep original for sorting
                 tag: "Homework",
                 avatar: avatarSrc,
               });
             });
           });
-          setActivities(activitiesList.slice(0, 2));
+          
+          // Remove duplicates (same scan ID) and sort all activities by date (most recent first)
+          // This ensures we show activities from all children, not just the first child
+          const uniqueActivities = activitiesList.filter((activity, index, self) =>
+            index === self.findIndex(a => a.id === activity.id)
+          );
+          
+          const sortedActivities = uniqueActivities
+            .sort((a, b) => new Date(b.createdAt || b.when) - new Date(a.createdAt || a.when))
+            .slice(0, Math.max(2, students.length)); // Show at least 2, or one per child if more children
+          
+          // Format dates for display
+          const formattedActivities = sortedActivities.map(a => ({
+            ...a,
+            when: new Date(a.createdAt || a.when).toLocaleDateString(),
+          }));
+          
+          setActivities(formattedActivities);
         }
         
           // Fetch news/blog posts
         try {
-          const newsRes = await api.get("/blogposts");
-          const blogPosts = Array.isArray(newsRes.data) ? newsRes.data : (newsRes.data?.data || []);
-          const formattedNews = blogPosts.slice(0, 3).map((post, idx) => {
-            // Map categories to match design
-            let badge = post.category || "Blog Post";
-            let badgeColor = "#69b06b"; // green for Blog Post
-            if (badge.toLowerCase().includes("platform") || badge.toLowerCase().includes("update")) {
-              badge = "Plattform update";
-              badgeColor = "#6b7280"; // dark gray
-            } else if (!badge.toLowerCase().includes("blog")) {
-              badge = "Unknown Category";
-              badgeColor = "#6b7280"; // dark gray
-            } else {
-              badge = "Blog Post";
-            }
-            
-            return {
-              id: post.id,
-              tag: badge,
-              title: post.title || "News Article",
-              desc: post.content?.substring(0, 80) + "..." || "Read more...",
-              image: [blogNews, platNews, unkCat][idx % 3],
-              badgeColor: badgeColor,
-            };
-          });
-          setNews(formattedNews);
+          const newsRes = await api.get("/blogposts", { params: { status: "published", audience: "parents" } });
+          const blogPosts = Array.isArray(newsRes.data) ? newsRes.data : (newsRes.data?.data || newsRes.data?.results || []);
+          
+          // Helper to clean undefined/null strings
+          const cleanString = (val, fallback = "") => {
+            if (!val) return fallback;
+            const str = String(val).trim();
+            return str && str !== "undefined" && str !== "null" ? str : fallback;
+          };
+
+          // Store all blog posts for pagination - useEffect will handle formatting and pagination
+          setAllBlogPosts(blogPosts);
         } catch (newsErr) {
           // Fallback to dummy news matching the design exactly
           setNews([
@@ -289,6 +333,93 @@ export default function ParentHome() {
     
     fetchData();
   }, [user?.id]);
+
+  // Update displayed news when page changes
+  useEffect(() => {
+    if (allBlogPosts.length === 0) return;
+    
+    // Calculate pagination
+    const totalPosts = allBlogPosts.length;
+    const totalPages = Math.ceil(totalPosts / NEWS_PER_PAGE);
+    setTotalNewsPages(totalPages);
+    
+    // Reset to page 1 if current page is out of bounds
+    if (newsPage > totalPages && totalPages > 0) {
+      setNewsPage(1);
+      return;
+    }
+    
+    // Get posts for current page
+    const startIndex = (newsPage - 1) * NEWS_PER_PAGE;
+    const endIndex = startIndex + NEWS_PER_PAGE;
+    const paginatedPosts = allBlogPosts.slice(startIndex, endIndex);
+    
+    // Helper to clean undefined/null strings
+    const cleanString = (val, fallback = "") => {
+      if (!val) return fallback;
+      const str = String(val).trim();
+      return str && str !== "undefined" && str !== "null" ? str : fallback;
+    };
+    
+    const formattedNews = paginatedPosts.map((post, idx) => {
+      // Ensure we have a valid post with an ID
+      if (!post || !post.id) {
+        console.warn("Blog post missing ID:", post);
+        return null;
+      }
+      
+      // Map categories to match design
+      let badge = cleanString(post.category, "Blog Post");
+      let badgeColor = "#69b06b"; // green for Blog Post
+      if (badge.toLowerCase().includes("platform") || badge.toLowerCase().includes("update")) {
+        badge = "Plattform update";
+        badgeColor = "#6b7280"; // dark gray
+      } else if (!badge.toLowerCase().includes("blog")) {
+        badge = "Unknown Category";
+        badgeColor = "#6b7280"; // dark gray
+      } else {
+        badge = "Blog Post";
+      }
+      
+      // Always show "Read more..." for blog post cards
+      const desc = "Read more...";
+      
+      // Use uploaded thumbnail_url if available, otherwise fallback to placeholder
+      let imageUrl = post.thumbnail_url || post.thumbnail || post.image_url || post.cover_image || post.image || null;
+      
+      if (imageUrl) {
+        imageUrl = String(imageUrl).trim();
+        if (imageUrl.startsWith("blob:")) {
+          imageUrl = null;
+        }
+        if (imageUrl && !imageUrl.startsWith("http") && !imageUrl.startsWith("//")) {
+          if (imageUrl.startsWith("/")) {
+            imageUrl = `${window.location.origin}${imageUrl}`;
+          } else {
+            imageUrl = `${window.location.origin}/${imageUrl}`;
+          }
+        }
+      }
+      
+      if (!imageUrl || imageUrl.startsWith("blob:")) {
+        imageUrl = [blogNews, platNews, unkCat][idx % 3];
+      }
+      
+      const navUrl = `/parent/communications/news/preview/${post.id}`;
+      
+      return {
+        id: post.id,
+        tag: badge,
+        title: cleanString(post.title, "News Article"),
+        desc: desc,
+        image: imageUrl,
+        badgeColor: badgeColor,
+        to: navUrl,
+      };
+    }).filter(Boolean);
+    
+    setNews(formattedNews);
+  }, [newsPage, allBlogPosts]);
 
   // Dispatch events when chat opens/closes to hide bottom bar
   React.useEffect(() => {
@@ -449,9 +580,11 @@ export default function ParentHome() {
   };
 
   return (
-    <>
-    <div className="w-full flex justify-center pb-0">
-        <section className="relative w-full max-w-[520px] px-4 pt-4 pb-2 mx-auto space-y-6">
+    <PlainBackground className="flex flex-col h-screen overflow-hidden">
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 py-10 pb-24">
+          <div className="space-y-6">
           <h1 className="text-3xl font-extrabold text-neutral-800 text-center mb-0">
             {t("parent.home.title", "Home")}
           </h1>
@@ -463,7 +596,7 @@ export default function ParentHome() {
             </h2>
             <div className="space-y-3">
               {loading ? (
-                <div className="text-center text-neutral-500 py-4">Loading activities...</div>
+                <div className="text-center text-neutral-500 py-4">Aktivitäten werden geladen...</div>
               ) : activities.length > 0 ? (
                 activities.map((a, i) => (
                   <ActivityCard
@@ -476,7 +609,7 @@ export default function ParentHome() {
                   />
                 ))
               ) : (
-                <div className="text-center text-neutral-500 py-4">No recent activities</div>
+                <div className="text-center text-neutral-500 py-4">Keine kürzlichen Aktivitäten</div>
               )}
             </div>
           </section>
@@ -488,7 +621,7 @@ export default function ParentHome() {
             </h2>
             <div className="flex flex-wrap items-start justify-center gap-6 sm:gap-8">
               {loading ? (
-                <div className="text-center text-neutral-500 py-4 w-full">Loading...</div>
+                <div className="text-center text-neutral-500 py-4 w-full">Wird geladen...</div>
               ) : children.length > 0 ? (
                 children.map((c) => (
                   <ChildBubble key={c.id} to={`/parent/myfamily/student/${c.id}`} avatar={c.avatar} name={c.name} meta={c.meta} />
@@ -505,29 +638,60 @@ export default function ParentHome() {
           </section>
 
           {/* News & Insights */}
-          <section className="space-y-4">
+          <section className="space-y-4 pb-24">
             <h2 className="text-xl font-extrabold text-neutral-800">
               {t("parent.home.newsInsights", "Neuigkeiten & Einblicke")}
             </h2>
             {loading ? (
               <div className="text-center text-neutral-500 py-4">Loading news...</div>
             ) : news.length > 0 ? (
-              news.map((n) => (
-                <ParentNewsCard
-                  key={n.id}
-                  to={`/parent/communications/news/${n.id}`}
-                  badge={n.tag}
-                  badgeColor={n.badgeColor || "#69b06b"}
-                  title={n.title}
-                  excerpt={n.desc}
-                  image={n.image}
-                />
-              ))
+              <>
+                {news.map((n) => (
+                  <ParentNewsCard
+                    key={n.id || `news-${n.title}`}
+                    to={n.to || (n.id ? `/parent/communications/news/preview/${n.id}` : null)}
+                    badge={n.tag}
+                    badgeColor={n.badgeColor || "#69b06b"}
+                    title={n.title}
+                    excerpt={n.desc}
+                    image={n.image}
+                  />
+                ))}
+                {/* Pagination - only show if more than 3 posts */}
+                {totalNewsPages > 1 && (
+                  <div className="flex items-center justify-center gap-3 mt-6">
+                    <button
+                      onClick={() => setNewsPage(prev => Math.max(1, prev - 1))}
+                      disabled={newsPage === 1}
+                      className="px-4 py-2 rounded-lg bg-white/80 backdrop-blur border border-white/70 shadow-sm hover:shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed text-neutral-700 font-medium text-sm"
+                    >
+                      Previous
+                    </button>
+                    <span className="px-4 py-2 text-neutral-600 text-sm font-medium">
+                      Page {newsPage} of {totalNewsPages}
+                    </span>
+                    <button
+                      onClick={() => setNewsPage(prev => Math.min(totalNewsPages, prev + 1))}
+                      disabled={newsPage >= totalNewsPages}
+                      className="px-4 py-2 rounded-lg bg-white/80 backdrop-blur border border-white/70 shadow-sm hover:shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed text-neutral-700 font-medium text-sm"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="text-center text-neutral-500 py-4">No news available</div>
             )}
           </section>
-        </section>
+
+          </div>
+        </div>
+      </div>
+
+      {/* Sticky bottom tab bar */}
+      <div className="flex-shrink-0">
+        <BottomTabBar />
       </div>
 
       {/* Floating chat button removed; chat opens via Feedback tab */}
@@ -587,8 +751,8 @@ export default function ParentHome() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b">
-              <div className="font-semibold text-neutral-800">Ask Parent Assistant</div>
-              <button className="text-neutral-500 hover:text-neutral-700" onClick={() => setChatOpen(false)} aria-label="Close chat">
+              <div className="font-semibold text-neutral-800">Eltern-Assistent fragen</div>
+              <button className="text-neutral-500 hover:text-neutral-700" onClick={() => setChatOpen(false)} aria-label="Chat schließen">
                 ✕
               </button>
             </div>
@@ -630,7 +794,7 @@ export default function ParentHome() {
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") sendChat(); }}
-                placeholder="Type your question..."
+                placeholder="Gib deine Frage ein..."
                 className="flex-1 rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500"
               />
               <button
@@ -645,6 +809,6 @@ export default function ParentHome() {
           </div>
         </div>
       )}
-    </>
+    </PlainBackground>
   );
 }
