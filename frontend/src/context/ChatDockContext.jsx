@@ -11,6 +11,7 @@ import React, {
 import { useNavigate } from "react-router-dom";
 import api from "@/api/axios"; // ⬅️ your centralized Axios instance
 import { resolveStudentAgent } from "@/utils/studentAgent";
+import { useAuthContext } from "@/context/AuthContext";
 
 export const TASKS_KEY = "kibundo.homework.tasks.v1";
 export const PROGRESS_KEY = "kibundo.homework.progress.v1";
@@ -147,6 +148,7 @@ const filterPersistable = (arr = []) =>
 export function ChatDockProvider({ children }) {
   const navigate = useNavigate();
   const analyzingRef = useRef(false);
+  const { isAuthenticated } = useAuthContext();
 
   const [state, setState] = useState(() => ({
     visible: false,
@@ -163,15 +165,25 @@ export function ChatDockProvider({ children }) {
 
   // Fetch selected agent from backend (only if authenticated)
   useEffect(() => {
+    // Only fetch agent if user is authenticated
+    if (!isAuthenticated) {
+      return;
+    }
+
     const fetchSelectedAgent = async () => {
-      const agent = await resolveStudentAgent();
-      if (agent?.name) {
-        setSelectedAgent(agent.name);
+      try {
+        const agent = await resolveStudentAgent();
+        if (agent?.name) {
+          setSelectedAgent(agent.name);
+        }
+      } catch (error) {
+        // Silently fail - will use default "Kibundo"
+        console.debug("Failed to fetch student agent:", error);
       }
     };
 
     fetchSelectedAgent();
-  }, []);
+  }, [isAuthenticated]);
 
   /** Keep in sync if other tabs modify localStorage */
   useEffect(() => {

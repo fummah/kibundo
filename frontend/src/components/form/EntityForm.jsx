@@ -228,7 +228,11 @@ export default function EntityForm({
         // afterUpdate hook
         let hook = apiCfg.afterUpdate?.(res);
         if (!hook?.preventMessage) {
-          messageApi.success("Saved");
+          messageApi.success({ 
+            content: "Saved",
+            key: "entity-saved",
+            duration: 3
+          });
         }
         if (hook?.preventRedirect) return;
 
@@ -247,7 +251,11 @@ export default function EntityForm({
       // afterCreate hook
       let hook = apiCfg.afterCreate?.(res);
       if (!hook?.preventMessage) {
-        messageApi.success("Created");
+        messageApi.success({ 
+          content: "Created",
+          key: "entity-created",
+          duration: 3
+        });
       }
       if (hook?.preventRedirect) return;
 

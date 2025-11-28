@@ -76,6 +76,102 @@ const formatCompletionDate = (isoString) => {
   }
 };
 
+// Confetti container that starts from top of page but is constrained to shell
+function ConfettiContainer() {
+  const [shellBounds, setShellBounds] = useState({ left: 0, width: '100%' });
+
+  useEffect(() => {
+    const updateBounds = () => {
+      // Find the shell container (desktop: max-w-[1024px], mobile: full width)
+      const shellContainer = document.querySelector('.max-w-\\[1024px\\]') || 
+                            document.getElementById('chat-root')?.parentElement;
+      
+      if (shellContainer && window.innerWidth >= 768) {
+        const rect = shellContainer.getBoundingClientRect();
+        setShellBounds({
+          left: rect.left,
+          width: rect.width,
+        });
+      } else {
+        setShellBounds({ left: 0, width: '100%' });
+      }
+    };
+
+    updateBounds();
+    window.addEventListener('resize', updateBounds);
+    // Also update after a short delay to ensure DOM is ready
+    const timeoutId = setTimeout(updateBounds, 100);
+
+    return () => {
+      window.removeEventListener('resize', updateBounds);
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
+  return (
+    <div 
+      className="fixed pointer-events-none overflow-hidden z-[99999]" 
+      style={{ 
+        top: 0, 
+        left: typeof shellBounds.left === 'number' ? `${shellBounds.left}px` : shellBounds.left,
+        width: typeof shellBounds.width === 'number' ? `${shellBounds.width}px` : shellBounds.width,
+        right: 'auto',
+        bottom: 0,
+        height: '100vh',
+      }}
+    >
+      {Array.from({ length: 70 }).map((_, i) => {
+        // Better distribution: use golden ratio spacing for natural distribution
+        const goldenRatio = 0.618;
+        const leftPosition = ((i * goldenRatio * 100) % 100);
+        const size = 6 + (i % 4) * 2; // Vary sizes: 6px, 8px, 10px, 12px
+        const animationDuration = 3 + (i % 3) * 0.5; // Vary speeds: 3s, 3.5s, 4s
+        const horizontalDrift = (i % 2 === 0 ? 1 : -1) * (10 + (i % 20)); // Drift left/right
+        
+        return (
+          <div
+            key={i}
+            className="confetti"
+            style={{
+              left: `${leftPosition}%`,
+              top: 0,
+              animationDelay: `${(i % 20) * 0.1}s`,
+              animationDuration: `${animationDuration}s`,
+              background: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#b892ff", "#ff9a56", "#ffcc5c"][i % 7],
+              width: `${size}px`,
+              height: `${size * 1.5}px`,
+              '--drift': `${horizontalDrift}px`,
+            }}
+          />
+        );
+      })}
+      <style>{`
+        .confetti { 
+          position: absolute; 
+          top: 0; 
+          border-radius: 2px; 
+          animation: kib-fall 3.5s linear infinite;
+          box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+        }
+        @keyframes kib-fall { 
+          0%   { 
+            transform: translateY(0) translateX(0) rotate(0deg) scale(1);
+            opacity: 1;
+          }
+          50% {
+            transform: translateY(50vh) translateX(var(--drift, 0px)) rotate(270deg) scale(1.1);
+            opacity: 0.9;
+          }
+          100% { 
+            transform: translateY(120vh) translateX(calc(var(--drift, 0px) * 1.5)) rotate(720deg) scale(0.8);
+            opacity: 0;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 export default function HomeworkFeedback() {
   const { message: antdMessage } = App.useApp();
   const navigate = useNavigate();
@@ -492,36 +588,11 @@ export default function HomeworkFeedback() {
         draggable={false}
       />
 
-      {/* Confetti animation when task is completed */}
-      {isCompleted && <ConfettiBurst taskId={activeTaskId} />}
+      {/* Confetti animation - always show on feedback page */}
+      <ConfettiBurst taskId={activeTaskId} forceShow={true} />
 
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {Array.from({ length: 32 }).map((_, i) => (
-          <div
-            key={i}
-            className="confetti"
-            style={{
-              left: `${(i * 13) % 100}%`,
-              animationDelay: `${(i % 10) * 0.15}s`,
-              background: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#b892ff"][i % 5],
-            }}
-          />
-        ))}
-        <style>{`
-          .confetti { 
-            position: absolute; 
-            top: -10px; 
-            width: 8px; 
-            height: 14px; 
-            border-radius: 2px; 
-            animation: kib-fall 2.8s linear infinite; 
-          }
-          @keyframes kib-fall { 
-            0%   { transform: translateY(-10px) rotate(0) } 
-            100% { transform: translateY(120vh) rotate(540deg) } 
-          }
-        `}</style>
-      </div>
+      {/* Confetti in front of everything - starts from top of page - inside shell */}
+      <ConfettiContainer />
 
       <div className="relative z-10 text-center">
         <div className="text-[22px] font-extrabold text-[#4D4D4D] mb-2">

@@ -195,33 +195,9 @@ export default function HomeworkChat() {
   const [chatHistory, setChatHistory] = useState([]);
   const [studentAgent, setStudentAgent] = useState(null);
   
-  // 🔥 Load conversationId from localStorage on mount
-  const studentId = authUser?.id || "anon";
-  const conversationIdKey = `kibundo.convId.homework.${studentId}`;
-  const [conversationId, setConversationId] = useState(() => {
-    try {
-      const saved = localStorage.getItem(conversationIdKey);
-      if (saved) {
-        console.log("🔄 HOMEWORK: Loaded existing conversationId:", saved);
-        return parseInt(saved, 10);
-      }
-    } catch (e) {
-      console.log("❌ HOMEWORK: Failed to load conversationId:", e);
-    }
-    return null;
-  });
-
-  // 🔥 Save conversationId to localStorage whenever it changes
-  useEffect(() => {
-    if (conversationId) {
-      try {
-        localStorage.setItem(conversationIdKey, conversationId.toString());
-        console.log("💾 HOMEWORK: Saved conversationId to localStorage:", conversationId);
-      } catch (e) {
-        console.log("❌ HOMEWORK: Failed to save conversationId:", e);
-      }
-    }
-  }, [conversationId, conversationIdKey]);
+  // 🔥 Load conversationId from database only (via scanId) - NO localStorage
+  // ConversationId will be fetched from database when task/scanId is available
+  const [conversationId, setConversationId] = useState(null);
 
   // Keep progress at step 2 while chatting
   useEffect(() => {
@@ -252,8 +228,9 @@ export default function HomeworkChat() {
     if (scanId) {
       (async () => {
         try {
-          console.log("🔍 HOMEWORK: Fetching conversation for scanId:", scanId);
+          console.log("🔍 HOMEWORK: Fetching conversation from DATABASE for scanId:", scanId);
 
+          // 🔥 ONLY fetch from database - no localStorage
           const { data } = await api.get(`/conversations`, {
             params: { scan_id: scanId },
           });
@@ -262,24 +239,239 @@ export default function HomeworkChat() {
             const conversation = data[0];
             const convId = conversation.id;
 
-            console.log("✅ HOMEWORK: Found existing conversation:", convId);
+            console.log("✅ HOMEWORK: Found existing conversation in DATABASE:", convId);
             setConversationId(convId);
 
+            // 🔥 Fetch messages ONLY from database
             const { data: messages } = await api.get(`/conversations/${convId}/messages`);
 
             if (messages && messages.length > 0) {
-              console.log("✅ HOMEWORK: Loaded", messages.length, "messages from conversation");
+              console.log("✅ HOMEWORK: Loaded", messages.length, "messages from DATABASE");
 
-              const formattedMessages = messages.map((msg) => ({
-                id: msg.id || Date.now() + Math.random(),
-                from: msg.sender === "student" ? "student" : "agent",
-                type: "text",
-                content: msg.content,
-                timestamp: msg.created_at || new Date().toISOString(),
-              }));
+              // 🔥 Format messages from database only
+              const formattedMessages = messages
+                .filter(msg => {
+                  // Filter empty messages
+                  const content = msg?.content;
+                  return content && (typeof content === 'string' ? content.trim().length > 0 : true);
+                })
+                .map((msg) => ({
+                  id: msg.id || Date.now() + Math.random(),
+                  from: msg.sender === "student" ? "student" : "agent",
+                  type: "text",
+                  content: msg.content,
+                  timestamp: msg.created_at || new Date().toISOString(),
+                }));
 
+              // 🔥 Set chatHistory ONLY from database messages
               setChatHistory(formattedMessages);
             } else {
+              // 🔥 No messages in database - fetch scan results from database
+              try {
+                console.log("🔍 HOMEWORK: No messages in conversation, fetching scan results from DATABASE for scanId:", scanId);
+                const { data: scanData } = await api.get(`/homeworkscans/${scanId}`, {
+                  withCredentials: true,
+                });
+                
+                if (scanData) {
+                  const extracted = scanData?.raw_text || "";
+                  const rawQa = Array.isArray(scanData?.parsed?.questions)
+                    ? scanData.parsed.questions
+                    : Array.isArray(scanData?.qa)
+                    ? scanData.qa
+                    : [];
+                  
+                  // Filter out answers - only keep questions
+                  const qa = rawQa.map((item) => {
+                    const sanitized = {};
+                    if (item.text) sanitized.text = item.text;
+                    if (item.question) sanitized.question = item.question;
+                    if (item.id) sanitized.id = item.id;
+                    if (item.type) sanitized.type = item.type;
+                    return sanitized;
+                  });
+                  
+                  const messagesToAdd = [];
+                  
+                  // Add subject notification if detected
+                  const aiDetectedSubject = scanData?.parsed?.subject || scanData?.detected_subject;
+                  if (aiDetectedSubject) {
+                    const subjectEmoji = {
+                      Mathe: "🔢",
+                      Deutsch: "📗",
+                      Englisch: "🇬🇧",
+                      Sachkunde: "🔬",
+                      Erdkunde: "🌍",
+                      Kunst: "🎨",
+                      Musik: "🎵",
+                      Sport: "⚽",
+                    }[aiDetectedSubject] || "📚";
+                    
+                    messagesToAdd.push(
+                      formatMessage(
+                        `${subjectEmoji} Subject: ${aiDetectedSubject}`,
+                        "agent",
+                        "text"
+                      )
+                    );
+                  }
+                  
+                  // Add extraction result as table
+                  if (extracted || qa.length) {
+                    messagesToAdd.push(
+                      formatMessage(
+                        { extractedText: extracted, qa },
+                        "agent",
+                        "table"
+                      )
+                    );
+                  } else {
+                    messagesToAdd.push(
+                      formatMessage(
+                        "Ich habe das Dokument erhalten, konnte aber nichts Brauchbares extrahieren.",
+                        "agent",
+                        "text"
+                      )
+                    );
+                  }
+                  
+                  // Add tip message
+                  messagesToAdd.push(
+                    formatMessage(
+                      "💡 Tipp: Versuche zuerst selbst, die Fragen zu beantworten. Wenn du Hilfe brauchst oder nicht weiterkommst, frage mich einfach!",
+                      "agent",
+                      "tip"
+                    )
+                  );
+                  
+                  // Add welcome message
+                  messagesToAdd.push(
+                    formatMessage(
+                      buildTaskIntro(task || navTask),
+                      "agent"
+                    )
+                  );
+                  
+                  console.log("✅ HOMEWORK: Adding scan results from DATABASE to chatHistory:", messagesToAdd.length, "messages");
+                  setChatHistory(messagesToAdd);
+                } else {
+                  // Fallback to welcome message only
+                  const welcomeMsg = formatMessage(
+                    buildTaskIntro(task || navTask),
+                    "agent"
+                  );
+                  setChatHistory([welcomeMsg]);
+                }
+              } catch (scanError) {
+                console.error("❌ HOMEWORK: Error fetching scan results from DATABASE:", scanError);
+                // Fallback to welcome message only
+                const welcomeMsg = formatMessage(
+                  buildTaskIntro(task || navTask),
+                  "agent"
+                );
+                setChatHistory([welcomeMsg]);
+              }
+            }
+          } else {
+            // 🔥 No conversation exists - fetch scan results from database
+            try {
+              console.log("🔍 HOMEWORK: No conversation found, fetching scan results from DATABASE for scanId:", scanId);
+              const { data: scanData } = await api.get(`/homeworkscans/${scanId}`, {
+                withCredentials: true,
+              });
+              
+              if (scanData) {
+                const extracted = scanData?.raw_text || "";
+                const rawQa = Array.isArray(scanData?.parsed?.questions)
+                  ? scanData.parsed.questions
+                  : Array.isArray(scanData?.qa)
+                  ? scanData.qa
+                  : [];
+                
+                // Filter out answers - only keep questions
+                const qa = rawQa.map((item) => {
+                  const sanitized = {};
+                  if (item.text) sanitized.text = item.text;
+                  if (item.question) sanitized.question = item.question;
+                  if (item.id) sanitized.id = item.id;
+                  if (item.type) sanitized.type = item.type;
+                  return sanitized;
+                });
+                
+                const messagesToAdd = [];
+                
+                // Add subject notification if detected
+                const aiDetectedSubject = scanData?.parsed?.subject || scanData?.detected_subject;
+                if (aiDetectedSubject) {
+                  const subjectEmoji = {
+                    Mathe: "🔢",
+                    Deutsch: "📗",
+                    Englisch: "🇬🇧",
+                    Sachkunde: "🔬",
+                    Erdkunde: "🌍",
+                    Kunst: "🎨",
+                    Musik: "🎵",
+                    Sport: "⚽",
+                  }[aiDetectedSubject] || "📚";
+                  
+                  messagesToAdd.push(
+                    formatMessage(
+                      `${subjectEmoji} Subject: ${aiDetectedSubject}`,
+                      "agent",
+                      "text"
+                    )
+                  );
+                }
+                
+                // Add extraction result as table
+                if (extracted || qa.length) {
+                  messagesToAdd.push(
+                    formatMessage(
+                      { extractedText: extracted, qa },
+                      "agent",
+                      "table"
+                    )
+                  );
+                } else {
+                  messagesToAdd.push(
+                    formatMessage(
+                      "Ich habe das Dokument erhalten, konnte aber nichts Brauchbares extrahieren.",
+                      "agent",
+                      "text"
+                    )
+                  );
+                }
+                
+                // Add tip message
+                messagesToAdd.push(
+                  formatMessage(
+                    "💡 Tipp: Versuche zuerst selbst, die Fragen zu beantworten. Wenn du Hilfe brauchst oder nicht weiterkommst, frage mich einfach!",
+                    "agent",
+                    "tip"
+                  )
+                );
+                
+                // Add welcome message
+                messagesToAdd.push(
+                  formatMessage(
+                    buildTaskIntro(task || navTask),
+                    "agent"
+                  )
+                );
+                
+                console.log("✅ HOMEWORK: Adding scan results from DATABASE to chatHistory:", messagesToAdd.length, "messages");
+                setChatHistory(messagesToAdd);
+              } else {
+                // Fallback to welcome message only
+                const welcomeMsg = formatMessage(
+                  buildTaskIntro(task || navTask),
+                  "agent"
+                );
+                setChatHistory([welcomeMsg]);
+              }
+            } catch (scanError) {
+              console.error("❌ HOMEWORK: Error fetching scan results from DATABASE:", scanError);
+              // Fallback to welcome message only
               const welcomeMsg = formatMessage(
                 buildTaskIntro(task || navTask),
                 "agent"
@@ -288,9 +480,12 @@ export default function HomeworkChat() {
             }
           }
         } catch (error) {
-          console.error("❌ HOMEWORK: Error loading conversation:", error);
+          console.error("❌ HOMEWORK: Error loading conversation from DATABASE:", error);
         }
       })();
+    } else {
+      // 🔥 No scanId - start with empty chat (will be populated when user sends first message)
+      setChatHistory([]);
     }
   }, [location.key, location.state?.task, location.state?.taskId]);
 

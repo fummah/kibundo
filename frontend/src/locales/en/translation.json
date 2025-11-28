@@ -115,7 +115,8 @@
     "bulk": {
       "setActive": "Set status: Active",
       "setSuspended": "Set status: Suspended",
-      "setBlocked": "Set status: Blocked"
+      "setBlocked": "Set status: Blocked",
+      "delete": "Delete Selected"
     },
     "toast": {
       "statusChanged": "Status changed to {{status}}"
@@ -226,7 +227,9 @@
     "useNow": "Use Now",
     "getOffer": "Get Offer",
     "copiedCode": "Code {{code}} copied to clipboard",
-    "copyFailed": "Failed to copy code"
+    "copyFailed": "Failed to copy code",
+    "exportCsv": "Export CSV",
+    "reset": "Reset"
   },
   "common": {
     "back": "Back"

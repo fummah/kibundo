@@ -32,7 +32,7 @@ export default function SignUp() {
     try {
       setLoading(true);
       const response = await api.post("/auth/signup", form);
-      toast.success("Signup successful!");
+      toast.success("Registrierung erfolgreich!");
       navigate("/signin");
     } catch (err) {
       toast.error(err.response?.data?.message || "Signup failed");
@@ -55,7 +55,7 @@ export default function SignUp() {
         </button>
       </div>
       <Card className="w-full max-w-md p-6 rounded-xl shadow-xl">
-        <Title level={3} className="text-center mb-6">Sign Up</Title>
+        <Title level={3} className="text-center mb-6">Registrieren</Title>
 
         <div className="space-y-4">
           <Input
@@ -99,16 +99,16 @@ export default function SignUp() {
             loading={loading}
             onClick={handleSubmit}
           >
-            Sign Up
+            Registrieren
           </Button>
 
           <div className="text-center text-sm text-gray-600 dark:text-gray-400">
-            Already have an account?{" "}
+            Bereits ein Konto?{" "}
             <span
               onClick={() => navigate("/signin")}
               className="text-indigo-600 cursor-pointer hover:underline"
             >
-              Sign In
+              Anmelden
             </span>
           </div>
         </div>

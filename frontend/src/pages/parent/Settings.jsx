@@ -367,10 +367,10 @@ function SettingsContent({
               <Form.Item 
                 label="State (Bundesland)" 
                 name="state"
-                rules={[{ required: true, message: "Please select your state" }]}
+                rules={[{ required: true, message: "Bitte wählen Sie Ihr Bundesland aus" }]}
               >
                 <Select
-                  placeholder="Select state"
+                  placeholder="Bundesland auswählen"
                   options={states}
                   loading={loadingStates}
                   showSearch

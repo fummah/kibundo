@@ -156,17 +156,10 @@ export default function StudentLogin() {
       login(user, token);
       toast.success("Erfolgreich angemeldet!");
 
-      // Student onboarding flow
+      // Always show start screen after login (intro screen appears first every time)
       if (roleId === ROLES.STUDENT) {
-        const studentId = user?.id || user?.user_id || null;
-        if (!hasSeenIntro(studentId)) {
-          navigate("/student/onboarding/welcome-intro", { replace: true });
-          return;
-        }
-        if (!hasDoneTour(studentId)) {
-          navigate("/student/onboarding/welcome-tour", { replace: true });
-          return;
-        }
+        navigate("/student/onboarding/welcome-intro", { replace: true });
+        return;
       }
 
       const rolePath = ROLE_PATHS[roleId] || "/dashboard";

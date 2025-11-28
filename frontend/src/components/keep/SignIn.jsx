@@ -111,7 +111,7 @@ export default function AuthForm({ mode = "signin" }) {
         {/* Right: Form */}
         <div className="w-full md:w-1/2 p-8 sm:p-10 bg-white dark:bg-gray-900">
           <h2 className="text-2xl font-bold text-center text-gray-800 dark:text-white mb-6">
-            {isSignup ? "Create Your Account" : `${getPortalTitle()} Login`}
+            {isSignup ? "Konto erstellen" : `${getPortalTitle()} Anmeldung`}
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -214,7 +214,7 @@ export default function AuthForm({ mode = "signin" }) {
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
               )}
-              {loading ? (isSignup ? "Signing up..." : "Signing in...") : isSignup ? "Sign Up" : "Sign In"}
+              {loading ? (isSignup ? "Wird registriert..." : "Wird angemeldet...") : isSignup ? "Registrieren" : "Anmelden"}
             </button>
           </form>
         </div>

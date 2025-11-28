@@ -198,7 +198,8 @@
     "bulk": {
       "setActive": "Status setzen: Aktiv",
       "setSuspended": "Status setzen: Gesperrt",
-      "setBlocked": "Status setzen: Blockiert"
+      "setBlocked": "Status setzen: Blockiert",
+      "delete": "Ausgewählte löschen"
     },
     "toast": {
       "statusChanged": "Status geändert zu {{status}}"

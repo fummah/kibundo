@@ -232,12 +232,33 @@ exports.chatWithAgent = async (req, res) => {
           entitiesToFetch,
           `userId: ${userId}, studentId: ${studentId}`
         );
+        console.log(
+          `📋 Total entities assigned to child agent: ${entitiesToFetch.length}`,
+          entitiesToFetch
+        );
         entityData = await fetchEntityData(entitiesToFetch, {
           class: classFilter,
           state,
           userId,
           studentId,
         });
+        console.log(
+          `✅ Successfully fetched ${Object.keys(entityData).length} entities out of ${entitiesToFetch.length} assigned:`,
+          Object.keys(entityData)
+        );
+        const missingEntities = entitiesToFetch.filter(
+          (e) => !Object.keys(entityData).includes(e)
+        );
+        if (missingEntities.length > 0) {
+          console.warn(
+            `⚠️ The following entities were assigned but not fetched (may not exist in models or had errors):`,
+            missingEntities
+          );
+        }
+      } else {
+        console.warn(
+          `⚠️ No entities assigned to child agent "${ai_agent}" - entityData will be empty`
+        );
       }
 
       if (Object.keys(entityData).length > 0) {
@@ -459,9 +480,39 @@ PEDAGOGICAL APPROACH:
 
       if (!convId) {
         const chatMode = req.body?.mode || "general";
+        const startNewChat = req.body?.startNewChat === true || req.body?.startNewChat === "true";
 
-        if (userId) {
+        // 🔥 If explicitly starting a new chat, always create a new conversation
+        if (startNewChat) {
+          console.log("🆕 Starting new chat - creating fresh conversation");
+          let newConvResult;
           try {
+            // Try to insert with mode column first
+            newConvResult = await pool.query(
+              `INSERT INTO conversations(user_id, mode, title) 
+               VALUES($1, $2, $3) 
+               RETURNING id`,
+              [userId || null, chatMode, `Chat ${new Date().toISOString()}`]
+            );
+          } catch (err) {
+            // If mode column doesn't exist, insert without it
+            if (err.code === "42703") {
+              console.log("ℹ️ Mode column not available, inserting without mode");
+              newConvResult = await pool.query(
+                `INSERT INTO conversations(user_id, title) 
+                 VALUES($1, $2) 
+                 RETURNING id`,
+                [userId || null, `Chat ${new Date().toISOString()}`]
+              );
+            } else {
+              throw err;
+            }
+          }
+          convId = newConvResult.rows[0].id;
+          console.log("✅ Created new conversation for fresh chat:", convId);
+        } else if (userId) {
+          try {
+            // Try to query with mode column first
             const existingResult = await pool.query(
               `SELECT id FROM conversations 
                WHERE user_id = $1 
@@ -483,7 +534,32 @@ PEDAGOGICAL APPROACH:
               );
             }
           } catch (err) {
-            console.warn("⚠️ Error checking for existing conversation:", err);
+            // If mode column doesn't exist, query without it
+            if (err.code === '42703') { // column does not exist
+              try {
+                const existingResult = await pool.query(
+                  `SELECT id FROM conversations 
+                   WHERE user_id = $1 
+                   ORDER BY created_at DESC 
+                   LIMIT 1`,
+                  [userId]
+                );
+
+                if (existingResult.rows.length > 0) {
+                  convId = existingResult.rows[0].id;
+                  console.log(
+                    "✅ Found existing conversation:",
+                    convId,
+                    "for user",
+                    userId
+                  );
+                }
+              } catch (err2) {
+                console.warn("⚠️ Error checking for existing conversation:", err2);
+              }
+            } else {
+              console.warn("⚠️ Error checking for existing conversation:", err);
+            }
           }
         }
 
@@ -660,10 +736,23 @@ PEDAGOGICAL APPROACH:
     console.log(
       `📤 Sending ${messages.length} messages to OpenAI (1 system + ${conversationMessages.length} history + 1 current)`
     );
+    const entityKeys = Object.keys(entityData);
+    const entitiesWithData = entityKeys.filter(k => {
+      const d = entityData[k];
+      const count = typeof d.count === "number" ? d.count : (d.data || []).length;
+      return count > 0;
+    });
+    const entitiesWithErrors = entityKeys.filter(k => entityData[k].error);
+    const entitiesWithZeroCount = entityKeys.filter(k => {
+      const d = entityData[k];
+      const count = typeof d.count === "number" ? d.count : (d.data || []).length;
+      return count === 0 && !d.error;
+    });
+    
     console.log(
       `📊 Entity data available: ${
-        Object.keys(entityData).length > 0
-          ? Object.keys(entityData)
+        entitiesWithData.length > 0
+          ? entitiesWithData
               .map((k) => {
                 const d = entityData[k];
                 const count =
@@ -676,6 +765,28 @@ PEDAGOGICAL APPROACH:
           : "none"
       }`
     );
+    
+    if (entitiesWithErrors.length > 0) {
+      console.warn(
+        `⚠️ Entities with errors (not included above):`,
+        entitiesWithErrors.map(k => `${k} (${entityData[k].error})`).join(", ")
+      );
+    }
+    
+    if (entitiesWithZeroCount.length > 0) {
+      console.warn(
+        `ℹ️ Entities with zero records:`,
+        entitiesWithZeroCount.join(", ")
+      );
+    }
+    
+    if (entitiesToFetch && entitiesToFetch.length > entityKeys.length) {
+      const missing = entitiesToFetch.filter(e => !entityKeys.includes(e));
+      console.warn(
+        `⚠️ Entities assigned but not fetched (model not found or other issue):`,
+        missing.join(", ")
+      );
+    }
     console.log(`🖼️ Including ${scanImages.length} images with current question`);
 
     const model = scanImages.length > 0 ? "gpt-4o" : "gpt-4o-mini";
@@ -689,6 +800,27 @@ PEDAGOGICAL APPROACH:
     });
 
     let answer = resp.choices?.[0]?.message?.content || "";
+
+    // 🔥 Extract speech text from answer if it contains <SPEECH> tags
+    let speechText = null;
+    if (answer && typeof answer === "string") {
+      const speechTagRegex = /<SPEECH>(.*?)<\/SPEECH>/gis;
+      const matches = [...answer.matchAll(speechTagRegex)];
+      
+      if (matches.length > 0) {
+        // Extract all speech portions and join them
+        const speechParts = matches.map(match => match[1]?.trim()).filter(Boolean);
+        if (speechParts.length > 0) {
+          speechText = speechParts.join(" ").trim();
+        }
+      } else {
+        // If no tags found and response is short, use entire response for speech
+        const wordCount = answer.trim().split(/\s+/).length;
+        if (wordCount <= 100) {
+          speechText = answer.trim();
+        }
+      }
+    }
 
     // 🔥 POST-PROCESSING: Replace third person with second person for parent agents
     const isParentAgent = agentType === "parent" || ai_agent === "ParentAgent";
@@ -809,6 +941,7 @@ PEDAGOGICAL APPROACH:
 
     res.json({
       answer,
+      speechText: speechText || undefined, // Only include if extracted
       agentName: agentDisplayName,
       conversationId: convId,
     });
@@ -1178,6 +1311,11 @@ async function buildSystemPrompt({
 
 ${dbInstructions}
 
+🔥 IMPORTANT: The dbInstructions above explain how to use entity_data dynamically. You have access to the following entities: ${Object.keys(entityData || {}).length > 0 ? Object.keys(entityData).join(", ") : "none assigned"}
+- Use entity_data dynamically to answer questions - explore the structure and extract actual data, not just counts.
+- If an entity is assigned, use it to provide specific details from the data arrays.
+- This system works with ANY entities the admin assigns - adapt your approach based on what's available.
+
 KONTEXT (Kurzfassung):
 ${contextSummary}
 `;
@@ -1196,7 +1334,7 @@ ${contextSummary}
 
     case "child":
     case "ChildAgent":
-      return buildChildPrompt(trimmedContext, dbInstructions, contextSummary);
+      return buildChildPrompt(trimmedContext, dbInstructions, contextSummary, entityData);
 
     case "teacher":
     case "TeacherAgent":
@@ -1249,23 +1387,97 @@ function buildDatabaseInstructions(entityData) {
 Dir wurde ein Snapshot der Datenbank im Objekt "entity_data" übergeben.
 Diesen Snapshot MUSST du genauso verwenden:
 
-1. Wenn der Benutzer nach etwas fragt, das in entity_data enthalten ist
-   (z.B. Anzahl der Kinder, Namen, Klassen, Fächer, Hausaufgaben, Scans usw.),
-   dann musst du die Antwort ausschließlich aus diesen Daten ableiten.
+🚨🚨🚨 KRITISCH - NUR ZUGEWIESENE ENTITIES VERWENDEN 🚨🚨🚨:
+- Der Admin hat diesem Agenten spezifische Entities zugewiesen. Du MUSST NUR Daten aus den zugewiesenen Entities verwenden.
+- Verfügbare Entities in entity_data: ${entityNames.length > 0 ? entityNames.join(", ") : "KEINE ZUGEWIESEN"}
+- Wenn eine Entity NICHT in der Liste oben steht, bedeutet das, dass der Admin sie NICHT zugewiesen hat, und du solltest NICHT versuchen, darauf zuzugreifen.
+- NUR Informationen aus den oben aufgeführten Entities in entity_data verwenden.
+- Wenn ein Benutzer nach etwas fragt, das eine Entity erfordert, die NICHT zugewiesen ist (z.B. nach Rechnungen fragen, wenn INVOICES Entity nicht zugewiesen ist), erkläre, dass du keinen Zugriff auf diese Information hast.
+- NICHT versuchen, auf Entities zuzugreifen oder sie zu referenzieren, die nicht in der entity_data Liste oben stehen.
+
+1. Wenn der Benutzer nach etwas fragt, das in entity_data enthalten sein könnte:
+   - Identifiziere DYNAMISCH, welche Entity die Antwort enthalten könnte (z.B. Hausaufgaben → suche nach Entity mit "homework" im Namen, Fächer → suche nach Entity mit "subject" im Namen, Klassen → suche nach Entity mit "class" im Namen, etc.)
+   - Suche in entity_data nach dieser Entity (Groß-/Kleinschreibung ignorieren, auch Teilstrings wie "homework", "class", "subject" akzeptieren)
+   - Wenn gefunden, durchsuche die data[] Array und extrahiere die TATSÄCHLICHEN Informationen
+   - 🔥 KRITISCH - FILTERUNG: Wenn der Benutzer nach persönlichen Daten fragt (z.B. "meine Hausaufgaben", "meine Klasse"), MUSST du die data[] Array filtern:
+     * Finde zuerst die Benutzer-ID oder Student-ID aus dem Kontext (user.id, student_id, etc.)
+     * Filtere die data[] Array nach dieser ID (z.B. für Hausaufgaben: filtere nach student_id === user's student_id)
+     * Für Klassen: Finde zuerst den Studenten-Record, dann dessen class_id, dann suche in CLASSES entity nach dieser class_id
+   - Gib spezifische Details, nicht nur Zählungen (z.B. "Die Fächer sind: Mathematik, Deutsch..." statt "Es gibt 4 Fächer")
+   - Liste die tatsächlichen Datensätze auf, nicht nur eine Zahl
+   - Sei proaktiv: Erkunde die entity_data Struktur dynamisch - du brauchst keine spezifischen Anweisungen für jeden Entity-Typ
+   
 2. Du darfst KEINE konkreten Fakten erfinden:
    - keine neuen Namen
    - keine geratenen Zahlen
    - keine frei erfundenen Datumsangaben
+   
 3. Wenn eine Information im Snapshot nicht sichtbar ist,
    schreibe ausdrücklich, dass diese Information im aktuellen Datenbank-Snapshot nicht enthalten ist.
+   
 4. Wenn du zählst, zähle wirklich anhand der Einträge im Snapshot.
+   
 5. Gib niemals Informationen über andere Nutzer/Schüler zurück,
    die NICHT im entity_data Snapshot auftauchen.
+   
+6. Dieses System funktioniert mit ALLEN Entities, die der Admin zuweist - passe deinen Ansatz dynamisch an, basierend auf dem, was verfügbar ist.
 
 ÜBERSICHT ÜBER DIE TABELLEN IM SNAPSHOT:
 - Tabellen (Keys in entity_data): ${entityNames.join(", ")}
 - Gesamtanzahl Datensätze (ungefähr): ${totalRecords}
 ${entityLines}
+
+🔥🔥🔥 KRITISCH - SO ZUGREIFEN AUF entity_data 🔥🔥🔥:
+Die entity_data ist ein JavaScript-Objekt, das dir im Kontext übergeben wurde. Du MUSST direkt darauf zugreifen:
+
+1. STRUCTURE: entity_data ist ein Objekt mit Keys = Entity-Namen (z.B. "HOMEWORK_SCANS", "STUDENTS", "CLASSES")
+2. JEDER Key hat: { count: number, data: array[], summary: string }
+3. ZUGRIFF: entity_data["HOMEWORK_SCANS"] oder entity_data.HOMEWORK_SCANS
+4. DATEN: entity_data["HOMEWORK_SCANS"].data ist ein Array von Hausaufgaben-Records
+5. FILTERUNG: entity_data["HOMEWORK_SCANS"].data.filter(h => h.student_id === studentId)
+
+🔥 BEISPIEL FÜR HOMEWORK QUERIES:
+- Finde entity_data Key mit "homework" im Namen (z.B. "HOMEWORK_SCANS")
+- Greife auf entity_data["HOMEWORK_SCANS"].data zu
+- Filtere: entity_data["HOMEWORK_SCANS"].data.filter(h => h.student_id === ${entityData.STUDENTS || entityData.students ? "student's ID from STUDENTS entity" : "studentId from context"})
+- Liste die gefilterten Records auf mit: detected_subject, created_at, raw_text
+- Für completion: Prüfe h.completed_at oder h.completion_photo_url
+
+🔥 BEISPIEL FÜR "what scans do i have":
+- "scans" = HOMEWORK_SCANS entity
+- Greife auf entity_data["HOMEWORK_SCANS"].data zu
+- Filtere nach student_id
+- Liste alle Scans mit ihren Details auf
+
+🔥🔥🔥 TATSÄCHLICHE entity_data STRUKTUR (AUSSCHNITT) 🔥🔥🔥:
+Hier ist ein Ausschnitt der tatsächlichen entity_data Struktur, damit du siehst, wie die Daten aussehen:
+
+${(() => {
+  const sample = {};
+  entityNames.slice(0, 5).forEach(name => {
+    const info = entityData[name] || {};
+    if (Array.isArray(info.data) && info.data.length > 0) {
+      // Include first record as sample
+      sample[name] = {
+        count: info.count || info.data.length,
+        sample_record: info.data[0],
+        total_records: info.data.length
+      };
+    } else {
+      sample[name] = {
+        count: info.count || 0,
+        note: "No data records"
+      };
+    }
+  });
+  return JSON.stringify(sample, null, 2).substring(0, 8000);
+})()}
+
+⚠️ WICHTIG: 
+- Die entity_data ist IM KONTEXT VERFÜGBAR - du MUSST sie verwenden, nicht nur beschreiben!
+- Der Ausschnitt oben zeigt dir die STRUKTUR - die vollständigen Daten sind in entity_data verfügbar
+- Für HOMEWORK_SCANS: entity_data["HOMEWORK_SCANS"].data enthält ALLE Hausaufgaben-Records
+- Filtere IMMER nach student_id, um nur die Hausaufgaben des aktuellen Schülers zu zeigen
 `;
 }
 
@@ -1330,15 +1542,17 @@ async function buildParentPrompt(
   );
 
   // If no children in trimmedContext, try to get from entity data
+  // Generic lookup: search for STUDENTS entity (case-insensitive)
   if (children.length === 0 && entityData && Object.keys(entityData).length > 0) {
     console.log(
       `⚠️ buildParentPrompt: No children in trimmedContext, checking entity data...`
     );
-    const studentsData =
-      entityData.STUDENTS ||
-      entityData.students ||
-      entityData.STUDENT ||
-      entityData.student;
+    // Dynamically find STUDENTS entity (could be "STUDENTS", "students", "STUDENT", "student")
+    const entityKeys = Object.keys(entityData);
+    const studentsEntityKey = entityKeys.find(k => 
+      k.toLowerCase() === 'students' || k.toLowerCase() === 'student'
+    );
+    const studentsData = studentsEntityKey ? entityData[studentsEntityKey] : null;
 
     if (studentsData && studentsData.data && Array.isArray(studentsData.data)) {
       // Try to get parent_id from req.user or context
@@ -1378,11 +1592,12 @@ async function buildParentPrompt(
           );
 
           // 🔥 Try to get names from invoice data as fallback
-          const invoicesData =
-            entityData.INVOICES ||
-            entityData.invoices ||
-            entityData.INVOICE ||
-            entityData.invoice;
+          // Dynamically find INVOICES entity (could be "INVOICES", "invoices", "INVOICE", "invoice")
+          const entityKeysForLookup = Object.keys(entityData || {});
+          const invoicesEntityKey = entityKeysForLookup.find(k => 
+            k.toLowerCase() === 'invoices' || k.toLowerCase() === 'invoice'
+          );
+          const invoicesData = invoicesEntityKey ? entityData[invoicesEntityKey] : null;
           const invoiceStudentNames = {};
           if (invoicesData && invoicesData.data && Array.isArray(invoicesData.data)) {
             invoicesData.data.forEach((inv) => {
@@ -1400,11 +1615,11 @@ async function buildParentPrompt(
           }
 
           // 🔥 Try to get classes from entity data
-          const classesData =
-            entityData.CLASSES ||
-            entityData.classes ||
-            entityData.CLASS ||
-            entityData.class;
+          // Dynamically find CLASSES entity (could be "CLASSES", "classes", "CLASS", "class")
+          const classesEntityKey = entityKeysForLookup.find(k => 
+            k.toLowerCase() === 'classes' || k.toLowerCase() === 'class'
+          );
+          const classesData = classesEntityKey ? entityData[classesEntityKey] : null;
           const classesMap = {};
           if (classesData && classesData.data && Array.isArray(classesData.data)) {
             classesData.data.forEach((c) => {
@@ -1794,21 +2009,146 @@ ${contextSummary}
 `;
 }
 
-function buildChildPrompt(trimmedContext, dbInstructions, contextSummary) {
+function buildChildPrompt(trimmedContext, dbInstructions, contextSummary, entityData = {}) {
   const user = trimmedContext.user || {};
-  const studentName = user.first_name || "student";
+  const studentName = user.first_name || "Schüler";
+  const studentFullName = `${user.first_name || ""} ${user.last_name || ""}`.trim() || studentName;
   const grade =
     trimmedContext.class_or_grade?.[0]?.class_name || "unknown grade";
   const interests = Array.isArray(trimmedContext.interests)
     ? trimmedContext.interests
     : [];
+  
+  // Get student ID for filtering entity data
+  let studentId = null;
+  let studentUserId = user.id || null;
+  
+  // Try to get student_id from STUDENTS entity_data (generic lookup)
+  const allEntityKeys = Object.keys(entityData || {});
+  const studentsEntityKeyForId = allEntityKeys.find(k => 
+    k.toLowerCase() === 'students' || k.toLowerCase() === 'student'
+  );
+  if (studentsEntityKeyForId) {
+    const studentsEntityDataForId = entityData[studentsEntityKeyForId];
+    if (studentsEntityDataForId && Array.isArray(studentsEntityDataForId.data)) {
+      const studentRecordForId = studentsEntityDataForId.data.find(s => 
+        s.user_id === studentUserId || s.user?.id === studentUserId
+      );
+      if (studentRecordForId?.id) {
+        studentId = studentRecordForId.id;
+      }
+    }
+  }
+  
+  // Fallback: try to get from trimmedContext
+  if (!studentId) {
+    const studentRecord = trimmedContext.user?.student?.[0] || trimmedContext.student?.[0];
+    if (studentRecord?.id) {
+      studentId = studentRecord.id;
+    }
+  }
 
   const interestsLine =
     interests.length > 0
       ? `- Focus topics/interests: ${interests.join(", ")}`
       : "";
 
+  // Extract parent information - PRIORITY: entity_data (admin-assigned) > trimmedContext
+  // This is now generic and works with ANY entities assigned by admin
+  let parentFirstName = "";
+  let parentLastName = "";
+  let parentFullName = "";
+  let parentEmail = "";
+  
+  // Strategy: Dynamically search entity_data for parent information
+  // First, try to get parent_id from any STUDENTS entity (if assigned by admin)
+  let parentId = null;
+  
+  // Look for STUDENTS entity (case-insensitive)
+  const studentsEntityKeyForParent = allEntityKeys.find(k => 
+    k.toLowerCase() === 'students' || k.toLowerCase() === 'student'
+  );
+  if (studentsEntityKeyForParent) {
+    const studentsEntityDataForParent = entityData[studentsEntityKeyForParent];
+    if (studentsEntityDataForParent && Array.isArray(studentsEntityDataForParent.data)) {
+      const studentUserIdForParent = user.id || trimmedContext.user?.id;
+      const studentRecordForParent = studentsEntityDataForParent.data.find(s => 
+        s.user_id === studentUserIdForParent || s.user?.id === studentUserIdForParent || s.user_id === user.id
+      );
+      if (studentRecordForParent?.parent_id) {
+        parentId = studentRecordForParent.parent_id;
+      }
+    }
+  }
+  
+  // If not found in entity_data, try trimmedContext (from childBuildContext)
+  if (!parentId) {
+    const studentRecord = trimmedContext.user?.student?.[0] || trimmedContext.student?.[0];
+    if (studentRecord?.parent_id) {
+      parentId = studentRecord.parent_id;
+    }
+  }
+  
+  // Now find the parent using parent_id - search in ANY PARENTS entity (if assigned by admin)
+  if (parentId) {
+    // Look for PARENTS entity (case-insensitive)
+    const parentsEntityKey = allEntityKeys.find(k => 
+      k.toLowerCase() === 'parents' || k.toLowerCase() === 'parent'
+    );
+    if (parentsEntityKey) {
+      const parentsEntityData = entityData[parentsEntityKey];
+      if (parentsEntityData && Array.isArray(parentsEntityData.data)) {
+        const parentFromEntity = parentsEntityData.data.find(p => p.id === parentId);
+        if (parentFromEntity) {
+          // Fully generic extraction - try multiple possible paths in entity_data structure
+          // The structure can vary: parent.user.email, parent.User.email, parent.email, etc.
+          const parentUser = parentFromEntity.user || parentFromEntity.User || parentFromEntity;
+          parentFirstName = parentUser?.first_name || parentFromEntity.first_name || "";
+          parentLastName = parentUser?.last_name || parentFromEntity.last_name || "";
+          parentFullName = `${parentFirstName} ${parentLastName}`.trim() || parentFirstName || "";
+          // Email can be at user.email, User.email, or directly on parent object
+          parentEmail = parentUser?.email || parentFromEntity.email || "";
+        }
+      }
+    }
+    
+    // Fallback to trimmedContext.parent if not found in entity_data
+    if (!parentFullName) {
+      const parents = Array.isArray(trimmedContext.parent) ? trimmedContext.parent : [];
+      const parentInfo = parents.find(p => p.id === parentId) || (parents.length > 0 ? parents[0] : null);
+      if (parentInfo) {
+        const parentUser = parentInfo.user || parentInfo.User || {};
+        parentFirstName = parentUser.first_name || parentInfo.first_name || "";
+        parentLastName = parentUser.last_name || parentInfo.last_name || "";
+        parentFullName = `${parentFirstName} ${parentLastName}`.trim() || parentFirstName || "";
+        parentEmail = parentUser.email || parentInfo.email || "";
+      }
+    }
+  } else {
+    // No parent_id found, try trimmedContext.parent as last resort
+    const parents = Array.isArray(trimmedContext.parent) ? trimmedContext.parent : [];
+    const parentInfo = parents.length > 0 ? parents[0] : null;
+    if (parentInfo) {
+      const parentUser = parentInfo.user || parentInfo.User || {};
+      parentFirstName = parentUser.first_name || parentInfo.first_name || "";
+      parentLastName = parentUser.last_name || parentInfo.last_name || "";
+      parentFullName = `${parentFirstName} ${parentLastName}`.trim() || parentFirstName || "";
+      parentEmail = parentUser.email || parentInfo.email || "";
+    }
+  }
+  
+  const parentInfoLine = parentFullName
+    ? `- Parent's name: ${parentFullName} (first name: ${parentFirstName}${parentLastName ? `, last name: ${parentLastName}` : ""})${parentEmail ? `, email: ${parentEmail}` : ""}`
+    : "- Parent's name: Not available in current data";
+
   return `You are Kibundo, a helpful, friendly and patient AI tutor for primary school children.
+
+🚨🚨🚨 CRITICAL - RESPONSE STYLE - ABSOLUTE REQUIREMENT 🚨🚨🚨:
+- Answer DIRECTLY and CONCISELY. NO filler phrases, NO preambles, NO congratulations for factual questions.
+- FORBIDDEN phrases: "Lass mich kurz nachsehen", "Einen Moment bitte", "Ich werde die Informationen finden", "Super gemacht", "Gut gemacht", "Gibt es etwas Bestimmtes", "Wenn du Fragen hast", "...", or ANY similar verbose phrases.
+- For factual questions (e.g., "what grade am i", "what class am i", "who is my parent"), answer IMMEDIATELY with just the fact: "Du bist in der zweiten Klasse, ${studentName}." or "Dein Elternteil heißt [name], ${studentName}."
+- Do NOT add ANY extra phrases, congratulations, or offers to help unless the student explicitly asks for help or encouragement.
+- Just state the fact directly. Period.
 
 CORE BEHAVIOUR:
 - Explain everything step by step and in simple language.
@@ -1818,25 +2158,129 @@ CORE BEHAVIOUR:
 - If the question is unclear, ask a short clarifying question.
 - When homework context is provided, ALWAYS base the help on that specific homework.
 
+🔥 CRITICAL - STUDENT NAME USAGE:
+- The student's name is: ${studentName} (full name: ${studentFullName})
+- You MUST ALWAYS address the student by their first name (${studentName}) in EVERY message.
+- NEVER use generic terms like "student", "child", "you" without the name - always say "${studentName}" or "Hallo ${studentName}" or similar.
+- This personal connection is essential for building trust and engagement.
+- When greeting, always say "Hallo ${studentName}!" or "Hi ${studentName}!" in German, or "Hello ${studentName}!" in English.
+- When asking questions, use their name: "${studentName}, kannst du mir helfen?" or "${studentName}, was denkst du?"
+- When giving feedback, use their name: "Super gemacht, ${studentName}!" or "Gut, ${studentName}!"
+
 STUDENT INFORMATION:
-- Student's name: ${studentName}
+- Student's first name: ${studentName}
+- Student's full name: ${studentFullName}
 - Grade/Class: ${grade}
 ${interestsLine}
 
-GRADE AWARENESS:
-- For Grade 1–2: use VERY simple words and short sentences.
-- For Grade 3–4: you can be a bit more detailed but still easy to understand.
-- If grade is unknown, assume Grade 3 and be slightly simpler than necessary.
-
 PARENT INFORMATION:
-- If the student asks about their parent, use the parent information from the context.
-- DO NOT invent parent names that are not present in the context/entity_data.
+${parentInfoLine}
+- If the student asks "what is my parent name" or "what is my parent's name" or "who is my parent" or "what is my parent's email", you MUST answer with the parent's name and email (if available).
+- 🔥 CRITICAL: The parent information comes EXCLUSIVELY from entity_data (if PARENTS/PARENT entity is assigned by admin) or from the context above.
+- If PARENTS/PARENT entity is assigned by admin, look in entity_data for the entity key (could be "PARENTS", "parents", "PARENT", or "parent") and search in its data[] array.
+- Extract parent information directly from the entity_data structure - do NOT hardcode any field paths. The data structure may vary.
+- The parent information extracted from entity_data: ${parentFullName ? `name: "${parentFullName}"` : "name: not available"}${parentEmail ? `, email: "${parentEmail}"` : ", email: not available"}
+- If parent name is available (${parentFullName ? `"${parentFullName}"` : "not available"}), answer: "${parentFullName ? `Dein Elternteil heißt ${parentFullName}${parentEmail ? ` und die E-Mail-Adresse ist ${parentEmail}` : ""}, ${studentName}!` : "Ich habe diese Information leider nicht in meinen Daten, ${studentName}."}"
+- If the student asks about the parent's email specifically, and it's available in entity_data (${parentEmail ? `"${parentEmail}"` : "not available"}), include it in your response: "${parentEmail ? `Die E-Mail-Adresse deines Elternteils ist ${parentEmail}, ${studentName}.` : "Ich habe die E-Mail-Adresse deines Elternteils leider nicht in meinen Daten, ${studentName}."}"
+- NEVER say "I don't have that information" if the parent name or email is listed above or in entity_data - it IS available.
+- If the parent name or email is not available in entity_data, be honest but friendly: "Ich habe diese Information leider nicht in meinen Daten, ${studentName}."
+- DO NOT invent parent names or emails that are not present in entity_data or the context above.
+- ONLY use the data that is actually present in the entity_data structure - do not assume any specific field names or paths.
 
 DATABASE AWARENESS:
 ${dbInstructions}
 
+🔥 CRITICAL - ENTITY DATA USAGE (ADMIN-ASSIGNED):
+- The admin has assigned specific entities to this agent. You MUST ONLY use data from the entities that are assigned.
+- Available entities in entity_data: ${Object.keys(entityData || {}).length > 0 ? Object.keys(entityData).join(", ") : "none assigned"}
+- If an entity is NOT in the list above, it means the admin has NOT assigned it, and you should NOT try to access it.
+
+- ONLY use information from the entities listed above in entity_data.
+- If a student asks about something that requires an entity NOT assigned (e.g., asking about invoices when INVOICES entity is not assigned), explain that you don't have access to that information.
+- DO NOT try to access or reference entities that are not in the entity_data list above.
+
+🔥 GENERIC ENTITY DATA USAGE (DYNAMIC - NO HARDCODING):
+- The admin has assigned specific entities to this agent. You can see which entities are available in the list above.
+- When a student asks about ANY topic, dynamically check if there's a relevant entity in entity_data that might contain the answer.
+- Entity names can vary (e.g., HOMEWORK_SCANS, homework_scans, HOMEWORK_SCAN, homework_scan) - search case-insensitively and by partial matches (e.g., "homework" matches "HOMEWORK_SCANS").
+- Each entity in entity_data has a structure like: { count: number, data: array[], summary: string }
+- 🔥 CRITICAL - NESTED RELATIONSHIPS: Entity records may have nested objects/relationships (e.g., student.class.class_name, student.user.first_name, student.subject[].subject.subject_name). Always explore the full structure of each record.
+- To find information dynamically:
+  1. Identify which entity might contain the answer by searching for keywords in entity names (e.g., "homework" → find entity with "homework" in name, "class" → find entity with "class" in name)
+  2. Search entity_data for that entity (case-insensitive matching, partial string matching)
+  3. If found, explore the data[] array to find relevant records
+  4. 🔥 CRITICAL - FILTERING FOR PERSONAL DATA: When the student asks about THEIR data (e.g., "my homework", "my class"), you MUST filter:
+     * First, identify the student's ID: user_id=${studentUserId || user.id || "from context"}, student_id=${studentId || "from STUDENTS entity"}
+     * For homework queries ("what homeworks do i have", "how many did i complete"): 
+       - Find entity with "homework" in name (e.g., HOMEWORK_SCANS, homework_scans, HOMEWORK_SCAN)
+       - Get student_id: ${studentId || "from STUDENTS entity by matching user_id=" + (studentUserId || user.id)}
+       - Filter the entity's data[] array where student_id === ${studentId || "student's ID"}
+       - If no records match, say: "Du hast aktuell keine Hausaufgaben in meinen Daten, ${studentName}."
+       - If records found, list them with: subject (detected_subject field), date (created_at field), description (raw_text if available)
+       - For completion queries ("how many did i complete"): 
+         * Check each homework record for completed_at field (if it exists and is not null, homework is completed)
+         * OR check for completion_photo_url field (if it exists and is not null, homework is completed)
+         * Count: total homework = all records, completed = records where completed_at OR completion_photo_url exists
+         * Answer: "Du hast [completed] von [total] Hausaufgaben abgeschlossen, ${studentName}." or list them
+       - Answer format for "what homeworks": "Du hast [count] Hausaufgaben, ${studentName}. [List subjects and dates]" 
+       - NEVER say "I don't have information" if HOMEWORK_SCANS entity is assigned - you MUST search and filter by student_id
+     * For class queries: 
+       - Find the student record in STUDENTS entity (matching user_id=${studentUserId || user.id} or student_id=${studentId})
+       - 🔥 FIRST: Check if the student record has a nested "class" object/relationship (e.g., student.class.class_name, student.class_name, student.Class.class_name)
+       - If nested class relationship exists, extract class_name directly from it (this is the preferred method)
+       - If no nested class but class_id exists, then find that class_id in CLASSES entity (search for entity with "class" in name, then match id === class_id)
+       - Always explore the full structure of the student record - relationships can be nested at different levels
+     * For subject queries: Check if student has a nested "subject" or "subjects" array/relationship, explore it to get subject names
+  5. Extract and provide the ACTUAL information from the filtered data, not just counts
+  6. If filtering returns empty results, say: "Du hast aktuell keine [entity] in meinen Daten, ${studentName}." (NOT "I don't have information")
+  7. Always explore nested relationships in entity records - data structures can have objects within objects (e.g., student.class.class_name, student.user.email)
+  
+- Always provide specific details from entity_data when available:
+  * WRONG: "Es gibt 4 Fächer" (just a count)
+  * RIGHT: "Die Fächer sind: Mathematik, Deutsch, Englisch und Sachkunde, ${studentName}!" (actual names from entity_data.data[])
+  
+- If the student asks about something and the relevant entity is NOT in the assigned list, explain that you don't have access to that information.
+- Be proactive: explore entity_data structure dynamically to answer questions - you don't need specific instructions for each entity type.
+- This system is designed to work with ANY entities the admin assigns - adapt your approach based on what's available.
+
 Only use concrete facts (names, counts, dates, etc.) if you can see them in the database snapshot (entity_data) or the context summary.
 If something is not present there, be honest and say that you don't have that information, instead of guessing.
+
+🎤🎤🎤 CRITICAL - SPEECH OUTPUT FORMATTING (TTS) 🎤🎤🎤:
+Speech output is very important for accessibility. You need to specify what should be SPOKEN vs what should only be DISPLAYED.
+
+FORMATTING RULES:
+1. For responses that contain both visual and spoken content:
+   - Put the main spoken message inside <SPEECH>...</SPEECH> tags
+   - Content outside these tags is for display only (lists, formatted text, etc.)
+   - Example:
+     <SPEECH>${studentName}, du musst bei deiner Hausaufgabe folgende Aufgaben erledigen.</SPEECH>
+     Die Aufgaben sind:
+     1. Trage die Zahlen 11, 19, 31 in den Zahlenstrahl ein.
+     2. Trage die Zahlen 45, 63, 12 ein.
+     <SPEECH>Probiere zunächst, die ersten beiden Aufgaben zu lösen! Du kannst das schaffen!</SPEECH>
+
+2. For simple responses (short, conversational):
+   - If your entire response should be spoken, you don't need tags
+   - The system will automatically speak the whole response
+
+3. For complex responses with lists, tables, or formatted content:
+   - ALWAYS wrap the spoken summary in <SPEECH>...</SPEECH> tags
+   - Provide a brief, natural summary that captures the essence
+   - Example for homework tasks:
+     <SPEECH>Hallo ${studentName}! Du hast heute eine Matheaufgabe. Du musst Zahlen in einen Zahlenstrahl eintragen. Probiere die ersten beiden Aufgaben zu lösen!</SPEECH>
+     ${studentName}, du musst bei deiner Hausaufgabe folgende Aufgaben erledigen:
+     1. Trage die Zahlen 11, 19, 31, 42, 57, 70, 86 und 94 in den Zahlenstrahl ein.
+     2. Trage die Zahlen 45, 63, 12, 36, 71, 54, 92 und 79 ein.
+     3. Überlege, welche Zahlen du eingetragen hast.
+     4. Denke nach, welche anderen Zahlen auch in den Zahlenstrahl passen könnten.
+
+4. IMPORTANT:
+   - Keep speech content SHORT and NATURAL (30-50 words for complex content)
+   - Focus on motivation and key points for speech
+   - Detailed lists and instructions should be outside <SPEECH> tags (display only)
+   - Always include the student's name in speech portions
+   - Use encouraging, conversational tone in speech portions
 
 BACKGROUND CONTEXT (for you only):
 ${contextSummary}

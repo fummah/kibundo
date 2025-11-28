@@ -118,7 +118,7 @@ export default function SignUp() {
         toast.error(`Role mismatch! Expected ${role_id} but got ${userRoleId}`);
       }
 
-      toast.success("Account created!");
+      toast.success("Konto erstellt!");
 
       if (role_id === ROLES.STUDENT) {
         try {
@@ -157,11 +157,11 @@ export default function SignUp() {
 
       const isConflict = status === 409;
       const msg =
-        (isConflict && "An account with these details already exists.") ||
+        (isConflict && "Ein Konto mit diesen Daten existiert bereits.") ||
         err?.response?.data?.message ||
         err?.response?.data?.error ||
         err?.message ||
-        "Signup failed";
+        "Registrierung fehlgeschlagen";
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -204,12 +204,12 @@ export default function SignUp() {
           >
           <Form.Item
             name="first_name"
-            rules={[{ required: true, message: "Please enter your first name" }]}
+            rules={[{ required: true, message: "Bitte geben Sie Ihren Vornamen ein" }]}
             className="mb-3"
-            label={<span className="hidden">First Name</span>}
+            label={<span className="hidden">Vorname</span>}
           >
             <Input
-              placeholder="First Name"
+              placeholder="Vorname"
               autoComplete="given-name"
               disabled={loading}
               className={inputClass}
@@ -218,12 +218,12 @@ export default function SignUp() {
 
           <Form.Item
             name="last_name"
-            rules={[{ required: true, message: "Please enter your last name" }]}
+            rules={[{ required: true, message: "Bitte geben Sie Ihren Nachnamen ein" }]}
             className="mb-3"
-            label={<span className="hidden">Last Name</span>}
+            label={<span className="hidden">Nachname</span>}
           >
             <Input
-              placeholder="Last Name"
+              placeholder="Nachname"
               autoComplete="family-name"
               disabled={loading}
               className={inputClass}
@@ -234,11 +234,11 @@ export default function SignUp() {
             name="bundesland"
             rules={[{ required: false }]}
             className="mb-3"
-            label={<span className="hidden">Bundesland (optional)</span>}
+            label={<span className="hidden">Bundesland (fakultativ)</span>}
           >
             <div className={`${inputClass} flex items-center !px-0`}>
               <Select
-                placeholder="Bundesland (optional)"
+                placeholder="Bundesland auswählen (fakultativ)"
                 disabled={loading}
                 showSearch
                 optionFilterProp="label"
@@ -254,14 +254,14 @@ export default function SignUp() {
           <Form.Item
             name="email"
             rules={[
-              { required: true, message: "Email is required" },
-              { type: "email", message: "Invalid email" },
+              { required: true, message: "E-Mail ist erforderlich" },
+              { type: "email", message: "Ungültige E-Mail-Adresse" },
             ]}
             className="mb-1"
-            label={<span className="hidden">Email</span>}
+            label={<span className="hidden">E-Mail</span>}
           >
             <Input
-              placeholder="Email address"
+              placeholder="E-Mail-Adresse"
               autoComplete="email"
               inputMode="email"
               autoCapitalize="none"
@@ -273,24 +273,24 @@ export default function SignUp() {
 
           <Form.Item className="mb-3">
             <Text className="text-xs text-[#816B5B]">
-              This email address will also be your username when logging in.
+              Diese E-Mail-Adresse wird auch Ihr Benutzername beim Anmelden sein.
             </Text>
           </Form.Item>
 
           <Form.Item
             name="password"
             rules={[
-              { required: true, message: "Please enter a password" },
+              { required: true, message: "Bitte geben Sie ein Passwort ein" },
               {
                 min: 6,
-                message: "The password must be at least 6 characters long",
+                message: "Das Passwort muss mindestens 6 Zeichen lang sein",
               },
             ]}
             className="mb-3"
-            label={<span className="hidden">Password</span>}
+            label={<span className="hidden">Passwort</span>}
           >
             <Input.Password
-              placeholder="Password"
+              placeholder="Passwort"
               autoComplete="new-password"
               disabled={loading}
               className={inputClass}
@@ -301,23 +301,23 @@ export default function SignUp() {
             name="confirm_password"
             dependencies={["password"]}
             rules={[
-              { required: true, message: "Please confirm your password" },
+              { required: true, message: "Bitte bestätigen Sie Ihr Passwort" },
               ({ getFieldValue }) => ({
                 validator(_, value) {
                   if (!value || getFieldValue("password") === value) {
                     return Promise.resolve();
                   }
                   return Promise.reject(
-                    new Error("Passwords do not match")
+                    new Error("Die Passwörter stimmen nicht überein")
                   );
                 },
               }),
             ]}
             className="mb-4"
-            label={<span className="hidden">Confirm Password</span>}
+            label={<span className="hidden">Passwort bestätigen</span>}
           >
             <Input.Password
-              placeholder="Confirm password"
+              placeholder="Passwort bestätigen"
               autoComplete="new-password"
               disabled={loading}
               className={inputClass}
@@ -334,7 +334,7 @@ export default function SignUp() {
                     ? Promise.resolve()
                     : Promise.reject(
                         new Error(
-                          "Please accept the Privacy Policy and Terms & Conditions"
+                          "Bitte akzeptieren Sie die Datenschutzerklärung und die Allgemeinen Geschäftsbedingungen"
                         )
                       ),
               },
@@ -342,26 +342,26 @@ export default function SignUp() {
             className="mb-4"
           >
             <Checkbox disabled={loading} className="text-sm text-[#4F3A2D]">
-              I accept the{" "}
+              Ich akzeptiere die{" "}
               <Link
                 to="/privacy-policy"
                 className="text-[#FF8400] underline hover:text-[#FF7600]"
               >
-                Privacy Policy
+                Datenschutzerklärung
               </Link>{" "}
-              and{" "}
+              und die{" "}
               <Link
                 to="/terms"
                 className="text-[#FF8400] underline hover:text-[#FF7600]"
               >
-                Terms &amp; Conditions
+                Allgemeinen Geschäftsbedingungen
               </Link>
               .
             </Checkbox>
           </Form.Item>
 
           <div className="mt-6 text-center text-sm font-medium text-[#816B5B] tracking-wide">
-            7 days free trial without any risk!
+            7 Tage kostenlos testen ohne Risiko!
           </div>
 
           <button
@@ -373,9 +373,9 @@ export default function SignUp() {
           </button>
 
           <Text className="mt-5 block text-center text-sm text-[#816B5B]">
-            Already have an account?{" "}
+            Bereits ein Konto?{" "}
             <Link to="/signin" className="font-semibold text-[#FF8400]">
-              Sign In
+              Anmelden
             </Link>
           </Text>
         </Form>

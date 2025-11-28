@@ -3510,26 +3510,72 @@ exports.getHomeworks = async (req, res) => {
   try {
     const { student_id } = req.query;
     
-    if (!student_id) {
-      return res.status(400).json({ message: 'student_id query parameter is required' });
+    // Build where clause - if student_id is provided, filter by it; otherwise get all
+    const whereClause = {};
+    if (student_id) {
+      const studentId = parseInt(student_id, 10);
+      if (isNaN(studentId)) {
+        return res.status(400).json({ message: 'student_id must be a valid number' });
+      }
+      whereClause.student_id = studentId;
+      console.log("📚 Route /homeworkscans called with student_id:", studentId);
+    } else {
+      console.log("📚 Route /homeworkscans called - fetching ALL homework scans");
     }
     
-    // Convert to integer if it's a string
-    const studentId = parseInt(student_id, 10);
-    if (isNaN(studentId)) {
-      return res.status(400).json({ message: 'student_id must be a valid number' });
-    }
-    
-    console.log("📚 Route /homeworkscans called with student_id:", studentId);
-    
-    // Query homework scans for the specified student
+    // Query homework scans with student relationship included
     const homeworks = await db.homeworkScan.findAll({
-      where: { student_id: studentId },
+      where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
+      include: [
+        {
+          model: db.student,
+          as: 'student',
+          required: false,
+          include: [
+            {
+              model: db.user,
+              as: 'user',
+              attributes: { exclude: ['password'] },
+              required: false
+            },
+            {
+              model: db.class,
+              as: 'class',
+              attributes: ['id', 'class_name'],
+              required: false
+            }
+          ]
+        }
+      ],
       order: [['created_at', 'DESC']]
     });
     
-    console.log("📚 Found", homeworks.length, "homework submissions for student_id:", studentId);
-    res.json(homeworks);
+    const count = homeworks.length;
+    if (student_id) {
+      console.log(`📚 Found ${count} homework submissions for student_id: ${student_id}`);
+    } else {
+      console.log(`📚 Found ${count} total homework scans in database`);
+    }
+    
+    // Convert Sequelize instances to plain objects to ensure relationships are included
+    const plainHomeworks = homeworks.map(hw => {
+      const plain = hw.get ? hw.get({ plain: true }) : hw;
+      // Log first scan structure for debugging
+      if (hw.id === homeworks[0]?.id) {
+        console.log("📋 Sample scan structure:", {
+          id: plain.id,
+          student_id: plain.student_id,
+          hasStudent: !!plain.student,
+          studentName: plain.student?.user?.first_name || "N/A",
+          detected_subject: plain.detected_subject,
+          task_type: plain.task_type,
+          grade: plain.grade
+        });
+      }
+      return plain;
+    });
+    
+    res.json(plainHomeworks);
   } catch (err) {
     console.error("❌ Error fetching homework scans:", err);
     res.status(500).json({ message: err.message || 'Internal server error' });
@@ -3567,6 +3613,131 @@ exports.getStudentIdByUserId = async (req, res) => {
     res.json({ student_id: student.id });
   } catch (err) {
     console.error("❌ Error fetching student_id:", err);
+    res.status(500).json({ message: err.message || 'Internal server error' });
+  }
+};
+
+// Get a single homework scan by ID
+exports.getHomeworkScanById = async (req, res) => {
+  try {
+    const scanId = parseInt(req.params.id, 10);
+    if (isNaN(scanId)) {
+      console.warn("⚠️ Invalid scan ID provided:", req.params.id);
+      return res.status(400).json({ message: 'Invalid scan ID' });
+    }
+
+    console.log("📚 [getHomeworkScanById] Fetching homework scan by ID:", scanId);
+    console.log("📚 [getHomeworkScanById] Request params:", req.params);
+    console.log("📚 [getHomeworkScanById] Request method:", req.method);
+
+    const scan = await db.homeworkScan.findOne({
+      where: { id: scanId },
+      include: [
+        {
+          model: db.student,
+          as: 'student',
+          required: false,
+          include: [
+            {
+              model: db.user,
+              as: 'user',
+              attributes: { exclude: ['password'] },
+              required: false
+            },
+            {
+              model: db.class,
+              as: 'class',
+              attributes: ['id', 'class_name'],
+              required: false
+            }
+          ]
+        }
+      ]
+    });
+
+    if (!scan) {
+      console.log("⚠️ [getHomeworkScanById] Homework scan not found for ID:", scanId);
+      // Check if any scans exist at all
+      const totalScans = await db.homeworkScan.count();
+      console.log("ℹ️ [getHomeworkScanById] Total scans in database:", totalScans);
+      return res.status(404).json({ message: 'Homework scan not found' });
+    }
+
+    // Convert Sequelize instance to plain object
+    const plainScan = scan.get ? scan.get({ plain: true }) : scan;
+    
+    console.log("✅ [getHomeworkScanById] Found homework scan:", {
+      id: plainScan.id,
+      student_id: plainScan.student_id,
+      hasStudent: !!plainScan.student,
+      detected_subject: plainScan.detected_subject
+    });
+    res.json(plainScan);
+  } catch (err) {
+    console.error("❌ [getHomeworkScanById] Error fetching homework scan by ID:", err);
+    console.error("❌ [getHomeworkScanById] Error stack:", err.stack);
+    res.status(500).json({ message: err.message || 'Internal server error' });
+  }
+};
+
+exports.deleteHomeworkScan = async (req, res) => {
+  try {
+    const scanId = parseInt(req.params.id, 10);
+    if (isNaN(scanId)) {
+      return res.status(400).json({ message: 'Invalid scan ID' });
+    }
+
+    console.log("🗑️ Deleting homework scan by ID:", scanId);
+
+    // Find the scan first to get file URLs for cleanup
+    const scan = await db.homeworkScan.findOne({
+      where: { id: scanId }
+    });
+
+    if (!scan) {
+      console.log("⚠️ Homework scan not found for ID:", scanId);
+      return res.status(404).json({ message: 'Homework scan not found' });
+    }
+
+    // Delete associated files if they exist
+    const fs = require('fs');
+    const path = require('path');
+    
+    if (scan.file_url) {
+      try {
+        const filePath = path.join(process.cwd(), scan.file_url);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log("✅ Deleted file:", filePath);
+        }
+      } catch (fileErr) {
+        console.warn("⚠️ Could not delete file:", scan.file_url, fileErr.message);
+        // Continue with database deletion even if file deletion fails
+      }
+    }
+
+    if (scan.completion_photo_url) {
+      try {
+        const completionPath = path.join(process.cwd(), scan.completion_photo_url);
+        if (fs.existsSync(completionPath)) {
+          fs.unlinkSync(completionPath);
+          console.log("✅ Deleted completion photo:", completionPath);
+        }
+      } catch (fileErr) {
+        console.warn("⚠️ Could not delete completion photo:", scan.completion_photo_url, fileErr.message);
+        // Continue with database deletion even if file deletion fails
+      }
+    }
+
+    // Delete the scan from database
+    await db.homeworkScan.destroy({
+      where: { id: scanId }
+    });
+
+    console.log("✅ Homework scan deleted successfully:", scanId);
+    res.json({ message: 'Homework scan deleted successfully' });
+  } catch (err) {
+    console.error("❌ Error deleting homework scan:", err);
     res.status(500).json({ message: err.message || 'Internal server error' });
   }
 };

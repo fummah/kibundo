@@ -8,11 +8,28 @@ import api from "@/api/axios";
  */
 export async function resolveStudentAgent() {
   try {
-    const token =
-      localStorage.getItem("kibundo_token") ||
-      sessionStorage.getItem("kibundo_token");
+    // Check for tokens in both admin (localStorage) and portal (sessionStorage) locations
+    const adminToken = localStorage.getItem("kibundo_token") || localStorage.getItem("token");
+    const portalToken = sessionStorage.getItem("portal.token");
+    const token = adminToken || portalToken;
 
+    // If no token found, return default immediately (no API call needed)
     if (!token) {
+      return {
+        name: "Kibundo",
+        id: null,
+        grade: null,
+        state: null,
+        entities: [],
+      };
+    }
+
+    // Check if we're on a student route - if not, don't make API calls
+    const currentPath = window?.location?.pathname || "";
+    const isStudentRoute = /^\/(student|parent)\b/i.test(currentPath);
+    
+    // If not on a student/parent route, return default without API call
+    if (!isStudentRoute) {
       return {
         name: "Kibundo",
         id: null,
@@ -25,9 +42,25 @@ export async function resolveStudentAgent() {
     // Attempt to fetch grade/state filtered agents
     try {
       const resp = await api.get("/student/agents", {
-        validateStatus: (status) => status < 500,
+        validateStatus: (status) => status < 500, // Allow 401, 403, 404, etc. but not 500+
         withCredentials: true,
+        meta: {
+          redirectOn401: false, // Don't redirect on 401, just return default
+          toastNetwork: false, // Don't show toast for network errors
+        },
       });
+
+      // Handle 401 gracefully - user might not be authenticated yet
+      if (resp?.status === 401 || resp?.status === 403) {
+        // Silently return default - this is expected when not authenticated
+        return {
+          name: "Kibundo",
+          id: null,
+          grade: null,
+          state: null,
+          entities: [],
+        };
+      }
 
       if (Array.isArray(resp?.data) && resp.data.length > 0) {
         const agent = resp.data[0];
@@ -49,18 +82,50 @@ export async function resolveStudentAgent() {
         }
       }
     } catch (err) {
-      console.debug(
-        "resolveStudentAgent: filtered agents fetch failed",
-        err?.message || err
-      );
+      // Silently handle 401/403 errors - they're expected when not authenticated
+      const status = err?.response?.status;
+      if (status === 401 || status === 403) {
+        // Return default silently
+        return {
+          name: "Kibundo",
+          id: null,
+          grade: null,
+          state: null,
+          entities: [],
+        };
+      }
+      // Only log unexpected errors
+      if (status && status >= 500) {
+        console.debug(
+          "resolveStudentAgent: filtered agents fetch failed",
+          err?.message || err
+        );
+      }
     }
 
     // Fallback to global default AI settings
     try {
       const resp = await api.get("/aisettings", {
-        validateStatus: (status) => status < 500,
+        validateStatus: (status) => status < 500, // Allow 401, 403, 404, etc. but not 500+
         withCredentials: true,
+        meta: {
+          redirectOn401: false, // Don't redirect on 401, just return default
+          toastNetwork: false, // Don't show toast for network errors
+        },
       });
+
+      // Handle 401/403 gracefully
+      if (resp?.status === 401 || resp?.status === 403) {
+        // Silently return default - this is expected when not authenticated
+        return {
+          name: "Kibundo",
+          id: null,
+          grade: null,
+          state: null,
+          entities: [],
+        };
+      }
+
       if (resp?.data?.child_default_ai) {
         if (resp.data.child_default_ai) {
           return {
@@ -73,10 +138,25 @@ export async function resolveStudentAgent() {
         }
       }
     } catch (err) {
-      console.debug(
-        "resolveStudentAgent: fallback /aisettings failed",
-        err?.message || err
-      );
+      // Silently handle 401/403 errors - they're expected when not authenticated
+      const status = err?.response?.status;
+      if (status === 401 || status === 403) {
+        // Return default silently
+        return {
+          name: "Kibundo",
+          id: null,
+          grade: null,
+          state: null,
+          entities: [],
+        };
+      }
+      // Only log unexpected errors
+      if (status && status >= 500) {
+        console.debug(
+          "resolveStudentAgent: fallback /aisettings failed",
+          err?.message || err
+        );
+      }
     }
   } catch (outerErr) {
     console.debug(

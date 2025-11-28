@@ -232,6 +232,7 @@ export default function EntityList({ cfg }) {
     rowClassName,
     pathBuilders = {},
     iconNode,
+    showAddButton = true,
   } = cfg;
 
   // Lock to required endpoints by default
@@ -544,11 +545,42 @@ export default function EntityList({ cfg }) {
             { type: "divider" },
           ]
         : []),
+      ...(removePathBuilder
+        ? [
+            { key: "bulk_delete", label: t("entityList.bulk.delete") || "Delete Selected", danger: true },
+            { type: "divider" },
+          ]
+        : []),
       { key: "export_all", label: t("actions.exportCsv") },
       { type: "divider" },
       { key: "reset", label: t("actions.reset") },
     ],
     onClick: async ({ key }) => {
+      if (key === "bulk_delete" && removePathBuilder && selectedRowKeys.length) {
+        Modal.confirm({
+          title: "Delete Selected?",
+          content: `Are you sure you want to permanently delete ${selectedRowKeys.length} item${selectedRowKeys.length === 1 ? '' : 's'}? This action cannot be undone.`,
+          okText: "Delete All",
+          okButtonProps: { danger: true },
+          cancelText: "Cancel",
+          onOk: async () => {
+            try {
+              await Promise.all(
+                selectedRowKeys.map((id) =>
+                  api.delete(removePathBuilder(id), { withCredentials: true })
+                )
+              );
+              messageApi.success(`Successfully deleted ${selectedRowKeys.length} item${selectedRowKeys.length === 1 ? '' : 's'}`);
+              setSelectedRowKeys([]);
+              load();
+            } catch (error) {
+              console.error("Bulk delete failed:", error);
+              messageApi.error("Failed to delete some items. Please try again.");
+            }
+          },
+        });
+        return;
+      }
       if (key === "export_all") {
         const visible = columns.filter(Boolean).filter((c) => c.key !== "actions");
         const cellValue = (c, r) => {
@@ -753,14 +785,16 @@ export default function EntityList({ cfg }) {
           />
           <Space wrap>
             {statusFilter && statusSelect}
-            <Tooltip title={t("entityList.addTooltip", { singular: titleSingular || cfg.titleSingular || t("entityList.record") })}>
-              <Button
-                type="primary"
-                shape="circle"
-                icon={<PlusOutlined />}
-                onClick={() => navigate(`${routeBase}/new`)}
-              />
-            </Tooltip>
+            {showAddButton && (
+              <Tooltip title={t("entityList.addTooltip", { singular: titleSingular || cfg.titleSingular || t("entityList.record") })}>
+                <Button
+                  type="primary"
+                  shape="circle"
+                  icon={<PlusOutlined />}
+                  onClick={() => navigate(`${routeBase}/new`)}
+                />
+              </Tooltip>
+            )}
           </Space>
         </div>
 

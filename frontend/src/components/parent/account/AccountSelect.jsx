@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { LeftOutlined } from "@ant-design/icons";
-import { Spin } from "antd";
+import { Spin, Modal, Input, message } from "antd";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuthContext } from "@/context/AuthContext";
 import api from "@/api/axios";
@@ -28,6 +28,10 @@ export default function AccountSelect() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [password, setPassword] = useState("");
+  const [verifyingPassword, setVerifyingPassword] = useState(false);
+  const [pendingAccount, setPendingAccount] = useState(null);
 
   const parentHome = useMemo(() => ROLE_PATHS[ROLES.PARENT] || "/parent", []);
   const studentHome = useMemo(() => ROLE_PATHS[ROLES.STUDENT] || "/student", []);
@@ -132,18 +136,74 @@ export default function AccountSelect() {
   };
 
   const handleSelect = (account) => {
-    if (typeof setAccount === "function") {
-      setAccount(account);
-    }
-
+    // If parent profile is selected, require password
     if (account.type === "parent") {
-      navigate(parentDestination, { replace: true });
+      setPendingAccount(account);
+      setPasswordModalVisible(true);
+      setPassword("");
       return;
     }
 
-    // Netflix-style: When child is clicked, navigate directly to their dashboard
-    // The StudentAccessGate will allow parent access when account is set
+    // For children profiles, no password required - proceed directly
+    if (typeof setAccount === "function") {
+      setAccount(account);
+    }
     navigate("/student/home", { replace: true });
+  };
+
+  const handlePasswordSubmit = async () => {
+    if (!password.trim()) {
+      message.error("Bitte geben Sie Ihr Passwort ein");
+      return;
+    }
+
+    setVerifyingPassword(true);
+    try {
+      // Verify password by attempting to login with current user's email
+      const currentUserRes = await api.get("/current-user");
+      const currentUser = currentUserRes.data || {};
+      const email = currentUser.email || currentUser.username || user?.email;
+
+      if (!email) {
+        message.error("Benutzer-E-Mail nicht gefunden");
+        setVerifyingPassword(false);
+        return;
+      }
+
+      // Verify password with backend
+      const verifyRes = await api.post("/auth/login", {
+        username: email,
+        password: password,
+      });
+
+      if (verifyRes?.data?.user || verifyRes?.data?.token) {
+        // Password is correct
+        if (typeof setAccount === "function" && pendingAccount) {
+          setAccount(pendingAccount);
+        }
+        setPasswordModalVisible(false);
+        setPassword("");
+        setPendingAccount(null);
+        navigate(parentDestination, { replace: true });
+      } else {
+        message.error("Ungültiges Passwort");
+      }
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 401) {
+        message.error("Ungültiges Passwort");
+      } else {
+        message.error("Fehler bei der Passwortprüfung. Bitte versuchen Sie es erneut.");
+      }
+    } finally {
+      setVerifyingPassword(false);
+    }
+  };
+
+  const handlePasswordCancel = () => {
+    setPasswordModalVisible(false);
+    setPassword("");
+    setPendingAccount(null);
   };
 
   return (
@@ -201,6 +261,30 @@ export default function AccountSelect() {
           </div>
         )}
       </div>
+
+      {/* Password Modal for Parent Profile */}
+      <Modal
+        title="Passwort erforderlich"
+        open={passwordModalVisible}
+        onOk={handlePasswordSubmit}
+        onCancel={handlePasswordCancel}
+        confirmLoading={verifyingPassword}
+        okText="Bestätigen"
+        cancelText="Abbrechen"
+        maskClosable={false}
+      >
+        <p className="mb-4 text-[#4F3A2D]">
+          Bitte geben Sie Ihr Passwort ein, um auf das Elternprofil zuzugreifen.
+        </p>
+        <Input.Password
+          placeholder="Passwort eingeben"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onPressEnter={handlePasswordSubmit}
+          autoFocus
+          size="large"
+        />
+      </Modal>
     </PlainBackground>
   );
 }

@@ -117,6 +117,7 @@ export default function ProgressBar({ current = 0 }) {
           })}
         </div>
       </div>
+      
     </div>
   );
 }

@@ -103,23 +103,36 @@ export default function WelcomeSuccess() {
         }}
       />
 
-      {/* Light confetti overlay */}
-      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        {Array.from({ length: 28 }).map((_, i) => (
-          <div
-            key={i}
-            className="success-confetti"
-            style={{
-              left: `${(i * 17) % 100}%`,
-              animationDelay: `${(i % 12) * 0.18}s`,
-              background: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#b892ff"][i % 5],
-            }}
-          />
-        ))}
+      {/* Light confetti overlay - distributed across entire screen - in front of everything */}
+      <div className="pointer-events-none absolute inset-0 z-[9999] overflow-hidden">
+        {Array.from({ length: 60 }).map((_, i) => {
+          // Better distribution: use golden ratio spacing for natural distribution
+          const goldenRatio = 0.618;
+          const leftPosition = ((i * goldenRatio * 100) % 100);
+          const size = 6 + (i % 4) * 2; // Vary sizes: 6px, 8px, 10px, 12px
+          const animationDuration = 3 + (i % 3) * 0.5; // Vary speeds: 3s, 3.5s, 4s
+          const horizontalDrift = (i % 2 === 0 ? 1 : -1) * (10 + (i % 20)); // Drift left/right
+          
+          return (
+            <div
+              key={i}
+              className="success-confetti"
+              style={{
+                left: `${leftPosition}%`,
+                animationDelay: `${(i % 15) * 0.12}s`,
+                animationDuration: `${animationDuration}s`,
+                background: ["#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#b892ff", "#ff9a56", "#ffcc5c"][i % 7],
+                width: `${size}px`,
+                height: `${size * 1.5}px`,
+                '--drift': `${horizontalDrift}px`,
+              }}
+            />
+          );
+        })}
       </div>
 
      {/* ---------- CONTENT ---------- */}
-<div className="relative z-10 text-center">
+<div className="relative z-10 text-center" style={{ position: 'relative', zIndex: 1 }}>
   <div className="text-[22px] font-extrabold text-[#4D4D4D] mb-2">Erfolgreich</div>
   
   {/* Centered BuddyAvatar */}
@@ -151,16 +164,24 @@ export default function WelcomeSuccess() {
         }
         .success-confetti {
           position: absolute;
-          top: -10px;
-          width: 8px;
-          height: 14px;
+          top: -20px;
           border-radius: 2px;
-          animation: success-fall 3.2s linear infinite;
-          opacity: 0.85;
+          animation: success-fall 3.5s linear infinite;
+          box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
         }
         @keyframes success-fall {
-          0%   { transform: translateY(-10px) rotate(0deg); }
-          100% { transform: translateY(120vh) rotate(540deg); }
+          0%   { 
+            transform: translateY(-20px) translateX(0) rotate(0deg) scale(1);
+            opacity: 1;
+          }
+          50% {
+            transform: translateY(50vh) translateX(var(--drift, 0px)) rotate(270deg) scale(1.1);
+            opacity: 0.9;
+          }
+          100% { 
+            transform: translateY(120vh) translateX(calc(var(--drift, 0px) * 1.5)) rotate(720deg) scale(0.8);
+            opacity: 0;
+          }
         }
       `}</style>
     </div>

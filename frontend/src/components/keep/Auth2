@@ -54,14 +54,14 @@ export default function AuthForm() {
         const response = await api.post("/auth/login", { email, password });
         const { token, user } = response.data;
         login(user, token);
-        toast.success("Login successful");
+        toast.success("Erfolgreich angemeldet!");
         setTimeout(() => {
           const redirectPath = ROLE_PATHS[user.role_id] || "/dashboard";
           navigate(redirectPath, { replace: true });
         }, 200);
       } else {
         const response = await api.post("/auth/register", { email, password, name, phone, role });
-        toast.success("Account created! Please sign in.");
+        toast.success("Konto erstellt! Bitte melden Sie sich an.");
         navigate("/signin");
       }
     } catch (err) {
@@ -72,7 +72,7 @@ export default function AuthForm() {
   };
 
   const getPortalTitle = () =>
-    mode === "signin" ? "Login to Kibundo" : "Create Your Account";
+    mode === "signin" ? "Anmeldung bei Kibundo" : "Konto erstellen";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-tr from-[#dbeafe] via-white to-[#ede9fe] dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-10">
@@ -228,16 +228,16 @@ export default function AuthForm() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                   </svg>
-                  {mode === "signin" ? "Signing in..." : "Creating account..."}
+                  {mode === "signin" ? "Wird angemeldet..." : "Konto wird erstellt..."}
                 </>
-              ) : mode === "signin" ? "Sign In" : "Sign Up"}
+              ) : mode === "signin" ? "Anmelden" : "Registrieren"}
             </button>
 
             <div className="text-center text-sm text-gray-600 dark:text-gray-300">
               {mode === "signin" ? (
-                <>Don’t have an account?{' '}<span onClick={() => navigate("/signup")} className="text-indigo-600 cursor-pointer hover:underline">Sign Up</span></>
+                <>Noch kein Konto?{' '}<span onClick={() => navigate("/signup")} className="text-indigo-600 cursor-pointer hover:underline">Registrieren</span></>
               ) : (
-                <>Already have an account?{' '}<span onClick={() => navigate("/signin")} className="text-indigo-600 cursor-pointer hover:underline">Sign In</span></>
+                <>Bereits ein Konto?{' '}<span onClick={() => navigate("/signin")} className="text-indigo-600 cursor-pointer hover:underline">Anmelden</span></>
               )}
             </div>
             

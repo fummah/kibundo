@@ -51,8 +51,8 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
   return (
     <EntityForm
       id={isModal ? "new" : undefined}
-      titleNew="Add Student"
-      titleEdit="Edit Student"
+      titleNew="Schüler hinzufügen"
+      titleEdit="Schüler bearbeiten"
       initialValues={mergedInitials}
       apiCfg={{
         getPath: (id) => `/student/${id}`,
@@ -157,25 +157,25 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
       }}
       fields={[
         // Basic
-        { name: "first_name", label: "First Name", placeholder: "Enter student's first name", rules: [{ required: true }] },
-        { name: "last_name",  label: "Last Name", placeholder: "Enter student's last name", rules: [{ required: true }] },
+        { name: "first_name", label: "Vorname", placeholder: "Vorname des Schülers eingeben", rules: [{ required: true }] },
+        { name: "last_name",  label: "Nachname", placeholder: "Nachname des Schülers eingeben", rules: [{ required: true }] },
         { 
           name: "age", 
-          label: "Age", 
-          placeholder: "Enter student's age", 
+          label: "Alter", 
+          placeholder: "Alter des Schülers eingeben", 
           input: "number",
           props: { min: 4, max: 18 },
           rules: [
-            { required: true, message: "Age is required" },
+            { required: true, message: "Alter ist erforderlich" },
             {
               validator: (_, v) => {
                 if (v === undefined || v === null || v === "") {
-                  return Promise.reject(new Error("Age is required"));
+                  return Promise.reject(new Error("Alter ist erforderlich"));
                 }
                 const n = Number(v);
                 return n >= 4 && n <= 18
                   ? Promise.resolve()
-                  : Promise.reject(new Error("Age must be between 4 and 18"));
+                  : Promise.reject(new Error("Alter muss zwischen 4 und 18 liegen"));
               },
             },
           ]
@@ -184,16 +184,16 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
         // Class (IMPORTANT: backend wants class_id)
         {
           name: "class_id",
-          label: "Class",
+          label: "Klasse",
           input: "select",
-          placeholder: "Search class…",
+          placeholder: "Klasse auswählen",
           optionsUrl: "/allclasses",
           serverSearch: true,
           autoloadOptions: true,
           searchParam: "q",
           allowClear: true,
           transform: (it) => ({ value: it?.id ?? it, label: it?.class_name ?? String(it) }),
-          rules: [{ required: true, message: "Class is required" }],
+          rules: [{ required: true, message: "Klasse ist erforderlich" }],
           initialOptions:
             mergedInitials?.class?.id && mergedInitials?.class?.class_name
               ? [{ value: mergedInitials.class.id, label: mergedInitials.class.class_name }]
@@ -203,10 +203,10 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
         // Subjects (IDs array)
         {
           name: "subjects",
-          label: "Subjects",
+          label: "Fächer",
           input: "select",
           mode: "multiple",
-          placeholder: "Select subjects for this student",
+          placeholder: "Fächer für diesen Schüler auswählen",
           optionsUrl: "/allsubjects",
           serverSearch: true,
           autoloadOptions: false,
@@ -219,12 +219,12 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
         // Parent - grayed out when pre-filled, otherwise show searchable select
         {
           name: "parent_id",
-          label: "Parent",
+          label: "Elternteil",
           ...(mergedInitials.parent_id
             ? {
                 // When parent is pre-filled: show as disabled text input with parent name
                 input: "text",
-                placeholder: "Loading parent...",
+                placeholder: "Elternteil wird geladen...",
                 props: {
                   disabled: true,
                   readOnly: true,
@@ -233,7 +233,7 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
             : {
                 // When no parent: show as searchable select
                 input: "select",
-                placeholder: "Search and select parent",
+                placeholder: "Elternteil suchen und auswählen",
                 optionsUrl: "/parents",
                 serverSearch: true,
                 autoloadOptions: false,
@@ -243,19 +243,19 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
                   const fn = it?.user?.first_name || "";
                   const ln = it?.user?.last_name || "";
                   const nm = it?.user?.name || [fn, ln].filter(Boolean).join(" ");
-                  return { value: it?.id ?? it, label: (nm || `Parent #${it?.id ?? ""}`).trim() };
+                  return { value: it?.id ?? it, label: (nm || `Elternteil #${it?.id ?? ""}`).trim() };
                 },
               }),
           rules: [{ required: true }],
         },
 
         // Optional extras
-        { name: "school", label: "School (Optional)", placeholder: "Enter school name (optional)" },
+        { name: "school", label: "Schule (fakultativ)", placeholder: "Schulname eingeben (fakultativ)" },
         {
           name: "state", // <-- your users table shows "state"
-          label: "State",
+          label: "Bundesland",
           input: "select",
-          placeholder: "Search state…",
+          placeholder: "Bundesland auswählen",
           optionsUrl: "/states",
           serverSearch: true,
           autoloadOptions: false,
@@ -295,7 +295,7 @@ const StudentForm = ({ isModal = false, initialValues = {}, onSuccess = () => {}
       }}
       toListRelative={isModal ? undefined : ".."}
       toDetailRelative={isModal ? undefined : (id) => `${id}`}
-      submitLabel={isModal ? 'Add Student' : 'Save Changes'}
+      submitLabel={isModal ? 'Schüler hinzufügen' : 'Änderungen speichern'}
     />
   );
 };

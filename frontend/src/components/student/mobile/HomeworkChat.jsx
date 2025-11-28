@@ -10,6 +10,8 @@ import { useStudentApp } from "@/context/StudentAppContext";
 import useTTS from "@/lib/voice/useTTS";
 import useASR from "@/lib/voice/useASR";
 import { resolveStudentAgent } from "@/utils/studentAgent";
+import { useStudentFirstName } from "@/hooks/useStudentFirstName";
+import { extractSpeechText, removeSpeechTags } from "@/utils/extractSpeechText";
 
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
@@ -40,11 +42,44 @@ const formatMessage = (content, from = "agent", type = "text", meta = {}) => ({
   ...meta,
 });
 
-// Parse AI response to extract tips and split into multiple messages
-const parseResponseWithTips = (response, agentName = "Kibundo") => {
-  if (!response || typeof response !== "string") {
-    return [formatMessage(response || "", "agent", "text", { agentName })];
+// Helper to clean angle brackets from text (convert to proper formatting)
+const cleanAngleBrackets = (text) => {
+  if (!text || typeof text !== "string") return text;
+  // Remove angle brackets around text (often used for emphasis)
+  return text.replace(/<([^>]+)>/g, "$1");
+};
+
+// Helper to replace "Schüler" with student name
+const replaceSchuelerWithName = (text, studentName) => {
+  if (!text || typeof text !== "string") return text;
+  if (!studentName) {
+    // If no student name, just remove "Schüler" or replace with "Du"
+    return text.replace(/\bSchüler\b/gi, "Du");
   }
+  // Replace "Schüler" (case-insensitive) with student name, but preserve capitalization context
+  return text.replace(/\bSchüler\b/gi, (match) => {
+    // Preserve capitalization: if "Schüler" is capitalized, capitalize student name
+    if (match[0] === match[0].toUpperCase()) {
+      return studentName.charAt(0).toUpperCase() + studentName.slice(1);
+    }
+    return studentName;
+  });
+};
+
+// Parse AI response to extract tips and split into multiple messages
+// Also removes <SPEECH> tags from displayed content
+const parseResponseWithTips = (response, agentName = "Kibundo", studentName = null) => {
+  if (!response || typeof response !== "string") {
+    let cleanedResponse = removeSpeechTags(response || "");
+    cleanedResponse = cleanAngleBrackets(cleanedResponse);
+    cleanedResponse = replaceSchuelerWithName(cleanedResponse, studentName);
+    return [formatMessage(cleanedResponse, "agent", "text", { agentName })];
+  }
+  
+  // Remove speech tags for display, clean angle brackets, and replace "Schüler" with student name
+  let cleanedResponse = removeSpeechTags(response);
+  cleanedResponse = cleanAngleBrackets(cleanedResponse);
+  cleanedResponse = replaceSchuelerWithName(cleanedResponse, studentName);
   
   const tipRegex = /\[TIP\](.*?)\[\/TIP\]/gs;
   const messages = [];
@@ -53,7 +88,7 @@ const parseResponseWithTips = (response, agentName = "Kibundo") => {
   
   // Find all tips
   const tips = [];
-  while ((match = tipRegex.exec(response)) !== null) {
+  while ((match = tipRegex.exec(cleanedResponse)) !== null) {
     tips.push({
       content: match[1].trim(),
       start: match.index,
@@ -61,15 +96,20 @@ const parseResponseWithTips = (response, agentName = "Kibundo") => {
     });
   }
   
-  // If no tips found, return single message
+  // If no tips found, return single message (without speech tags)
+  // But only if there's actual content to display
   if (tips.length === 0) {
-    return [formatMessage(response, "agent", "text", { agentName })];
+    if (cleanedResponse.trim()) {
+      return [formatMessage(cleanedResponse, "agent", "text", { agentName })];
+    }
+    // If content is empty after removing speech tags, return empty array
+    return [];
   }
   
   // Split response into text parts and tips
   tips.forEach((tip, index) => {
     // Add text before tip
-    const textBefore = response.substring(lastIndex, tip.start).trim();
+    const textBefore = cleanedResponse.substring(lastIndex, tip.start).trim();
     if (textBefore) {
       messages.push(formatMessage(textBefore, "agent", "text", { agentName }));
     }
@@ -81,14 +121,23 @@ const parseResponseWithTips = (response, agentName = "Kibundo") => {
     
     // If this is the last tip, add remaining text
     if (index === tips.length - 1) {
-      const textAfter = response.substring(tip.end).trim();
+      const textAfter = cleanedResponse.substring(tip.end).trim();
       if (textAfter) {
         messages.push(formatMessage(textAfter, "agent", "text", { agentName }));
       }
     }
   });
   
-  return messages.length > 0 ? messages : [formatMessage(response, "agent", "text", { agentName })];
+  // Only return messages if we have actual content
+  if (messages.length > 0) {
+    return messages;
+  }
+  // Fallback: if cleaned response has content, return it as a single message
+  if (cleanedResponse.trim()) {
+    return [formatMessage(cleanedResponse, "agent", "text", { agentName })];
+  }
+  // If no content at all, return empty array
+  return [];
 };
 
 /** stable signature for de-dupe */
@@ -244,6 +293,8 @@ export default function HomeworkChat({
     clearChatMessages,
     setReadOnly: setDockReadOnly,
     closeChat,
+    openChat,
+    expandChat,
   } = useChatDock();
   const { user: authUser } = useAuthContext();
 
@@ -258,10 +309,17 @@ export default function HomeworkChat({
   // per-student scoping
   const mode = "homework";
   const taskId = dockState?.task?.id ?? null;
-  // 🔥 CRITICAL: Prioritize task.userId first - this is the student_id used when creating the task
-  // This ensures messages are retrieved using the same studentId that was used when storing them
-  const studentId =
-    dockState?.task?.userId ?? dockState?.student?.id ?? authUser?.id ?? "anon";
+  // 🔥 CRITICAL: Get actual student table ID (from students table, not users table)
+  // Priority: account.id (when parent viewing child) > dockState.student.id > dockState.task.studentId
+  const { account } = useAuthContext();
+  
+  // account.id is the student table ID when parent is viewing a child
+  const studentTableId = account?.type === "child" 
+    ? account.id 
+    : (dockState?.student?.id ?? dockState?.task?.studentId ?? null);
+  
+  // This is the ID from the students table that we'll send to the backend
+  const studentId = studentTableId;
 
   const scopedTaskKey = useMemo(
     () => `${taskId ?? "global"}::u:${studentId}`,
@@ -269,11 +327,11 @@ export default function HomeworkChat({
   );
 
   const stableModeRef = useRef(mode);
-  const stableTaskIdRef = useRef(scopedTaskKey);
+  const stableTaskIdRef = useRef(taskId); // Use taskId (not scopedTaskKey) for message storage/retrieval
   
   // Clear processed refs when task changes
   useEffect(() => {
-    if (stableTaskIdRef.current !== scopedTaskKey) {
+    if (stableTaskIdRef.current !== taskId) {
       // Task changed, clear processed refs
       lastProcessedScanIdRef.current = null;
       lastProcessedTaskKeyRef.current = null;
@@ -283,9 +341,9 @@ export default function HomeworkChat({
       lastSyncedTaskKeyRef.current = null;
       lastSyncedMessageIdsRef.current.clear();
       isNavigatingAwayRef.current = false; // Reset navigation flag when task changes
-      stableTaskIdRef.current = scopedTaskKey;
+      stableTaskIdRef.current = taskId;
     }
-  }, [scopedTaskKey]);
+  }, [taskId]);
 
   // conversation id per thread
   const convKey = useMemo(
@@ -320,6 +378,7 @@ export default function HomeworkChat({
   const scanResultsLoadedRef = useRef(new Set()); // Track which scanIds have been loaded
   const lastProcessedScanIdRef = useRef(null); // Track the last scanId we processed
   const lastProcessedTaskKeyRef = useRef(null); // Track the last task key we processed
+  const lastLoggedTaskRef = useRef(null); // Track which tasks we've logged warnings for (to avoid spam)
   
   // Refs to track last synced message count and IDs to prevent unnecessary updates
   const lastSyncedMessageCountRef = useRef(0);
@@ -330,18 +389,85 @@ export default function HomeworkChat({
   // Update scanId when dockState changes (but only if it's actually different)
   useEffect(() => {
     const newScanId = dockState?.task?.scanId;
+    const taskSource = dockState?.task?.source;
+    
+    // Skip scanId logic for audio-only tasks (they don't have scans)
+    if (taskSource === "audio") {
+      return;
+    }
+    
     if (newScanId && newScanId !== scanId) {
-      console.log("📋 FOOTERCHAT: scanId updated from dockState:", newScanId);
+      // scanId updated from dockState
       setScanId(newScanId);
       // Clear processed refs when scanId changes from dockState
       lastProcessedScanIdRef.current = null;
       lastProcessedTaskKeyRef.current = null;
     } else if (dockState?.task && !newScanId) {
-      console.log("⚠️ FOOTERCHAT: Task exists but no scanId:", dockState.task);
+      // Only log warning for image-based tasks that should have scanId
+      const taskId = dockState.task.id;
+      const hasScanIdPattern = taskId && (taskId.startsWith('scan_') || /^scan_\d+$/.test(taskId));
+      const isImageTask = taskSource === "image" || hasScanIdPattern;
+      
+      // Check if task has scanId in localStorage (might be a timing issue)
+      let hasScanIdInStorage = false;
+      if (taskId) {
+        try {
+          // Check tasks in localStorage
+          const tasksKey = `kibundo.homework.tasks.v1::u:${dockState.task.userId || ''}`;
+          const storedTasks = localStorage.getItem(tasksKey);
+          if (storedTasks) {
+            const tasks = JSON.parse(storedTasks);
+            const foundTask = tasks.find((t) => t.id === taskId);
+            if (foundTask?.scanId) {
+              hasScanIdInStorage = true;
+            }
+          }
+          
+          // Also check progress storage
+          if (!hasScanIdInStorage) {
+            const progressKey = `kibundo.homework.progress.v1::u:${dockState.task.userId || ''}`;
+            const storedProgress = localStorage.getItem(progressKey);
+            if (storedProgress) {
+              const progress = JSON.parse(storedProgress);
+              if (progress?.task?.id === taskId && progress?.task?.scanId) {
+                hasScanIdInStorage = true;
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore localStorage errors
+        }
+      }
+      
+      // Check if task was recently created (likely still uploading)
+      const taskCreatedAt = dockState.task.createdAt || dockState.task.updatedAt;
+      const isRecentlyCreated = taskCreatedAt && (Date.now() - new Date(taskCreatedAt).getTime()) < 10000; // 10 seconds
+      
+      // Only log warning if:
+      // 1. It's an image task
+      // 2. scanId is not in localStorage (not just a timing issue)
+      // 3. Task is not recently created (not still uploading)
+      // 4. We haven't logged for this task yet
+      const taskKey = `${dockState.task.id}::${taskSource}`;
+      if (isImageTask && !hasScanIdInStorage && !isRecentlyCreated && !lastLoggedTaskRef.current?.has(taskKey)) {
+        if (!lastLoggedTaskRef.current) {
+          lastLoggedTaskRef.current = new Set();
+        }
+        lastLoggedTaskRef.current.add(taskKey);
+        // Limit log history to last 10 tasks
+        if (lastLoggedTaskRef.current.size > 10) {
+          const firstKey = lastLoggedTaskRef.current.values().next().value;
+          lastLoggedTaskRef.current.delete(firstKey);
+        }
+        console.log("⚠️ FOOTERCHAT: Image task exists but no scanId:", { id: dockState.task.id, source: taskSource });
+      }
     }
-  }, [dockState?.task?.scanId, scanId]);
+  }, [dockState?.task?.scanId, dockState?.task?.source, scanId]);
   const [selectedAgent, setSelectedAgent] = useState("Kibundo"); // Default fallback
   const [agentMeta, setAgentMeta] = useState(null);
+  
+  // Get student's first name
+  const studentFirstName = useStudentFirstName();
   
   // TTS integration
   const { profile, buddy } = useStudentApp();
@@ -368,6 +494,82 @@ export default function HomeworkChat({
   const fetchingBackendMessagesRef = useRef(false);
   const lastFetchedConvIdRef = useRef(null);
 
+  // Helper function to convert data to array
+  const toArray = (data) => {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.messages)) return data.messages;
+    if (data && Array.isArray(data.items)) return data.items;
+    return [];
+  };
+
+  // Map server messages to internal format (processes speech tags, tips, etc.)
+  const mapServerToInternal = useCallback((arr) => {
+    const allMessages = [];
+    toArray(arr).forEach((m) => {
+      const from = (m?.sender || "agent").toLowerCase() === "student" ? "student" : "agent";
+      const agentName = m?.agent_name || selectedAgent || "Kibundo";
+      
+      if (from === "agent" && typeof m?.content === "string") {
+        // Parse tips from agent messages and replace "Schüler" with student name
+        const parsed = parseResponseWithTips(m.content, agentName, studentFirstName);
+        parsed.forEach(msg => {
+          allMessages.push({
+            ...msg,
+            id: m.id ? `${m.id}_${msg.id}` : msg.id, // Preserve original ID if available
+            timestamp: m.created_at || m.timestamp || msg.timestamp,
+            agentName: agentName
+          });
+        });
+      } else {
+        // Regular message (student or non-text agent message)
+        // Remove speech tags, clean angle brackets, and replace "Schüler" with student name
+        let content = typeof m?.content === "string" 
+          ? removeSpeechTags(m.content) 
+          : (m?.content ?? "");
+        if (typeof content === "string") {
+          content = cleanAngleBrackets(content);
+          if (from === "agent") {
+            content = replaceSchuelerWithName(content, studentFirstName);
+          }
+        }
+        
+        // 🔥 CRITICAL: Don't create empty messages - if content is empty after processing, skip it
+        // unless it's a student message (which might be intentionally short)
+        const trimmedContent = typeof content === "string" ? content.trim() : String(content || "").trim();
+        if (!trimmedContent && from === "agent") {
+          // Skip empty agent messages - they have no content to display
+          return;
+        }
+        
+        allMessages.push(formatMessage(
+          content,
+          from,
+        "text",
+        { 
+          id: m.id,
+          timestamp: m.created_at || m.timestamp,
+            agentName: agentName
+          }
+        ));
+      }
+    });
+    
+    // Enhanced deduplication - normalize content including removing speech tags and angle brackets
+    const seen = new Set();
+    return allMessages.filter((m) => {
+      // Normalize content: remove speech tags, angle brackets, and normalize whitespace for comparison
+      let normalizedContent = typeof m?.content === "string"
+        ? removeSpeechTags(m.content)
+        : String(m?.content || "");
+      normalizedContent = cleanAngleBrackets(normalizedContent);
+      normalizedContent = normalizedContent.trim().replace(/\s+/g, " ");
+      const key = `${m.from || "agent"}|${m.type || "text"}|${normalizedContent}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [selectedAgent, studentFirstName]);
+
   // Fetch messages from backend
   const fetchBackendMessages = useCallback(async (convId) => {
     if (!convId || loadingBackendMessages || fetchingBackendMessagesRef.current) return;
@@ -383,16 +585,8 @@ export default function HomeworkChat({
         withCredentials: true,
       });
       if (response?.data && Array.isArray(response.data)) {
-        const formattedMessages = response.data.map(msg => formatMessage(
-          msg.content || "",
-          msg.sender === "student" ? "student" : "agent",
-          "text",
-          { 
-            id: msg.id,
-            timestamp: msg.created_at || msg.timestamp,
-            agentName: msg?.agent_name || selectedAgent
-          }
-        ));
+        // Use mapServerToInternal to properly process messages (remove speech tags, parse tips, etc.)
+        const formattedMessages = mapServerToInternal(response.data);
         setBackendMessages(formattedMessages);
         lastFetchedConvIdRef.current = convId;
       }
@@ -403,7 +597,7 @@ export default function HomeworkChat({
       setLoadingBackendMessages(false);
       fetchingBackendMessagesRef.current = false;
     }
-  }, [selectedAgent]); // Remove loadingBackendMessages from deps to prevent recreation
+  }, [selectedAgent, mapServerToInternal, loadingBackendMessages]); // Include mapServerToInternal in deps
 
   // 🔥 Search for existing conversation by scanId when task is opened
   useEffect(() => {
@@ -494,15 +688,40 @@ export default function HomeworkChat({
         const scanIdMatch = taskId.match(/^scan_(\d+)$/);
         if (scanIdMatch) {
           effectiveScanId = parseInt(scanIdMatch[1], 10);
-          console.log("✅ FOOTERCHAT: Extracted scanId from task.id:", effectiveScanId);
+          // Extracted scanId from task.id
           if (effectiveScanId !== scanId) {
             setScanId(effectiveScanId);
           }
         }
       }
       
+      // Skip scan loading for tasks that don't have scans
+      const taskSource = dockState?.task?.source;
+      const taskId = dockState?.task?.id;
+      
+      // Tasks that definitely don't have scans
+      const tasksWithoutScans = ["audio", "text", "manual"];
+      if (taskSource && tasksWithoutScans.includes(taskSource)) {
+        // Silently skip - these tasks don't need scan results
+        scanResultsLoadingRef.current = false;
+        return;
+      }
+      
+      // If task ID doesn't match scan pattern (scan_XXX) and no scanId, it's likely not scan-based
+      const hasScanIdPattern = taskId && (taskId.startsWith('scan_') || /^scan_\d+$/.test(taskId));
+      const hasExplicitScanId = effectiveScanId || dockState?.task?.scanId;
+      
+      // Only search for scans if task might be scan-related (has scan_ pattern or we're unsure)
+      // Don't search if task is clearly not scan-based
+      if (!hasExplicitScanId && !hasScanIdPattern && taskSource && taskSource !== "image") {
+        // Task is not image-based and doesn't have scan pattern - skip silently
+        scanResultsLoadingRef.current = false;
+        return;
+      }
+      
       // If still no scanId, try to find it from homework scans (fallback)
-      if (!effectiveScanId && dockState?.task?.id && dockState?.task?.userId) {
+      // Only do this for image-based tasks or tasks with scan pattern
+      if (!effectiveScanId && hasScanIdPattern && dockState?.task?.id && dockState?.task?.userId) {
         // Check if aborted before making API call
         if (isNavigatingAwayRef.current || abortController.signal.aborted) {
           // Silently exit - navigation is in progress
@@ -511,7 +730,6 @@ export default function HomeworkChat({
         }
         
         try {
-          console.log("🔍 FOOTERCHAT: No scanId in task, searching for scan...");
           const studentId = dockState.task.userId;
           const { data: scanData } = await api.get(`/homeworkscans`, {
             params: { student_id: studentId },
@@ -536,7 +754,7 @@ export default function HomeworkChat({
             
             if (matchedScan?.id) {
               effectiveScanId = matchedScan.id;
-              console.log("✅ FOOTERCHAT: Found scanId from homework scans:", effectiveScanId);
+              // Found scanId from homework scans
               // Only set scanId if it's different to avoid triggering the effect again
               if (effectiveScanId !== scanId) {
                 setScanId(effectiveScanId);
@@ -544,19 +762,27 @@ export default function HomeworkChat({
             }
           }
         } catch (error) {
-          console.error("❌ FOOTERCHAT: Failed to fetch scanId from homework scans:", error);
+          // Only log error if it's not a cancellation (expected when navigating away)
+          if (error.name !== "CanceledError" && error.code !== "ERR_CANCELED") {
+            console.error("❌ FOOTERCHAT: Failed to fetch scanId from homework scans:", error);
+          }
         }
       }
       
       if (!effectiveScanId) {
-        console.log("⚠️ FOOTERCHAT: No scanId available, cannot load scan results");
+        // Only log warning if task is image-based (should have scanId) but doesn't
+        // Silently skip for other task types
+        if (taskSource === "image" && hasScanIdPattern) {
+          console.log("⚠️ FOOTERCHAT: Image task expected scanId but none found");
+        }
+        scanResultsLoadingRef.current = false;
         return;
       }
       
       // Check if we've already loaded results for this scanId
       const scanKey = `${scopedTaskKey}::scan:${effectiveScanId}`;
       if (scanResultsLoadedRef.current.has(scanKey)) {
-        console.log("ℹ️ FOOTERCHAT: Scan results already loaded for this scanId, skipping");
+        // Scan results already loaded for this scanId, skipping
         return;
       }
       
@@ -580,7 +806,7 @@ export default function HomeworkChat({
         return;
       }
       
-      const existingMessages = getChatMessages?.("homework", scopedTaskKey) || [];
+      const existingMessages = getChatMessages?.("homework", taskId) || [];
       
       // Final check before logging - navigation might have started during message retrieval
       if (isNavigatingAwayRef.current || abortController.signal.aborted) {
@@ -616,12 +842,12 @@ export default function HomeworkChat({
         return;
       }
       
-      console.log("🔍 FOOTERCHAT: Checking for scan results. hasScanResults:", hasScanResults, "message count:", existingMessages.length);
+      // Checking for scan results
       
       // If we don't have scan results in messages, fetch and display them
       if (!hasScanResults) {
         try {
-          console.log("🔍 FOOTERCHAT: Loading scan results for scanId:", effectiveScanId);
+          // Loading scan results for scanId
           
           // Fetch scan details from API - use studentId from task
           const studentId = dockState?.task?.userId || null;
@@ -636,13 +862,13 @@ export default function HomeworkChat({
             withCredentials: true,
           });
           
-          console.log("📊 FOOTERCHAT: Fetched scan data:", scanData);
+          // Fetched scan data
           
           if (Array.isArray(scanData)) {
             // Ensure scanId is a number for comparison
             const scanIdNum = typeof effectiveScanId === 'number' ? effectiveScanId : parseInt(effectiveScanId, 10);
             const scan = scanData.find(s => s.id === scanIdNum || s.id === effectiveScanId);
-            console.log("📋 FOOTERCHAT: Searching for scanId:", effectiveScanId, "as number:", scanIdNum, "Found scan:", scan);
+            // Searching for scanId
             
             if (scan && scan.raw_text) {
               const extracted = scan.raw_text || "";
@@ -659,8 +885,8 @@ export default function HomeworkChat({
               });
               
               if (!exists && extracted) {
-                console.log("✅ FOOTERCHAT: Adding scan results to chat");
-                setChatMessages?.("homework", scopedTaskKey, (prev) => {
+                // Adding scan results to chat
+                setChatMessages?.("homework", taskId, (prev) => {
                   const prevMsgs = prev || [];
                   
                   // Check again before adding to prevent race conditions
@@ -673,30 +899,18 @@ export default function HomeworkChat({
                   });
                   
                   if (alreadyHasResults) {
-                    console.log("⚠️ FOOTERCHAT: Scan results already added (race condition prevented)");
+                    // Scan results already added (race condition prevented)
                     return prevMsgs;
                   }
                   
-                  // Add success message and scan results
-                  const successMsg = formatMessage(
-                    "I've read your homework!",
-                    "agent",
-                    "text",
-                    { agentName: selectedAgent || "Kibundo" }
-                  );
+                  // Add scan results only (tip is already added in createTaskAndOpenChat.js)
                   const scanResultMsg = formatMessage(
                     { extractedText: extracted, qa: [] },
                     "agent",
                     "table",
                     { agentName: selectedAgent || "Kibundo" }
                   );
-                  const encouragementMsg = formatMessage(
-                    "Try to answer the questions yourself first. If you need help or get stuck, just ask me!",
-                    "agent",
-                    "text",
-                    { agentName: selectedAgent || "Kibundo" }
-                  );
-                  return [...prevMsgs, successMsg, scanResultMsg, encouragementMsg];
+                  return [...prevMsgs, scanResultMsg];
                 });
                 
                 // Mark as loaded to prevent re-loading
@@ -705,7 +919,7 @@ export default function HomeworkChat({
                 lastProcessedScanIdRef.current = effectiveScanId;
                 lastProcessedTaskKeyRef.current = `${scopedTaskKey}::scan:${effectiveScanId}`;
               } else {
-                console.log("ℹ️ FOOTERCHAT: Scan results already exist in messages, skipping");
+                // Scan results already exist in messages, skipping
                 // Mark as loaded even if already exists
                 scanResultsLoadedRef.current.add(scanKey);
                 // Mark as processed
@@ -734,7 +948,7 @@ export default function HomeworkChat({
           scanResultsLoadingRef.current = false;
         }
       } else {
-        console.log("ℹ️ FOOTERCHAT: Scan results already present in messages");
+        // Scan results already present in messages
         // Mark as loaded even if already present
         if (effectiveScanId) {
           const scanKey = `${scopedTaskKey}::scan:${effectiveScanId}`;
@@ -764,14 +978,14 @@ export default function HomeworkChat({
   }, [scanId, scopedTaskKey]); // Only depend on scanId and scopedTaskKey to prevent excessive re-runs
 
   useEffect(() => {
-    if (scopedTaskKey !== stableTaskIdRef.current) {
-      stableTaskIdRef.current = scopedTaskKey;
+    if (taskId !== stableTaskIdRef.current) {
+      stableTaskIdRef.current = taskId;
       didSeedRef.current = false;
       uploadNudgeShownRef.current = false;
       // Clear fetch tracking when task changes
       lastFetchedConvIdRef.current = null;
     }
-  }, [scopedTaskKey]);
+  }, [taskId]);
 
   useEffect(() => {
     const tConv = dockState?.task?.conversationId;
@@ -854,7 +1068,7 @@ export default function HomeworkChat({
     setChatMessages,
     getChatMessages,
     initialMessages,
-    scopedTaskKey,
+    taskId,
   ]);
 
   // 🔥 Sync localMessages with persisted messages when they change
@@ -863,21 +1077,21 @@ export default function HomeworkChat({
     if (controlledMessagesProp) return;
     if (!getChatMessages) return;
     
-    // Use current scopedTaskKey (not ref) to get latest messages
-    const persisted = getChatMessages(stableModeRef.current, scopedTaskKey) || [];
+    // Use current taskId (not scopedTaskKey) to get latest messages - messages are stored by taskId only
+    const persisted = getChatMessages(stableModeRef.current, taskId) || [];
     const persistedCount = persisted.length;
     
     // Get current message IDs
     const currentMessageIds = new Set(persisted.map(m => m?.id).filter(Boolean));
     
     // Only sync if task changed or if message count/IDs actually changed
-    const taskChanged = lastSyncedTaskKeyRef.current !== scopedTaskKey;
+    const taskChanged = lastSyncedTaskKeyRef.current !== taskId;
     const countChanged = persistedCount !== lastSyncedMessageCountRef.current;
     const idsChanged = taskChanged || persisted.some(m => m?.id && !lastSyncedMessageIdsRef.current.has(m.id));
     const messagesChanged = taskChanged || (countChanged && idsChanged);
     
     // Use a ref to track the last sync to prevent duplicate syncs
-    const syncKey = `${scopedTaskKey}::${persistedCount}::${Array.from(currentMessageIds).sort().join(',')}`;
+    const syncKey = `${taskId}::${persistedCount}::${Array.from(currentMessageIds).sort().join(',')}`;
     
     // Prevent duplicate syncs - check if we already synced with this exact key
     if (lastSyncRef.current.key === syncKey) {
@@ -892,7 +1106,7 @@ export default function HomeworkChat({
         // Only update if there's a real change (new messages added or changed)
         if (merged.length !== prev.length || merged.some((m, i) => m.id !== prev[i]?.id)) {
           lastSyncedMessageCountRef.current = merged.length;
-          lastSyncedTaskKeyRef.current = scopedTaskKey;
+          lastSyncedTaskKeyRef.current = taskId;
           lastSyncedMessageIdsRef.current = currentMessageIds;
           return merged;
         }
@@ -907,39 +1121,85 @@ export default function HomeworkChat({
       lastSyncRef.current = { key: syncKey, count: persistedCount, ids: currentMessageIds };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopedTaskKey, controlledMessagesProp]); // Only depend on scopedTaskKey to prevent excessive re-runs
+  }, [taskId, controlledMessagesProp]); // Only depend on taskId to prevent excessive re-runs
+
+  // Helper to check if message has valid content
+  const hasValidContent = useCallback((message) => {
+    if (!message || typeof message !== "object") return false;
+    
+    // Check if message has a type that doesn't require content (like status messages)
+    if (message.type === "status" && message.transient) {
+      return true; // Allow transient status messages
+    }
+    
+    // For table/analysis type, check if it has extractedText or qa
+    if (message.type === "table" || message.type === "analysis") {
+      const hasExtracted = message.content?.extractedText || message.content?.raw_text || message.content?.analysisText;
+      const hasQa = Array.isArray(message.content?.qa) && message.content.qa.length > 0;
+      const hasQuestions = Array.isArray(message.content?.questions) && message.content.questions.length > 0;
+      return !!(hasExtracted || hasQa || hasQuestions);
+    }
+    
+    // For image type, check if it has a valid src
+    if (message.type === "image") {
+      const src = typeof message.content === "string" ? message.content : message?.content?.url;
+      return !!src && src.trim() !== "";
+    }
+    
+    // For tip type, check if it has content
+    if (message.type === "tip") {
+      const tipContent = typeof message.content === "string" 
+        ? message.content 
+        : message.content?.text || message.content || "";
+      return tipContent.trim() !== "";
+    }
+    
+    // For text type, check if content is not empty
+    const content = typeof message.content === "string" 
+      ? message.content 
+      : message.content != null 
+        ? String(message.content) 
+        : "";
+    
+    return content.trim() !== "";
+  }, []);
 
   // Recompute messages (merge backend with existing messages to avoid duplicates)
   const msgs = useMemo(() => {
-    if (controlledMessagesProp) return controlledMessagesProp;
+    let messages;
     
-    // Get existing messages - use current scopedTaskKey directly (not ref)
-    const persisted = getChatMessages?.(stableModeRef.current, scopedTaskKey) || [];
-    const existingLocal = localMessages || [];
-    
-    // Debug logging (commented out to reduce console noise)
-    // console.log("📊 HomeworkChat msgs useMemo:", {
-    //   persisted: persisted.length,
-    //   localMessages: existingLocal.length,
-    //   backendMessages: backendMessages.length,
-    //   scopedTaskKey,
-    //   taskId: dockState?.task?.id,
-    //   taskUserId: dockState?.task?.userId,
-    // });
-    
-    // If we have backend messages, merge them with existing messages
-    if (backendMessages.length > 0) {
-      const merged = mergeById(backendMessages, [...persisted, ...existingLocal]);
-      return merged;
+    if (controlledMessagesProp) {
+      messages = controlledMessagesProp;
+    } else {
+      // Get existing messages - use current taskId directly (not scopedTaskKey) - messages are stored by taskId only
+      const persisted = getChatMessages?.(stableModeRef.current, taskId) || [];
+      const existingLocal = localMessages || [];
+      
+      // Debug logging (commented out to reduce console noise)
+      // console.log("📊 HomeworkChat msgs useMemo:", {
+      //   persisted: persisted.length,
+      //   localMessages: existingLocal.length,
+      //   backendMessages: backendMessages.length,
+      //   scopedTaskKey,
+      //   taskId: dockState?.task?.id,
+      //   taskUserId: dockState?.task?.userId,
+      // });
+      
+      // If we have backend messages, merge them with existing messages
+      if (backendMessages.length > 0) {
+        messages = mergeById(backendMessages, [...persisted, ...existingLocal]);
+      } else {
+        // Fallback to local storage if no backend messages
+        messages = mergeById(persisted, existingLocal);
+        if (messages.length === 0 && existingLocal.length > 0) {
+          messages = existingLocal;
+        }
+      }
     }
     
-    // Fallback to local storage if no backend messages
-    const merged = mergeById(persisted, existingLocal);
-    if (merged.length === 0 && existingLocal.length > 0) {
-      return existingLocal;
-    }
-    return merged;
-  }, [controlledMessagesProp, backendMessages, localMessages, conversationId, scanId, scopedTaskKey, dockState?.chatByKey]); // Removed getChatMessages from deps to prevent re-renders
+    // Filter out messages with empty content
+    return messages.filter(hasValidContent);
+  }, [controlledMessagesProp, backendMessages, localMessages, conversationId, scanId, taskId, dockState?.chatByKey, hasValidContent, getChatMessages]); // Removed getChatMessages from deps to prevent re-renders
 
   // never persist transient/base64 previews
   const filterForPersist = useCallback((arr) => {
@@ -1058,53 +1318,6 @@ export default function HomeworkChat({
     });
   }, [msgs, typing, externalTyping]);
 
-  const toArray = (data) => {
-    if (Array.isArray(data)) return data;
-    if (data && Array.isArray(data.messages)) return data.messages;
-    if (data && Array.isArray(data.items)) return data.items;
-    return [];
-  };
-  const mapServerToInternal = (arr) => {
-    const allMessages = [];
-    toArray(arr).forEach((m) => {
-      const from = (m?.sender || "agent").toLowerCase() === "student" ? "student" : "agent";
-      const agentName = m?.agent_name || "Kibundo";
-      
-      if (from === "agent" && typeof m?.content === "string") {
-        // Parse tips from agent messages
-        const parsed = parseResponseWithTips(m.content, agentName);
-        parsed.forEach(msg => {
-          allMessages.push({
-            ...msg,
-            id: m.id ? `${m.id}_${msg.id}` : msg.id, // Preserve original ID if available
-            timestamp: m.created_at || m.timestamp || msg.timestamp,
-            agentName: agentName
-          });
-        });
-      } else {
-        // Regular message (student or non-text agent message)
-        allMessages.push(formatMessage(
-        m?.content ?? "",
-          from,
-        "text",
-        { 
-          id: m.id,
-          timestamp: m.created_at || m.timestamp,
-            agentName: agentName
-          }
-        ));
-      }
-    });
-    
-    const seen = new Set();
-    return allMessages.filter((m) => {
-      const key = `${m.from}|${m.type}|${m.content}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  };
-
   const hasAnyImage = useMemo(
     () => Array.isArray(msgs) && msgs.some((m) => m?.type === "image"),
     [msgs]
@@ -1166,7 +1379,7 @@ export default function HomeworkChat({
 
         let resp;
         try {
-          resp = await api.post(firstUrl, { message: t, scanId, agentName: selectedAgent, mode: "homework" }, {
+          resp = await api.post(firstUrl, { message: t, scanId, agentName: selectedAgent, mode: "homework", studentId: studentId }, {
             withCredentials: true,
           });
         } catch (err) {
@@ -1196,20 +1409,23 @@ export default function HomeworkChat({
             const r = await api.post("ai/chat", payload, {
               withCredentials: true,
             });
-            const parsedMessages = parseResponseWithTips(r?.data?.answer || "Okay!", r?.data?.agentName || selectedAgent);
+            const parsedMessages = parseResponseWithTips(r?.data?.answer || "Okay!", r?.data?.agentName || selectedAgent, studentFirstName);
             updateMessages((m) => [
               ...m.filter((x) => !x?.pending),
               ...parsedMessages,
             ]);
             
             // Speak agent response if TTS is enabled
-            if (ttsEnabled && r?.data?.answer) {
-              speak(r.data.answer);
+            if (ttsEnabled && r?.data) {
+              const speechText = extractSpeechText(r.data);
+              if (speechText) {
+                speak(speechText);
+              }
             }
             return;
           }
           if (conversationId && (code === 400 || code === 404)) {
-            resp = await api.post(`conversations/message`, { message: t, scanId, agentName: selectedAgent, mode: "homework" }, {
+            resp = await api.post(`conversations/message`, { message: t, scanId, agentName: selectedAgent, mode: "homework", studentId: studentId }, {
               withCredentials: true,
             });
           } else {
@@ -1237,23 +1453,29 @@ export default function HomeworkChat({
               const latestAgentMessage = [...serverMessages]
                 .reverse()
                 .find(msg => msg.from === "agent" || msg.sender === "agent");
-              if (latestAgentMessage && typeof latestAgentMessage.content === "string") {
-                speak(latestAgentMessage.content);
+              if (latestAgentMessage) {
+                const speechText = extractSpeechText(latestAgentMessage.content);
+                if (speechText) {
+                  speak(speechText);
+                }
               }
             }
             
             return merged;
           });
         } else if (j?.answer) {
-          const parsedMessages = parseResponseWithTips(j.answer, j?.agentName || selectedAgent);
+          const parsedMessages = parseResponseWithTips(j.answer, j?.agentName || selectedAgent, studentFirstName);
           updateMessages((current) => [
             ...current.filter((m) => !m?.pending),
             ...parsedMessages,
           ]);
           
           // Speak agent response if TTS is enabled
-          if (ttsEnabled && j.answer) {
-            speak(j.answer);
+          if (ttsEnabled && j) {
+            const speechText = extractSpeechText(j);
+            if (speechText) {
+              speak(speechText);
+            }
           }
         }
       } catch (err) {
@@ -1274,7 +1496,7 @@ export default function HomeworkChat({
         sendingRef.current = false;
       }
     },
-    [sending, onSendText, updateMessages, antdMessage, conversationId, scanId, msgs, agentMeta, ttsEnabled, speak, selectedAgent, effectiveReadOnly]
+    [sending, onSendText, updateMessages, antdMessage, conversationId, scanId, msgs, agentMeta, ttsEnabled, speak, selectedAgent, effectiveReadOnly, studentId]
   );
 
   const handleMediaUpload = useCallback(
@@ -1302,13 +1524,7 @@ export default function HomeworkChat({
             } catch {}
           }
 
-          const loadingMessage = formatMessage(
-            isImg ? "🔍 Ich schaue mir dein Bild an..." : "📄 Ich lese deine Datei...",
-            "agent",
-            "status",
-            { transient: true, agentName: selectedAgent }
-          );
-          updateMessages((m) => [...m, loadingMessage]);
+          // Removed loading message - just upload silently
 
           try {
             if (onSendMedia) {
@@ -1583,7 +1799,7 @@ export default function HomeworkChat({
       return;
     }
     
-    console.log("🔄 handleRescanUpload: Starting rescan upload", { taskId: dockState.task.id, scanId: dockState.task.scanId });
+    // Starting rescan upload
     
     try {
       setUploading(true);
@@ -1667,7 +1883,7 @@ export default function HomeworkChat({
       }
       
       // Close chat and navigate to feedback
-      console.log("✅ handleRescanUpload: Upload complete, navigating to feedback", { taskId, scanId });
+      // Upload complete, navigating to feedback
       setIsRescanUpload(false);
       
       // Mark that we're navigating away to prevent scan results check from running
@@ -1682,17 +1898,17 @@ export default function HomeworkChat({
       
       // Close chat first
       if (onClose) {
-        console.log("🔄 Closing chat via onClose");
+        // Closing chat via onClose
         onClose();
       }
       if (closeChat) {
-        console.log("🔄 Closing chat via closeChat");
+        // Closing chat via closeChat
         closeChat();
       }
       
       // Navigate to feedback page with a small delay to ensure chat closes
       setTimeout(() => {
-        console.log("🚀 Navigating to feedback page", { taskId });
+        // Navigating to feedback page
         navigate("/student/homework/feedback", {
           state: { taskId: taskId || null },
           replace: false,
@@ -1708,23 +1924,18 @@ export default function HomeworkChat({
   }, [dockState?.task, studentId, onClose, navigate, antdMessage, closeChat]);
 
   const startNewChat = useCallback(() => {
-    setDockReadOnly?.(false);
-    const seed =
-      Array.isArray(initialMessages) && initialMessages.length > 0
-        ? [...initialMessages]
-        : [];
-
-    clearChatMessages?.(stableModeRef.current, stableTaskIdRef.current);
-    setChatMessages?.(stableModeRef.current, stableTaskIdRef.current, seed);
-    setLocalMessages(seed);
-    setDraft("");
-    setTyping(false);
-    setConversationId(null);
-    requestAnimationFrame(() =>
-      listRef.current?.scrollTo({ top: 999999, behavior: "smooth" })
-    );
-    navigate("/student/homework/doing", { replace: false });
-  }, [clearChatMessages, setChatMessages, initialMessages, setDockReadOnly, navigate]);
+    // Close the current chat first
+    closeChat?.();
+    
+    // Open a new chat with no task (fresh chat)
+    setTimeout(() => {
+      openChat?.({
+        mode: "homework",
+        task: null,
+      });
+      expandChat?.();
+    }, 100);
+  }, [closeChat, openChat, expandChat]);
 
   const handleCameraChange = (e) => {
     if (effectiveReadOnly) return;
@@ -1732,10 +1943,10 @@ export default function HomeworkChat({
     if (file) {
       // If this is a rescan upload, use the rescan handler instead
       if (isRescanUpload) {
-        console.log("📸 Camera: Rescan upload detected, calling handleRescanUpload", { isRescanUpload, fileName: file.name });
+        // Camera: Rescan upload detected
         handleRescanUpload(file);
       } else {
-        console.log("📸 Camera: Regular upload, calling handleMediaUpload");
+        // Camera: Regular upload
         handleMediaUpload([file]);
       }
     }
@@ -1747,10 +1958,10 @@ export default function HomeworkChat({
     if (files.length) {
       // If this is a rescan upload, use the rescan handler instead (only first file)
       if (isRescanUpload) {
-        console.log("🖼️ Gallery: Rescan upload detected, calling handleRescanUpload", { isRescanUpload, fileCount: files.length });
+        // Gallery: Rescan upload detected
         handleRescanUpload(files[0]);
       } else {
-        console.log("🖼️ Gallery: Regular upload, calling handleMediaUpload");
+        // Gallery: Regular upload
         handleMediaUpload(files);
       }
     }
@@ -1909,11 +2120,6 @@ export default function HomeworkChat({
                     </div>
                   ))}
                 </div>
-                <div className="mt-4 p-4 bg-yellow-50 rounded-xl border-2 border-yellow-200">
-                  <div className="text-base text-yellow-800">
-                    💡 <strong>Tipp:</strong> Versuche zuerst selbst, die Fragen zu beantworten. Wenn du Hilfe brauchst oder nicht weiterkommst, frage mich einfach! Ich helfe dir gerne Schritt für Schritt. 😊
-                  </div>
-                </div>
               </div>
             )}
             {!extracted && qa.length === 0 && (
@@ -1938,7 +2144,13 @@ export default function HomeworkChat({
         );
       }
       default:
-        return <div className="whitespace-pre-wrap">{String(message.content ?? "")}</div>;
+        // Remove speech tags, clean angle brackets, and replace "Schüler" with student name
+        let displayContent = typeof message.content === "string"
+          ? removeSpeechTags(String(message.content))
+          : String(message.content ?? "");
+        displayContent = cleanAngleBrackets(displayContent);
+        displayContent = replaceSchuelerWithName(displayContent, studentFirstName);
+        return <div className="whitespace-pre-wrap">{displayContent}</div>;
     }
   };
 
@@ -2023,7 +2235,7 @@ export default function HomeworkChat({
                 <div className="flex flex-col ml-2 self-end">
                   <img src={studentIcon} alt="Schüler" className="w-7 h-7 rounded-full" />
                   <div className="text-xs text-[#1b3a1b]/60 mt-1 text-center max-w-[60px] break-words">
-                    You
+                    {studentFirstName || "Du"}
                   </div>
                 </div>
               )}

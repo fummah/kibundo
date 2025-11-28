@@ -4,25 +4,60 @@ import { askOpenAI } from "./openaiHelper.js";
 export const handleConversation = async (req, res) => {
   try {
     const { conversationId } = req.params || {};
-    const { userId, message, scanId, agentName } = req.body;
-    console.log("🎯 Backend received agentName:", agentName);
+    const { userId, studentId, message, scanId, agentName } = req.body;
+    
+    // 🔥 CRITICAL: Prioritize studentId to look up userId from students table
+    let effectiveUserId = null;
+    if (studentId) {
+      try {
+        const studentResult = await pool.query(
+          `SELECT user_id FROM students WHERE id=$1 LIMIT 1`,
+          [studentId]
+        );
+        if (studentResult.rows[0] && studentResult.rows[0].user_id) {
+          effectiveUserId = studentResult.rows[0].user_id;
+          if (process.env.DEBUG) {
+            console.debug(`✅ Looked up user_id ${effectiveUserId} from student_id ${studentId}`);
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to look up user_id from studentId:', error);
+      }
+    }
+    // Fallback to userId for backward compatibility only if studentId lookup failed
+    if (!effectiveUserId && userId) {
+      effectiveUserId = userId;
+      if (process.env.DEBUG) {
+        console.debug(`⚠️ Using userId directly (fallback mode): ${userId}`);
+      }
+    }
+    
+    // Reduced logging - convert to debug level
+    if (process.env.DEBUG) {
+      console.debug("🎯 Backend received agentName:", agentName);
+    }
     let convId = conversationId;
 
-    console.log("🔍 Conversation request:", { conversationId, userId, message: message?.substring(0, 50), scanId });
+    // Only log conversation requests in debug mode to reduce noise
+    if (process.env.DEBUG) {
+      console.debug("🔍 Conversation request:", { conversationId, userId: effectiveUserId, studentId, message: message?.substring(0, 50), scanId });
+    }
 
     if (!convId) {
-      const title = `Conversation for ${userId || "guest"} ${new Date().toISOString()}`;
+      const title = `Conversation for ${effectiveUserId || "guest"} ${new Date().toISOString()}`;
       const r = await pool.query(
         `INSERT INTO conversations(user_id, scan_id, title) VALUES($1,$2,$3) RETURNING *`,
-        [userId || null, scanId || null, title]
+        [effectiveUserId || null, scanId || null, title]
       );
       convId = r.rows[0].id;
+      // Keep this log as it's important for tracking new conversations
       console.log("✅ Created new conversation:", convId);
     }
 
     // Store the current user message with comprehensive metadata
     const userMessageMeta = {
-      userId: userId || null,
+      userId: effectiveUserId || null,
+      studentId: studentId || null,
       scanId: scanId || null,
       mode: "homework", // This is the homework conversation controller
       agentName: agentName || "Kibundo",
@@ -35,7 +70,10 @@ export const handleConversation = async (req, res) => {
     );
 
     // 🔥 RETRIEVE FULL CONVERSATION HISTORY (excluding the message we just inserted)
-    console.log("🔍 Retrieving conversation history for convId:", convId);
+    // Reduced logging - only log in debug mode
+    if (process.env.DEBUG) {
+      console.debug("🔍 Retrieving conversation history for convId:", convId);
+    }
     const historyResult = await pool.query(
       `SELECT sender, content FROM messages 
        WHERE conversation_id=$1 
@@ -44,29 +82,39 @@ export const handleConversation = async (req, res) => {
     );
     
     let conversationHistory = historyResult.rows || [];
-    console.log(`✅ Retrieved ${conversationHistory.length} messages from history`);
+    if (process.env.DEBUG) {
+      console.debug(`✅ Retrieved ${conversationHistory.length} messages from history`);
+    }
 
     // 🔥 CRITICAL: Fetch child's name and interests from database to persist in system prompt
     let childFirstName = "Schüler";
     let childFullName = "der Schüler";
     let childInterests = [];
-    if (userId) {
+    if (effectiveUserId) {
       try {
         const userResult = await pool.query(
           `SELECT first_name, last_name FROM users WHERE id=$1`,
-          [userId]
+          [effectiveUserId]
         );
         if (userResult.rows[0]) {
           childFirstName = userResult.rows[0].first_name || "Schüler";
           childFullName = `${childFirstName} ${userResult.rows[0].last_name || ''}`.trim();
-          console.log(`✅ Fetched child name: ${childFullName} (firstName: ${childFirstName})`);
+          if (process.env.DEBUG) {
+            console.debug(`✅ Fetched child name: ${childFullName} (firstName: ${childFirstName})`);
+          }
         }
         
-        // Fetch student interests (focus topics)
-        const studentResult = await pool.query(
-          `SELECT interests FROM students WHERE user_id=$1`,
-          [userId]
-        );
+        // Fetch student interests (focus topics) - use studentId if available, otherwise look up by user_id
+        let interestsQuery;
+        let interestsParams;
+        if (studentId) {
+          interestsQuery = `SELECT interests FROM students WHERE id=$1`;
+          interestsParams = [studentId];
+        } else {
+          interestsQuery = `SELECT interests FROM students WHERE user_id=$1`;
+          interestsParams = [effectiveUserId];
+        }
+        const studentResult = await pool.query(interestsQuery, interestsParams);
         if (studentResult.rows[0] && studentResult.rows[0].interests) {
           const interestsData = studentResult.rows[0].interests;
           if (Array.isArray(interestsData)) {
@@ -75,7 +123,9 @@ export const handleConversation = async (req, res) => {
             // Handle case where interests might be stored as object
             childInterests = Object.values(interestsData).filter(Boolean);
           }
-          console.log(`✅ Fetched child interests: ${childInterests.join(', ')}`);
+          if (process.env.DEBUG) {
+            console.debug(`✅ Fetched child interests: ${childInterests.join(', ')}`);
+          }
         }
       } catch (error) {
         console.warn('⚠️ Failed to fetch child name/interests from database:', error);
@@ -85,7 +135,10 @@ export const handleConversation = async (req, res) => {
     // Fetch homework context if scanId is provided
     let grounding = "";
     if (scanId) {
-      console.log("🔍 Fetching homework context for scanId:", scanId);
+      // Reduced logging - only log in debug mode
+      if (process.env.DEBUG) {
+        console.debug("🔍 Fetching homework context for scanId:", scanId);
+      }
       const s = await pool.query(`SELECT raw_text, grade FROM homework_scans WHERE id=$1`, [scanId]);
       if (s.rows[0]) {
         const rawText = s.rows[0].raw_text;
@@ -103,12 +156,20 @@ export const handleConversation = async (req, res) => {
           gradeInstruction = `Nutze eine einfache, kindgerechte Sprache (Klassenstufe 1–7), damit ${childFirstName} es gut versteht.\n\n`;
         }
         grounding = `${gradeInstruction}🔥🔥🔥 CRITICAL - HOMEWORK CONTEXT - ABSOLUTE PRIORITY 🔥🔥🔥\n\nTHIS IS THE ACTUAL HOMEWORK CONTENT THE STUDENT IS WORKING ON:\n\n${rawText}\n\n⚠️⚠️⚠️ ABSOLUTE REQUIREMENTS ⚠️⚠️⚠️:\n- You MUST ALWAYS reference this specific homework content when answering questions.\n- If the student asks "what is my homework about" or "what are the questions", you MUST describe the homework content shown above.\n- NEVER say "I don't have homework context" or "I can't see the homework" - the homework is provided above.\n- NEVER talk about different homework (like flashcards, mental math, etc.) unless it matches the content above.\n- When the student asks about "question 1", "question 2", etc., you MUST refer to the questions in the homework content above.\n- Always answer questions based on THIS SPECIFIC homework content, not generic examples.\n\n`;
-        console.log("✅ Homework context found:", rawText?.substring(0, 100) + "...");
+        if (process.env.DEBUG) {
+          console.debug("✅ Homework context found:", rawText?.substring(0, 100) + "...");
+        }
       } else {
-        console.log("❌ No homework context found for scanId:", scanId);
+        // Only log if in debug mode - missing context is expected in some cases
+        if (process.env.DEBUG) {
+          console.debug("❌ No homework context found for scanId:", scanId);
+        }
       }
     } else {
-      console.log("❌ No scanId provided in request");
+      // Only log if in debug mode - no scanId is expected for non-homework chats
+      if (process.env.DEBUG) {
+        console.debug("❌ No scanId provided in request");
+      }
     }
 
     // 🔥 PREPEND HOMEWORK CONTEXT TO THE LAST (CURRENT) MESSAGE IF IT EXISTS
@@ -121,7 +182,9 @@ export const handleConversation = async (req, res) => {
         const homeworkText = grounding.replace(/.*?HAUSAUFGABEN-KONTEXT - Dies ist die gescannte Hausaufgabe, an der.*?arbeitet:\n\n/, '').replace(/\n\nWICHTIG:.*$/, '').trim();
         // Prepend homework context to the message
         lastMessage.content = `[HOMEWORK CONTEXT - This is the student's actual homework they are working on:\n\n${homeworkText}\n\n]\n\nStudent's question: ${lastMessage.content}`;
-        console.log("✅ Prepended homework context to current message");
+        if (process.env.DEBUG) {
+          console.debug("✅ Prepended homework context to current message");
+        }
       }
     }
 
@@ -138,6 +201,10 @@ export const handleConversation = async (req, res) => {
       3. Sage NIEMALS "Ich habe keinen Zugriff auf deinen Namen" - sein Name ist "${childFirstName}"
       4. Sei IMMER persönlich und sprich den Schüler in JEDER Antwort mit seinem Namen an
       5. Du hast ALLE seine Informationen einschließlich Klasse, Fächer und Hausaufgabenverlauf
+      6. ⚠️⚠️⚠️ KRITISCH: Das Wort "Schüler" ist ABSOLUT VERBOTEN. Ersetze es IMMER durch "${childFirstName}". Prüfe JEDEN Satz vor dem Senden und ersetze "Schüler" durch "${childFirstName}".
+      7. Beispiel VERBOTEN: "Schüler, deine Hausaufgabe..." → RICHTIG: "${childFirstName}, deine Hausaufgabe..."
+      8. Beispiel VERBOTEN: "Schüler, du musst..." → RICHTIG: "${childFirstName}, du musst..."
+      9. 🔥 FINALE PRÜFUNG: Vor dem Senden JEDER Antwort, suche nach dem Wort "Schüler" und ersetze es durch "${childFirstName}". Das Wort "Schüler" darf NIEMALS in deiner Antwort erscheinen.
       ${childInterests && childInterests.length > 0 ? `
       
       🔥🔥🔥 WICHTIG - FOKUS-THEMEN (INTERESSEN) - HÖCHSTE PRIORITÄT 🔥🔥🔥:
@@ -211,6 +278,33 @@ export const handleConversation = async (req, res) => {
       - Bei gemischten Sprachen in Aufgaben: Übersetze ALLES ins Deutsche, bevor du antwortest. Prüfe jede Option, jeden Text, jede Frage auf Englisch und übersetze sie SOFORT.
       - FINALE PRÜFUNG: Prüfe jede Antwort nochmal auf englische Wörter und übersetze sie SOFORT. KEINE AUSNAHMEN.
       
+      🎤🎤🎤 KRITISCH - SPRACHAUSGABE-FORMATIERUNG (TTS) 🎤🎤🎤:
+      Sprachausgabe ist sehr wichtig für Barrierefreiheit. Du musst festlegen, was GESPROCHEN werden soll vs. was nur ANGEZEIGT werden soll.
+      
+      FORMATIERUNGSREGELN:
+      1. Für Antworten, die sowohl visuelle als auch gesprochene Inhalte enthalten:
+         - Setze die Haupt-Nachricht zum Sprechen in <SPEECH>...</SPEECH> Tags
+         - Inhalte außerhalb dieser Tags sind nur zur Anzeige (Listen, formatierter Text, etc.)
+         - Beispiel:
+           <SPEECH>${childFirstName}, du musst bei deiner Hausaufgabe folgende Aufgaben erledigen.</SPEECH>
+           Die Aufgaben sind:
+           1. Trage die Zahlen 11, 19, 31 in den Zahlenstrahl ein.
+           2. Trage die Zahlen 45, 63, 12 ein.
+           <SPEECH>Probiere zunächst, die ersten beiden Aufgaben zu lösen! Du kannst das schaffen!</SPEECH>
+      
+      2. Für einfache Antworten (kurz, gesprächig):
+         - Wenn deine gesamte Antwort gesprochen werden soll, benötigst du keine Tags
+         - Das System spricht automatisch die gesamte Antwort
+      
+      3. Für komplexe Antworten mit Listen, Tabellen oder formatiertem Inhalt:
+         - UMSCHLIESS IMMER die gesprochene Zusammenfassung in <SPEECH>...</SPEECH> Tags
+         - Gib eine kurze, natürliche Zusammenfassung, die das Wesentliche erfasst
+         - Halte gesprochene Inhalte KURZ und NATÜRLICH (30-50 Wörter für komplexe Inhalte)
+         - Konzentriere dich auf Motivation und Kernpunkte für die Sprache
+         - Detaillierte Listen und Anweisungen sollten außerhalb der <SPEECH> Tags sein (nur Anzeige)
+         - Verwende immer den Namen des Schülers in gesprochenen Teilen
+         - Verwende einen ermutigenden, gesprächigen Ton in gesprochenen Teilen
+      
       Wenn der Schüler nach etwas fragt, das nicht in den Hausaufgaben steht, leite ihn zu den Hausaufgabenaufgaben zurück.
     `;
 
@@ -277,13 +371,19 @@ export const getChatHistory = async (req, res) => {
         }
         
         const agentName = meta.agentName || "Kibundo";
-        console.log("🎯 Backend retrieving agentName:", agentName, "from meta:", meta);
+        // Reduced logging - only log in debug mode
+        if (process.env.DEBUG) {
+          console.debug("🎯 Backend retrieving agentName:", agentName, "from meta:", meta);
+        }
         return {
           ...msg,
           agent_name: agentName
         };
       } catch (e) {
-        console.log("🎯 Backend error parsing meta for agentName, falling back to ChildAgent:", e);
+        // Reduced logging - only log errors in debug mode
+      if (process.env.DEBUG) {
+        console.debug("🎯 Backend error parsing meta for agentName, falling back to Kibundo:", e);
+      }
         return {
           ...msg,
           agent_name: "Kibundo"

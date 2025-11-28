@@ -81,15 +81,9 @@ export default function SignIn() {
       toast.success("Erfolgreich angemeldet!");
 
       if (roleId === ROLES.STUDENT) {
-        const studentId = user?.id || user?.user_id || null;
-        if (!hasSeenIntro(studentId)) {
-          navigate("/student/onboarding/welcome-intro", { replace: true });
-          return;
-        }
-        if (!hasDoneTour(studentId)) {
-          navigate("/student/onboarding/welcome-tour", { replace: true });
-          return;
-        }
+        // Always show start screen after login (intro screen appears first every time)
+        navigate("/student/onboarding/welcome-intro", { replace: true });
+        return;
       }
 
       if (roleId === ROLES.PARENT) {

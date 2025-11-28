@@ -1,5 +1,5 @@
 // src/pages/student/onboarding/WelcomeTour.jsx
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { Typography } from "antd";
 import { ArrowLeft, ArrowRight, Mic } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import { markIntroSeen, markTourDone, hasSeenIntro } from "./introFlags";
+import useTTS from "@/lib/voice/useTTS";
 
 import buddyImg from "@/assets/buddies/kibundo-buddy.png";
 
@@ -17,7 +18,6 @@ import bgClouds from "@/assets/backgrounds/clouds.png";
 import bgTrees from "@/assets/backgrounds/trees.png";
 import bgBottom from "@/assets/backgrounds/bottom.png";
 
-import FooterChat, { ChatStripSpacer } from "@/components/student/mobile/FooterChat.jsx";
 import useEnsureGerman from "@/hooks/useEnsureGerman.js";
 
 const { Title, Text } = Typography;
@@ -46,20 +46,35 @@ export default function WelcomeTour() {
   // Check if this is first login - don't mark as seen until onboarding is complete
   const isFirstLogin = !hasSeenIntro(studentId);
 
+  // Use the friendly TTS hook from home screen
+  const { speak: speakTTS } = useTTS({ lang: "de-DE", enabled: true });
+  const hasSpokenRef = useRef(false);
+
   const speak = () => {
-    try {
-      const message = `${current.title}. ${current.text}`;
-      const u = new SpeechSynthesisUtterance(message);
-      u.lang = "de-DE";
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
-    } catch {}
+    const message = `${current.title}. ${current.text}`;
+    speakTTS(message);
   };
 
+  // Automatic TTS on mount - always enabled
+  // Use ref to prevent double execution within the same render cycle
   useEffect(() => {
-    speak();
+    if (ready && !hasSpokenRef.current) {
+      // Mark as spoken immediately to prevent double execution
+      hasSpokenRef.current = true;
+      
+      // Small delay to ensure page is fully loaded
+      const timer = setTimeout(() => {
+        const message = `${current.title}. ${current.text}`;
+        speakTTS(message);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+    // Reset ref when component unmounts so it can run again on next mount
+    return () => {
+      hasSpokenRef.current = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ready]);
 
   const onSkip = () => {
     // Only allow skip if not first login
@@ -201,15 +216,6 @@ export default function WelcomeTour() {
         </div>
       </div>
 
-      {/* Bottom dock */}
-      <ChatStripSpacer className="mt-4" />
-      <FooterChat
-        includeOnRoutes={["/student/onboarding/welcome-tour"]}
-        hideOnRoutes={[]}
-        hideTriggerWhenOpen
-        onChatOpen={speak}
-        className="pointer-events-auto"
-      />
 
       {/* Animations */}
       <style>{`

@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import useEnsureGerman from "@/hooks/useEnsureGerman.js";
+import useTTS from "@/lib/voice/useTTS";
 
 /* New shared UI components */
 import OnboardingHeader from "@/components/student/onboarding/OnboardingHeader.jsx";
@@ -41,6 +42,37 @@ export default function BuddySelect() {
   const { buddy, setBuddy } = useStudentApp();
   const [selected, setSelected] = useState(buddy?.id || null);
   const buttonRef = useRef(null);
+  const hasSpokenRef = useRef(false);
+
+  // Use the friendly TTS hook from home screen
+  const { speak: speakTTS, speaking } = useTTS({ lang: "de-DE", enabled: true });
+
+  // Get the text to speak
+  const textToSpeak = `${t("onboarding.chooseBuddy")}. ${t("onboarding.chooseBuddySubtitle")}`;
+
+  const speak = () => {
+    speakTTS(textToSpeak);
+  };
+
+  // Automatic TTS on mount - always enabled
+  // Use ref to prevent double execution within the same render cycle
+  useEffect(() => {
+    if (ready && !hasSpokenRef.current) {
+      // Mark as spoken immediately to prevent double execution
+      hasSpokenRef.current = true;
+      
+      // Small delay to ensure page is fully loaded
+      const timer = setTimeout(() => {
+        speakTTS(textToSpeak);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+    // Reset ref when component unmounts so it can run again on next mount
+    return () => {
+      hasSpokenRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
   const choose = (b) => setSelected(b.id);
 
@@ -117,7 +149,11 @@ export default function BuddySelect() {
       {/* ---------- CONTENT ---------- */}
       <div className="relative px-4 pt-6 pb-32 md:pb-6 flex flex-col min-h-[100svh]">
         {/* Header (Back + TTS/Skip if you want) */}
-        <OnboardingHeader onBack={() => navigate(-1)} />
+        <OnboardingHeader 
+          onBack={() => navigate(-1)} 
+          onSpeak={speak}
+          speakLoading={speaking}
+        />
 
         {/* Title + subtitle */}
         <div className="mt-1 text-center">

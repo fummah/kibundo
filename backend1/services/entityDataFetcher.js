@@ -28,11 +28,18 @@ async function fetchEntityData(entities = [], options = {}) {
         'teachers': 'teacher',
         'parents': 'parent',
         'classes': 'class',
+        'class': 'class',
+        'CLASS': 'class',
+        'CLASSES': 'class',
         'subjects': 'subject',
-        'homeworkscans': 'homeworkscan',
-        'homework_scans': 'homeworkscan',
-        'homeworkscanevents': 'homeworkscanevent',
-        'homework_scan_events': 'homeworkscanevent',
+        'subject': 'subject',
+        'SUBJECT': 'subject',
+        'SUBJECTS': 'subject',
+        'homeworkscans': 'homeworkScan',
+        'homework_scans': 'homeworkScan',
+        'HOMEWORK_SCANS': 'homeworkScan',
+        'homeworkscanevents': 'homeworkScanEvent',
+        'homework_scan_events': 'homeworkScanEvent',
         'blogposts': 'blogpost',
         'blog_posts': 'blogpost',
         'invoices': 'invoice',
@@ -41,21 +48,25 @@ async function fetchEntityData(entities = [], options = {}) {
         'prices': 'price',
         'coupons': 'coupon',
         'curricula': 'curriculum',
+        'curriculums': 'curriculum',
+        'CURRICULUMS': 'curriculum',
         'quizzes': 'quiz',
         'quizitems': 'quizitem',
         'quiz_items': 'quizitem',
         'states': 'state',
+        'class_states': 'state',
+        'CLASS_STATES': 'state',
         'roles': 'role',
-        'billingevents': 'billingevent',
-        'billing_events': 'billingevent',
-        'emailtemplates': 'emailtemplate',
-        'email_templates': 'emailtemplate',
+        'billingevents': 'billingEvent',
+        'billing_events': 'billingEvent',
+        'emailtemplates': 'emailTemplate',
+        'email_templates': 'emailTemplate',
         'segments': 'segment',
         'campaigns': 'campaign',
-        'emaillogs': 'emaillog',
-        'email_logs': 'emaillog',
-        'newsletteroptins': 'newsletteroptin',
-        'newsletter_opt_ins': 'newsletteroptin',
+        'emaillogs': 'emailLog',
+        'email_logs': 'emailLog',
+        'newsletteroptins': 'newsletterOptIn',
+        'newsletter_opt_ins': 'newsletterOptIn',
         'student_subjects': 'student_subjects',
         'studentsubjects': 'student_subjects',
         'agentpromptsets': 'agentPromptSet',
@@ -63,22 +74,54 @@ async function fetchEntityData(entities = [], options = {}) {
         'agenttests': 'agentTest',
         'agent_tests': 'agentTest',
         'aiagentsettings': 'aiagentsettings',
-        'ai_agent_settings': 'aiagentsettings'
+        'ai_agent_settings': 'aiagentsettings',
+        'AIAGENT_SETTINGS': 'aiagentsettings',
+        'aiagentsetting': 'aiagentsettings',
+        'aiAgentSettings': 'aiagentsettings',
+        'worksheets': 'worksheet',
+        'WORKSHEETS': 'worksheet'
       };
       
       // Try direct match first
       const mappedName = entityMap[normalizedName] || normalizedName;
       Model = db[mappedName] || db[entityName];
       
-      // Try capitalized version
+      // Try capitalized version (camelCase)
       if (!Model) {
         const capitalized = entityName.charAt(0).toUpperCase() + entityName.slice(1);
         Model = db[capitalized] || db[capitalized.toLowerCase()];
       }
       
+      // Try camelCase version (e.g., homeworkScan, homeworkScanEvent)
+      if (!Model && normalizedName.includes('_')) {
+        const camelCase = normalizedName.split('_').map((word, idx) => 
+          idx === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1)
+        ).join('');
+        Model = db[camelCase] || db[camelCase.charAt(0).toUpperCase() + camelCase.slice(1)];
+      }
+      
       if (!Model) {
-        console.warn(`⚠️ Entity "${entityName}" not found in models. Skipping.`);
-        continue;
+        console.warn(`⚠️ Entity "${entityName}" not found in models. Available models:`, Object.keys(db).slice(0, 30).join(', '));
+        // Try to find a close match (case-insensitive, ignoring underscores)
+        const entityNameLower = entityName.toLowerCase().replace(/_/g, '');
+        const availableModels = Object.keys(db).filter(key => {
+          const keyLower = key.toLowerCase().replace(/_/g, '');
+          return keyLower === entityNameLower || 
+                 keyLower.includes(entityNameLower) || 
+                 entityNameLower.includes(keyLower);
+        });
+        if (availableModels.length > 0) {
+          console.log(`🔍 Found potential matches for "${entityName}":`, availableModels.join(', '));
+          // Try the first match
+          Model = db[availableModels[0]];
+          if (Model) {
+            console.log(`✅ Using model "${availableModels[0]}" for entity "${entityName}"`);
+          }
+        }
+        if (!Model) {
+          console.warn(`💡 Did you mean one of these? ${availableModels.join(', ')}`);
+          continue;
+        }
       }
 
       // Build where clause based on options
@@ -117,13 +160,13 @@ async function fetchEntityData(entities = [], options = {}) {
         }
         
         // 🔥 Filter HOMEWORK_SCANS by student_id (for students - highest priority)
-        if (normalizedEntityName === 'homeworkscan' && options.studentId) {
+        if ((normalizedEntityName === 'homeworkscan' || mappedName === 'homeworkScan') && options.studentId) {
           whereClause.student_id = options.studentId;
           console.log(`🔍 Filtering HOMEWORK_SCANS by student_id: ${options.studentId}`);
         }
         
         // Filter HOMEWORK_SCANS by student's parent_id (via student relationship) - only if no studentId
-        if (normalizedEntityName === 'homeworkscan' && options.parentId && !options.studentId) {
+        if ((normalizedEntityName === 'homeworkscan' || mappedName === 'homeworkScan') && options.parentId && !options.studentId) {
           // We'll handle this below with the include logic
           console.log(`🔍 Filtering HOMEWORK_SCANS by parent_id: ${options.parentId}`);
         }
@@ -177,7 +220,7 @@ async function fetchEntityData(entities = [], options = {}) {
       
       // For HOMEWORK_SCANS with parent filter, we need to filter by student_id where student belongs to parent
       // 🔥 Only do this if studentId is NOT already set (studentId takes priority)
-      if (normalizedName === 'homeworkscan' && options.parentId && !options.studentId) {
+      if ((normalizedName === 'homeworkscan' || mappedName === 'homeworkScan') && options.parentId && !options.studentId) {
         // First, get all student IDs for this parent
         const Student = db.student;
         const students = await Student.findAll({
@@ -201,13 +244,64 @@ async function fetchEntityData(entities = [], options = {}) {
       // Only fetch most recent/relevant records
       const limit = options.parentId ? 50 : 100; // Reduced limit to prevent context overflow
       
-      const records = await Model.findAll({
-        where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
-        include: includeOptions,
-        limit: limit, // Limit to prevent context from being too large
-        order: [['id', 'DESC']], // Most recent first
-        attributes: { exclude: ['password'] } // Always exclude passwords
-      });
+      // Build attributes list - exclude password and handle missing columns gracefully
+      let attributes = { exclude: ['password'] };
+      
+      // For worksheets, check if grade_level column exists before including it
+      // We'll use raw query to check column existence, or just catch the error
+      let records;
+      try {
+        records = await Model.findAll({
+          where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
+          include: includeOptions,
+          limit: limit, // Limit to prevent context from being too large
+          order: [['id', 'DESC']], // Most recent first
+          attributes: attributes // Always exclude passwords
+        });
+      } catch (dbError) {
+        // If error is about missing column (e.g., grade_level in worksheets), try using raw query
+        // PostgreSQL error code 42703 = undefined_column
+        if (dbError.code === '42703' || (dbError.message && dbError.message.includes('does not exist'))) {
+          console.warn(`⚠️ Column mismatch for ${entityName}, trying raw SQL query: ${dbError.message}`);
+          try {
+            // Use raw SQL to fetch only columns that exist (bypasses model definition)
+            const tableName = Model.tableName || (typeof Model.getTableName === 'function' ? Model.getTableName() : normalizedName);
+            
+            // Build WHERE clause safely
+            let whereSQL = '';
+            const replacements = { limit };
+            if (Object.keys(whereClause).length > 0) {
+              const whereParts = [];
+              Object.keys(whereClause).forEach((key, idx) => {
+                const paramName = `param${idx}`;
+                whereParts.push(`"${key}" = :${paramName}`);
+                replacements[paramName] = whereClause[key];
+              });
+              whereSQL = `WHERE ${whereParts.join(' AND ')}`;
+            }
+            
+            const query = `SELECT * FROM "${tableName}" ${whereSQL} ORDER BY id DESC LIMIT :limit`;
+            
+            const rawRecords = await Model.sequelize.query(query, {
+              replacements,
+              type: Model.sequelize.QueryTypes.SELECT
+            });
+            
+            // Convert to plain objects (don't use Model.build as it will validate against model definition)
+            records = rawRecords.map(record => {
+              const instance = Model.build(record, { isNewRecord: false, raw: true });
+              return instance;
+            });
+            
+            console.log(`✅ Successfully fetched ${records.length} records from ${entityName} using raw SQL`);
+          } catch (retryError) {
+            console.error(`❌ Failed to fetch ${entityName} even with raw SQL:`, retryError.message);
+            throw retryError; // Re-throw if retry also fails
+          }
+        } else {
+          throw dbError; // Re-throw if it's a different error
+        }
+      }
 
       // Convert to plain objects
       const plainRecords = records.map(record => {

@@ -1,5 +1,5 @@
 // src/pages/student/onboarding/WelcomeIntro.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button, Typography } from "antd";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import { markIntroSeen, markTourDone, hasSeenIntro } from "./introFlags";
+import useTTS from "@/lib/voice/useTTS";
 
 import bgGlobal from "@/assets/backgrounds/global-bg.png";
 import bgClouds from "@/assets/backgrounds/clouds.png";
@@ -25,55 +26,103 @@ export default function WelcomeIntro() {
   const navigate = useNavigate();
   const { buddy } = useStudentApp();
   const { user, account } = useAuthContext();
-  const [speaking, setSpeaking] = useState(false);
   const { i18n } = useTranslation();
   const ready = useEnsureGerman(i18n);
-
+  const hasSpokenRef = useRef(false); // Prevent double TTS
+  const [childFirstName, setChildFirstName] = useState("");
+  
   // If parent has selected a child account (Netflix-style), use that child's ID
   // Otherwise, use the logged-in student's ID
   const studentId = account?.type === "child" && account?.userId 
     ? account.userId 
     : (user?.id || user?.user_id || null);
+
+  // Use the friendly TTS hook from home screen
+  const { speak: speakTTS, speaking } = useTTS({ lang: "de-DE", enabled: true });
+
   const isFirstLogin = !hasSeenIntro(studentId);
+
+  // Fetch child's first name from API if needed - use ref to track if we've started fetching
+  const nameFetchedRef = useRef(false);
+  useEffect(() => {
+    const fetchChildName = async () => {
+      // Prevent multiple fetches
+      if (nameFetchedRef.current) return;
+      nameFetchedRef.current = true;
+
+      try {
+        // If parent viewing child, get name from account
+        if (account?.type === "child" && account?.raw?.user?.first_name) {
+          setChildFirstName(account.raw.user.first_name);
+          return;
+        }
+
+        // If we have user's first name directly, use it
+        if (user?.first_name) {
+          setChildFirstName(user.first_name);
+          return;
+        }
+
+        // Otherwise, fetch from API
+        if (studentId) {
+          const api = (await import("@/api/axios")).default;
+          const studentsRes = await api.get("/allstudents");
+          const students = Array.isArray(studentsRes.data)
+            ? studentsRes.data
+            : studentsRes.data?.data || [];
+          
+          const student = students.find(
+            (s) => s?.user?.id === studentId || s?.user_id === studentId || s?.id === studentId
+          );
+          
+          if (student?.user?.first_name) {
+            setChildFirstName(student.user.first_name);
+          }
+        }
+      } catch (err) {
+        console.debug("Could not fetch child name:", err);
+      }
+    };
+
+    if (ready) {
+      fetchChildName();
+    }
+  }, [account, user, studentId, ready]);
+
+  // Build greeting with child's name
+  const greeting = childFirstName
+    ? `Hallo ${childFirstName}! Ich bin Kibundo. Gemeinsam machen wir Hausaufgaben entspannt und spielerisch.`
+    : "Hallo! Ich bin Kibundo. Gemeinsam machen wir Hausaufgaben entspannt und spielerisch.";
 
   // DO NOT mark intro as seen until onboarding is complete
   // This ensures first-time users cannot skip
 
-  // Automatic TTS greeting on first login - always enabled for first-time users
+  // Automatic TTS greeting on page load - always enabled
+  // Use ref to prevent double execution within the same render cycle
   useEffect(() => {
-    if (isFirstLogin && ready) {
-      // Small delay to ensure page is fully loaded
+    if (ready && !hasSpokenRef.current) {
+      // Mark as spoken immediately to prevent double execution
+      hasSpokenRef.current = true;
+      
+      // Wait a bit for name to be fetched, but don't wait forever
       const timer = setTimeout(() => {
-        try {
-          const greeting = "Hallo! Ich bin Kibundo. Gemeinsam machen wir Hausaufgaben entspannt und spielerisch.";
-          const u = new SpeechSynthesisUtterance(greeting);
-          u.lang = "de-DE";
-          setSpeaking(true);
-          u.onend = () => setSpeaking(false);
-          window.speechSynthesis.cancel();
-          window.speechSynthesis.speak(u);
-        } catch {
-          setSpeaking(false);
-        }
-      }, 800); // Slightly longer delay to ensure page is ready
+        const finalGreeting = childFirstName
+          ? `Hallo ${childFirstName}! Ich bin Kibundo. Gemeinsam machen wir Hausaufgaben entspannt und spielerisch.`
+          : "Hallo! Ich bin Kibundo. Gemeinsam machen wir Hausaufgaben entspannt und spielerisch.";
+        speakTTS(finalGreeting);
+      }, 1200); // Delay to allow name fetch, but proceed even if name not found
       return () => clearTimeout(timer);
     }
+    // Reset ref when component unmounts so it can run again on next mount
+    return () => {
+      hasSpokenRef.current = false;
+    };
+    // Only depend on ready - not childFirstName to prevent re-runs
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFirstLogin, ready]);
+  }, [ready]);
 
   const speak = () => {
-    try {
-      const u = new SpeechSynthesisUtterance(
-        "Hallo! Ich bin Kibundo. Gemeinsam machen wir Hausaufgaben entspannt und spielerisch."
-      );
-      u.lang = "de-DE";
-      setSpeaking(true);
-      u.onend = () => setSpeaking(false);
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
-    } catch {
-      setSpeaking(false);
-    }
+    speakTTS(greeting);
   };
 
   const next = () => navigate("/student/onboarding/welcome-tour");
@@ -172,20 +221,20 @@ export default function WelcomeIntro() {
         </Button>
       </div>
 
-      {/* Buddy + bubble */}
+      {/* Buddy + bubble - centered */}
       <div className="relative z-20 px-3 mt-[35vh] md:mt-[32vh]">
-        <div className="relative min-h-[240px]">
+        <div className="relative min-h-[240px] flex flex-col items-center">
           <img
             src={buddy?.img || buddyMascot}
             alt="Kibundo"
-            className="w-[230px] drop-shadow-[0_22px_45px_rgba(90,76,58,0.22)] select-none"
+            className="w-[230px] drop-shadow-[0_22px_45px_rgba(90,76,58,0.22)] select-none mx-auto"
             draggable={false}
           />
 
-          <div className="absolute left-[150px] top-[8px] max-w-[75%] text-[#1b3a1b] drop-shadow-[0_12px_24px_rgba(0,0,0,0.12)]">
-            <div className="rounded-[28px] bg-[#a4dc4f] px-6 py-5 text-left">
+          <div className="mt-4 max-w-[85%] text-[#1b3a1b] drop-shadow-[0_12px_24px_rgba(0,0,0,0.12)]">
+            <div className="rounded-[28px] bg-[#a4dc4f] px-6 py-5 text-center">
               <Text style={{ fontSize: 14, lineHeight: 1.4, display: "block" }}>
-                Hallo! Ich bin Kibundo.
+                {childFirstName ? `Hallo ${childFirstName}! Ich bin Kibundo.` : "Hallo! Ich bin Kibundo."}
                 <br />
                 Gemeinsam machen wir Hausaufgaben entspannt und spielerisch.
               </Text>

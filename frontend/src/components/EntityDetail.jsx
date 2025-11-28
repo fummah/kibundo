@@ -2519,13 +2519,18 @@ export default function EntityDetail({ cfg, extraHeaderButtons, onEntityLoad, on
             }}
             onSuccess={async () => {
               try {
-                messageApi.success("Student created successfully!");
+                // Show success message in German
+                messageApi.success({ 
+                  content: "Schüler erfolgreich erstellt!",
+                  key: "student-created-success",
+                  duration: 3
+                });
                 setLinkChildModalOpen(false);
                 // Reload the related data
                 await loadRelated();
               } catch (err) {
                 messageApi.error(
-                  err?.response?.data?.message || "Failed to create student."
+                  err?.response?.data?.message || "Schüler konnte nicht erstellt werden."
                 );
               }
             }}

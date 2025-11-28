@@ -7,6 +7,7 @@ import { useChatDock } from "@/context/ChatDockContext";
 import { useAuthContext } from "@/context/AuthContext";
 import { resolveStudentAgent } from "@/utils/studentAgent";
 import useASR from "@/lib/voice/useASR";
+import { useStudentFirstName } from "@/hooks/useStudentFirstName";
 
 import minimiseBg from "@/assets/backgrounds/minimise.png";
 import agentIcon from "@/assets/mobile/icons/agent-icon.png";
@@ -119,13 +120,16 @@ export default function ChatLayer({
   const navigate = useNavigate();
   const { message: antdMessage } = App.useApp();
 
-  const { getChatMessages, setChatMessages, clearChatMessages } = useChatDock();
+  const { getChatMessages, setChatMessages, clearChatMessages, closeChat } = useChatDock();
   const { user: authUser } = useAuthContext();
   
   // Always "general" mode — but we SCOPE the key PER STUDENT
   const mode = "general";
   const baseTaskId = "global";
   const studentId = authUser?.id || "anon";
+  
+  // Get student's first name
+  const studentFirstName = useStudentFirstName();
   
   const [backendMessages, setBackendMessages] = useState([]);
   const [loadingBackendMessages, setLoadingBackendMessages] = useState(false);
@@ -335,22 +339,65 @@ export default function ChatLayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setChatMessages, getChatMessages, scopedTaskKey]);
 
+  // Helper to check if message has valid content
+  const hasValidContent = useCallback((message) => {
+    if (!message || typeof message !== "object") return false;
+    
+    // Check if message has a type that doesn't require content (like status messages)
+    if (message.type === "status" && message.transient) {
+      return true; // Allow transient status messages
+    }
+    
+    // For table/analysis type, check if it has extractedText or qa
+    if (message.type === "table" || message.type === "analysis") {
+      const hasExtracted = message.content?.extractedText || message.content?.raw_text || message.content?.analysisText;
+      const hasQa = Array.isArray(message.content?.qa) && message.content.qa.length > 0;
+      const hasQuestions = Array.isArray(message.content?.questions) && message.content.questions.length > 0;
+      return !!(hasExtracted || hasQa || hasQuestions);
+    }
+    
+    // For image type, check if it has a valid src
+    if (message.type === "image") {
+      const src = typeof message.content === "string" ? message.content : message?.content?.url;
+      return !!src && src.trim() !== "";
+    }
+    
+    // For tip type, check if it has content
+    if (message.type === "tip") {
+      const tipContent = typeof message.content === "string" 
+        ? message.content 
+        : message.content?.text || message.content || "";
+      return tipContent.trim() !== "";
+    }
+    
+    // For text type, check if content is not empty
+    const content = typeof message.content === "string" 
+      ? message.content 
+      : message.content != null 
+        ? String(message.content) 
+        : "";
+    
+    return content.trim() !== "";
+  }, []);
+
   // Single source for reading - backend is source of truth when available
   const msgs = useMemo(() => {
+    let messages;
+    
     if (controlledMessagesProp) {
-      return controlledMessagesProp;
+      messages = controlledMessagesProp;
+    } else if (backendMessages.length > 0) {
+      // 🔥 If we have backend messages, USE ONLY THEM - they are the complete source of truth
+      messages = backendMessages; // Don't merge - backend is complete conversation history
+    } else {
+      // 🔥 Otherwise, use localStorage OR local state (when backend not yet loaded)
+      const persisted = getChatMessages?.(stableModeRef.current, scopedTaskKey) || [];
+      messages = mergeById(persisted, localMessages);
     }
     
-    // 🔥 If we have backend messages, USE ONLY THEM - they are the complete source of truth
-    if (backendMessages.length > 0) {
-      return backendMessages; // Don't merge - backend is complete conversation history
-    }
-    
-    // 🔥 Otherwise, use localStorage OR local state (when backend not yet loaded)
-    const persisted = getChatMessages?.(stableModeRef.current, scopedTaskKey) || [];
-    const merged = mergeById(persisted, localMessages);
-    return merged;
-  }, [controlledMessagesProp, backendMessages, getChatMessages, localMessages, scopedTaskKey]);
+    // Filter out messages with empty content
+    return messages.filter(hasValidContent);
+  }, [controlledMessagesProp, backendMessages, getChatMessages, localMessages, scopedTaskKey, hasValidContent]);
 
   // Never persist transient/base64 images
   const filterForPersist = useCallback((arr) => {
@@ -519,7 +566,8 @@ export default function ChatLayer({
             agent_id: assignedAgent.id,
             mode: "general", // ✅ Changed from "homework" to "general" for general chat
             student_id: studentId,
-            conversationId: conversationId, // 🔥 Send conversation ID for memory
+            conversationId: conversationId || null, // 🔥 Send conversation ID for memory (null if starting new)
+            startNewChat: !conversationId, // 🔥 If no conversationId, explicitly start new chat
           };
           if (assignedAgent.meta?.entities?.length) {
             payload.entities = assignedAgent.meta.entities;
@@ -598,6 +646,9 @@ export default function ChatLayer({
 
   // Start new chat directly without confirmation
   const startNewChat = useCallback(() => {
+    // Close the current chat first
+    closeChat?.();
+    
     // 🔥 Clear conversation ID to start fresh
     setConversationId(null);
     setBackendMessages([]);
@@ -615,6 +666,7 @@ export default function ChatLayer({
       listRef.current?.scrollTo({ top: 999999, behavior: "smooth" })
     );
   }, [
+    closeChat,
     clearChatMessages,
     setChatMessages,
     conversationIdKey,
@@ -839,7 +891,7 @@ export default function ChatLayer({
                     className="w-7 h-7 rounded-full"
                   />
                   <div className="text-xs text-[#1b3a1b]/60 mt-1 text-center max-w-[60px] break-words">
-                    You
+                    {studentFirstName || "Du"}
                   </div>
                 </div>
               )}

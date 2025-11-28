@@ -14,16 +14,6 @@ export default function AddAnotherChildIntro() {
 
   return (
     <CircularBackground>
-      {/* Header ABOVE buddy */}
-      <div
-        className="absolute left-1/2 -translate-x-1/2 z-[5] px-4 sm:px-6 w-full"
-        style={{ top: `calc(env(safe-area-inset-top) + 20px)` }}
-      >
-        <h2 className="text-center text-[16px] font-extrabold text-neutral-800">
-          {t("parent.addChild.intro.kicker", "Los geht's")}
-        </h2>
-      </div>
-
       {/* Buddy - positioned in bottom half */}
       <div
         className="absolute left-1/2 -translate-x-1/2 z-[4]"

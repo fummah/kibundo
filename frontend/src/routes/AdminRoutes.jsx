@@ -86,6 +86,11 @@ import TaskForm from "@/pages/admin/tasks/TaskForm.jsx";
 import DatabaseOverview from "@/pages/admin/database/DatabaseOverview.jsx";
 import DatabaseManagement from "@/pages/admin/database/DatabaseManagement.jsx";
 
+/* Scans */
+import ScansOverview from "@/pages/admin/scans/ScansOverview.jsx";
+import HomeworkScansList from "@/pages/admin/scans/HomeworkScansList.jsx";
+import HomeworkScanDetail from "@/pages/admin/scans/HomeworkScanDetail.jsx";
+
 /* Lazy pages */
 const StudentAnalytics = lazy(() =>
   import("@/pages/admin/analytics/StudentAnalytics.jsx")
@@ -150,6 +155,13 @@ export default function AdminRoutes() {
 
           {/* Newsletter */}
           <Route path="newsletter" element={<Newsletter />} />
+
+          {/* Scans */}
+          <Route path="scans">
+            <Route index element={<ScansOverview />} />
+            <Route path="homework" element={<HomeworkScansList />} />
+            <Route path="homework/:id" element={<HomeworkScanDetail />} />
+          </Route>
 
           {/* Academics */}
           <Route path="academics">

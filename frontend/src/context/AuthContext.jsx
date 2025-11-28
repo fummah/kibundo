@@ -168,6 +168,12 @@ export const AuthProvider = ({ children }) => {
       sessionStorage.removeItem(BROWSER_FINGERPRINT_KEY);
       // Clear selected account on logout
       localStorage.removeItem("kibundo_selected_account");
+      // Clear intro flags so start screen appears every time after login
+      // Clear all intro flags (for all users) to ensure start screen shows after login
+      const introKeys = Object.keys(localStorage).filter(key => 
+        key.startsWith("kib_intro_seen_v1") || key.startsWith("kibundo_tour_done")
+      );
+      introKeys.forEach(key => localStorage.removeItem(key));
     } catch {}
     setAuth({ token: null, user: null });
     setAccount(null);

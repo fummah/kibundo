@@ -47,9 +47,9 @@ export default function ForgotPassword() {
           {loading ? "Sending..." : "Send Reset Link"}
         </button>
         <div className="text-center text-sm">
-          Remembered?{" "}
+          Erinnert?{" "}
           <span onClick={() => navigate("/signin")} className="text-indigo-600 cursor-pointer hover:underline">
-            Back to Sign In
+            Zurück zur Anmeldung
           </span>
         </div>
       </form>

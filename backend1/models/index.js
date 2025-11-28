@@ -48,6 +48,7 @@ db.blogpost = require("./blogpost.model")(sequelize, DataTypes);
 
 // Academics
 db.curriculum = require("./curriculum.model")(sequelize, DataTypes);
+db.worksheet = require("./worksheet.model")(sequelize, DataTypes);
 
 // Quizzes
 db.quiz = require("./quiz.model")(sequelize, DataTypes);

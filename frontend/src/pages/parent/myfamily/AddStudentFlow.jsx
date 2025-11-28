@@ -246,7 +246,12 @@ export default function AddStudentFlow() {
       const updatedParentStudents = updatedAllStudents.filter(s => s.parent_id === finalParentId);
       setStudents(updatedParentStudents);
       
-      message.success(t("parent.addStudent.toast.created", "Student created successfully!"));
+      // Show success message in German with key to prevent duplicates
+      message.success({ 
+        content: "Schüler erfolgreich erstellt!",
+        key: "student-created-success",
+        duration: 3
+      });
       
       // If this is the first child, redirect to add another child intro page
       // For subsequent children, redirect to home (next step)
@@ -317,7 +322,7 @@ export default function AddStudentFlow() {
               className="!p-0 !h-auto text-neutral-700"
             />
             <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-neutral-800 mb-0">
-              {t("parent.addStudent.formTitle", "Student Details")}
+              Schülerdetails
             </h1>
           </div>
 
@@ -342,7 +347,7 @@ export default function AddStudentFlow() {
                 label={<span className="hidden">First Name</span>}
               >
                 <Input 
-                  placeholder={t("parent.addStudent.firstName_ph", "First Name")}
+                  placeholder="Vorname"
                   className={inputClass}
                 />
               </Form.Item>
@@ -357,7 +362,7 @@ export default function AddStudentFlow() {
                 label={<span className="hidden">Last Name</span>}
               >
                 <Input 
-                  placeholder={t("parent.addStudent.lastName_ph", "Last Name")}
+                  placeholder="Nachname"
                   className={inputClass}
                 />
               </Form.Item>
@@ -395,7 +400,7 @@ export default function AddStudentFlow() {
                 label={<span className="hidden">Class</span>}
               >
                 <Select
-                  placeholder="Select class (Grade 1-4 only)"
+                  placeholder="Klasse auswählen"
                   showSearch
                   filterOption={(input, option) =>
                     (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
@@ -423,7 +428,7 @@ export default function AddStudentFlow() {
                 label={<span className="hidden">State</span>}
               >
                 <Select
-                  placeholder="Select state"
+                  placeholder="Bundesland auswählen"
                   showSearch
                   filterOption={(input, option) =>
                     (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
@@ -445,7 +450,7 @@ export default function AddStudentFlow() {
                 label={<span className="hidden">School (Optional)</span>}
               >
                 <Input 
-                  placeholder="Enter school name (optional)"
+                  placeholder="Schulname eingeben (fakultativ)"
                   className={inputClass}
                 />
               </Form.Item>
@@ -463,7 +468,7 @@ export default function AddStudentFlow() {
                   loading={submitting}
                   className="h-12 px-4 sm:px-6 rounded-2xl !bg-[#FF9A36] hover:!bg-[#FF8A1A] border-none text-sm sm:text-base order-1 sm:order-2"
                 >
-                  {t("parent.addStudent.create", "Create")}
+                  Erstellen
                 </Button>
               </div>
             </Form>

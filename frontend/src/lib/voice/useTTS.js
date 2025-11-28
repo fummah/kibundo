@@ -1,4 +1,3 @@
-// src/lib/voice/useTTS.js
 import { useState, useRef, useCallback, useEffect } from "react";
 import api from "@/api/axios";
 
@@ -10,220 +9,323 @@ import api from "@/api/axios";
 export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
   const [speaking, setSpeaking] = useState(false);
   const [loading, setLoading] = useState(false);
-  const audioRef = useRef(null);
-  const abortControllerRef = useRef(null);
-  const audioContextRef = useRef(null);
 
-  // Initialize audio context for iOS compatibility
+  const audioContextRef = useRef(null); // AudioContext for playback
+  const audioElementRef = useRef(null); // fallback HTMLAudioElement (kept for safety)
+  const bufferSourceRef = useRef(null); // for AudioBufferSourceNode playback
+  const abortControllerRef = useRef(null);
+  const voicesChangedHandlerRef = useRef(null);
+
+  // Clean up on unmount
   useEffect(() => {
-    // iOS requires user interaction to initialize audio context
-    // We'll create it lazily on first speak
     return () => {
+      try {
+        // Stop any speech synthesis
+        if (typeof window !== "undefined" && window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+          if (voicesChangedHandlerRef.current) {
+            window.speechSynthesis.removeEventListener("voiceschanged", voicesChangedHandlerRef.current);
+            voicesChangedHandlerRef.current = null;
+          }
+        }
+      } catch (e) {}
+
+      if (bufferSourceRef.current) {
+        try {
+          bufferSourceRef.current.stop();
+        } catch (e) {}
+        bufferSourceRef.current.disconnect();
+        bufferSourceRef.current = null;
+      }
+
+      if (audioElementRef.current) {
+        try {
+          audioElementRef.current.pause();
+          audioElementRef.current.src = "";
+        } catch (e) {}
+        audioElementRef.current = null;
+      }
+
       if (audioContextRef.current) {
         audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
     };
   }, []);
 
-  // Helper to initialize audio context (required for iOS)
+  // Initialize AudioContext (lazily). Throws on blocked / failed resume.
   const initAudioContext = useCallback(async () => {
-    if (typeof window === 'undefined') return;
-    
-    // Check if we're on iOS
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    
-    if (isIOS && !audioContextRef.current) {
-      try {
-        // Create AudioContext for iOS compatibility
+    if (typeof window === "undefined") {
+      throw new Error("Window is undefined");
+    }
+
+    try {
+      if (!audioContextRef.current) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioContextRef.current = new AudioContext();
-        
-        // iOS requires user interaction to resume audio context
-        // Resume it if suspended
-        if (audioContextRef.current.state === 'suspended') {
-          await audioContextRef.current.resume();
-        }
-      } catch (e) {
-        console.warn("⚠️ Could not create AudioContext:", e);
       }
+
+      // If not running, attempt to resume. If blocked, throw.
+      if (audioContextRef.current.state !== "running") {
+        const resumePromise = audioContextRef.current.resume();
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Resume timeout")), 150));
+        await Promise.race([resumePromise, timeout]);
+        // little delay to allow state propagation
+        await new Promise((r) => setTimeout(r, 30));
+
+        if (audioContextRef.current.state !== "running") {
+          throw new Error("AudioContext blocked by autoplay policy");
+        }
+      }
+      return true;
+    } catch (e) {
+      // AudioContext init/resume failed (expected for autoplay policy)
+      throw e;
     }
   }, []);
 
-  const speak = useCallback(
-    async (text) => {
-      if (!text || !enabled) return;
-
-      // Stop any current speech
-      stop();
-
-      try {
-        setLoading(true);
-        setSpeaking(true);
-
-        // Initialize audio context for iOS
-        initAudioContext();
-
-        // Try OpenAI TTS API first
-        try {
-          const response = await api.post(
-            "/tts/speak",
-            { text, lang },
-            { responseType: "blob" }
-          );
-
-          if (response.data instanceof Blob) {
-            const audioUrl = URL.createObjectURL(response.data);
-            const audio = new Audio(audioUrl);
-            
-            // iOS-specific: Ensure audio context is resumed
-            if (audioContextRef.current) {
-              if (audioContextRef.current.state === 'suspended') {
-                await audioContextRef.current.resume();
-              }
-              // Connect audio element to audio context for better iOS compatibility
-              const source = audioContextRef.current.createMediaElementSource(audio);
-              source.connect(audioContextRef.current.destination);
-            }
-
-            // Set up event handlers
-            audio.onended = () => {
-              setSpeaking(false);
-              setLoading(false);
-              URL.revokeObjectURL(audioUrl);
-              if (audioRef.current === audio) {
-                audioRef.current = null;
-              }
-            };
-            
-            audio.onerror = (e) => {
-              console.error("❌ Audio playback error:", e);
-              setSpeaking(false);
-              setLoading(false);
-              URL.revokeObjectURL(audioUrl);
-              if (audioRef.current === audio) {
-                audioRef.current = null;
-              }
-              // Fallback to browser TTS
-              fallbackToBrowserTTS(text);
-            };
-
-            // iOS requires user interaction for autoplay
-            // Set volume to 1.0 explicitly for iOS
-            audio.volume = 1.0;
-            
-            // Preload audio for iOS
-            audio.preload = 'auto';
-            
-            // Try to play, if it fails, fallback to browser TTS
-            try {
-              const playPromise = audio.play();
-              
-              // Handle promise-based play() return value
-              if (playPromise !== undefined) {
-                await playPromise;
-              }
-              
-              audioRef.current = audio;
-              return;
-            } catch (playError) {
-              console.warn("⚠️ Autoplay blocked (likely iOS), falling back to browser TTS:", playError);
-              URL.revokeObjectURL(audioUrl);
-              // Fallback to browser TTS
-              fallbackToBrowserTTS(text);
-            }
-          }
-        } catch (apiError) {
-          console.warn("⚠️ OpenAI TTS API failed, falling back to browser TTS:", apiError);
-          // Fallback to browser TTS
-          fallbackToBrowserTTS(text);
-        }
-      } catch (error) {
-        console.error("❌ TTS error:", error);
+  // Browser SpeechSynthesis fallback
+  const fallbackToBrowserTTS = useCallback(
+    (text) => {
+      if (typeof window === "undefined" || !window.speechSynthesis) {
         setSpeaking(false);
         setLoading(false);
-        // Final fallback to browser TTS
-        fallbackToBrowserTTS(text);
+        return;
+      }
+
+      // Falling back to browser SpeechSynthesis
+      try {
+        window.speechSynthesis.cancel();
+
+        setTimeout(() => {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = lang;
+          utterance.rate = 0.9;
+          utterance.pitch = 1.0;
+          utterance.volume = 1.0;
+
+          const selectVoiceAndSpeak = () => {
+            const voices = window.speechSynthesis.getVoices();
+            if (lang && lang.startsWith("de")) {
+              const germanVoice = voices.find(
+                (v) => v.lang && v.lang.startsWith("de") || (v.name && /german|deutsch/i.test(v.name))
+              );
+              if (germanVoice) utterance.voice = germanVoice;
+            }
+            if (!utterance.voice && voices.length > 0) utterance.voice = voices[0];
+
+            utterance.onstart = () => {
+              setSpeaking(true);
+              setLoading(false);
+              console.log("✅ [useTTS] Browser TTS started");
+            };
+            utterance.onend = () => {
+              setSpeaking(false);
+              setLoading(false);
+              // Browser TTS ended
+            };
+            utterance.onerror = (err) => {
+              // Handle 'not-allowed' errors (browser autoplay policy)
+              if (err.error === 'not-allowed') {
+                // SpeechSynthesis blocked by browser autoplay policy - TTS will work after user interaction
+              } else {
+                console.error("❌ [useTTS] SpeechSynthesis error:", err);
+              }
+              setSpeaking(false);
+              setLoading(false);
+            };
+
+            try {
+              window.speechSynthesis.speak(utterance);
+            } catch (speakErr) {
+              console.warn("⚠️ [useTTS] speechSynthesis.speak() threw:", speakErr);
+              setSpeaking(false);
+              setLoading(false);
+            }
+          };
+
+          if (window.speechSynthesis.getVoices().length === 0) {
+            // voices not loaded yet (esp. iOS); wait once
+            voicesChangedHandlerRef.current = () => {
+              selectVoiceAndSpeak();
+            };
+            window.speechSynthesis.addEventListener("voiceschanged", voicesChangedHandlerRef.current, { once: true });
+          } else {
+            selectVoiceAndSpeak();
+          }
+        }, 150); // allow cancellation and iOS timing
+      } catch (err) {
+        console.error("❌ Browser TTS failed:", err);
+        setSpeaking(false);
+        setLoading(false);
       }
     },
-    [lang, enabled, initAudioContext]
+    [lang]
   );
 
-  const fallbackToBrowserTTS = (text) => {
-    try {
-      // Cancel any ongoing speech
-      window.speechSynthesis.cancel();
-      
-      // Wait a bit for cancellation to complete (iOS needs this)
-      setTimeout(() => {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = lang;
-        utterance.rate = 0.9; // Slightly slower for clarity
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
-        
-        // iOS-specific: Use a German voice if available
-        const selectVoiceAndSpeak = () => {
-          const voices = window.speechSynthesis.getVoices();
-          if (lang.startsWith('de')) {
-            // Prefer German voices
-            const germanVoice = voices.find(v => 
-              v.lang.startsWith('de') || 
-              v.name.toLowerCase().includes('german') ||
-              v.name.toLowerCase().includes('deutsch')
-            );
-            if (germanVoice) {
-              utterance.voice = germanVoice;
-            }
-          }
-          // Fallback to any available voice if no German voice found
-          if (!utterance.voice && voices.length > 0) {
-            utterance.voice = voices[0];
-          }
-          
-          // Speak after voice is selected
-          window.speechSynthesis.speak(utterance);
-        };
-        
-        utterance.onend = () => {
-          setSpeaking(false);
-          setLoading(false);
-        };
-        
-        utterance.onerror = (e) => {
-          console.error("❌ SpeechSynthesis error:", e);
-          setSpeaking(false);
-          setLoading(false);
-        };
-        
-        // iOS: Load voices if not already loaded
-        if (window.speechSynthesis.getVoices().length === 0) {
-          window.speechSynthesis.addEventListener('voiceschanged', () => {
-            selectVoiceAndSpeak();
-          }, { once: true });
-        } else {
-          selectVoiceAndSpeak();
-        }
-      }, 150); // Increased delay for iOS
-    } catch (error) {
-      console.error("❌ Browser TTS also failed:", error);
-      setSpeaking(false);
-      setLoading(false);
-    }
-  };
-
+  // Stop playback (both AudioContext buffer source and HTMLAudio fallback)
   const stop = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      audioRef.current = null;
+    if (bufferSourceRef.current) {
+      try {
+        bufferSourceRef.current.stop(0);
+      } catch (e) {}
+      try {
+        bufferSourceRef.current.disconnect();
+      } catch (e) {}
+      bufferSourceRef.current = null;
     }
+
+    if (audioElementRef.current) {
+      try {
+        audioElementRef.current.pause();
+        audioElementRef.current.currentTime = 0;
+        audioElementRef.current.src = "";
+      } catch (e) {}
+      audioElementRef.current = null;
+    }
+
     if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+      try {
+        abortControllerRef.current.abort();
+      } catch (e) {}
+      abortControllerRef.current = null;
     }
-    window.speechSynthesis.cancel();
+
+    // Cancel any browser TTS
+    try {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    } catch (e) {}
+
     setSpeaking(false);
     setLoading(false);
   }, []);
+
+  // Main speak function
+  const speak = useCallback(
+    async (text) => {
+      if (!text || !enabled) return;
+      stop();
+
+      setLoading(true);
+      setSpeaking(true);
+
+      // Try to get AudioContext running — if it fails, fallback to browser TTS
+      let audioContextReady = false;
+      try {
+        await initAudioContext();
+        // Double-check state after init
+        if (audioContextRef.current) {
+          // If still suspended, try one more resume attempt (user might have interacted)
+          if (audioContextRef.current.state === "suspended") {
+            try {
+              await audioContextRef.current.resume();
+              await new Promise((r) => setTimeout(r, 50)); // Wait for state update
+            } catch (resumeErr) {
+              // Resume failed, will fallback
+            }
+          }
+          audioContextReady = audioContextRef.current.state === "running";
+        }
+      } catch (e) {
+        audioContextReady = false;
+      }
+
+      if (!audioContextReady) {
+        // AudioContext not ready — using browser TTS fallback
+        fallbackToBrowserTTS(text);
+        return;
+      }
+
+      // Prepare abort controller for API call
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      try {
+        // Request TTS as an arraybuffer so we can decode into the AudioContext
+        const response = await api.post(
+          "/tts/speak",
+          { text, lang },
+          { responseType: "arraybuffer", signal: controller.signal }
+        );
+
+        const arrayBuffer = response.data;
+        if (!arrayBuffer) throw new Error("No audio data returned");
+
+        // Decode and play through AudioContext (better iOS behavior)
+        const ctx = audioContextRef.current;
+        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+
+        // Create a buffer source and start it
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+
+        source.onended = () => {
+          setSpeaking(false);
+          setLoading(false);
+          bufferSourceRef.current = null;
+        };
+
+        bufferSourceRef.current = source;
+        source.start(0);
+        return;
+      } catch (err) {
+        // If API or decode failed, log and fall back to HTMLAudioElement or SpeechSynthesis fallback
+        console.warn("⚠️ OpenAI TTS API / playback failed - falling back. Error:", err?.message ?? err);
+
+        // As a second-tier fallback try HTMLAudio element playback (if we got a blob-like response)
+        try {
+          // If response came as arraybuffer but decode failed above, try blob -> audio element
+          if (typeof Blob !== "undefined" && abortControllerRef.current && !abortControllerRef.current.signal.aborted) {
+            // Attempt to re-request as blob (best-effort)
+            try {
+              const blobResp = await api.post("/tts/speak", { text, lang }, { responseType: "blob", signal: abortControllerRef.current.signal });
+              if (blobResp?.data instanceof Blob) {
+                const audioUrl = URL.createObjectURL(blobResp.data);
+                const audio = new Audio(audioUrl);
+                audio.preload = "auto";
+                audio.volume = 1.0;
+
+                audio.onended = () => {
+                  setSpeaking(false);
+                  setLoading(false);
+                  if (audioElementRef.current === audio) audioElementRef.current = null;
+                  URL.revokeObjectURL(audioUrl);
+                };
+                audio.onerror = (e) => {
+                  console.error("❌ Audio element playback error:", e);
+                  if (audioElementRef.current === audio) audioElementRef.current = null;
+                  URL.revokeObjectURL(audioUrl);
+                  fallbackToBrowserTTS(text);
+                };
+
+                // Play (may be blocked, will throw)
+                await audio.play();
+                audioElementRef.current = audio;
+                return;
+              }
+            } catch (nestedErr) {
+              // ignore and fallback to speech synthesis next
+              console.warn("⚠️ Blob fallback failed:", nestedErr?.message ?? nestedErr);
+            }
+          }
+        } catch (ignored) {}
+
+        // Final fallback: browser SpeechSynthesis
+        fallbackToBrowserTTS(text);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [enabled, initAudioContext, fallbackToBrowserTTS, lang, stop]
+  );
 
   return { speak, stop, speaking, loading };
 }

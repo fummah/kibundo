@@ -68,21 +68,33 @@ export default function AcademicsOverview() {
   } = useQuery({
     queryKey: ["academicsOverviewData"],
     queryFn: async () => {
-      const [studentsRes, subjectsRes, quizzesRes, curriculaRes, scansRes] = await Promise.allSettled([
+      const [studentsRes, subjectsRes, quizzesRes, curriculaRes, homeworkScansRes] = await Promise.allSettled([
         api.get("/allstudents"),
         api.get("/allsubjects"),
         listQuizzes({ page: 1, pageSize: 50 }),
         api.get("/curiculums"),
-        api.get("/scans").catch(() => ({ data: [] })) // Silently fail
+        api.get("/homeworkscans").catch(() => ({ data: [] })) // Silently fail
       ]);
 
       const students = studentsRes.status === 'fulfilled' ? (studentsRes.value.data || []) : [];
       const subjects = subjectsRes.status === 'fulfilled' ? (subjectsRes.value.data || []) : [];
       const quizzes = quizzesRes.status === 'fulfilled' ? quizzesRes.value : { items: [], total: 0 };
       const curricula = curriculaRes.status === 'fulfilled' ? (curriculaRes.value.data?.items || curriculaRes.value.data || []) : [];
-      const scans = scansRes.status === 'fulfilled' ? (scansRes.value.data || []) : [];
+      // Handle homework scans - API returns array directly, axios wraps in .data
+      let homeworkScans = [];
+      if (homeworkScansRes.status === 'fulfilled') {
+        const response = homeworkScansRes.value;
+        if (Array.isArray(response?.data)) {
+          homeworkScans = response.data;
+        } else if (Array.isArray(response)) {
+          homeworkScans = response;
+        }
+        console.log("📚 AcademicsOverview: Fetched homework scans:", homeworkScans.length);
+      } else {
+        console.warn("⚠️ AcademicsOverview: Failed to fetch homework scans:", homeworkScansRes.reason);
+      }
 
-      return { students, subjects, quizzes, curricula, scans };
+      return { students, subjects, quizzes, curricula, homeworkScans };
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
@@ -92,7 +104,11 @@ export default function AcademicsOverview() {
   const quizzesTotal = Number.isFinite(pageData?.quizzes?.total) ? pageData.quizzes.total : quizItems.length;
   const curriculaItems = Array.isArray(pageData?.curricula) ? pageData.curricula : [];
   const curriculaCount = safeLen(curriculaItems);
-  const scans = pageData?.scans || [];
+  const homeworkScans = pageData?.homeworkScans || [];
+  
+  // Calculate completed and pending counts
+  const completedScans = homeworkScans.filter(s => s.completed_at || s.completion_photo_url).length;
+  const pendingScans = homeworkScans.length - completedScans;
 
   // Recent quizzes (newest first)
   const recentQuizzes = [...quizItems]
@@ -112,12 +128,17 @@ export default function AcademicsOverview() {
     })
     .slice(0, 5);
 
+  // Recent homework scans (newest first)
+  const recentScans = [...homeworkScans]
+    .sort((a, b) => new Date(b?.created_at || 0) - new Date(a?.created_at || 0))
+    .slice(0, 5);
+
   /* ---------------- KPIs ---------------- */
   const kpis = [
     { title: "Curricula", value: curriculaCount, icon: <ReadOutlined />,       gradient: "bg-gradient-to-br from-indigo-600 to-violet-600", onClick: () => navigate("/admin/academics/curricula") },
     { title: "Subjects",  value: subjectsCount,  icon: <ReadOutlined />,       gradient: "bg-gradient-to-br from-sky-500 to-cyan-500",    onClick: () => navigate("/admin/academics/subjects") },
     { title: "Quizzes",   value: quizzesTotal,   icon: <ExperimentOutlined />, gradient: "bg-gradient-to-br from-emerald-500 to-teal-500",  onClick: () => navigate("/admin/academics/quizzes") },
-    { title: "Scans",     value: safeLen(scans), icon: <FileTextOutlined />,   gradient: "bg-gradient-to-br from-rose-500 to-orange-500",    onClick: () => navigate("/admin/academics/ocr") },
+    { title: "Scans",     value: safeLen(homeworkScans), icon: <FileTextOutlined />,   gradient: "bg-gradient-to-br from-rose-500 to-orange-500",    onClick: () => navigate("/admin/scans/homework") },
   ];
 
   /* ---------------- Topbar integration ---------------- */
@@ -209,9 +230,6 @@ export default function AcademicsOverview() {
   ];
 
   /* ---------------- Static panels ---------------- */
-  const recentScans = [...(scans || [])]
-    .sort((a, b) => new Date(b?.created_at || 0) - new Date(a?.created_at || 0))
-    .slice(0, 5);
 
   const recentActivity = useMemo(() => {
     const combined = [
@@ -457,47 +475,66 @@ export default function AcademicsOverview() {
               hoverable
               title={<Space><FileTextOutlined /> Scans</Space>}
               extra={
-                <Space>
-                  <span className="text-gray-500">OCR Language</span>
-                  <Select
-                    size="small"
-                    value="German"
-                    options={[{ value: "German", label: "German" }]}
-                    style={{ width: 120 }}
-                    onChange={() => {}}
-                  />
-                  <Button type="primary" onClick={() => navigate("/admin/academics/ocr")}>
-                    Open Scans
-                  </Button>
-                </Space>
+                <Button type="primary" onClick={() => navigate("/admin/scans/homework")}>
+                  Open Homework Scans
+                </Button>
               }
             >
+              <div className="mb-4">
+                <Space size="large">
+                  <div>
+                    <Text type="secondary">Total</Text>
+                    <div className="text-2xl font-bold">{homeworkScans.length}</div>
+                  </div>
+                  <div>
+                    <Text type="secondary">Completed</Text>
+                    <div className="text-2xl font-bold text-green-600">{completedScans}</div>
+                  </div>
+                  <div>
+                    <Text type="secondary">Pending</Text>
+                    <div className="text-2xl font-bold text-orange-600">{pendingScans}</div>
+                  </div>
+                </Space>
+              </div>
               <List
                 loading={isLoading}
                 dataSource={recentScans}
                 locale={{ emptyText: "No scans yet" }}
-                renderItem={(s) => (
-                  <List.Item
-                    actions={[
-                      <Tooltip key="lang" title={`OCR: ${s?.language ?? "Unknown"}`}>
-                        <Badge status="processing" text={s?.language ?? "Unknown"} />
-                      </Tooltip>,
-                    ]}
-                    onClick={() => navigate("/admin/academics/ocr")}
-                    style={{ cursor: "pointer" }}
-                  >
-                    <List.Item.Meta
-                      avatar={<Avatar icon={<FileTextOutlined />} />}
-                      title={<span className="font-medium">{s?.description ?? "Scan"}</span>}
-                      description={
-                        <Space size="small" wrap>
-                          {s?.publisher && <Tag color="blue">{s.publisher}</Tag>}
-                          <Text type="secondary"><ClockCircleOutlined /> {s?.time ? String(s.time) : ""}</Text>
-                        </Space>
-                      }
-                    />
-                  </List.Item>
-                )}
+                renderItem={(s) => {
+                  const isCompleted = s.completed_at || s.completion_photo_url;
+                  const studentName = s.student?.user 
+                    ? [s.student.user.first_name, s.student.user.last_name].filter(Boolean).join(" ").trim() || s.student.user.name || "-"
+                    : "-";
+                  return (
+                    <List.Item
+                      actions={[
+                        <Tag key="status" color={isCompleted ? "green" : "orange"}>
+                          {isCompleted ? "Completed" : "Pending"}
+                        </Tag>,
+                      ]}
+                      onClick={() => navigate(`/admin/scans/homework/${s.id}`)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <List.Item.Meta
+                        avatar={<Avatar icon={<FileTextOutlined />} />}
+                        title={
+                          <span className="font-medium">
+                            {s.detected_subject || "Homework Scan"} - {studentName}
+                          </span>
+                        }
+                        description={
+                          <Space size="small" wrap>
+                            {s.detected_subject && <Tag color="blue">{s.detected_subject}</Tag>}
+                            {s.task_type && <Tag>{s.task_type}</Tag>}
+                            <Text type="secondary">
+                              <ClockCircleOutlined /> {fmtDate(s.created_at)}
+                            </Text>
+                          </Space>
+                        }
+                      />
+                    </List.Item>
+                  );
+                }}
               />
             </Card>
           </Col>

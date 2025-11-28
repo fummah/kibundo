@@ -47,7 +47,7 @@ export default function LandingPage() {
                 Start Now
               </Button>
               <Button size="large" onClick={() => navigate("/signin")}>
-                Sign In
+                Anmelden
               </Button>
             </div>
           </div>
@@ -101,7 +101,7 @@ export default function LandingPage() {
               Sign up now and transform your learning experience with Kibundo LMS.
             </Text>
             <Button size="large" type="default" onClick={() => navigate("/signup")}>
-              Create Account
+              Konto erstellen
             </Button>
           </div>
         </section>

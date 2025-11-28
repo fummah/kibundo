@@ -8,9 +8,13 @@ import { useStudentApp } from "@/context/StudentAppContext";
 import api from "@/api/axios";
 import { resolveStudentAgent } from "@/utils/studentAgent";
 import useTTS from "@/lib/voice/useTTS";
+import useASR from "@/lib/voice/useASR";
+import { createTaskAndOpenChat as createTaskAndOpenChatUtil } from "@/utils/homework/createTaskAndOpenChat";
+import { makeId, fmt, trySaveJson } from "@/utils/homework/homeworkHelpers";
+import { useStudentFirstName } from "@/hooks/useStudentFirstName";
 
 import cameraIcon from "@/assets/mobile/icons/camera.png";
-import micIcon    from "@/assets/mobile/icons/mic.png";
+import micIcon from "@/assets/mobile/icons/mic.png";
 import galleryIcon from "@/assets/mobile/icons/galary.png";
 import buddyMascot from "@/assets/buddies/kibundo-buddy.png";
 
@@ -18,57 +22,23 @@ import buddyMascot from "@/assets/buddies/kibundo-buddy.png";
 const TASKS_KEY = "kibundo.homework.tasks.v1";
 const PROGRESS_KEY = "kibundo.homework.progress.v1";
 
-/* ---------- helpers ---------- */
-const makeId = () =>
-  "task_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-
-const fmt = (content, from = "agent", type = "text", meta = {}) => ({
-  id: Date.now() + Math.random().toString(36).slice(2, 9),
-  from,
-  sender: from,
-  type,
-  content,
-  timestamp: new Date().toISOString(),
-  ...meta,
-});
-
-// Quota-safe save with progressive fallback
-const trySaveJson = (key, value) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 export default function HomeworkDoing() {
   const { message: antdMessage } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
 
   // write into chat storage directly so preview + status show instantly
-  const { openChat, expandChat, getChatMessages, setChatMessages, closeChat } = useChatDock();
+  const { state: dockState, openChat, expandChat, getChatMessages, setChatMessages, closeChat } = useChatDock();
   const { user: authUser, account } = useAuthContext();
 
   // 🔥 Get the effective student context (handles parent viewing child)
-  // When parent views child: account.id = student_id, account.userId = user_id
-  // When student logs in directly: authUser.id = user_id, need to fetch student_id
-  
-  // If parent has selected a child account, account.id is the student_id
   const directStudentId = account?.type === "child" ? account.id : null;
-  
-  // Get the user_id to fetch student_id if needed
-  const effectiveUserId = account?.type === "child" && account?.userId 
-    ? account.userId 
+  const effectiveUserId = account?.type === "child" && account?.userId
+    ? account.userId
     : (authUser?.id ?? "anon");
-  
-  // State to store the fetched student_id (when student logs in directly)
   const [fetchedStudentId, setFetchedStudentId] = useState(null);
-  
-  // Final student_id to use - prefer direct from account, otherwise use fetched
   const studentId = directStudentId ?? fetchedStudentId;
-  
+
   // Build SCOPED storage keys per student (use studentId if available, otherwise effectiveUserId)
   const storageKey = studentId ?? effectiveUserId;
   const TASKS_KEY_USER = `${TASKS_KEY}::u:${storageKey}`;
@@ -81,53 +51,73 @@ export default function HomeworkDoing() {
   const [uploading, setUploading] = useState(false);   // controls centered overlay
   const [selectedAgent, setSelectedAgent] = useState("Kibundo"); // Default fallback
   const [hasStarted, setHasStarted] = useState(false); // Track if user has started
+  const hasStartedRef = useRef(hasStarted); // keep a ref in sync to avoid stale closures
   const [taskType, setTaskType] = useState(null); // 'solvable' (Type A) or 'creative' (Type B)
   const { buddy, ttsEnabled } = useStudentApp();
+  
+  // Get student's first name
+  const studentFirstName = useStudentFirstName();
+
+  // keep hasStartedRef in sync whenever state changes
+  useEffect(() => {
+    hasStartedRef.current = hasStarted;
+  }, [hasStarted]);
 
   // Fetch student_id from user_id (only if not already available from account)
   useEffect(() => {
     const fetchStudentId = async () => {
-      if (effectiveUserId === "anon" || directStudentId) return; // Skip if already have student_id or not authenticated
-      
+      if (effectiveUserId === "anon" || directStudentId) return;
       try {
         const { data } = await api.get('/student-id', {
           params: { user_id: effectiveUserId },
           withCredentials: true,
           validateStatus: (status) => status < 500,
         });
-        
         if (data?.student_id) {
           setFetchedStudentId(data.student_id);
         }
       } catch (error) {
-        // Failed to fetch student_id - silently continue
+        // silent
       }
     };
-
     fetchStudentId();
   }, [effectiveUserId, directStudentId]);
-  // Ensure ttsEnabled is explicitly true/false (defaults to true if undefined)
-  const ttsEnabledValue = ttsEnabled !== false; // true if undefined, null, or true
-  const { speak: speakTTS } = useTTS({ lang: "de-DE", enabled: ttsEnabledValue });
+
+  // Always enable TTS for welcome message (override user setting for this specific message)
+  const { speak: speakTTS, speaking: ttsSpeaking } = useTTS({ lang: "de-DE", enabled: true });
   const locationPathRef = useRef(null); // Track pathname to detect fresh navigations (null = not initialized)
+
+  // Voice input (ASR) for mic button
+  const { listening: isRecording, start: startRecording, stop: stopRecording } = useASR({
+    lang: "de-DE",
+    onTranscript: (transcript) => {
+      // Transcript updates as user speaks (interim results)
+      // We'll handle the final transcript when recording stops
+    },
+    onError: (error) => {
+      if (error === "not_supported") {
+        antdMessage.warning("Spracherkennung wird in diesem Browser nicht unterstützt.");
+      } else if (error === "no-speech") {
+        antdMessage.info("Keine Sprache erkannt. Versuche es nochmal.");
+      } else {
+        antdMessage.error("Fehler bei der Spracherkennung.");
+      }
+    }
+  });
 
   // Unique key per navigation (works with React Router)
   const ttsOnceKey = `tts:doing:${storageKey}:${location.key || location.pathname}`;
 
   // Close chat immediately on mount if no state is provided (for "Add New Scan" navigation)
-  // This must run BEFORE any other effects to prevent FooterChat from auto-opening
   useEffect(() => {
-    // Get pathname as string to avoid type conversion issues
     const currentPath = typeof location?.pathname === 'string' ? location.pathname : String(location?.pathname || '');
 
-    // Check if this is a fresh navigation to the doing page (different pathname or first mount)
     const isFreshNavigation = locationPathRef.current === null || currentPath !== locationPathRef.current;
     if (isFreshNavigation) {
       locationPathRef.current = currentPath;
       setHasStarted(false); // Reset hasStarted for fresh page
     }
 
-    // Only close if we don't have navigation state AND no pending progress to restore
     const hasNoTaskState = !location.state?.taskId && !location.state?.task && !location.state?.openHomeworkChat;
     if (hasNoTaskState) {
       const progress = readProgressForUser();
@@ -139,7 +129,7 @@ export default function HomeworkDoing() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location?.pathname]); // Run when pathname changes (fresh navigation)
+  }, [location?.pathname]);
 
   // Fetch selected agent from backend
   useEffect(() => {
@@ -149,7 +139,6 @@ export default function HomeworkDoing() {
         setSelectedAgent(agent.name);
       }
     };
-
     fetchSelectedAgent();
   }, []);
 
@@ -163,7 +152,6 @@ export default function HomeworkDoing() {
           keysToCheck.push(key);
         }
       }
-      // Keep only the most recent 10 conversation IDs
       if (keysToCheck.length > 10) {
         keysToCheck.slice(0, -10).forEach(k => {
           try {
@@ -172,8 +160,9 @@ export default function HomeworkDoing() {
         });
       }
     } catch (e) {
+      // ignore
     }
-  }, []); // Run once on mount
+  }, []);
 
   // Save progress as step 1 when on doing page (even before upload) to persist after refresh
   useEffect(() => {
@@ -181,12 +170,11 @@ export default function HomeworkDoing() {
     if (currentPath.endsWith("/doing")) {
       try {
         const currentProgress = readProgressForUser();
-        // Only update if not already on step 2 or 3 (feedback/completed)
         if (typeof currentProgress?.step !== "number" || currentProgress.step < 2) {
           localStorage.setItem(
             PROGRESS_KEY_USER,
             JSON.stringify({
-              step: 1, // Always step 1 (machen) when on doing page
+              step: 1,
               taskId: currentProgress?.taskId || null,
               task: currentProgress?.task || null,
             })
@@ -197,7 +185,7 @@ export default function HomeworkDoing() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location?.pathname]); // Run when pathname changes
+  }, [location?.pathname]);
 
   const loadTasks = () => {
     try {
@@ -219,7 +207,6 @@ export default function HomeworkDoing() {
   useEffect(() => {
     if (!openChat || resumeHandledRef.current) return;
 
-    // Wait for authenticated student context before attempting resume
     if (!studentId && effectiveUserId === "anon" && !authUser?.id) {
       return;
     }
@@ -234,35 +221,31 @@ export default function HomeworkDoing() {
 
       const existingTask = tasksSnapshot.find((t) => t.id === pendingTaskId);
       if (!existingTask) return false;
-      
-      // 🔥 Don't open chat if task is completed - prevent new chats on completed tasks
+
       if (existingTask?.done || existingTask?.completedAt) {
         return false;
       }
 
-        openChat?.({
-          mode: "homework",
-          task: existingTask,
-          key: `homework:${existingTask.id}::u:${storageKey}`,
-          restore: true,
-          focus: "last",
-        });
+      openChat?.({
+        mode: "homework",
+        task: existingTask,
+        key: `homework:${existingTask.id}::u:${storageKey}`,
+        restore: true,
+        focus: "last",
+      });
       expandChat?.(true);
       resumeHandledRef.current = true;
       return true;
     };
 
-    // Priority 1: Check for taskId (from HomeworkList click on existing homework)
     const taskId = location.state?.taskId;
     if (taskId) {
       const existing = tasksSnapshot.find((t) => t.id === taskId);
       if (existing) {
-        // 🔥 Don't open chat if task is completed - prevent new chats on completed tasks
         if (existing?.done || existing?.completedAt) {
           resumeHandledRef.current = true;
           return;
         }
-        // Open chat instead of navigating away
         openChat?.({
           mode: "homework",
           task: existing,
@@ -276,19 +259,14 @@ export default function HomeworkDoing() {
       }
     }
 
-    // Priority 2: Check for full task object (legacy support)
     const taskFromState = location.state?.task;
     if (taskFromState?.id) {
       const existing = tasksSnapshot.find((t) => t.id === taskFromState.id);
       const t = existing || taskFromState;
-      
-      // 🔥 Don't open chat if task is completed - prevent new chats on completed tasks
       if (t?.done || t?.completedAt) {
         resumeHandledRef.current = true;
         return;
       }
-
-      // Open chat instead of navigating away
       openChat?.({
         mode: "homework",
         task: t,
@@ -301,30 +279,22 @@ export default function HomeworkDoing() {
       return;
     }
 
-    // Priority 3: Generic "openHomeworkChat" flag (new homework, no existing task)
     if (location.state?.openHomeworkChat) {
       if (!resumeFromProgress()) {
-        // Stay on this page - user will scan/upload homework here
-        // Footer chat will be available for when they upload
+        // stay on page
       }
       resumeHandledRef.current = true;
       return;
     }
 
-    if (resumeFromProgress()) {
-      return;
-    }
+    if (resumeFromProgress()) return;
 
-    // No state provided - ensure chat is closed
-    // This happens when navigating via "Add New Scan" button
-    // Chat should already be closed by the earlier useEffect, but double-check
     resumeHandledRef.current = true;
     closeChat?.();
   }, [openChat, expandChat, closeChat, location.state, studentId, navigate, authUser?.id]);
 
   /* ---------------- upload via API ---------------- */
   const uploadWithApi = async (file) => {
-    // Check file size (50MB limit)
     const maxSize = 50 * 1024 * 1024; // 50MB
     if (file.size > maxSize) {
       throw new Error(`File too large. Maximum size is ${Math.round(maxSize / (1024 * 1024))}MB.`);
@@ -332,22 +302,14 @@ export default function HomeworkDoing() {
 
     const fd = new FormData();
     fd.append("file", file, file.name);
-    // 🔥 Send student_id in FormData so backend knows which student this scan belongs to
-    // This is critical for parent viewing second child scenario
     if (studentId) {
       fd.append("student_id", studentId.toString());
     }
-    // Backend expects auth token in header, not userId in form data
     const { data } = await api.post("ai/upload", fd, {
-      headers: { 
-        "Content-Type": "multipart/form-data",
-        // Auth token will be automatically added by axios interceptor
-      },
-      withCredentials: true, // Include cookies/auth headers
+      headers: { "Content-Type": "multipart/form-data" },
+      withCredentials: true,
     });
 
-
-    // Backend returns: { success, message, fileUrl, scan, parsed, aiText, conversationId }
     if (!data.success) {
       throw new Error(data.message || "Upload failed");
     }
@@ -369,17 +331,14 @@ export default function HomeworkDoing() {
 
   /* ------ Image Compression ------ */
   const compressImage = async (file, maxSizeMB = 10) => {
-    // Skip compression for non-images or small files
     if (!file.type.startsWith('image/') || file.size <= maxSizeMB * 1024 * 1024) {
       return file;
     }
-
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const img = new Image();
         img.onload = () => {
-          // Calculate new dimensions (max 2048px on longest side)
           const MAX_DIMENSION = 2048;
           let width = img.width;
           let height = img.height;
@@ -394,14 +353,12 @@ export default function HomeworkDoing() {
             }
           }
 
-          // Create canvas and compress
           const canvas = document.createElement('canvas');
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, width, height);
 
-          // Convert to blob with quality reduction
           canvas.toBlob(
             (blob) => {
               if (blob && blob.size < file.size) {
@@ -415,7 +372,7 @@ export default function HomeworkDoing() {
               }
             },
             'image/jpeg',
-            0.85 // 85% quality
+            0.85
           );
         };
         img.src = e.target.result;
@@ -432,474 +389,151 @@ export default function HomeworkDoing() {
       restore: true,
       focus: "last",
     });
-    expandChat?.(true); // ensure dock expands when analysis begins
+    expandChat?.(true);
   };
 
   /* ------- create/update task, show preview + loader, then analyse ------- */
   const createTaskAndOpenChat = async ({ file = null, meta = {} }) => {
-    const tasks = loadTasks();
-    const now = new Date().toISOString();
-
-    const existingTask = meta.taskId ? tasks.find((t) => t.id === meta.taskId) : null;
-    const id = existingTask?.id || makeId();
-
-    const mode = "homework";
-    const scopedKey = `${id}::u:${storageKey}`;
-
-    // Prepare loader message FIRST so the chat shows it immediately (no image preview)
-    let loadingMsg = null;
-
-    if (file) {
-      // status bubble with spinner (rendered by HomeworkChat for type="status")
-      const fileType = file.type?.startsWith("image/") ? "Bild" : "Datei";
-      loadingMsg = fmt(`Ich analysiere deine ${fileType}…`, "agent", "status", { transient: true, agentName: selectedAgent || "Kibundo" });
-
-      // Push only loader message (no image preview), but DON'T open chat yet - wait for scan to complete
-      appendToChat(mode, scopedKey, [loadingMsg]);
-      // Don't open chat here - will open after scan completes
-    } else {
-      // No file: open chat without any initial message
-      openAndFocusChat(id);
-    }
-
-    // Upload & analysis (if there is a file)
-    let scanData = null;
-    if (file) {
-      setUploading(true); // ⬅️ show centered overlay
-      try {
-        // Compress large images before upload
-        const fileToUpload = await compressImage(file);
-        scanData = await uploadWithApi(fileToUpload);
-        
-        // 🔥 Hide overlay once we have results - chat will open below with results
-        setUploading(false);
-      } catch (e) {
-        const status = e?.response?.status;
-        const serverMsg =
-          e?.response?.data?.message ||
-          e?.response?.data?.error ||
-          e?.message ||
-          "Unbekannter Fehler";
-
-        // Handle specific error types
-        const isImageUrlError = serverMsg.includes("image_url") || serverMsg.includes("Invalid type");
-        const isTimeoutError = serverMsg.includes("timeout") || e?.code === "ECONNABORTED";
-        const isNetworkError = !e?.response || e?.message?.includes("Network Error");
-
-        const fileTypeLabel = file.type?.startsWith("image/") ? "Bild" : "Datei";
-        let userMessage;
-        if (isTimeoutError) {
-          userMessage = `Die ${fileTypeLabel} ist zu groß oder die Verbindung ist langsam. Bitte versuche es mit einer kleineren ${fileTypeLabel} oder warte einen Moment und versuche es erneut.`;
-        } else if (isNetworkError) {
-          userMessage = "Netzwerkfehler. Bitte überprüfe deine Internetverbindung und versuche es erneut.";
-        } else if (isImageUrlError) {
-          userMessage = `Die ${fileTypeLabel} konnte nicht automatisch analysiert werden. Du kannst mir trotzdem Fragen stellen! Beschreibe mir einfach, was du für Hilfe brauchst.`;
-        } else {
-          userMessage = `Analyse fehlgeschlagen (${status ?? "?"}). ${serverMsg}`;
-        }
-
-        if (loadingMsg) {
-          replaceMessageInChat(mode, scopedKey, loadingMsg.id, () =>
-            fmt(userMessage, "agent", "text", { agentName: selectedAgent || "Kibundo" })
-          );
-        }
-
-        // Add helpful follow-up message for image errors
-        if (isImageUrlError) {
-          setTimeout(() => {
-            setChatMessages(mode, scopedKey, (prev) => [
-              ...prev,
-              fmt("Du kannst mir Fragen zu deiner Aufgabe stellen, auch ohne Bildanalyse. Was möchtest du wissen?", "agent", "text", { agentName: selectedAgent || "Kibundo" })
-            ]);
-          }, 1000);
-        }
-
-
-        let errorDisplayMsg;
-        if (isTimeoutError) {
-          errorDisplayMsg = "Upload-Timeout - versuche eine kleinere Datei";
-        } else if (isNetworkError) {
-          errorDisplayMsg = "Netzwerkfehler - überprüfe deine Verbindung";
-        } else if (isImageUrlError) {
-          errorDisplayMsg = "Dateiformat-Problem - aber Chat funktioniert trotzdem!";
-        } else {
-          errorDisplayMsg = serverMsg;
-        }
-
-        antdMessage.error(`Upload/Analyse fehlgeschlagen: ${errorDisplayMsg}`);
-        setUploading(false); // Hide overlay on error
-        // Note: Chat will be opened in the else if block below if scanData is null
-      }
-    }
-
-    // Build/update the task object
-    // Extract information from scanData if available
-    const extractedText = scanData?.scan?.raw_text ?? scanData?.extractedText ?? (scanData?.aiText || "");
-    const questions = Array.isArray(scanData?.parsed?.questions) 
-      ? scanData.parsed.questions 
-      : Array.isArray(scanData?.qa) ? scanData.qa : [];
-
-    // Get detected subject from AI analysis (first priority) or derive from text (fallback)
-    const detectedSubject = scanData?.parsed?.subject || scanData?.scan?.detected_subject;
-
-    const deriveSubject = (text) => {
-      // If AI already detected the subject, use it!
-      if (detectedSubject) {
-        return detectedSubject;
-      }
-
-      // Fallback: derive from text if AI didn't provide a subject
-      const lowerText = text.toLowerCase();
-      if (lowerText.includes('mathe') || lowerText.includes('rechnen') || lowerText.includes('zahl')) return 'Mathe';
-      if (lowerText.includes('deutsch') || lowerText.includes('text') || lowerText.includes('lesen')) return 'Deutsch';
-      if (lowerText.includes('englisch') || lowerText.includes('english')) return 'Englisch';
-      if (lowerText.includes('wissenschaft') || lowerText.includes('science')) return 'Science';
-      return 'Sonstiges';
-    };
-
-    // Classify task type: Type A (Solvable) vs Type B (Creative/Manual)
-    const classifyTaskType = (text, subject, questionsCount) => {
-      const lowerText = (text || "").toLowerCase();
-      const lowerSubject = (subject || "").toLowerCase();
-
-      // Type B (Creative/Manual) indicators
-      const creativeKeywords = [
-        'malen', 'zeichnen', 'basteln', 'kreativ', 'farbe', 'farben',
-        'ausmalen', 'ausschneiden', 'kleben', 'handwerk', 'kunst',
-        'collage', 'bild', 'bilder', 'kreativaufgabe', 'gestalten',
-        'handarbeit', 'werken', 'textil', 'nähen', 'sticken'
-      ];
-
-      const creativeSubjects = ['kunst', 'musik', 'sport', 'textil', 'werken'];
-
-      // Check if it's a creative task
-      const hasCreativeKeywords = creativeKeywords.some(keyword => lowerText.includes(keyword));
-      const isCreativeSubject = creativeSubjects.some(sub => lowerSubject.includes(sub));
-
-      // Type A (Solvable) indicators - math, grammar, text exercises
-      const solvableKeywords = [
-        'rechnen', 'berechnen', 'lösen', 'aufgabe', 'frage', 'antwort',
-        'gleichung', 'text', 'lesen', 'schreiben', 'grammatik', 'vokabeln',
-        'übung', 'aufgaben', 'fragen', 'beantworte', 'löse', 'berechne'
-      ];
-
-      const solvableSubjects = ['mathe', 'deutsch', 'englisch', 'sachkunde', 'biologie', 'erdkunde', 'geschichte'];
-
-      const hasSolvableKeywords = solvableKeywords.some(keyword => lowerText.includes(keyword));
-      const isSolvableSubject = solvableSubjects.some(sub => lowerSubject.includes(sub));
-      const hasQuestions = questionsCount > 0;
-
-      // Classification logic
-      if (hasCreativeKeywords || isCreativeSubject) {
-        return 'creative'; // Type B
-      }
-
-      if (hasSolvableKeywords || isSolvableSubject || hasQuestions) {
-        return 'solvable'; // Type A
-      }
-
-      // Default: if we have extracted text and questions, it's likely solvable
-      if (text && text.length > 20 && questionsCount > 0) {
-        return 'solvable';
-      }
-
-      // Default to solvable if unclear (can be refined later)
-      return 'solvable';
-    };
-
-    // Derive "what" (task type) from analysis
-    const deriveWhat = (text, questionsCount) => {
-      if (questionsCount > 0) return `${questionsCount} Frage${questionsCount > 1 ? 'n' : ''}`;
-      if (text.length > 50) return 'Hausaufgabe';
-      return 'Foto-Aufgabe';
-    };
-
-    // Use extracted data or fallback to existing/meta
-    const subjectGuess = scanData 
-      ? deriveSubject(extractedText)
-      : (existingTask?.subject || meta.subject || "Sonstiges");
-
-    const whatGuess = scanData
-      ? deriveWhat(extractedText, questions.length)
-      : (existingTask?.what || meta.what || "Neue Aufgabe");
-
-    const descriptionGuess = scanData && extractedText
-      ? extractedText.slice(0, 120).trim() + (extractedText.length > 120 ? '...' : '')
-      : (existingTask?.description || meta.description || (file?.name ?? ""));
-
-    // Classify task type (Type A: Solvable vs Type B: Creative)
-    // Priority: Backend classification > Frontend classification > Existing task > Default
-    const backendTaskType = scanData?.parsed?.task_type || scanData?.scan?.task_type;
-    const detectedTaskType = backendTaskType 
-      ? backendTaskType 
-      : (scanData
-          ? classifyTaskType(extractedText, subjectGuess, questions.length)
-          : (existingTask?.taskType || meta.taskType || 'solvable'));
-
-    // Store task type for motivational mode
-    setTaskType(detectedTaskType);
-
-    const detectedGrade =
-      scanData?.scan?.grade ??
-      existingTask?.grade ??
-      meta.grade ??
-      null;
-
-    const taskForStorage = {
-      id,
-      createdAt: existingTask?.createdAt || now,
-      updatedAt: now,
-      subject: subjectGuess,
-      what: whatGuess,
-      description: descriptionGuess,
-      due: existingTask?.due || meta.due || null,
-      done: existingTask?.done ?? false,
-      source: existingTask?.source || meta.source || (file ? "image" : "manual"),
-      fileName: existingTask?.fileName || file?.name || null,
-      fileType: existingTask?.fileType || file?.type || null,
-      fileSize: existingTask?.fileSize || file?.size || null,
-      hasImage: Boolean(existingTask?.hasImage || (file && file.type?.startsWith("image/"))),
-      scanId: scanData?.scan?.id ?? existingTask?.scanId ?? null,
-      conversationId: scanData?.conversationId ?? existingTask?.conversationId ?? null,
-      taskType: detectedTaskType, // 'solvable' or 'creative'
-      userId: studentId || null, // 🔥 Use actual student_id (not user_id) - this is used for filtering
-      completionPhotoUrl: existingTask?.completionPhotoUrl || null,
-      completedAt: existingTask?.completedAt || null,
-      grade: detectedGrade,
-    };
-
-    // Upsert tasks (scoped)
-    const upserted = (() => {
-      const copy = [...tasks];
-      const idx = copy.findIndex((t) => t.id === id);
-      if (idx >= 0) copy[idx] = { ...copy[idx], ...taskForStorage };
-      else copy.unshift(taskForStorage);
-      return copy;
-    })();
-
-    let storageMode = "full";
-    if (!trySaveJson(TASKS_KEY_USER, upserted)) {
-      storageMode = "trimmed";
-      const trimmed = upserted
-        .slice(0, 20)
-        .map(({ messages, file, description = "", ...t }) => ({
-          ...t,
-          messages: [],
-          description: description.slice(0, 180),
-        }));
-      if (!trySaveJson(TASKS_KEY_USER, trimmed)) {
-        storageMode = "minimal";
-        const minimal = upserted
-          .slice(0, 12)
-          .map(({ id, what, createdAt, updatedAt, done, hasImage, completedAt, grade }) => ({
-            id,
-            what,
-            createdAt,
-            updatedAt,
-            done: !!done,
-            hasImage: !!hasImage,
-            completedAt: completedAt || null,
-            grade: grade ?? null,
-          }));
-        if (!trySaveJson(TASKS_KEY_USER, minimal)) {
-          storageMode = "fail";
-        }
-      }
-    }
-
-    // Notify same-tab listeners that tasks have changed (storage event won't fire in same tab)
-    try {
-      setTimeout(() => {
-        try {
-          window.dispatchEvent(new Event("kibundo:tasks-updated"));
-        } catch {}
-      }, 0);
-    } catch {}
-
-    // progress is best-effort; keep it small
-    // Set step 0 (collect) if no scan yet, step 1 (machen) if scan completed
-    const progressStep = scanData ? 1 : 0;
-    try {
-      localStorage.setItem(
-        PROGRESS_KEY_USER,
-        JSON.stringify({
-          step: progressStep,
-          taskId: id,
-          task: { id, what: taskForStorage.what, hasImage: taskForStorage.hasImage, conversationId: taskForStorage.conversationId, scanId: taskForStorage.scanId },
-        })
-      );
-    } catch {}
-
-    // If analysis succeeded, update status + append result
-    if (scanData) {
-      // Append extraction/table or fallback
-      const extracted = scanData?.scan?.raw_text ?? scanData?.extractedText ?? "";
-      const rawQa = Array.isArray(scanData?.parsed?.questions)
-        ? scanData.parsed.questions
-        : Array.isArray(scanData?.qa)
-        ? scanData.qa
-        : [];
-      const needsClearerImage = scanData?.needsClearerImage || scanData?.parsed?.unclear || scanData?.error;
-
-      // 🔥 Filter out answers - only keep questions for student display
-      // Create sanitized QA array with only question fields (no answers)
-      const qa = rawQa.map((item) => {
-        // Create a new object with only question-related fields
-        const sanitized = {};
-        if (item.text) sanitized.text = item.text;
-        if (item.question) sanitized.question = item.question;
-        // Preserve other metadata fields that might be useful (but not answers)
-        if (item.id) sanitized.id = item.id;
-        if (item.type) sanitized.type = item.type;
-        // Explicitly exclude answer fields (answer, answers, solution, etc.)
-        return sanitized;
-      });
-
-      // Replace loader status
-      if (loadingMsg) {
-        replaceMessageInChat(mode, scopedKey, loadingMsg.id, () =>
-          fmt("Analyse abgeschlossen.", "agent", "status", { transient: true, agentName: selectedAgent || "Kibundo" })
-        );
-      }
-
-      // Get detected subject from AI
-      const aiDetectedSubject = scanData?.parsed?.subject || scanData?.scan?.detected_subject;
-
-      // Build messages to append
-      const messagesToAppend = [];
-
-      // Add subject notification if detected
-      if (aiDetectedSubject) {
-        const subjectEmoji = {
-          'Mathe': '🔢',
-          'Deutsch': '📗',
-          'Englisch': '🇬🇧',
-          'Sachkunde': '🔬',
-          'Erdkunde': '🌍',
-          'Kunst': '🎨',
-          'Musik': '🎵',
-          'Sport': '⚽',
-        }[aiDetectedSubject] || '📚';
-
-        messagesToAppend.push(
-          fmt(
-            `${subjectEmoji} Subject: ${aiDetectedSubject}`,
-            "agent",
-            "text",
-            { agentName: selectedAgent || "Kibundo" }
-          )
-        );
-      }
-
-      // Add task type-specific welcome message (no TTS - only show in chat)
-      if (detectedTaskType === 'creative') {
-        // Type B: Creative/Manual - Motivational mode
-        messagesToAppend.push(
-          fmt(
-            "This is a creative task! I'll support and motivate you. Let's create something great together!",
-            "agent",
-            "text",
-            { agentName: selectedAgent || "Kibundo" }
-          )
-        );
-      } else {
-        // Type A: Solvable - Step-by-step help mode
-        // No need for extra message - the scan results table and subject notification are enough
-      }
-
-      // Add extraction result - show questions WITHOUT answers
-      const resultMsg =
-        extracted || qa.length
-          ? fmt({ extractedText: extracted, qa }, "agent", "table", { agentName: selectedAgent || "Kibundo" })
-          : fmt(
-              "Ich habe das Dokument erhalten, konnte aber nichts Brauchbares extrahieren.",
-              "agent",
-              "text",
-              { agentName: selectedAgent || "Kibundo" }
-            );
-
-      messagesToAppend.push(resultMsg);
-
-      appendToChat(mode, scopedKey, messagesToAppend);
-
-      // ⬇️ NOW open the chat after scan completes (with updated task data)
-      const updatedTaskData = {
-        conversationId: scanData.conversationId,
-        scanId: scanData?.scan?.id,
-      };
-
-      // Progress is already updated above (step 1 when scanData exists)
-      // Open chat with scan results - this is the first time opening after scan completes
-      openAndFocusChat(id, updatedTaskData);
-
-      // Try to store conversationId in localStorage (optional fallback, ignore quota errors)
-      if (scanData.conversationId) {
-        const convKey = `kibundo.convId.${mode}.${scopedKey}`;
-        try {
-          localStorage.setItem(convKey, String(scanData.conversationId));
-        } catch (e) {
-          // Quota exceeded - clean up old conversation IDs
-          try {
-            // Remove old conversation IDs
-            const keysToRemove = [];
-            for (let i = 0; i < localStorage.length; i++) {
-              const key = localStorage.key(i);
-              if (key && key.startsWith('kibundo.convId.')) {
-                keysToRemove.push(key);
-              }
-            }
-            // Remove oldest entries (keep last 5)
-            keysToRemove.slice(0, -5).forEach(k => localStorage.removeItem(k));
-            // Try again
-            localStorage.setItem(convKey, String(scanData.conversationId));
-          } catch (cleanupErr) {
-          }
-        }
-      }
-    } else if (file) {
-      // Scan failed but file was uploaded - open chat anyway to show error message
-      // The error message was already added to chat in the catch block above
-      openAndFocusChat(id);
-    }
-
-    antdMessage.success("Aufgabe erstellt – der Chat zeigt jetzt die Analyse.");
+    return createTaskAndOpenChatUtil({
+      file,
+      meta,
+      compressImage,
+      uploadWithApi,
+      setUploading,
+      openAndFocusChat,
+      appendToChat,
+      replaceMessageInChat,
+      getChatMessages,
+      setChatMessages,
+      loadTasks,
+      readProgressForUser,
+      storageKey,
+      TASKS_KEY_USER,
+      PROGRESS_KEY_USER,
+      studentId,
+      selectedAgent,
+      antdMessage,
+    });
   };
 
-  /* ---------- TTS: fire exactly once per navigation ---------- */
+  /* ---------- TTS: robust to StrictMode but require user gesture ---------- */
+  const timeoutIdRef = useRef(null);
+  const hasScheduledRef = useRef(false); // Track if timeout is already scheduled
+  const lastLocationKeyRef = useRef(null);
+
+  // ensure global guard exists
+  if (typeof window !== "undefined" && !window.__kibundo_tts) {
+    window.__kibundo_tts = { scheduled: new Map() };
+  }
+
+  const globalTts = typeof window !== "undefined" ? window.__kibundo_tts : { scheduled: new Map() };
+
   useEffect(() => {
-    // Only on the doing page
+    // TTS effect triggered
+
     const currentPath = typeof location?.pathname === 'string' ? location.pathname : String(location?.pathname || '');
-    if (currentPath !== "/student/homework/doing") return;
+    const navKey = `${storageKey}::${location.key || location.pathname}`;
 
-    // Don’t fire if user already started or TTS is off
-    if (!ttsEnabledValue || hasStarted) return;
-
-    // Already spoken for this navigation? bail.
-    if (sessionStorage.getItem(ttsOnceKey) === '1') return;
-
-    let cancelled = false;
-    const id = setTimeout(() => {
-      if (cancelled) return;
-      // Final guard in case something else set it meanwhile
-      if (sessionStorage.getItem(ttsOnceKey) === '1') return;
-
-      sessionStorage.setItem(ttsOnceKey, '1');
-      try {
-        speakTTS(
-          "Hallo! Welche Hausaufgabe hast du heute? Du kannst ein Foto machen, eine Datei hochladen oder mir einfach erzählen, was du zu tun hast."
-        );
-      } catch (e) {
-        // If speak throws, allow a retry on next nav by clearing the mark
-        sessionStorage.removeItem(ttsOnceKey);
-      }
-    }, 800); // small delay so UI paints first
-
-    // StrictMode-safe cleanup: cancels first-mount timer so we only run once.
-    return () => {
-      cancelled = true;
-      clearTimeout(id);
+    const clearGlobal = () => {
+      const entry = globalTts.scheduled.get(navKey);
+      if (entry?.timeoutId) clearTimeout(entry.timeoutId);
+      globalTts.scheduled.delete(navKey);
     };
-  }, [ttsEnabledValue, hasStarted, speakTTS, ttsOnceKey, location?.pathname]);
+
+    // Not on page -> reset
+    if (currentPath !== "/student/homework/doing") {
+      hasScheduledRef.current = false;
+      lastLocationKeyRef.current = null;
+      if (timeoutIdRef.current) {
+        clearTimeout(timeoutIdRef.current);
+        timeoutIdRef.current = null;
+      }
+      clearGlobal();
+      return;
+    }
+
+    // If user already started, don't schedule
+    if (hasStartedRef.current) {
+      // User already started, skipping TTS
+      hasScheduledRef.current = false;
+      if (timeoutIdRef.current) {
+        clearTimeout(timeoutIdRef.current);
+        timeoutIdRef.current = null;
+      }
+      clearGlobal();
+      return;
+    }
+
+    // Proceed with scheduling (same robust approach as onboarding screens)
+    const currentLocationKey = location.key || location.pathname;
+    if (lastLocationKeyRef.current !== null && lastLocationKeyRef.current !== currentLocationKey) {
+      hasScheduledRef.current = false;
+      if (timeoutIdRef.current) {
+        clearTimeout(timeoutIdRef.current);
+        timeoutIdRef.current = null;
+      }
+      clearGlobal();
+    }
+    lastLocationKeyRef.current = currentLocationKey;
+
+    const existing = globalTts.scheduled.get(navKey);
+    const nowTs = Date.now();
+    if (existing && (nowTs - existing.ts) < 5000) {
+      // Global timeout already scheduled, skipping
+      hasScheduledRef.current = true;
+      return;
+    }
+
+    // Setting up TTS, marking as scheduled
+    hasScheduledRef.current = true;
+
+    if (timeoutIdRef.current) {
+      clearTimeout(timeoutIdRef.current);
+      timeoutIdRef.current = null;
+    }
+
+    const localTimeout = setTimeout(() => {
+      timeoutIdRef.current = null;
+      hasScheduledRef.current = false;
+      globalTts.scheduled.delete(navKey);
+
+      // Final check: if user started, skip TTS
+      if (hasStartedRef.current) {
+        // User started during timeout, skipping TTS
+        return;
+      }
+
+      const message = studentFirstName 
+        ? `Hallo ${studentFirstName}! Welche Hausaufgabe hast du heute? Du kannst ein Foto von deinem Arbeitsblatt machen, eine Datei aus deiner Galerie hochladen, oder mir einfach erzählen, was du zu tun hast.`
+        : "Hallo! Welche Hausaufgabe hast du heute? Du kannst ein Foto von deinem Arbeitsblatt machen, eine Datei aus deiner Galerie hochladen, oder mir einfach erzählen, was du zu tun hast.";
+
+      // Speaking welcome message
+      if (speakTTS && typeof speakTTS === 'function') {
+        try {
+          speakTTS(message);
+          // TTS called successfully
+        } catch (error) {
+          console.error("❌ [HomeworkDoing] TTS error:", error);
+        }
+      } else {
+        console.error("❌ [HomeworkDoing] speakTTS is not a function, value:", speakTTS);
+      }
+    }, 2000);
+
+    timeoutIdRef.current = localTimeout;
+    globalTts.scheduled.set(navKey, { timeoutId: localTimeout, ts: nowTs });
+
+    return () => {
+      if (timeoutIdRef.current) {
+        clearTimeout(timeoutIdRef.current);
+        timeoutIdRef.current = null;
+      }
+      hasScheduledRef.current = false;
+      const entry = globalTts.scheduled.get(navKey);
+      if (entry && entry.timeoutId === localTimeout) globalTts.scheduled.delete(navKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location?.pathname, location?.key, speakTTS, storageKey]);
 
   /* ---------- UI handlers ---------- */
   const onCameraClick = () => {
@@ -910,12 +544,113 @@ export default function HomeworkDoing() {
     setHasStarted(true);
     galleryInputRef.current?.click();
   };
-  const onMicClick = () => {
+  const onMicClick = async () => {
     setHasStarted(true);
-    createTaskAndOpenChat({
-      file: null,
-      meta: { subject: "Sonstiges", what: "Audio-Aufgabe", description: "Diktierte Aufgabe", source: "audio" },
-    });
+    
+    if (isRecording) {
+      // Stop recording and get final transcript
+      const transcript = await stopRecording();
+      
+      if (transcript && transcript.trim()) {
+        // Create task first (this will open the chat)
+        await createTaskAndOpenChat({
+          file: null,
+          meta: { 
+            subject: "Sonstiges", 
+            what: "Audio-Aufgabe", 
+            description: transcript, 
+            source: "audio" 
+          },
+        });
+        
+        // Wait a bit for chat to be ready, then add transcript and send
+        setTimeout(async () => {
+          // Get task ID from dockState (created by createTaskAndOpenChat)
+          const taskId = dockState?.task?.id || location.state?.task?.id || makeId();
+          const scopedKey = `homework:${taskId}::u:${storageKey}`;
+          
+          // Create user message from transcript
+          const userMessage = fmt(transcript, "user", "text");
+          
+          // Get current messages and add user message immediately (so it appears in the chat)
+          const currentMessages = getChatMessages?.("homework", scopedKey) || [];
+          setChatMessages?.("homework", scopedKey, [...currentMessages, userMessage]);
+          
+          // Expand chat to show the message
+          expandChat?.(true);
+          
+          try {
+            // Send to AI API
+            const agent = await resolveStudentAgent();
+            const payload = {
+              question: transcript,
+              ai_agent: agent?.name || selectedAgent,
+              mode: "homework",
+            };
+            
+            if (studentId) {
+              payload.student_id = studentId;
+            }
+            
+            // Add scanId if available (though audio tasks typically don't have scans)
+            if (dockState?.task?.scanId) {
+              payload.scanId = dockState.task.scanId;
+            }
+            
+            const response = await api.post("/ai/chat", payload, {
+              withCredentials: true,
+            });
+            
+            // Add AI response to chat
+            if (response?.data?.answer) {
+              const agentMessage = fmt(response.data.answer, "agent", "text", {
+                agentName: agent?.name || selectedAgent,
+              });
+              setChatMessages?.("homework", scopedKey, (prev) => {
+                const prevMsgs = prev || [];
+                // Make sure we don't duplicate the user message
+                const hasUserMsg = prevMsgs.some(msg => 
+                  msg.from === "user" && msg.content === transcript
+                );
+                if (!hasUserMsg) {
+                  return [...prevMsgs, userMessage, agentMessage];
+                }
+                return [...prevMsgs, agentMessage];
+              });
+            }
+          } catch (error) {
+            console.error("Failed to send voice message:", error);
+            
+            // Add error message to chat
+            const errorMessage = fmt("Entschuldigung, es gab einen Fehler beim Senden deiner Nachricht. Bitte versuche es erneut.", "agent", "text", {
+              agentName: selectedAgent,
+            });
+            setChatMessages?.("homework", scopedKey, (prev) => {
+              const prevMsgs = prev || [];
+              // Make sure user message is there
+              const hasUserMsg = prevMsgs.some(msg => 
+                msg.from === "user" && msg.content === transcript
+              );
+              if (!hasUserMsg) {
+                return [...prevMsgs, userMessage, errorMessage];
+              }
+              return [...prevMsgs, errorMessage];
+            });
+            
+            antdMessage.error("Fehler beim Senden der Nachricht.");
+          }
+        }, 300);
+      } else {
+        // No transcript - just create task
+        createTaskAndOpenChat({
+          file: null,
+          meta: { subject: "Sonstiges", what: "Audio-Aufgabe", description: "Diktierte Aufgabe", source: "audio" },
+        });
+      }
+    } else {
+      // Start recording
+      startRecording();
+    }
   };
 
   const onCameraChange = (e) => {
@@ -973,7 +708,7 @@ export default function HomeworkDoing() {
                   {selectedAgent || "Kibundo"}
                 </div>
                 <div className="text-base text-gray-700 leading-relaxed">
-                  Hallo! 👋 Welche Hausaufgabe hast du heute? 
+                  {studentFirstName ? `Hallo ${studentFirstName}! 👋` : "Hallo! 👋"} Welche Hausaufgabe hast du heute?
                   <br />
                   <br />
                   Du kannst:
@@ -1005,13 +740,21 @@ export default function HomeworkDoing() {
 
         <button
           type="button"
-          aria-label="Audio-Aufgabe starten"
+          aria-label={isRecording ? "Aufnahme beenden" : "Audio-Aufgabe starten"}
           onClick={onMicClick}
-          className="w-[96px] h-[96px] rounded-full grid place-items-center"
-          style={{ backgroundColor: "#ff7a00", boxShadow: "0 16px 28px rgba(0,0,0,.22)" }}
+          className="w-[96px] h-[96px] rounded-full grid place-items-center transition-all"
+          style={{ 
+            backgroundColor: isRecording ? "#ff4d4f" : "#ff7a00", 
+            boxShadow: "0 16px 28px rgba(0,0,0,.22)",
+            transform: isRecording ? "scale(1.1)" : "scale(1)"
+          }}
           disabled={uploading}
         >
-          <img src={micIcon} alt="" className="w-9 h-9 pointer-events-none" />
+          <img 
+            src={micIcon} 
+            alt="" 
+            className={`w-9 h-9 pointer-events-none ${isRecording ? "brightness-0 invert" : ""}`}
+          />
         </button>
 
         <button
