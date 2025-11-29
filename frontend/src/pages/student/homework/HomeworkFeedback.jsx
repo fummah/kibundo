@@ -439,7 +439,9 @@ export default function HomeworkFeedback() {
         });
       }
     } catch (error) {
-      console.error("❌ Fehler beim Speichern des Abschlussfotos:", error);
+      if (import.meta.env.DEV) {
+        console.error("❌ Fehler beim Speichern des Abschlussfotos:", error);
+      }
       antdMessage?.error("Abschlussfoto konnte nicht gespeichert werden.");
     } finally {
       setSavingPhoto(false);
@@ -482,7 +484,9 @@ export default function HomeworkFeedback() {
         });
       }
     } catch (error) {
-      console.error("❌ Fehler beim Entfernen des Abschlussfotos:", error);
+      if (import.meta.env.DEV) {
+        console.error("❌ Fehler beim Entfernen des Abschlussfotos:", error);
+      }
       antdMessage?.error("Foto konnte nicht entfernt werden.");
     } finally {
       setSavingPhoto(false);
@@ -523,7 +527,9 @@ export default function HomeworkFeedback() {
         });
       }
     } catch (error) {
-      console.error("❌ Fehler beim Markieren als erledigt:", error);
+      if (import.meta.env.DEV) {
+        console.error("❌ Fehler beim Markieren als erledigt:", error);
+      }
       antdMessage?.error("Aufgabe konnte nicht als erledigt markiert werden.");
     } finally {
       setSavingPhoto(false);
@@ -562,7 +568,9 @@ export default function HomeworkFeedback() {
         });
       }
     } catch (error) {
-      console.error("❌ Fehler beim Zurücksetzen des Abschlussstatus:", error);
+      if (import.meta.env.DEV) {
+        console.error("❌ Fehler beim Zurücksetzen des Abschlussstatus:", error);
+      }
       antdMessage?.error("Aufgabe konnte nicht zurückgesetzt werden.");
     } finally {
       setSavingPhoto(false);

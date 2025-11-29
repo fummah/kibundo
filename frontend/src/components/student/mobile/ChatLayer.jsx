@@ -120,7 +120,7 @@ export default function ChatLayer({
   const navigate = useNavigate();
   const { message: antdMessage } = App.useApp();
 
-  const { getChatMessages, setChatMessages, clearChatMessages, closeChat } = useChatDock();
+  const { getChatMessages, setChatMessages, clearChatMessages, closeChat, openChat, expandChat } = useChatDock();
   const { user: authUser } = useAuthContext();
   
   // Always "general" mode — but we SCOPE the key PER STUDENT
@@ -194,7 +194,9 @@ export default function ChatLayer({
         setBackendMessages(formattedMessages);
       }
     } catch (error) {
-      console.error("❌ CHATLAYER: Error fetching messages:", error.message);
+      if (import.meta.env.DEV) {
+        console.error("❌ CHATLAYER: Error fetching messages:", error.message);
+      }
       setBackendMessages([]);
       // Remove from fetched set so we can retry later
       fetchedConversationsRef.current.delete(convId);
@@ -646,9 +648,6 @@ export default function ChatLayer({
 
   // Start new chat directly without confirmation
   const startNewChat = useCallback(() => {
-    // Close the current chat first
-    closeChat?.();
-    
     // 🔥 Clear conversation ID to start fresh
     setConversationId(null);
     setBackendMessages([]);
@@ -662,11 +661,23 @@ export default function ChatLayer({
     setChatMessages?.(stableModeRef.current, stableTaskIdRef.current, []);
     setLocalMessages([]);
     setDraft("");
+    
+    // 🔥 Close current chat and reopen to ensure clean state
+    closeChat?.();
+    
+    // Reopen chat after clearing (keep it open for user)
+    setTimeout(() => {
+      openChat?.({ mode: "general" });
+      expandChat?.(true); // Explicitly expand to keep chat visible
+    }, 150); // Slightly longer delay to ensure close completes
+    
     requestAnimationFrame(() =>
       listRef.current?.scrollTo({ top: 999999, behavior: "smooth" })
     );
   }, [
     closeChat,
+    openChat,
+    expandChat,
     clearChatMessages,
     setChatMessages,
     conversationIdKey,

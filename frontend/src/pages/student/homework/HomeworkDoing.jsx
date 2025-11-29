@@ -513,10 +513,14 @@ export default function HomeworkDoing() {
           speakTTS(message);
           // TTS called successfully
         } catch (error) {
-          console.error("❌ [HomeworkDoing] TTS error:", error);
+          if (import.meta.env.DEV) {
+            console.error("❌ [HomeworkDoing] TTS error:", error);
+          }
         }
       } else {
-        console.error("❌ [HomeworkDoing] speakTTS is not a function, value:", speakTTS);
+        if (import.meta.env.DEV) {
+          console.error("❌ [HomeworkDoing] speakTTS is not a function, value:", speakTTS);
+        }
       }
     }, 2000);
 
@@ -619,7 +623,9 @@ export default function HomeworkDoing() {
               });
             }
           } catch (error) {
-            console.error("Failed to send voice message:", error);
+            if (import.meta.env.DEV) {
+              console.error("Failed to send voice message:", error);
+            }
             
             // Add error message to chat
             const errorMessage = fmt("Entschuldigung, es gab einen Fehler beim Senden deiner Nachricht. Bitte versuche es erneut.", "agent", "text", {

@@ -465,7 +465,9 @@ export default function HomeworkChat({
           const firstKey = lastLoggedTaskRef.current.values().next().value;
           lastLoggedTaskRef.current.delete(firstKey);
         }
-        console.log("⚠️ FOOTERCHAT: Image task exists but no scanId:", { id: dockState.task.id, source: taskSource });
+        if (import.meta.env.DEV) {
+          console.log("⚠️ FOOTERCHAT: Image task exists but no scanId:", { id: dockState.task.id, source: taskSource });
+        }
       }
     }
   }, [dockState?.task?.scanId, dockState?.task?.source, scanId]);
@@ -597,7 +599,9 @@ export default function HomeworkChat({
         lastFetchedConvIdRef.current = convId;
       }
     } catch (error) {
-      console.error("❌ FOOTERCHAT: Error fetching messages:", error);
+      if (import.meta.env.DEV) {
+        console.error("❌ FOOTERCHAT: Error fetching messages:", error);
+      }
       setBackendMessages([]);
     } finally {
       setLoadingBackendMessages(false);
@@ -622,7 +626,9 @@ export default function HomeworkChat({
           // Message fetching will be triggered by the next useEffect
         }
       } catch (error) {
-        console.error("❌ FOOTERCHAT: Failed to search conversations:", error);
+        if (import.meta.env.DEV) {
+          console.error("❌ FOOTERCHAT: Failed to search conversations:", error);
+        }
       }
     };
     
@@ -773,7 +779,7 @@ export default function HomeworkChat({
           }
         } catch (error) {
           // Only log error if it's not a cancellation (expected when navigating away)
-          if (error.name !== "CanceledError" && error.code !== "ERR_CANCELED") {
+          if (error.name !== "CanceledError" && error.code !== "ERR_CANCELED" && import.meta.env.DEV) {
             console.error("❌ FOOTERCHAT: Failed to fetch scanId from homework scans:", error);
           }
         }
@@ -782,7 +788,7 @@ export default function HomeworkChat({
       if (!effectiveScanId) {
         // Only log warning if task is image-based (should have scanId) but doesn't
         // Silently skip for other task types
-        if (taskSource === "image" && hasScanIdPattern) {
+        if (taskSource === "image" && hasScanIdPattern && import.meta.env.DEV) {
           console.log("⚠️ FOOTERCHAT: Image task expected scanId but none found");
         }
         scanResultsLoadingRef.current = false;
@@ -867,7 +873,9 @@ export default function HomeworkChat({
             null;
           
           if (!effectiveStudentId) {
-            console.warn("⚠️ FOOTERCHAT: No studentId available, cannot fetch scan");
+            if (import.meta.env.DEV) {
+              console.warn("⚠️ FOOTERCHAT: No studentId available, cannot fetch scan");
+            }
             return;
           }
           
@@ -942,22 +950,28 @@ export default function HomeworkChat({
               }
             } else {
               // Scan exists but doesn't have raw_text yet - it might still be processing
-              console.warn("⚠️ FOOTERCHAT: Scan found but no raw_text (scan may still be processing):", {
-                id: scan.id,
-                hasFile: !!scan.file_url,
-                processedAt: scan.processed_at,
-                createdAt: scan.created_at
-              });
+              if (import.meta.env.DEV) {
+                console.warn("⚠️ FOOTERCHAT: Scan found but no raw_text (scan may still be processing):", {
+                  id: scan.id,
+                  hasFile: !!scan.file_url,
+                  processedAt: scan.processed_at,
+                  createdAt: scan.created_at
+                });
+              }
               // Mark as processed to prevent repeated attempts, but don't add scan results
               scanResultsLoadedRef.current.add(scanKey);
               lastProcessedScanIdRef.current = effectiveScanId;
               lastProcessedTaskKeyRef.current = `${scopedTaskKey}::scan:${effectiveScanId}`;
             }
           } else {
-            console.warn("⚠️ FOOTERCHAT: Scan data is not an array:", scanData);
+            if (import.meta.env.DEV) {
+              console.warn("⚠️ FOOTERCHAT: Scan data is not an array:", scanData);
+            }
           }
         } catch (error) {
-          console.error("❌ FOOTERCHAT: Failed to load scan results:", error);
+          if (import.meta.env.DEV) {
+            console.error("❌ FOOTERCHAT: Failed to load scan results:", error);
+          }
         } finally {
           scanResultsLoadingRef.current = false;
         }
@@ -1809,7 +1823,9 @@ export default function HomeworkChat({
   // Handle rescan upload - bypasses chat and goes directly to completion
   const handleRescanUpload = useCallback(async (file) => {
     if (!file || !dockState?.task) {
-      console.error("❌ handleRescanUpload: Missing file or task", { file: !!file, task: !!dockState?.task });
+      if (import.meta.env.DEV) {
+        console.error("❌ handleRescanUpload: Missing file or task", { file: !!file, task: !!dockState?.task });
+      }
       return;
     }
     
@@ -1879,7 +1895,9 @@ export default function HomeworkChat({
           window.dispatchEvent(new Event("kibundo:tasks-updated"));
         } catch {}
       } catch (storageError) {
-        console.error("Error updating task in storage:", storageError);
+        if (import.meta.env.DEV) {
+          console.error("Error updating task in storage:", storageError);
+        }
       }
       
       // Sync to server
@@ -1892,7 +1910,9 @@ export default function HomeworkChat({
             meta: { toast5xx: false },
           });
         } catch (serverError) {
-          console.error("Error syncing completion to server:", serverError);
+          if (import.meta.env.DEV) {
+            console.error("Error syncing completion to server:", serverError);
+          }
         }
       }
       
@@ -1929,7 +1949,9 @@ export default function HomeworkChat({
         });
       }, 200);
     } catch (error) {
-      console.error("❌ Fehler beim Hochladen des Abschlussfotos:", error);
+      if (import.meta.env.DEV) {
+        console.error("❌ Fehler beim Hochladen des Abschlussfotos:", error);
+      }
       antdMessage.error("Abschlussfoto konnte nicht hochgeladen werden.");
       setIsRescanUpload(false);
     } finally {
@@ -1938,18 +1960,37 @@ export default function HomeworkChat({
   }, [dockState?.task, studentId, onClose, navigate, antdMessage, closeChat]);
 
   const startNewChat = useCallback(() => {
-    // Close the current chat first
-    closeChat?.();
+    // 🔥 Clear all conversation state first
+    setConversationId(null);
+    setBackendMessages([]);
+    setLocalMessages([]);
+    setDraft("");
     
-    // Open a new chat with no task (fresh chat)
+    // Clear conversation ID from localStorage
+    try {
+      localStorage.removeItem(convKey);
+    } catch (e) {
+      // Failed to clear conversationId
+    }
+    
+    // Clear chat messages from context
+    clearChatMessages?.(mode, scopedTaskKey);
+    setChatMessages?.(mode, scopedTaskKey, []);
+    
+    // Reset refs
+    lastFetchedConvIdRef.current = null;
+    fetchingBackendMessagesRef.current = false;
+    
+    // 🔥 Close current chat (both dock and sheet)
+    closeChat?.();
+    onClose?.(); // Close the sheet in FooterChat
+    
+    // Navigate to homework doing page so student can scan new homework
+    // Use a small delay to ensure the sheet closes first
     setTimeout(() => {
-      openChat?.({
-        mode: "homework",
-        task: null,
-      });
-      expandChat?.();
-    }, 100);
-  }, [closeChat, openChat, expandChat]);
+      navigate("/student/homework/doing", { replace: true });
+    }, 150);
+  }, [closeChat, onClose, navigate, setConversationId, setBackendMessages, setLocalMessages, setDraft, convKey, clearChatMessages, setChatMessages, mode, scopedTaskKey]);
 
   const handleCameraChange = (e) => {
     if (effectiveReadOnly) return;
@@ -2378,7 +2419,9 @@ export default function HomeworkChat({
                 </div>
 
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     if (draft.trim()) {
                       sendText();
                     } else {
@@ -2541,11 +2584,15 @@ Nach der Bestätigung wirst du zur Rückmeldung weitergeleitet, wo du dein ferti
                                         meta: { toast5xx: false },
                                       });
                                     } catch (serverError) {
-                                      console.error("Error syncing completion to server:", serverError);
+                                      if (import.meta.env.DEV) {
+                                        console.error("Error syncing completion to server:", serverError);
+                                      }
                                     }
                                   }
                                 } catch (error) {
-                                  console.error("Error marking task as complete:", error);
+                                  if (import.meta.env.DEV) {
+                                    console.error("Error marking task as complete:", error);
+                                  }
                                 }
                               }
                               

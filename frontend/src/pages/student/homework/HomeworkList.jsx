@@ -240,7 +240,9 @@ export default function HomeworkList() {
       
       setStudentsMap(map);
     } catch (error) {
-      console.error("Failed to fetch student info:", error);
+      if (import.meta.env.DEV) {
+        console.error("Failed to fetch student info:", error);
+      }
     }
   }, [localStorageTasks, apiTasks]);
 

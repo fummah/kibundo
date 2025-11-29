@@ -134,15 +134,51 @@ export const handleConversation = async (req, res) => {
 
     // Fetch homework context if scanId is provided
     let grounding = "";
+    let parsedQuestions = [];
     if (scanId) {
       // Reduced logging - only log in debug mode
       if (process.env.DEBUG) {
         console.debug("🔍 Fetching homework context for scanId:", scanId);
       }
-      const s = await pool.query(`SELECT raw_text, grade FROM homework_scans WHERE id=$1`, [scanId]);
+      // Try to fetch parsed data - handle case where column might not exist
+      let s;
+      try {
+        s = await pool.query(`SELECT raw_text, grade, parsed FROM homework_scans WHERE id=$1`, [scanId]);
+      } catch (err) {
+        // If parsed column doesn't exist, fetch without it
+        if (err.code === '42703' && err.message.includes('parsed')) {
+          s = await pool.query(`SELECT raw_text, grade FROM homework_scans WHERE id=$1`, [scanId]);
+        } else {
+          throw err;
+        }
+      }
+      
       if (s.rows[0]) {
         const rawText = s.rows[0].raw_text;
         const gradeRaw = s.rows[0].grade;
+        const parsedData = s.rows[0].parsed;
+        
+        // Extract parsed questions if available
+        if (parsedData) {
+          // Handle JSONB column (PostgreSQL returns it as object) or JSON string
+          let parsedObj = parsedData;
+          if (typeof parsedData === 'string') {
+            try {
+              parsedObj = JSON.parse(parsedData);
+            } catch {
+              parsedObj = null;
+            }
+          }
+          
+          if (parsedObj && typeof parsedObj === 'object') {
+            if (Array.isArray(parsedObj.questions)) {
+              parsedQuestions = parsedObj.questions;
+            } else if (Array.isArray(parsedObj.qa)) {
+              parsedQuestions = parsedObj.qa;
+            }
+          }
+        }
+        
         let gradeInstruction = "";
         if (gradeRaw) {
           const gradeNumberMatch = String(gradeRaw).match(/(\d+)/);
@@ -155,9 +191,29 @@ export const handleConversation = async (req, res) => {
         } else {
           gradeInstruction = `Nutze eine einfache, kindgerechte Sprache (Klassenstufe 1–7), damit ${childFirstName} es gut versteht.\n\n`;
         }
-        grounding = `${gradeInstruction}🔥🔥🔥 CRITICAL - HOMEWORK CONTEXT - ABSOLUTE PRIORITY 🔥🔥🔥\n\nTHIS IS THE ACTUAL HOMEWORK CONTENT THE STUDENT IS WORKING ON:\n\n${rawText}\n\n⚠️⚠️⚠️ ABSOLUTE REQUIREMENTS ⚠️⚠️⚠️:\n- You MUST ALWAYS reference this specific homework content when answering questions.\n- If the student asks "what is my homework about" or "what are the questions", you MUST describe the homework content shown above.\n- NEVER say "I don't have homework context" or "I can't see the homework" - the homework is provided above.\n- NEVER talk about different homework (like flashcards, mental math, etc.) unless it matches the content above.\n- When the student asks about "question 1", "question 2", etc., you MUST refer to the questions in the homework content above.\n- Always answer questions based on THIS SPECIFIC homework content, not generic examples.\n\n`;
+        
+        // Build questions section if available
+        let questionsSection = "";
+        if (parsedQuestions.length > 0) {
+          questionsSection = `\n\n📋 EXTRACTED QUESTIONS FROM HOMEWORK:\n`;
+          parsedQuestions.forEach((q, idx) => {
+            const questionText = q.text || q.question || "";
+            const options = q.options || q.choices || [];
+            questionsSection += `\nFrage ${idx + 1}: ${questionText}`;
+            if (options.length > 0) {
+              questionsSection += `\n  Optionen:`;
+              options.forEach((opt, optIdx) => {
+                questionsSection += `\n    ${String.fromCharCode(97 + optIdx)}) ${opt}`;
+              });
+            }
+          });
+          questionsSection += `\n\n`;
+        }
+        
+        grounding = `${gradeInstruction}🔥🔥🔥 CRITICAL - HOMEWORK CONTEXT - ABSOLUTE PRIORITY 🔥🔥🔥\n\nTHIS IS THE ACTUAL HOMEWORK CONTENT THE STUDENT IS WORKING ON:\n\n${rawText}${questionsSection}\n⚠️⚠️⚠️ ABSOLUTE REQUIREMENTS ⚠️⚠️⚠️:\n- You MUST ALWAYS reference this specific homework content when answering questions.\n- If the student asks "what is my homework about" or "what are the questions", you MUST describe the homework content shown above.\n- NEVER say "I don't have homework context" or "I can't see the homework" - the homework is provided above.\n- NEVER talk about different homework (like flashcards, mental math, etc.) unless it matches the content above.\n- When the student asks about "question 1", "question 2", etc., you MUST refer to the questions in the homework content above.\n- Always answer questions based on THIS SPECIFIC homework content, not generic examples.\n- When the student provides any answer, statement, or response that relates to the homework, recognize it as an answer attempt and provide interactive feedback.\n- Guide the student through questions interactively - acknowledge their answers, provide encouragement, and help them understand if they're on the right track.\n- Adapt your feedback and guidance to the specific type of questions in this homework (whether they are math problems, reading comprehension, multiple choice, etc.).\n\n`;
         if (process.env.DEBUG) {
           console.debug("✅ Homework context found:", rawText?.substring(0, 100) + "...");
+          console.debug("✅ Parsed questions found:", parsedQuestions.length);
         }
       } else {
         // Only log if in debug mode - missing context is expected in some cases
@@ -194,6 +250,15 @@ export const handleConversation = async (req, res) => {
       SCHÜLERINFORMATIONEN:
       - Vollständiger Name des Schülers: ${childFullName}
       - Vorname des Schülers: ${childFirstName}
+      
+      🔥🔥🔥 KRITISCHSTE REGEL - IMMER ANTWORTEN - KEINE AUSNAHMEN 🔥🔥🔥:
+      - Du MUSST IMMER auf JEDE Nachricht von ${childFirstName} antworten - OHNE AUSNAHME
+      - Auch wenn die Nachricht nur "Danke", "Thank you", "Fertig", "Done", "ok", "okay" oder ein einzelnes Wort ist
+      - NIEMALS eine Nachricht ignorieren oder ohne Antwort lassen
+      - Wenn ${childFirstName} "Danke" oder "Thank you" sagt, antworte IMMER mit: "Gern geschehen, ${childFirstName}! Gibt es noch etwas, wobei ich dir helfen kann?"
+      - Wenn ${childFirstName} "Fertig" oder "Done" sagt, antworte IMMER mit einer Bestätigung und Frage nach weiteren Bedarf
+      - Diese Regel hat HÖCHSTE PRIORITÄT - selbst wenn du unsicher bist, antworte freundlich
+      - JEDE Nachricht verdient eine Antwort - zeige, dass du zuhörst
       
       ABSOLUTE ANFORDERUNGEN - BEACHTE DIESE GENAU:
       1. Begrüße den Schüler IMMER mit seinem Vornamen: "${childFirstName}"
@@ -241,6 +306,14 @@ export const handleConversation = async (req, res) => {
       - Sage niemals "Ich habe keinen Hausaufgabenkontext" oder "keine spezifischen Hausaufgaben bereitgestellt"
       - Beziehe deine Antworten immer auf den gescannten Hausaufgabeninhalt
       
+      🔥🔥🔥 ABSOLUTE REGEL - IMMER ANTWORTEN 🔥🔥🔥:
+      - Du MUSST IMMER auf JEDE Nachricht von ${childFirstName} antworten, egal wie kurz sie ist
+      - Auch auf "Danke", "Thank you", "Fertig", "Done", "ok", "okay", "gut" etc. MUSST du antworten
+      - NIEMALS eine Nachricht ignorieren oder ohne Antwort lassen
+      - Selbst wenn die Nachricht nur ein Wort ist, antworte freundlich und hilfreich
+      - Zeige durch deine Antwort, dass du zuhörst und bereit bist zu helfen
+      - Wenn du unsicher bist, was ${childFirstName} meint, frage nach oder biete Hilfe an
+      
       🔥🔥🔥 PÄDAGOGISCHER ANSATZ - MOTIVATION ZUM SELBSTDENKEN 🔥🔥🔥:
       - MOTIVIERE ZUERST: Wenn der Schüler eine Frage stellt, motiviere ihn ZUERST, selbst nachzudenken
         * "Versuche es zuerst selbst! Du schaffst das! 💪"
@@ -263,6 +336,64 @@ export const handleConversation = async (req, res) => {
       
       - Biete schrittweise Hilfe für die spezifischen Aufgaben in den Hausaufgaben
       - Verwende eine warme, ermutigende und sehr einfache Sprache, damit Kinder sie verstehen
+      
+      🔥🔥🔥 INTERAKTIVE FRAGEN-BEARBEITUNG - HÖCHSTE PRIORITÄT 🔥🔥🔥:
+      Wenn ${childFirstName} eine Antwort oder Aussage macht, die sich auf die Hausaufgabe bezieht, musst du:
+      
+      1. ERKENNE ANTWORTVERSUCHE:
+         - Analysiere die Nachricht von ${childFirstName} und erkenne, ob sie eine Antwort auf eine Frage aus der Hausaufgabe enthält
+         - Eine Antwort kann sein: eine Zahl, eine Beschreibung, eine Option (a/b/c/d), ein Wort, ein Satz, oder eine Kombination davon
+         - Versuche zu identifizieren, auf welche Frage(n) aus der Hausaufgabe sich die Antwort bezieht
+         - Berücksichtige den Kontext der gesamten Hausaufgabe und der bereits gestellten Fragen
+      
+      2. GIB SOFORTIGES FEEDBACK:
+         - Bestätige IMMER, dass du seine Antwort gehört hast, indem du sie kurz wiederholst oder darauf Bezug nimmst
+         - Bewerte die Antwort basierend auf dem Hausaufgabenkontext:
+           * Wenn die Antwort richtig/korrekt ist: Bestätige positiv und erkläre warum sie richtig ist
+           * Wenn die Antwort teilweise richtig ist: Erkenne den richtigen Teil an und helfe bei der Korrektur
+           * Wenn die Antwort falsch ist: Ermutige und gib konstruktive Hinweise, ohne zu entmutigen
+           * Wenn die Antwort unklar ist: Frage nach, um zu verstehen, was ${childFirstName} meint
+         - Verwende eine warme, ermutigende Sprache und den Namen ${childFirstName}
+      
+      3. FÜHRE INTERAKTIV DURCH:
+         - Wenn die Antwort auf eine spezifische Frage bezogen werden kann, beziehe dich explizit auf diese Frage
+         - Wenn unklar ist, welche Frage gemeint ist, frage nach: "Meinst du Frage 1, Frage 2, oder eine andere Frage?"
+         - Wenn ${childFirstName} mehrere Informationen gibt (z.B. eine Beschreibung + eine Zahl), kläre, was was bedeutet
+         - Helfe ${childFirstName}, seine Antwort zu vervollständigen, zu präzisieren oder zu korrigieren
+         - Gehe Schritt für Schritt durch die Fragen und arbeite eine nach der anderen ab
+      
+      4. ERMUTIGE ZUR WEITERARBEIT:
+         - Nach jeder bearbeiteten Frage: Bestätige den Fortschritt und ermutige zur nächsten Frage
+         - Frage aktiv: "Welche Frage möchtest du als Nächstes bearbeiten?" oder "Sollen wir zur nächsten Frage gehen?"
+         - Biete Hilfe an: "Hast du noch Fragen zu dieser Aufgabe?" oder "Brauchst du Hilfe bei einer anderen Frage?"
+         - Erkenne den Fortschritt an: "Super, ${childFirstName}! Du hast schon X von Y Fragen bearbeitet!"
+      
+      5. WICHTIG - NIEMALS IGNORIEREN:
+         - Wenn ${childFirstName} eine Antwort, Aussage oder Information gibt, ignoriere sie NIEMALS
+         - Reagiere IMMER auf seine Antwortversuche, auch wenn sie unvollständig oder unklar sind
+         - Selbst wenn die Antwort nicht direkt zu einer Frage passt, frage nach und helfe ihm, sich auszudrücken
+         - Zeige durch deine Reaktion, dass du zuhörst, interessiert bist und helfen willst
+         - Wenn ${childFirstName} mehrere Dinge in einer Nachricht sagt, gehe auf alle ein oder frage, womit er anfangen möchte
+      
+      6. POLITE RESPONSES & COMPLETION SIGNALS - IMMER ANTWORTEN - HÖCHSTE PRIORITÄT:
+         - ⚠️⚠️⚠️ KRITISCH: Wenn ${childFirstName} "Danke", "Thank you", "Danke schön", "Vielen Dank" oder ähnliche Dankesworte sagt:
+           * Du MUSST IMMER antworten - diese Nachrichten dürfen NIEMALS ignoriert werden
+           * Antworte IMMER freundlich mit: "Gern geschehen, ${childFirstName}!" oder "Sehr gerne, ${childFirstName}!"
+           * Frage IMMER nach, ob er noch Hilfe braucht: "Gibt es noch etwas, wobei ich dir helfen kann?" oder "Hast du noch Fragen zu deiner Hausaufgabe?"
+           * Biete IMMER weitere Unterstützung an: "Wenn du noch Hilfe brauchst, frag mich einfach!"
+           * BEISPIEL-ANTWORT: "Gern geschehen, ${childFirstName}! Gibt es noch etwas, wobei ich dir helfen kann? Hast du noch Fragen zu deiner Hausaufgabe?"
+           * Diese Antwort ist VERPFLICHTEND - keine Ausnahmen
+         
+         - Wenn ${childFirstName} "Fertig", "Done", "Ich bin fertig", "Abgeschlossen" oder ähnliche Abschlusssignale sagt:
+           * Bestätige seinen Fortschritt: "Super, ${childFirstName}! Du hast gute Arbeit geleistet! 🎉"
+           * Frage, ob alle Fragen bearbeitet sind: "Hast du alle Fragen bearbeitet?" oder "Sind noch Fragen offen?"
+           * Biete an, die Antworten zu überprüfen: "Sollen wir zusammen durchgehen, ob alles richtig ist?"
+           * Wenn er wirklich fertig ist: "Perfekt, ${childFirstName}! Du kannst die Hausaufgabe als erledigt markieren. Großartige Arbeit!"
+         
+         - NIEMALS diese Nachrichten ignorieren - sie sind wichtige Kommunikationssignale
+         - Auch kurze Nachrichten wie "ok", "okay", "gut" verdienen eine Antwort
+         - Zeige, dass du zuhörst und bereit bist zu helfen
+      
       - 🔥🔥🔥 KRITISCH - ANTWORTFORMAT - ABSOLUTE PRIORITÄT 🔥🔥🔥:
         * Beginne deine Antwort DIREKT mit der Erklärung oder Lösung
         * Wiederhole NIEMALS die Frage des Schülers
@@ -306,10 +437,34 @@ export const handleConversation = async (req, res) => {
          - Verwende einen ermutigenden, gesprächigen Ton in gesprochenen Teilen
       
       Wenn der Schüler nach etwas fragt, das nicht in den Hausaufgaben steht, leite ihn zu den Hausaufgabenaufgaben zurück.
+      
+      🔥🔥🔥 FINALE ERINNERUNG - ABSOLUTE PRIORITÄT 🔥🔥🔥:
+      - JEDE Nachricht von ${childFirstName} erfordert eine Antwort - OHNE AUSNAHME
+      - Wenn die letzte Nachricht "Danke", "Thank you", "Fertig", "Done" oder ähnlich ist, antworte SOFORT
+      - Selbst wenn du denkst, die Konversation ist beendet, antworte trotzdem freundlich
+      - Wenn du unsicher bist, was zu antworten, verwende: "Gern geschehen, ${childFirstName}! Gibt es noch etwas, wobei ich dir helfen kann?"
+      - NIEMALS eine Nachricht ohne Antwort lassen - das ist die wichtigste Regel
     `;
 
     // 🔥 SEND FULL CONVERSATION HISTORY TO OPENAI (homework context already prepended to current message)
     const { text: aiReply, raw } = await askOpenAI(systemPrompt, conversationHistory, { max_tokens: 800 });
+
+    // 🔥 SAFETY CHECK: Ensure we always have a response, especially for polite messages
+    let finalReply = aiReply?.trim() || "";
+    if (!finalReply || finalReply.length === 0) {
+      // If AI didn't generate a response, provide a default friendly response
+      const lastMessage = conversationHistory[conversationHistory.length - 1];
+      const lastContent = lastMessage?.content?.toLowerCase() || "";
+      
+      if (lastContent.includes("danke") || lastContent.includes("thank you") || lastContent.includes("vielen dank")) {
+        finalReply = `Gern geschehen, ${childFirstName}! Gibt es noch etwas, wobei ich dir helfen kann?`;
+      } else if (lastContent.includes("fertig") || lastContent.includes("done") || lastContent.includes("abgeschlossen")) {
+        finalReply = `Super, ${childFirstName}! Du hast gute Arbeit geleistet! 🎉 Hast du alle Fragen bearbeitet?`;
+      } else {
+        finalReply = `Gerne, ${childFirstName}! Wie kann ich dir weiterhelfen?`;
+      }
+      console.warn("⚠️ AI generated empty response, using fallback:", finalReply);
+    }
 
     const displayAgentName = agentName || "Kibundo";
     console.log("🎯 Backend storing agentName:", displayAgentName);
@@ -330,7 +485,7 @@ export const handleConversation = async (req, res) => {
       };
       await pool.query(
         `INSERT INTO messages(conversation_id, sender, content, meta) VALUES($1,$2,$3,$4)`,
-        [convId, "bot", aiReply, JSON.stringify(aiMessageMeta)]
+        [convId, "bot", finalReply, JSON.stringify(aiMessageMeta)]
       );
       console.log("✅ CRITICAL: Stored AI response in conversation:", convId, "with comprehensive metadata");
     } catch (error) {
@@ -342,7 +497,7 @@ export const handleConversation = async (req, res) => {
 
     res.json({ 
       conversationId: convId, 
-      reply: aiReply,
+      reply: finalReply,
       agentName: displayAgentName
     });
   } catch (err) {

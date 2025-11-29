@@ -223,12 +223,16 @@ export default function HomeworkChat() {
     }
     processedTasksRef.current.add(resolvedKey);
 
-    console.log("📋 HOMEWORK: Opened from task list:", { task, taskId, scanId });
+    if (import.meta.env.DEV) {
+      console.log("📋 HOMEWORK: Opened from task list:", { task, taskId, scanId });
+    }
 
     if (scanId) {
       (async () => {
         try {
-          console.log("🔍 HOMEWORK: Fetching conversation from DATABASE for scanId:", scanId);
+          if (import.meta.env.DEV) {
+            console.log("🔍 HOMEWORK: Fetching conversation from DATABASE for scanId:", scanId);
+          }
 
           // 🔥 ONLY fetch from database - no localStorage
           const { data } = await api.get(`/conversations`, {
@@ -239,14 +243,18 @@ export default function HomeworkChat() {
             const conversation = data[0];
             const convId = conversation.id;
 
-            console.log("✅ HOMEWORK: Found existing conversation in DATABASE:", convId);
+            if (import.meta.env.DEV) {
+              console.log("✅ HOMEWORK: Found existing conversation in DATABASE:", convId);
+            }
             setConversationId(convId);
 
             // 🔥 Fetch messages ONLY from database
             const { data: messages } = await api.get(`/conversations/${convId}/messages`);
 
             if (messages && messages.length > 0) {
-              console.log("✅ HOMEWORK: Loaded", messages.length, "messages from DATABASE");
+              if (import.meta.env.DEV) {
+                console.log("✅ HOMEWORK: Loaded", messages.length, "messages from DATABASE");
+              }
 
               // 🔥 Format messages from database only
               const formattedMessages = messages
@@ -268,7 +276,9 @@ export default function HomeworkChat() {
             } else {
               // 🔥 No messages in database - fetch scan results from database
               try {
-                console.log("🔍 HOMEWORK: No messages in conversation, fetching scan results from DATABASE for scanId:", scanId);
+                if (import.meta.env.DEV) {
+                  console.log("🔍 HOMEWORK: No messages in conversation, fetching scan results from DATABASE for scanId:", scanId);
+                }
                 const { data: scanData } = await api.get(`/homeworkscans/${scanId}`, {
                   withCredentials: true,
                 });
@@ -352,7 +362,9 @@ export default function HomeworkChat() {
                     )
                   );
                   
-                  console.log("✅ HOMEWORK: Adding scan results from DATABASE to chatHistory:", messagesToAdd.length, "messages");
+                  if (import.meta.env.DEV) {
+                    console.log("✅ HOMEWORK: Adding scan results from DATABASE to chatHistory:", messagesToAdd.length, "messages");
+                  }
                   setChatHistory(messagesToAdd);
                 } else {
                   // Fallback to welcome message only
@@ -363,7 +375,9 @@ export default function HomeworkChat() {
                   setChatHistory([welcomeMsg]);
                 }
               } catch (scanError) {
-                console.error("❌ HOMEWORK: Error fetching scan results from DATABASE:", scanError);
+                if (import.meta.env.DEV) {
+                  console.error("❌ HOMEWORK: Error fetching scan results from DATABASE:", scanError);
+                }
                 // Fallback to welcome message only
                 const welcomeMsg = formatMessage(
                   buildTaskIntro(task || navTask),
@@ -375,7 +389,9 @@ export default function HomeworkChat() {
           } else {
             // 🔥 No conversation exists - fetch scan results from database
             try {
-              console.log("🔍 HOMEWORK: No conversation found, fetching scan results from DATABASE for scanId:", scanId);
+              if (import.meta.env.DEV) {
+                console.log("🔍 HOMEWORK: No conversation found, fetching scan results from DATABASE for scanId:", scanId);
+              }
               const { data: scanData } = await api.get(`/homeworkscans/${scanId}`, {
                 withCredentials: true,
               });
@@ -459,7 +475,9 @@ export default function HomeworkChat() {
                   )
                 );
                 
-                console.log("✅ HOMEWORK: Adding scan results from DATABASE to chatHistory:", messagesToAdd.length, "messages");
+                if (import.meta.env.DEV) {
+                  console.log("✅ HOMEWORK: Adding scan results from DATABASE to chatHistory:", messagesToAdd.length, "messages");
+                }
                 setChatHistory(messagesToAdd);
               } else {
                 // Fallback to welcome message only
@@ -470,7 +488,9 @@ export default function HomeworkChat() {
                 setChatHistory([welcomeMsg]);
               }
             } catch (scanError) {
-              console.error("❌ HOMEWORK: Error fetching scan results from DATABASE:", scanError);
+              if (import.meta.env.DEV) {
+                console.error("❌ HOMEWORK: Error fetching scan results from DATABASE:", scanError);
+              }
               // Fallback to welcome message only
               const welcomeMsg = formatMessage(
                 buildTaskIntro(task || navTask),
@@ -480,7 +500,9 @@ export default function HomeworkChat() {
             }
           }
         } catch (error) {
-          console.error("❌ HOMEWORK: Error loading conversation from DATABASE:", error);
+          if (import.meta.env.DEV) {
+            console.error("❌ HOMEWORK: Error loading conversation from DATABASE:", error);
+          }
         }
       })();
     } else {
@@ -581,7 +603,9 @@ export default function HomeworkChat() {
       const assignedAgent = studentAgent?.name || "Kibundo";
 
       // Text → general chat 🔥 NOW WITH CONVERSATION ID
-      console.log("📤 FRONTEND: Sending to /ai/chat with conversationId:", conversationId);
+      if (import.meta.env.DEV) {
+        console.log("📤 FRONTEND: Sending to /ai/chat with conversationId:", conversationId);
+      }
       const payload = {
         question: content,
         ai_agent: assignedAgent,
@@ -600,22 +624,30 @@ export default function HomeworkChat() {
 
       const { data } = await api.post("/ai/chat", payload);
       
-      console.log("📥 FRONTEND: Received response from backend:", {
-        hasConversationId: !!data?.conversationId,
-        conversationId: data?.conversationId,
-        answer: data?.answer?.substring(0, 50)
-      });
+      if (import.meta.env.DEV) {
+        console.log("📥 FRONTEND: Received response from backend:", {
+          hasConversationId: !!data?.conversationId,
+          conversationId: data?.conversationId,
+          answer: data?.answer?.substring(0, 50)
+        });
+      }
       
       // 🔥 Update conversation ID if backend returns a new one (first message)
       if (data?.conversationId && data.conversationId !== conversationId) {
-        console.log("🔥 HOMEWORK: Updating conversationId from", conversationId, "to", data.conversationId);
+        if (import.meta.env.DEV) {
+          console.log("🔥 HOMEWORK: Updating conversationId from", conversationId, "to", data.conversationId);
+        }
         setConversationId(data.conversationId);
       } else if (data?.conversationId) {
-        console.log("✅ HOMEWORK: ConversationId already matches:", data.conversationId);
-        // 🔥 Refetch conversation history from backend to sync
-        console.log("🔄 HOMEWORK: Would refetch messages here (not implemented for homework chat)");
+        if (import.meta.env.DEV) {
+          console.log("✅ HOMEWORK: ConversationId already matches:", data.conversationId);
+          // 🔥 Refetch conversation history from backend to sync
+          console.log("🔄 HOMEWORK: Would refetch messages here (not implemented for homework chat)");
+        }
       } else {
-        console.log("❌ HOMEWORK: No conversationId in response!");
+        if (import.meta.env.DEV) {
+          console.log("❌ HOMEWORK: No conversationId in response!");
+        }
       }
       
       return { success: true, response: data?.answer || "—" };
