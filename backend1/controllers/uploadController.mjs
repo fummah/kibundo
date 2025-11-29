@@ -500,10 +500,24 @@ export const handleUpload = async (req, res) => {
       - KEINE AUSNAHMEN - DEUTSCH IST PFLICHT
     `;
 
-    const fileBuffer = fs.readFileSync(filePath);
+    // Read file with error handling
+    let fileBuffer;
+    try {
+      if (!fs.existsSync(filePath)) {
+        throw new Error(`File not found at path: ${filePath}`);
+      }
+      fileBuffer = fs.readFileSync(filePath);
+    } catch (fileError) {
+      console.error("❌ Error reading file:", fileError);
+      throw new Error(`Failed to read uploaded file: ${fileError.message}`);
+    }
+    
     const fileBase64 = fileBuffer.toString("base64");
 
-    const completion = await getOpenAIClient().chat.completions.create({
+    // Call OpenAI API with error handling
+    let completion;
+    try {
+      completion = await getOpenAIClient().chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
@@ -517,7 +531,19 @@ export const handleUpload = async (req, res) => {
       ],
       max_tokens: 1500,
       temperature: 0.3, // Lower temperature for more consistent German output
-    });
+      });
+    } catch (openAIError) {
+      console.error("❌ OpenAI API error:", openAIError);
+      // Clean up the uploaded file if OpenAI fails
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (cleanupError) {
+        console.error("❌ Error cleaning up file:", cleanupError);
+      }
+      throw new Error(`OpenAI API error: ${openAIError.message || "Failed to process image"}`);
+    }
 
     // Track API usage and costs
     const usageStats = trackAPIUsage(completion.usage, 'vision');
@@ -681,6 +707,14 @@ export const handleUpload = async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Upload error:", err);
-    res.status(500).json({ error: err.message || "Error while processing image" });
+    console.error("❌ Upload error stack:", err.stack);
+    // Provide more detailed error information
+    const errorMessage = err.message || "Error while processing image";
+    const errorDetails = {
+      error: errorMessage,
+      type: err.name || "UnknownError",
+      ...(process.env.NODE_ENV === "development" && { stack: err.stack })
+    };
+    res.status(500).json(errorDetails);
   }
 };
