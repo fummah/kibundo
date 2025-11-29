@@ -7,7 +7,6 @@ import { useTranslation } from "react-i18next";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import { markIntroSeen, markTourDone, hasSeenIntro } from "./introFlags";
-import useTTS from "@/lib/voice/useTTS";
 
 import bgGlobal from "@/assets/backgrounds/global-bg.png";
 import bgClouds from "@/assets/backgrounds/clouds.png";
@@ -37,8 +36,17 @@ export default function WelcomeIntro() {
     ? account.userId 
     : (user?.id || user?.user_id || null);
 
-  // Use the friendly TTS hook from home screen
-  const { speak: speakTTS, speaking } = useTTS({ lang: "de-DE", enabled: true });
+  // Simple browser TTS helper (match InterestsWizard behavior)
+  const speakBrowser = (text) => {
+    if (!text) return;
+    try {
+      if (typeof window === "undefined" || !window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "de-DE";
+      window.speechSynthesis.speak(u);
+    } catch {}
+  };
 
   const isFirstLogin = !hasSeenIntro(studentId);
 
@@ -109,7 +117,7 @@ export default function WelcomeIntro() {
         const finalGreeting = childFirstName
           ? `Hallo ${childFirstName}! Ich bin Kibundo. Gemeinsam machen wir Hausaufgaben entspannt und spielerisch.`
           : "Hallo! Ich bin Kibundo. Gemeinsam machen wir Hausaufgaben entspannt und spielerisch.";
-        speakTTS(finalGreeting);
+        speakBrowser(finalGreeting);
       }, 1200); // Delay to allow name fetch, but proceed even if name not found
       return () => clearTimeout(timer);
     }
@@ -122,7 +130,7 @@ export default function WelcomeIntro() {
   }, [ready]);
 
   const speak = () => {
-    speakTTS(greeting);
+    speakBrowser(greeting);
   };
 
   const next = () => navigate("/student/onboarding/welcome-tour");
@@ -214,7 +222,6 @@ export default function WelcomeIntro() {
             />
           }
           onClick={speak}
-          loading={speaking}
           className="rounded-full"
         >
           Vorlesen

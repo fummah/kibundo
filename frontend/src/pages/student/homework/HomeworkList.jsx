@@ -255,13 +255,24 @@ export default function HomeworkList() {
     const seen = new Set();
 
     // 🔥 Filter localStorage tasks by student_id to only show current student's homework
+    // For new students, be strict: only show tasks that belong to them
     const filteredLocalTasks = localStorageTasks.filter((task) => {
       // If task has userId, it must match current studentId or storageKey
       if (task?.userId) {
         return task.userId === studentId || task.userId === storageKey || task.userId === String(studentId) || task.userId === String(storageKey);
       }
-      // If no userId, include it (legacy tasks - will be filtered out if they don't match API data)
-      return true;
+      // 🔥 CRITICAL FIX: For tasks without userId, only include if:
+      // 1. We have a valid studentId (not anon/undefined)
+      // 2. The task has a scanId that matches API data (verified scan)
+      // 3. OR the task was created in the current session (has recent timestamp)
+      // Otherwise exclude legacy/test data that doesn't belong to this student
+      if (!studentId || studentId === "anon") {
+        // No student context - exclude tasks without userId to prevent showing other students' data
+        return false;
+      }
+      // If task has scanId, it might be valid - but we'll verify against API data
+      // For now, exclude tasks without userId to prevent false positives for new students
+      return false;
     });
 
     // Add local tasks first so student updates (done/photo) override API snapshots
@@ -273,8 +284,13 @@ export default function HomeworkList() {
     }
 
     // Add API tasks if they are not already represented locally
-    // API tasks are already filtered by student_id from the backend
+    // API tasks are already filtered by student_id from the backend, but verify ownership
     for (const task of apiTasks) {
+      // 🔥 CRITICAL: Verify task belongs to current student before including
+      if (studentId && task?.userId && task.userId !== studentId && task.userId !== String(studentId) && task.userId !== storageKey && task.userId !== String(storageKey)) {
+        // Task belongs to different student - skip it
+        continue;
+      }
       const key = task?.scanId ? `scan_${task.scanId}` : task?.id;
       if (!key || seen.has(key)) continue;
       seen.add(key);

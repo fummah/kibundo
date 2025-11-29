@@ -316,7 +316,13 @@ export default function HomeworkChat({
   // account.id is the student table ID when parent is viewing a child
   const studentTableId = account?.type === "child" 
     ? account.id 
-    : (dockState?.student?.id ?? dockState?.task?.studentId ?? null);
+    : (
+        dockState?.student?.id ??
+        // Prefer explicit studentId on task, then userId as a fallback (for legacy tasks)
+        dockState?.task?.studentId ??
+        dockState?.task?.userId ??
+        null
+      );
   
   // This is the ID from the students table that we'll send to the backend
   const studentId = studentTableId;
@@ -413,7 +419,7 @@ export default function HomeworkChat({
       if (taskId) {
         try {
           // Check tasks in localStorage
-          const tasksKey = `kibundo.homework.tasks.v1::u:${dockState.task.userId || ''}`;
+          const tasksKey = `kibundo.homework.tasks.v1::u:${dockState.task.userId || studentId || ''}`;
           const storedTasks = localStorage.getItem(tasksKey);
           if (storedTasks) {
             const tasks = JSON.parse(storedTasks);
@@ -425,7 +431,7 @@ export default function HomeworkChat({
           
           // Also check progress storage
           if (!hasScanIdInStorage) {
-            const progressKey = `kibundo.homework.progress.v1::u:${dockState.task.userId || ''}`;
+            const progressKey = `kibundo.homework.progress.v1::u:${dockState.task.userId || studentId || ''}`;
             const storedProgress = localStorage.getItem(progressKey);
             if (storedProgress) {
               const progress = JSON.parse(storedProgress);
@@ -730,9 +736,13 @@ export default function HomeworkChat({
         }
         
         try {
-          const studentId = dockState.task.userId;
+          const effectiveStudentId =
+            dockState.task.userId ||
+            dockState.task.studentId ||
+            studentId ||
+            "anon";
           const { data: scanData } = await api.get(`/homeworkscans`, {
-            params: { student_id: studentId },
+            params: { student_id: effectiveStudentId },
             withCredentials: true,
             signal: abortController.signal, // Add abort signal to API call
           });
@@ -849,16 +859,20 @@ export default function HomeworkChat({
         try {
           // Loading scan results for scanId
           
-          // Fetch scan details from API - use studentId from task
-          const studentId = dockState?.task?.userId || null;
+          // Fetch scan details from API - use studentId from task / context
+          const effectiveStudentId =
+            dockState?.task?.userId ||
+            dockState?.task?.studentId ||
+            studentId ||
+            null;
           
-          if (!studentId) {
+          if (!effectiveStudentId) {
             console.warn("⚠️ FOOTERCHAT: No studentId available, cannot fetch scan");
             return;
           }
           
           const { data: scanData } = await api.get(`/homeworkscans`, {
-            params: { student_id: studentId },
+            params: { student_id: effectiveStudentId },
             withCredentials: true,
           });
           

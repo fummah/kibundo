@@ -5,7 +5,6 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import useEnsureGerman from "@/hooks/useEnsureGerman.js";
-import useTTS from "@/lib/voice/useTTS";
 
 /* New shared UI components */
 import OnboardingHeader from "@/components/student/onboarding/OnboardingHeader.jsx";
@@ -43,15 +42,26 @@ export default function BuddySelect() {
   const [selected, setSelected] = useState(buddy?.id || null);
   const buttonRef = useRef(null);
   const hasSpokenRef = useRef(false);
-
-  // Use the friendly TTS hook from home screen
-  const { speak: speakTTS, speaking } = useTTS({ lang: "de-DE", enabled: true });
+  const [speaking, setSpeaking] = useState(false);
 
   // Get the text to speak
   const textToSpeak = `${t("onboarding.chooseBuddy")}. ${t("onboarding.chooseBuddySubtitle")}`;
 
+  // Simple browser TTS helper (match InterestsWizard behavior)
   const speak = () => {
-    speakTTS(textToSpeak);
+    if (!textToSpeak) return;
+    try {
+      if (typeof window === "undefined" || !window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(textToSpeak);
+      u.lang = "de-DE";
+      u.onstart = () => setSpeaking(true);
+      u.onend = () => setSpeaking(false);
+      u.onerror = () => setSpeaking(false);
+      window.speechSynthesis.speak(u);
+    } catch {
+      setSpeaking(false);
+    }
   };
 
   // Automatic TTS on mount - always enabled
@@ -63,7 +73,7 @@ export default function BuddySelect() {
       
       // Small delay to ensure page is fully loaded
       const timer = setTimeout(() => {
-        speakTTS(textToSpeak);
+        speak();
       }, 800);
       return () => clearTimeout(timer);
     }

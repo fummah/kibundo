@@ -8,7 +8,6 @@ import { useTranslation } from "react-i18next";
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import { markIntroSeen, markTourDone, hasSeenIntro } from "./introFlags";
-import useTTS from "@/lib/voice/useTTS";
 
 import buddyImg from "@/assets/buddies/kibundo-buddy.png";
 
@@ -46,13 +45,23 @@ export default function WelcomeTour() {
   // Check if this is first login - don't mark as seen until onboarding is complete
   const isFirstLogin = !hasSeenIntro(studentId);
 
-  // Use the friendly TTS hook from home screen
-  const { speak: speakTTS } = useTTS({ lang: "de-DE", enabled: true });
   const hasSpokenRef = useRef(false);
+
+  // Simple browser TTS helper (match InterestsWizard behavior)
+  const speakBrowser = (text) => {
+    if (!text) return;
+    try {
+      if (typeof window === "undefined" || !window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "de-DE";
+      window.speechSynthesis.speak(u);
+    } catch {}
+  };
 
   const speak = () => {
     const message = `${current.title}. ${current.text}`;
-    speakTTS(message);
+    speakBrowser(message);
   };
 
   // Automatic TTS on mount - always enabled
@@ -65,7 +74,7 @@ export default function WelcomeTour() {
       // Small delay to ensure page is fully loaded
       const timer = setTimeout(() => {
         const message = `${current.title}. ${current.text}`;
-        speakTTS(message);
+        speakBrowser(message);
       }, 800);
       return () => clearTimeout(timer);
     }

@@ -405,15 +405,11 @@ export default function AddStudentFlow() {
                   filterOption={(input, option) =>
                     (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
                   }
-                  options={classes
-                    .filter((c) => {
-                      const className = (c.class_name || "").toLowerCase();
-                      return /(grade|klasse|class)\s*[1-4]|[1-4]\s*(grade|klasse|class)|^[1-4]$/.test(className);
-                    })
-                    .map((c) => ({
-                      value: c.id,
-                      label: c.class_name || `Class ${c.id}`,
-                    }))}
+                  // Use all grades/classes from the database (same source as admin forms)
+                  options={classes.map((c) => ({
+                    value: c.id,
+                    label: c.class_name || c.name || `Klasse ${c.id}`,
+                  }))}
                   loading={loadingDropdowns}
                   className="add-student-select"
                   classNames={{ popup: "rounded-2xl" }}

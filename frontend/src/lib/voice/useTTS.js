@@ -119,11 +119,13 @@ export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
             }
             if (!utterance.voice && voices.length > 0) utterance.voice = voices[0];
 
-            utterance.onstart = () => {
-              setSpeaking(true);
-              setLoading(false);
+          utterance.onstart = () => {
+            setSpeaking(true);
+            setLoading(false);
+            if (import.meta.env.DEV) {
               console.log("✅ [useTTS] Browser TTS started");
-            };
+            }
+          };
             utterance.onend = () => {
               setSpeaking(false);
               setLoading(false);
@@ -131,9 +133,7 @@ export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
             };
             utterance.onerror = (err) => {
               // Handle 'not-allowed' errors (browser autoplay policy)
-              if (err.error === 'not-allowed') {
-                // SpeechSynthesis blocked by browser autoplay policy - TTS will work after user interaction
-              } else {
+              if (err.error !== "not-allowed" && import.meta.env.DEV) {
                 console.error("❌ [useTTS] SpeechSynthesis error:", err);
               }
               setSpeaking(false);
@@ -143,7 +143,9 @@ export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
             try {
               window.speechSynthesis.speak(utterance);
             } catch (speakErr) {
-              console.warn("⚠️ [useTTS] speechSynthesis.speak() threw:", speakErr);
+              if (import.meta.env.DEV) {
+                console.warn("⚠️ [useTTS] speechSynthesis.speak() threw:", speakErr);
+              }
               setSpeaking(false);
               setLoading(false);
             }
@@ -160,7 +162,9 @@ export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
           }
         }, 150); // allow cancellation and iOS timing
       } catch (err) {
-        console.error("❌ Browser TTS failed:", err);
+        if (import.meta.env.DEV) {
+          console.error("❌ Browser TTS failed:", err);
+        }
         setSpeaking(false);
         setLoading(false);
       }
@@ -277,8 +281,23 @@ export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
         source.start(0);
         return;
       } catch (err) {
-        // If API or decode failed, log and fall back to HTMLAudioElement or SpeechSynthesis fallback
-        console.warn("⚠️ OpenAI TTS API / playback failed - falling back. Error:", err?.message ?? err);
+        // If API or decode failed, log (in dev) / handle aborts quietly, then fall back
+        if (
+          err?.name === "CanceledError" ||
+          err?.code === "ERR_CANCELED" ||
+          err?.message === "canceled"
+        ) {
+          // Request was intentionally canceled (navigation / stop); just reset state
+          setSpeaking(false);
+          setLoading(false);
+          return;
+        }
+        if (import.meta.env.DEV) {
+          console.warn(
+            "⚠️ OpenAI TTS API / playback failed - falling back. Error:",
+            err?.message ?? err
+          );
+        }
 
         // As a second-tier fallback try HTMLAudio element playback (if we got a blob-like response)
         try {
@@ -300,7 +319,9 @@ export default function useTTS({ lang = "de-DE", enabled = true } = {}) {
                   URL.revokeObjectURL(audioUrl);
                 };
                 audio.onerror = (e) => {
-                  console.error("❌ Audio element playback error:", e);
+                  if (import.meta.env.DEV) {
+                    console.error("❌ Audio element playback error:", e);
+                  }
                   if (audioElementRef.current === audio) audioElementRef.current = null;
                   URL.revokeObjectURL(audioUrl);
                   fallbackToBrowserTTS(text);

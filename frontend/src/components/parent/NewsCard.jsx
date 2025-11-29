@@ -8,6 +8,33 @@ import { Link } from "react-router-dom";
  * - Use `to` for internal routes, `href` for external links, or `onClick` for a plain clickable card.
  * - Accepts either `excerpt` or `desc` (your pages use `desc`); `excerpt` takes precedence when both are provided.
  */
+// Normalize image URL for production:
+// - Fix common "http://" images on HTTPS pages to avoid mixed-content blocking
+// - Allow relative `/uploads/...` paths to work behind reverse proxies
+const normalizeImageUrl = (image) => {
+  if (!image || typeof image !== "string") return image;
+
+  try {
+    // If it's a relative path, prefix with current origin
+    if (image.startsWith("/")) {
+      return `${window.location.origin}${image}`;
+    }
+
+    const url = new URL(image, window.location.origin);
+
+    // If app is served over HTTPS but image is HTTP, try upgrading to HTTPS
+    if (window.location.protocol === "https:" && url.protocol === "http:") {
+      url.protocol = "https:";
+      return url.toString();
+    }
+
+    return url.toString();
+  } catch {
+    // If URL parsing fails, fall back to original string
+    return image;
+  }
+};
+
 function NewsCard({
   to,
   href,
@@ -42,6 +69,8 @@ function NewsCard({
 
   const imageBox = compact ? "w-24 h-20" : "w-28 h-24";
 
+  const normalizedImage = image ? normalizeImageUrl(image) : null;
+
   return (
     <Wrapper {...wrapperProps}>
       <div className="flex gap-4 items-stretch">
@@ -64,24 +93,39 @@ function NewsCard({
           ) : null}
         </div>
 
-        {image ? (
+        {normalizedImage ? (
           <div
             className={[
               imageBox,
               "shrink-0 rounded-xl overflow-hidden ring-4 ring-white/60 self-center",
             ].join(" ")}
-          >
-            <img 
-              src={image} 
+            >
+            <img
+              src={normalizedImage}
               alt={imageAlt || title || "News image"} 
               className="w-full h-full object-cover"
               loading="lazy"
               onError={(e) => {
                 // If uploaded image fails to load, try to use a placeholder
                 // Only hide if it's not already a placeholder
-                if (!image.includes("blognews") && !image.includes("platnews") && !image.includes("unkcat")) {
-                  console.warn("Failed to load blog image:", image);
-                  // You could set a placeholder here if needed
+                const currentSrc = e.currentTarget.src || "";
+                const isPlaceholder =
+                  currentSrc.includes("blognews") ||
+                  currentSrc.includes("platnews") ||
+                  currentSrc.includes("unkcat");
+
+                if (!isPlaceholder) {
+                  // Set a very lightweight inline placeholder to avoid broken images
+                  e.currentTarget.onerror = null; // prevent infinite loop
+                  e.currentTarget.src =
+                    "data:image/svg+xml;utf8," +
+                    encodeURIComponent(
+                      "<svg xmlns='http://www.w3.org/2000/svg' width='160' height='120'><rect width='100%' height='100%' fill='#f3f4f6'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='#9ca3af' font-family='Segoe UI, Arial' font-size='11'>Bild nicht verfügbar</text></svg>"
+                    );
+
+                  if (import.meta.env.DEV) {
+                    console.warn("Failed to load blog image:", image);
+                  }
                 }
               }}
             />
