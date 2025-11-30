@@ -229,9 +229,21 @@ export const handleUpload = async (req, res) => {
     const userRoleId = req.user?.role_id;
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
+    // Get file path - multer sets req.file.path to the full path
     const filePath = req.file.path;
     const fileUrl = `/uploads/${req.file.filename}`;
     const mimeType = req.file.mimetype;
+    
+    // Log file info for debugging
+    console.log("📁 File upload info:", {
+      path: filePath,
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      mimetype: mimeType,
+      size: req.file.size,
+      cwd: process.cwd(),
+      fileExists: fs.existsSync(filePath)
+    });
 
     // 🔥 Handle student_id from request body (for parent viewing child scenario)
     // FormData fields are available in req.body
@@ -503,12 +515,29 @@ export const handleUpload = async (req, res) => {
     // Read file with error handling
     let fileBuffer;
     try {
-      if (!fs.existsSync(filePath)) {
-        throw new Error(`File not found at path: ${filePath}`);
+      // Normalize the file path (handle both absolute and relative paths)
+      const normalizedPath = path.isAbsolute(filePath) 
+        ? filePath 
+        : path.join(process.cwd(), filePath);
+      
+      if (!fs.existsSync(normalizedPath)) {
+        // Try the original path as well
+        const altPath = path.isAbsolute(filePath) 
+          ? path.join(process.cwd(), path.basename(filePath))
+          : filePath;
+        
+        if (fs.existsSync(altPath)) {
+          fileBuffer = fs.readFileSync(altPath);
+        } else {
+          throw new Error(`File not found at path: ${normalizedPath} (also tried: ${altPath})`);
+        }
+      } else {
+        fileBuffer = fs.readFileSync(normalizedPath);
       }
-      fileBuffer = fs.readFileSync(filePath);
     } catch (fileError) {
       console.error("❌ Error reading file:", fileError);
+      console.error("❌ File path attempted:", filePath);
+      console.error("❌ Current working directory:", process.cwd());
       throw new Error(`Failed to read uploaded file: ${fileError.message}`);
     }
     

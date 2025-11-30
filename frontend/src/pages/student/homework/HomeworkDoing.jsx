@@ -305,16 +305,29 @@ export default function HomeworkDoing() {
     if (studentId) {
       fd.append("student_id", studentId.toString());
     }
-    const { data } = await api.post("ai/upload", fd, {
-      headers: { "Content-Type": "multipart/form-data" },
-      withCredentials: true,
-    });
+    
+    try {
+      const { data } = await api.post("ai/upload", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+        withCredentials: true,
+      });
 
-    if (!data.success) {
-      throw new Error(data.message || "Upload failed");
+      if (!data.success) {
+        throw new Error(data.message || data.error || "Upload failed");
+      }
+
+      return data;
+    } catch (error) {
+      // Extract detailed error message from axios error response
+      if (error.response?.data) {
+        const serverError = error.response.data;
+        const errorMsg = typeof serverError === "string" 
+          ? serverError 
+          : serverError.error || serverError.message || "Upload failed";
+        throw new Error(errorMsg);
+      }
+      throw error;
     }
-
-    return data;
   };
 
   /* ------ write/replace messages in dock store ------ */

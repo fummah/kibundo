@@ -281,16 +281,42 @@ export async function createTaskAndOpenChat({
     console.error("Error in createTaskAndOpenChat:", error);
     setUploading(false);
 
+    // Extract detailed error message from axios error response
+    let errorMessage = error.message || "Ein Fehler ist aufgetreten. Bitte versuche es erneut.";
+    
+    if (error.response?.data) {
+      // Server returned an error response
+      const serverError = error.response.data;
+      if (typeof serverError === "string") {
+        errorMessage = serverError;
+      } else if (serverError.error) {
+        errorMessage = serverError.error;
+      } else if (serverError.message) {
+        errorMessage = serverError.message;
+      } else {
+        errorMessage = `Server error: ${JSON.stringify(serverError)}`;
+      }
+      
+      // Log full error details in dev
+      if (import.meta.env.DEV) {
+        console.error("Server error response:", serverError);
+        console.error("Full error object:", error);
+      }
+    } else if (error.request) {
+      // Request was made but no response received
+      errorMessage = "Keine Antwort vom Server. Bitte überprüfe deine Internetverbindung.";
+    }
+
     // Add error message to chat
     const errorMsg = fmt(
-      error.message || "Ein Fehler ist aufgetreten. Bitte versuche es erneut.",
+      errorMessage,
       "agent",
       "text",
       { agentName: selectedAgent || "Kibundo" }
     );
     appendToChat(mode, id, [errorMsg]);
 
-    antdMessage.error(error.message || "Fehler beim Erstellen der Aufgabe");
+    antdMessage.error(errorMessage || "Fehler beim Erstellen der Aufgabe");
   }
 }
 

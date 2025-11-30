@@ -1,6 +1,8 @@
 import express from "express";
 import multer from "multer";
 import { createRequire } from "module";
+import fs from "fs";
+import path from "path";
 import { handleUpload } from "../controllers/uploadController.mjs";
 
 // Import CommonJS module
@@ -9,10 +11,23 @@ const { verifyToken } = require("../middlewares/authJwt.js");
 
 const router = express.Router();
 
+// ✅ Ensure /uploads folder exists
+const uploadDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
-// Configure Multer to store files in the "uploads/" folder
+// Configure Multer to store files in the "uploads/" folder with proper filenames
 const upload = multer({
-  dest: "uploads/",
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      cb(null, uniqueSuffix + "-" + file.originalname);
+    },
+  }),
   limits: {
     fileSize: 50 * 1024 * 1024, // 50 MB
     files: 1
