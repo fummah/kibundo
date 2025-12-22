@@ -1,7 +1,7 @@
 // src/context/StudentAppContext.jsx
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 // Use the asset via Vite import (don't hardcode Windows paths in code)
-import monster1 from "@/assets/buddies/monster1.png";
+import buddyMilo from "@/assets/buddies/kibundo-buddy.png";
 import { useStudentId } from "@/hooks/useStudentId";
 
 const StudentAppContext = createContext(null);
@@ -11,7 +11,7 @@ const LS_KEY_BASE = "student_app_state_v1";
 
 // Default state (supports both new and legacy fields)
 const DEFAULT_STATE = {
-  buddy: { id: "monster1", name: "Monster", avatar: monster1, theme: "indigo" },
+  buddy: { id: "m1", name: "kibundo-buddy", avatar: buddyMilo, theme: "indigo" },
   interests: [],
   profile: { name: "", ttsEnabled: true, theme: "indigo" }, // new canonical place
   // legacy mirrors (kept to avoid breaking older components)
@@ -46,10 +46,10 @@ function migrateFromLegacyKeys(studentId) {
 
     if (buddy) {
       merged.buddy = {
-        id: buddy.id ?? "monster1",
-        name: buddy.name ?? "Monster",
+        id: buddy.id ?? "m1",
+        name: buddy.name ?? "kibundo-buddy",
         // prefer explicit avatar if present else our default
-        avatar: buddy.avatar || monster1,
+        avatar: buddy.avatar || buddyMilo,
         theme: buddy.theme ?? "indigo",
       };
     }
@@ -94,8 +94,8 @@ export function StudentAppProvider({ children }) {
       const raw = localStorage.getItem(scopedLS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        const buddy = parsed.buddy || DEFAULT_STATE.buddy;
-        if (!buddy.avatar) buddy.avatar = monster1;
+          const buddy = parsed.buddy || DEFAULT_STATE.buddy;
+          if (!buddy.avatar) buddy.avatar = buddyMilo;
         const profile = parsed.profile || DEFAULT_STATE.profile;
         
         setState({
@@ -119,7 +119,7 @@ export function StudentAppProvider({ children }) {
         if (raw) {
           const parsed = JSON.parse(raw);
           const buddy = parsed.buddy || DEFAULT_STATE.buddy;
-          if (!buddy.avatar) buddy.avatar = monster1;
+          if (!buddy.avatar) buddy.avatar = buddyMilo;
           const profile = parsed.profile || DEFAULT_STATE.profile;
           
           setState({
@@ -177,7 +177,7 @@ export function StudentAppProvider({ children }) {
           id: buddy.id ?? s.buddy.id,
           name: buddy.name ?? s.buddy.name,
           // Support both 'img' (from database) and 'avatar' (from context)
-          avatar: buddy.avatar || buddy.img || monster1, // always fallback to our asset
+          avatar: buddy.avatar || buddy.img || buddyMilo, // always fallback to our asset
           img: buddy.img || buddy.avatar, // Keep img for compatibility
           theme: buddy.theme ?? s.buddy.theme,
         },

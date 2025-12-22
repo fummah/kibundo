@@ -36,7 +36,6 @@ import {
 
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import api from "@/api/axios";
-import PlainBackground from "@/components/layouts/PlainBackground";
 import BottomTabBar from "@/components/parent/BottomTabBar.jsx";
 
 const { useBreakpoint } = Grid;
@@ -176,11 +175,27 @@ export default function Settings() {
 
       message.success("Settings saved successfully");
     } catch (error) {
-      console.error("Error saving settings:", error);
+      // AntD form validation error (required fields, formats, etc.)
+      if (error?.errorFields) {
+        console.error("Validation error saving settings:", error);
+        message.error("Please check the highlighted fields and try again.");
+        return;
+      }
+
+      console.error("Error saving settings:", {
+        error,
+        status: error?.response?.status,
+        data: error?.response?.data,
+      });
+      const serverMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message;
+
       message.error(
-        error?.response?.data?.message || 
-        error?.message || 
-        "Failed to save settings. Please try again."
+        serverMessage
+          ? `Failed to save settings: ${serverMessage}`
+          : "Failed to save settings. Please try again."
       );
     }
   };
@@ -285,7 +300,7 @@ function SettingsContent({
   }, [displayUser]);
 
   const initials = useMemo(() => {
-  return (
+    return (
       displayName
         .split(" ")
         .map((part) => part.charAt(0))
@@ -337,21 +352,6 @@ function SettingsContent({
               <Form.Item
                 label="Phone"
                 name="phone"
-                rules={[
-                  {
-                    validator: (_, v) => {
-                      if (!v) return Promise.resolve();
-                      const ok = /^(\+49|0)[1-9]\d{1,14}$/.test(v.replace(/\s+/g, ""));
-                  return ok
-                    ? Promise.resolve()
-                    : Promise.reject(
-                        new Error(
-                          "Please enter a valid German phone number (e.g., +49 30 12345678 or 030 12345678)"
-                        )
-                      );
-                    },
-                  },
-                ]}
               >
                 <Input
                   className="rounded-xl"
@@ -367,7 +367,6 @@ function SettingsContent({
               <Form.Item 
                 label="State (Bundesland)" 
                 name="state"
-                rules={[{ required: true, message: "Bitte wählen Sie Ihr Bundesland aus" }]}
               >
                 <Select
                   placeholder="Bundesland auswählen"
@@ -559,11 +558,29 @@ function SettingsContent({
             <Switch
               checked={notificationPrefs[pref.key]}
               onChange={(value) => handleNotificationToggle(pref.key, value)}
+              style={{
+                backgroundColor: notificationPrefs[pref.key] ? "#EF7C2E" : undefined,
+              }}
             />
           </div>
         </Card>
       ))}
-      <Button type="primary" icon={<SaveOutlined />} onClick={handleNotificationSave}>
+      <Button
+        type="primary"
+        icon={<SaveOutlined />}
+        onClick={handleNotificationSave}
+        style={{
+          width: 317,
+          height: 49,
+          borderRadius: 32,
+          background: "#EF7C2E",
+          border: "none",
+          fontFamily: "Nunito",
+          fontWeight: 900,
+          fontSize: 18,
+          letterSpacing: "2%",
+        }}
+      >
         Save notification preferences
       </Button>
     </div>
@@ -613,13 +630,13 @@ function SettingsContent({
   ];
 
   return (
-    <PlainBackground className="flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden">
       {/* Scrollable content area */}
       <div className="flex-1 overflow-y-auto">
         <div className="relative z-10 mx-auto w-full max-w-5xl px-4 py-10 pb-24">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-1 flex-col md:flex-row md:items-center md:gap-4">
-              <Avatar size={64} className="bg-[#FF8400]" style={{ color: "#fff" }}>
+              <Avatar size={64} className="bg-[#EF7C2E]" style={{ color: "#fff" }}>
                 {initials}
               </Avatar>
               <div>
@@ -633,28 +650,43 @@ function SettingsContent({
               <Button
                 icon={<SwapOutlined />}
                 onClick={handleSwitchProfile}
-                className="w-full md:w-auto"
+                style={{
+                  height: 49,
+                  borderRadius: 32,
+                  background: "#EF7C2E",
+                  border: "none",
+                  fontFamily: "Nunito",
+                  fontWeight: 900,
+                  fontSize: 18,
+                  letterSpacing: "2%",
+                  color: "#FFFFFF",
+                  boxShadow: "1px 1px 3px rgba(0,0,0,0.25)",
+                  paddingInline: 32,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  whiteSpace: "nowrap",
+                }}
               >
                 Switch Profile
               </Button>
             </div>
           </div>
 
-          <div className="mt-6 rounded-2xl bg-gradient-to-r from-[#FF8400] via-[#FF9A36] to-[#FFC46B] p-6 text-white shadow-inner">
+          <div className="mt-6 rounded-2xl bg-white p-6 shadow-sm border border-[#E5E5E5]">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <div className="text-white/80 text-sm">Signed in as</div>
-                <div className="text-2xl font-semibold">{displayName}</div>
-                <div className="text-sm text-white/80">{displayUser.email}</div>
+                <div className="text-sm" style={{ color: "#544C3B" }}>
+                  Signed in as
+                </div>
+                <div className="text-2xl font-semibold" style={{ color: "#3A362E" }}>
+                  {displayName}
+                </div>
+                <div className="text-sm" style={{ color: "#544C3B" }}>
+                  {displayUser.email}
+                </div>
               </div>
-              <Space size="middle" wrap>
-                <Tag color="gold" className="px-3 py-1 text-sm font-medium">
-                  {displayUser.state || "State not set"}
-                </Tag>
-                <Tag color={twoFA ? "green" : "red"} className="px-3 py-1 text-sm font-medium">
-                  {twoFA ? "2FA enabled" : "2FA disabled"}
-                </Tag>
-              </Space>
+              {/* Tags omitted to match the simple Figma header card */}
             </div>
           </div>
 
@@ -676,7 +708,21 @@ function SettingsContent({
                 type="primary"
                 icon={<SaveOutlined />}
                 onClick={save}
-                className="w-full md:w-auto"
+                style={{
+                  height: 49,
+                  borderRadius: 32,
+                  background: "#EF7C2E",
+                  border: "none",
+                  fontFamily: "Nunito",
+                  fontWeight: 900,
+                  fontSize: 18,
+                  letterSpacing: "2%",
+                  paddingInline: 32,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  whiteSpace: "nowrap",
+                }}
               >
                 Save changes
           </Button>
@@ -689,6 +735,6 @@ function SettingsContent({
       <div className="flex-shrink-0">
         <BottomTabBar />
       </div>
-    </PlainBackground>
+    </div>
   );
 }

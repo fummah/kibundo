@@ -251,7 +251,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
       icon: RobotOutlined,
       children: [
         { href: "/student/onboarding/buddy", label: "Buddy Select", icon: RobotOutlined },
-        { href: "/student/onboarding/interests", label: "Interests Wizard", icon: ReadOutlined },
+        { href: "/student/onboarding/robot-vs-magic", label: "Robot vs Magic", icon: ReadOutlined },
       ],
     },
     {

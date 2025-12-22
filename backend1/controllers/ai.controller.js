@@ -454,7 +454,13 @@ PEDAGOGICAL APPROACH:
 - Provide interactive, step-by-step help for the SPECIFIC tasks in the homework above.
 - Guide the student through each step, but don't give the full answer immediately.
 - Ask follow-up questions to ensure the student understands.
-- Adapt your explanations to the student's grade (1-4): use very simple words for Grade 1-2, slightly more detailed for Grade 3-4.`;
+- Adapt your explanations to the student's grade (1-4): use very simple words for Grade 1-2, slightly more detailed for Grade 3-4.
+
+POLITE ACKNOWLEDGMENTS:
+- When the student says "ok", "okay", "thank you", "danke", "ok thank you", "okay thanks", or similar polite acknowledgments, respond warmly and encouragingly.
+- Examples of appropriate responses: "Gern geschehen! Viel Erfolg bei deinen Hausaufgaben!" or "Bitte sehr! Du schaffst das!" or "Gerne! Wenn du noch Fragen hast, frag einfach!"
+- NEVER say "I'm sorry, I can't help with that" or similar negative responses to polite acknowledgments.
+- Always acknowledge the student's politeness positively and offer continued support.`;
       }
     }
 
@@ -645,7 +651,33 @@ PEDAGOGICAL APPROACH:
                   const relativePath = scan.file_url.startsWith("/")
                     ? scan.file_url.slice(1)
                     : scan.file_url;
-                  const filePath = path.join(process.cwd(), relativePath);
+                  let filePath = path.join(process.cwd(), relativePath);
+
+                  // Try exact path first
+                  if (!fs.existsSync(filePath)) {
+                    // If exact path doesn't exist, try to find the file by partial match
+                    // Extract the base filename (everything after the last slash)
+                    const filename = path.basename(relativePath);
+                    const uploadsDir = path.join(process.cwd(), "uploads");
+                    
+                    if (fs.existsSync(uploadsDir)) {
+                      const files = fs.readdirSync(uploadsDir);
+                      // Try to find a file that matches the pattern (timestamp + original name)
+                      // Look for files that contain the original filename part
+                      const originalNamePart = filename.split("-").slice(-1)[0]; // Get the original filename
+                      const matchingFile = files.find(f => 
+                        f.includes(originalNamePart) || 
+                        f.endsWith(originalNamePart)
+                      );
+                      
+                      if (matchingFile) {
+                        filePath = path.join(uploadsDir, matchingFile);
+                        console.log(
+                          `🔍 Found alternative file for scan ${scan.id}: ${matchingFile} (was looking for ${filename})`
+                        );
+                      }
+                    }
+                  }
 
                   if (fs.existsSync(filePath)) {
                     const fileBuffer = fs.readFileSync(filePath);
@@ -669,7 +701,7 @@ PEDAGOGICAL APPROACH:
                       },
                     });
                     console.log(
-                      `✅ Added image from scan ${scan.id}: ${scan.file_url}`
+                      `✅ Added image from scan ${scan.id}: ${path.basename(filePath)}`
                     );
                   } else {
                     console.warn(
@@ -791,13 +823,60 @@ PEDAGOGICAL APPROACH:
 
     const model = scanImages.length > 0 ? "gpt-4o" : "gpt-4o-mini";
 
-    const resp = await client.chat.completions.create({
-      model,
-      messages,
-      temperature: 0.2, // lower temperature for reliability
-      top_p: 0.9,
-      max_tokens: 800,
-    });
+    let resp;
+    try {
+      resp = await client.chat.completions.create({
+        model,
+        messages,
+        temperature: 0.2, // lower temperature for reliability
+        top_p: 0.9,
+        max_tokens: 800,
+      });
+    } catch (openAIError) {
+      // Handle OpenAI API errors specifically
+      const errorMessage = openAIError?.message || openAIError?.error?.message || String(openAIError);
+      const errorStatus = openAIError?.status || openAIError?.response?.status || openAIError?.statusCode;
+      const errorCode = openAIError?.code || openAIError?.type || openAIError?.error?.code;
+      
+      if (errorStatus === 429) {
+        // Check if it's a quota issue (more comprehensive check)
+        const isQuotaError = 
+          errorCode === 'insufficient_quota' || 
+          errorCode === 'quota_exceeded' ||
+          errorMessage?.toLowerCase().includes('quota') ||
+          errorMessage?.toLowerCase().includes('billing') ||
+          errorMessage?.toLowerCase().includes('exceeded your current quota');
+        
+        if (isQuotaError) {
+          console.error("❌ OpenAI quota exceeded:", errorMessage);
+          return res.status(503).json({ 
+            error: "Der AI-Service ist vorübergehend nicht verfügbar. Bitte versuche es später erneut.",
+            code: "QUOTA_EXCEEDED",
+            message: "Der AI-Service konnte nicht erreicht werden. Bitte versuche es später erneut oder kontaktiere den Support.",
+            details: "OpenAI API quota has been exceeded. Please check your OpenAI account billing."
+          });
+        } else {
+          // Rate limit (too many requests)
+          console.error("❌ OpenAI rate limit:", errorMessage);
+          return res.status(429).json({ 
+            error: "Zu viele Anfragen. Bitte warte einen Moment und versuche es erneut.",
+            code: "RATE_LIMIT",
+            message: "Zu viele Anfragen in kurzer Zeit. Bitte warte einen Moment und versuche es erneut.",
+            details: "OpenAI API rate limit exceeded. Please try again in a moment."
+          });
+        }
+      } else if (errorStatus === 401) {
+        console.error("❌ OpenAI authentication error:", openAIError.message);
+        return res.status(500).json({ 
+          error: "AI-Service-Konfigurationsfehler. Bitte kontaktiere den Support.",
+          code: "AUTH_ERROR",
+          details: "OpenAI API authentication failed. Please check API key configuration."
+        });
+      } else {
+        // Re-throw to be caught by outer catch block
+        throw openAIError;
+      }
+    }
 
     let answer = resp.choices?.[0]?.message?.content || "";
 
@@ -2157,6 +2236,13 @@ CORE BEHAVIOUR:
 - Use the same language the child uses (if they write in English, answer in English; if German, answer in German).
 - If the question is unclear, ask a short clarifying question.
 - When homework context is provided, ALWAYS base the help on that specific homework.
+
+POLITE ACKNOWLEDGMENTS AND GRATITUDE:
+- When the student says "ok", "okay", "thank you", "danke", "ok thank you", "okay thanks", "thanks", "danke schön", "vielen dank", or similar polite acknowledgments, respond warmly and encouragingly.
+- Examples of appropriate responses: "Gern geschehen, ${studentName}! Viel Erfolg bei deinen Hausaufgaben!" or "Bitte sehr, ${studentName}! Du schaffst das!" or "Gerne, ${studentName}! Wenn du noch Fragen hast, frag einfach!"
+- NEVER say "I'm sorry, I can't help with that" or similar negative responses to polite acknowledgments.
+- Always acknowledge the student's politeness positively and offer continued support.
+- Keep responses brief and friendly for acknowledgments - don't over-explain.
 
 🔥 CRITICAL - STUDENT NAME USAGE:
 - The student's name is: ${studentName} (full name: ${studentFullName})

@@ -6,6 +6,7 @@ import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import { FLAGS } from "@/config/featureFlags.js";
 
 import ParentAppProvider from "@/context/ParentAppProvider.jsx";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 
 /* Pages */
 import ParentHome from "@/pages/parent/ParentHome.jsx";
@@ -89,6 +90,39 @@ export default function ParentRoutes() {
   // Parent role is 2
   const PARENT_ROLES = [ROLES.PARENT];
 
+  // Shared layout wrapper for all parent screens (Figma-like app frame)
+  const ParentLayout = () => (
+    <div className="flex justify-center bg-white overflow-hidden min-h-screen w-full relative">
+      <div
+        className="relative w-full"
+        style={{
+          maxWidth: "1280px",
+          minHeight: "100vh",
+          margin: "0 auto",
+          background: "#FFFFFF",
+          boxSizing: "border-box",
+        }}
+      >
+        {/* Background image behind all parent screens */}
+        <div className="absolute inset-0 pointer-events-none">
+          <img
+            src={globalBg}
+            alt="Background"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
+          />
+        </div>
+        {/* Content */}
+        <div className="relative z-10 w-full h-full">
+          <Outlet />
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <>
       {/* Public SSO landing — no guard */}
@@ -142,7 +176,7 @@ export default function ParentRoutes() {
           path="/parent"
           element={
             <ParentAppProvider>
-              <Outlet />
+              <ParentLayout />
             </ParentAppProvider>
           }
         >

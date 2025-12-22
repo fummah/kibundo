@@ -9,7 +9,6 @@ import { useAuthContext } from "@/context/AuthContext";
 import ParentNewsCard from "@/components/parent/NewsCard.jsx";
 import BottomTabBar from "@/components/parent/BottomTabBar.jsx";
 import ParentSpaceBar from "@/components/parent/ParentSpaceBar.jsx";
-import PlainBackground from "@/components/layouts/PlainBackground.jsx";
 
 /* Assets */
 import globalBg from "@/assets/backgrounds/global-bg.png";
@@ -226,24 +225,23 @@ export default function ParentHome() {
           });
           setChildren(formattedStudents);
           
-          // Fetch recent activities (homework scans) with student avatars
-          // Get activities from ALL children, not just the first 2 overall
+          // Fetch recent activities from usage-stats endpoint for each child
+          // This provides real activities including homework, reading, learning, etc.
           const activitiesList = [];
-          students.forEach((student, studentIdx) => {
-            const user = student?.user || {};
-            const scans = Array.isArray(student.homeworkscan) ? student.homeworkscan : [];
-            
-            // Take up to 2 most recent scans per student to ensure we get activities from all children
-            const recentScans = scans
-              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-              .slice(0, 2);
-            
-            recentScans.forEach(scan => {
+          
+          // Fetch activities for each child using the usage-stats endpoint
+          for (const student of students) {
+            try {
+              const childId = student.id;
+              const user = student?.user || {};
+              const childName = formatStudentName(student);
+              
               // Determine default avatar based on gender
               const getDefaultAvatar = () => {
                 if (user.gender === 'male') return childOne;
                 if (user.gender === 'female') return childTwo;
                 // If no gender specified, alternate based on index as fallback
+                const studentIdx = students.findIndex(s => s.id === childId);
                 return [childOne, childTwo][studentIdx % 2];
               };
               
@@ -257,45 +255,75 @@ export default function ParentHome() {
                 avatarSrc = `/${avatarSrc}`;
               }
               
-              // Generate activity text based on scan content to match design
-              const scanText = scan.raw_text || "";
-              let activityText = "Mit Blitzaufgaben rechnen. Datum: ______...";
-              if (scanText.toLowerCase().includes("reading") || scanText.toLowerCase().includes("lesen")) {
-                activityText = "Started a reading exercise";
-              } else if (scanText.toLowerCase().includes("math") || scanText.toLowerCase().includes("mathe") || scanText.toLowerCase().includes("blitzaufgaben")) {
-                activityText = "Mit Blitzaufgaben rechnen. Datum: ______...";
-              } else if (scanText.length > 0) {
-                activityText = scanText.substring(0, 40) + "...";
-              }
+              // Fetch activities from usage-stats endpoint
+              const statsRes = await api.get(`/student/${childId}/usage-stats`);
+              const activities = statsRes?.data?.activities || [];
               
-              activitiesList.push({
-                id: scan.id,
-                childId: student.id,
-                child: formatStudentName(student),
-                text: activityText,
-                when: new Date(scan.created_at),
-                createdAt: scan.created_at, // Keep original for sorting
-                tag: "Homework",
-                avatar: avatarSrc,
+              // Add child info to each activity
+              activities.forEach(activity => {
+                activitiesList.push({
+                  id: activity.id || `activity-${childId}-${Date.now()}-${Math.random()}`,
+                  childId: childId,
+                  child: childName,
+                  text: activity.text || "Aktivität",
+                  when: activity.when || new Date(),
+                  createdAt: activity.created_at || activity.when || new Date(),
+                  tag: activity.tag || "Activity",
+                  type: activity.type,
+                  avatar: avatarSrc,
+                });
               });
-            });
-          });
+            } catch (err) {
+              // Continue with other children if one fails
+              console.warn(`Failed to fetch activities for student ${student.id}:`, err);
+            }
+          }
           
-          // Remove duplicates (same scan ID) and sort all activities by date (most recent first)
-          // This ensures we show activities from all children, not just the first child
+          // Remove duplicates and sort all activities by date (most recent first)
           const uniqueActivities = activitiesList.filter((activity, index, self) =>
             index === self.findIndex(a => a.id === activity.id)
           );
           
           const sortedActivities = uniqueActivities
-            .sort((a, b) => new Date(b.createdAt || b.when) - new Date(a.createdAt || a.when))
+            .sort((a, b) => {
+              const dateA = new Date(a.createdAt || a.when || 0);
+              const dateB = new Date(b.createdAt || b.when || 0);
+              return dateB - dateA;
+            })
             .slice(0, Math.max(2, students.length)); // Show at least 2, or one per child if more children
           
-          // Format dates for display
-          const formattedActivities = sortedActivities.map(a => ({
-            ...a,
-            when: new Date(a.createdAt || a.when).toLocaleDateString(),
-          }));
+          // Use activity text directly from API (it's already formatted in German)
+          // The API returns text like "hat eine Mathe-Kachel als Hausaufgabe erledigt" or "hat eine Leseübung begonnen"
+          const formattedActivities = sortedActivities.map(a => {
+            // The API already provides properly formatted German text
+            // Just ensure we have a fallback if text is missing
+            let formattedText = a.text || "hat eine Aktivität durchgeführt.";
+            
+            // If the text doesn't start with "hat", it might be in English or need formatting
+            if (!formattedText.toLowerCase().startsWith('hat') && !formattedText.toLowerCase().startsWith('started') && !formattedText.toLowerCase().startsWith('completed')) {
+              // Map activity types to German text patterns
+              if (a.type === 'homework' || a.tag === 'Homework') {
+                if (formattedText.toLowerCase().includes('mathe') || formattedText.toLowerCase().includes('math')) {
+                  formattedText = `hat eine Mathe-Kachel als Hausaufgabe erledigt.`;
+                } else if (formattedText.toLowerCase().includes('lesen') || formattedText.toLowerCase().includes('reading')) {
+                  formattedText = `hat eine Leseübung begonnen.`;
+                } else {
+                  formattedText = `hat eine Hausaufgabe erledigt.`;
+                }
+              } else if (a.type === 'reading' || a.tag === 'Reading') {
+                formattedText = `hat eine Leseübung begonnen.`;
+              } else if (a.type === 'learning' || a.tag === 'Learning') {
+                formattedText = `hat eine Lernaktivität abgeschlossen.`;
+              } else if (a.type === 'conversation' || a.tag === 'Chat') {
+                formattedText = `hat eine Chat-Sitzung gestartet.`;
+              }
+            }
+            
+            return {
+              ...a,
+              text: formattedText,
+            };
+          });
           
           setActivities(formattedActivities);
         }
@@ -580,112 +608,376 @@ export default function ParentHome() {
   };
 
   return (
-    <PlainBackground className="flex flex-col h-screen overflow-hidden">
-      {/* Scrollable content area */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 py-10 pb-24">
-          <div className="space-y-6">
-          <h1 className="text-3xl font-extrabold text-neutral-800 text-center mb-0">
-            {t("parent.home.title", "Home")}
+    <div className="flex flex-col bg-white overflow-hidden min-h-screen w-full relative">
+      <div
+        className="relative flex-1"
+        style={{
+          width: '100%',
+          maxWidth: '1280px',
+          minHeight: '100vh',
+          padding: '120px 24px 120px',
+          boxSizing: 'border-box',
+          background: '#FFFFFF',
+          margin: '0 auto',
+        }}
+      >
+        {/* Background image per Figma frame */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ zIndex: 0 }}
+        >
+          <img
+            src={globalBg}
+            alt="Background"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+            }}
+          />
+        </div>
+        {/* Header */}
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            display: 'flex',
+            justifyContent: 'center',
+            marginBottom: '32px',
+          }}
+        >
+          <h1
+            style={{
+              fontFamily: 'Nunito',
+              fontWeight: 900,
+              fontSize: '50px',
+              lineHeight: '68px',
+              letterSpacing: '2%',
+              textAlign: 'center',
+              color: '#544C3B',
+              margin: 0,
+            }}
+          >
+            Home
           </h1>
+        </div>
 
-          {/* Activities */}
-          <section>
-            <h2 className="text-xl font-extrabold text-neutral-800 mb-3">
-              {t("parent.home.activities", "Aktivitäten")}
-            </h2>
-            <div className="space-y-3">
-              {loading ? (
-                <div className="text-center text-neutral-500 py-4">Aktivitäten werden geladen...</div>
-              ) : activities.length > 0 ? (
-                activities.map((a, i) => (
-                  <ActivityCard
-                    key={a.id}
-                    to={`/parent/myfamily/student/${a.childId}`}
-                    avatar={a.avatar}
-                    name={a.child}
-                    text={a.text}
-                    bg={i === 0 ? "bg-[#A7EEF0]" : "bg-[#F6CFE0]"}
-                  />
-                ))
-              ) : (
-                <div className="text-center text-neutral-500 py-4">Keine kürzlichen Aktivitäten</div>
-              )}
-            </div>
-          </section>
+        {/* Activities */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+            padding: '12px 24px',
+            width: '100%',
+            boxSizing: 'border-box',
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
+          <span
+            style={{
+              fontFamily: 'Nunito',
+              fontWeight: 900,
+              fontSize: '24px',
+              lineHeight: '1.364',
+              color: '#544C3B',
+            }}
+          >
+            Aktivitäten
+          </span>
 
-          {/* Your Childs */}
-          <section>
-            <h2 className="text-xl font-extrabold text-neutral-800 mb-4">
-              {t("parent.home.yourChilds", "Your Childs")}
-            </h2>
-            <div className="flex flex-wrap items-start justify-center gap-6 sm:gap-8">
-              {loading ? (
-                <div className="text-center text-neutral-500 py-4 w-full">Wird geladen...</div>
-              ) : children.length > 0 ? (
-                children.map((c) => (
-                  <ChildBubble key={c.id} to={`/parent/myfamily/student/${c.id}`} avatar={c.avatar} name={c.name} meta={c.meta} />
-                ))
-              ) : (
-                <div className="text-center text-neutral-500 py-4 w-full">
-                  <p>No students yet.</p>
-                  <Link to="/parent/myfamily/add-student-flow" className="text-emerald-600 hover:underline">
-                    Add your first student
-                  </Link>
+          {activities.length > 0 ? (
+            activities.slice(0, 2).map((a, idx) => (
+              <div
+                key={a.id || idx}
+                style={{
+                  position: 'relative',
+                  width: '100%',
+                  minHeight: '95px',
+                  borderRadius: '16px',
+                  background: idx % 2 === 0 ? '#DCE5FF' : '#EFDCFF',
+                  boxShadow: '2px 2px 5px rgba(0,0,0,0.25)',
+                  padding: '15px',
+                  boxSizing: 'border-box',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                }}
+              >
+                <div
+                  style={{
+                    width: '75px',
+                    height: '75px',
+                    borderRadius: '50%',
+                    overflow: 'hidden',
+                    background: '#ccc',
+                    flexShrink: 0,
+                  }}
+                >
+                  <img src={a.avatar || childOne} alt={a.child} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
-              )}
-            </div>
-          </section>
-
-          {/* News & Insights */}
-          <section className="space-y-4 pb-24">
-            <h2 className="text-xl font-extrabold text-neutral-800">
-              {t("parent.home.newsInsights", "Neuigkeiten & Einblicke")}
-            </h2>
-            {loading ? (
-              <div className="text-center text-neutral-500 py-4">Loading news...</div>
-            ) : news.length > 0 ? (
-              <>
-                {news.map((n) => (
-                  <ParentNewsCard
-                    key={n.id || `news-${n.title}`}
-                    to={n.to || (n.id ? `/parent/communications/news/preview/${n.id}` : null)}
-                    badge={n.tag}
-                    badgeColor={n.badgeColor || "#69b06b"}
-                    title={n.title}
-                    excerpt={n.desc}
-                    image={n.image}
-                  />
-                ))}
-                {/* Pagination - only show if more than 3 posts */}
-                {totalNewsPages > 1 && (
-                  <div className="flex items-center justify-center gap-3 mt-6">
-                    <button
-                      onClick={() => setNewsPage(prev => Math.max(1, prev - 1))}
-                      disabled={newsPage === 1}
-                      className="px-4 py-2 rounded-lg bg-white/80 backdrop-blur border border-white/70 shadow-sm hover:shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed text-neutral-700 font-medium text-sm"
-                    >
-                      Previous
-                    </button>
-                    <span className="px-4 py-2 text-neutral-600 text-sm font-medium">
-                      Page {newsPage} of {totalNewsPages}
-                    </span>
-                    <button
-                      onClick={() => setNewsPage(prev => Math.min(totalNewsPages, prev + 1))}
-                      disabled={newsPage >= totalNewsPages}
-                      className="px-4 py-2 rounded-lg bg-white/80 backdrop-blur border border-white/70 shadow-sm hover:shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed text-neutral-700 font-medium text-sm"
-                    >
-                      Next
-                    </button>
+                <div>
+                  <div
+                    style={{
+                      fontFamily: 'Nunito',
+                      fontWeight: 800,
+                      fontSize: '18px',
+                      lineHeight: '1.364',
+                      color: '#544C3B',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    {a.child}
                   </div>
-                )}
-              </>
-            ) : (
-              <div className="text-center text-neutral-500 py-4">No news available</div>
-            )}
-          </section>
+                  <div
+                    style={{
+                      fontFamily: 'Nunito',
+                      fontWeight: 400,
+                      fontSize: '18px',
+                      lineHeight: '1.364',
+                      color: '#544C3B',
+                    }}
+                  >
+                    {a.text}
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div
+              style={{
+                fontFamily: 'Nunito',
+                fontWeight: 400,
+                fontSize: '16px',
+                color: '#6F5A4A',
+                padding: '20px 0',
+                textAlign: 'center',
+              }}
+            >
+              Noch keine Aktivitäten
+            </div>
+          )}
+        </div>
 
+        {/* Deine Kinder */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+            padding: '12px 24px',
+            width: '100%',
+            boxSizing: 'border-box',
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
+          <span
+            style={{
+              fontFamily: 'Nunito',
+              fontWeight: 900,
+              fontSize: '24px',
+              lineHeight: '1.364',
+              color: '#544C3B',
+            }}
+          >
+            Deine Kinder
+          </span>
+          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+            {children.length > 0 ? (
+              children.map((c) => (
+                <Link
+                  key={c.id}
+                  to={`/parent/myfamily/student/${c.id}`}
+                  style={{
+                    width: '113px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    textDecoration: 'none',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '95px',
+                      height: '95px',
+                      borderRadius: '50%',
+                      overflow: 'hidden',
+                      background: '#ccc',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    <img src={c.avatar || childOne} alt={c.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'Nunito',
+                      fontWeight: 900,
+                      fontSize: '16px',
+                      lineHeight: '1.364',
+                      color: '#544C3B',
+                      marginBottom: '4px',
+                    }}
+                  >
+                    {c.name}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'Nunito',
+                      fontWeight: 400,
+                      fontSize: '14px',
+                      lineHeight: '1.364',
+                      color: '#544C3B',
+                      textAlign: 'center',
+                    }}
+                  >
+                    {c.meta}
+                  </div>
+                </Link>
+              ))
+            ) : (
+              <div
+                style={{
+                  fontFamily: 'Nunito',
+                  fontWeight: 400,
+                  fontSize: '16px',
+                  color: '#6F5A4A',
+                  padding: '20px 0',
+                  textAlign: 'center',
+                }}
+              >
+                Noch keine Kinder hinzugefügt
+              </div>
+            )}
           </div>
+        </div>
+
+        {/* Divider */}
+        <div
+          style={{
+            width: '100%',
+            height: '2px',
+            backgroundColor: '#F4EDE6',
+            margin: '10px 0',
+            position: 'relative',
+            zIndex: 1,
+          }}
+        />
+
+        {/* Neuigkeiten & Einblicke */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px',
+            padding: '12px 24px',
+            width: '100%',
+            boxSizing: 'border-box',
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
+          <span
+            style={{
+              fontFamily: 'Nunito',
+              fontWeight: 900,
+              fontSize: '24px',
+              lineHeight: '1.364',
+              color: '#544C3B',
+            }}
+          >
+            Neuigkeiten & Einblicke
+          </span>
+
+          {/* News cards */}
+          {(news.length > 0 ? news : [
+            { id: 1, tag: "Blog Post", title: "Tips for Encouraging Reading", desc: "Learn how to foster a love \nfor reading in your child.", image: blogNews, badgeColor: "#87A01D", to: "/parent/communications/news" },
+            { id: 2, tag: "Plattform update", title: "Tips for Encouraging Reading", desc: "Learn how to foster a love \nfor reading in your child.", image: platNews, badgeColor: "#E27474", to: "/parent/communications/news" },
+            { id: 3, tag: "Unknown Category", title: "Tips for Encouraging Reading ", desc: "Learn how to foster a love \nfor reading in your child.", image: unkCat, badgeColor: "#3ABBC1", to: "/parent/communications/news" },
+          ]).map((card, idx) => (
+            <Link
+              key={card.id || idx}
+              to={card.to || `/parent/communications/news/preview/${card.id}`}
+              style={{ textDecoration: 'none' }}
+            >
+              <div
+                style={{
+                  position: 'relative',
+                  width: '100%',
+                  minHeight: '200px',
+                  borderRadius: '16px',
+                  background: 'rgba(255,255,255,0.7)',
+                  border: '1px solid #C9B7A7',
+                  boxShadow: '2px 2px 5px rgba(0,0,0,0.25)',
+                  padding: '24px',
+                  boxSizing: 'border-box',
+                  display: 'flex',
+                  alignItems: 'center',
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      display: 'inline-block',
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      background: card.badgeColor || '#69b06b',
+                      color: '#FFFFFF',
+                      fontFamily: 'Nunito',
+                      fontWeight: 800,
+                      fontSize: '16px',
+                      marginBottom: '12px',
+                    }}
+                  >
+                    {card.tag || card.badge}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: 'Nunito',
+                      fontWeight: 900,
+                      fontSize: `${card.titleSize || 23}px`,
+                      lineHeight: '1.364',
+                      color: card.labelColor || '#544C3B',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    {card.title || ''}
+                  </div>
+                  <div
+                    style={{
+                      whiteSpace: 'pre-line',
+                      fontFamily: 'Nunito',
+                      fontWeight: 400,
+                      fontSize: '18px',
+                      lineHeight: '1.364',
+                      color: '#544C3B',
+                    }}
+                  >
+                    {card.desc || card.body || ''}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    width: '150px',
+                    height: '150px',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                    marginLeft: '20px',
+                  }}
+                >
+                  <img
+                    src={card.image}
+                    alt={card.title}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                </div>
+              </div>
+            </Link>
+          ))}
         </div>
       </div>
 
@@ -693,122 +985,6 @@ export default function ParentHome() {
       <div className="flex-shrink-0">
         <BottomTabBar />
       </div>
-
-      {/* Floating chat button removed; chat opens via Feedback tab */}
-      {chatOpen && (
-        <div 
-          className="fixed z-[9999] pointer-events-auto"
-          style={{
-            // On desktop, position within device frame (same as student chat)
-            left: windowWidth >= 768 && windowWidth < 1024 
-              ? "50%" 
-              : windowWidth >= 1024
-              ? `calc(50% - 512px)` // Center: 50% - half of max-width (1024px / 2)
-              : "0",
-            right: windowWidth >= 768 && windowWidth < 1024
-              ? "auto"
-              : windowWidth >= 1024
-              ? "auto"
-              : "0",
-            width: windowWidth >= 768 && windowWidth < 1024
-              ? "100%"
-              : windowWidth >= 1024
-              ? "1024px"
-              : "100%",
-            maxWidth: windowWidth >= 1024 ? "1024px" : "100%",
-            top: 0,
-            bottom: windowWidth >= 1024 ? "8px" : windowWidth >= 768 ? "4px" : 0,
-            transform: windowWidth >= 768 && windowWidth < 1024 ? "translateX(-50%)" : "none",
-            overscrollBehavior: "contain",
-          }}
-        >
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/40 pointer-events-auto"
-            onClick={() => setChatOpen(false)}
-          />
-          {/* Chat panel - positioned like student chat (bottom sheet) */}
-          <div
-            ref={panelRef}
-            className="absolute left-0 right-0 bg-white flex flex-col"
-            style={{
-              bottom: windowWidth >= 1024 ? "8px" : windowWidth >= 768 ? "4px" : "0",
-              height: windowWidth >= 1024 
-                ? "calc(100vh - 16px)" 
-                : windowWidth >= 768 
-                ? "calc(100vh - 8px)" 
-                : "100vh",
-              maxHeight: windowWidth >= 1024 
-                ? "calc(100vh - 16px)" 
-                : windowWidth >= 768 
-                ? "calc(100vh - 8px)" 
-                : "100vh",
-              minHeight: windowWidth < 768 ? "50vh" : windowWidth < 1024 ? "40vh" : "30vh",
-              borderTopLeftRadius: windowWidth < 768 ? "1.5rem" : "1rem",
-              borderTopRightRadius: windowWidth < 768 ? "1.5rem" : "1rem",
-              overflow: "hidden",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b">
-              <div className="font-semibold text-neutral-800">Eltern-Assistent fragen</div>
-              <button className="text-neutral-500 hover:text-neutral-700" onClick={() => setChatOpen(false)} aria-label="Chat schließen">
-                ✕
-              </button>
-            </div>
-            <div className="p-4 space-y-3 overflow-auto flex-1">
-              {messages.length === 0 ? (
-                <div className="text-neutral-500 text-sm">Loading conversation...</div>
-              ) : (
-                messages.map((m, idx) => {
-                  const isUser = m.role === "user";
-                  const avatar = isUser ? studentIcon : agentIcon;
-                  return (
-                    <div key={idx} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-                      <div className={`flex items-end gap-2 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
-                        <div className="flex flex-col items-center">
-                          <img
-                            src={avatar}
-                            alt={isUser ? "You" : "Assistant"}
-                            className="w-8 h-8 rounded-full shadow border border-white/60"
-                          />
-                          {!isUser && m.agentName && (
-                            <div className="text-xs text-neutral-500 mt-1 text-center max-w-[60px] break-words">
-                              {m.agentName}
-                            </div>
-                          )}
-                        </div>
-                        <div className={`px-3 py-2 rounded-2xl text-sm max-w-[70vw] sm:max-w-[520px] whitespace-pre-wrap ${isUser ? "bg-emerald-600 text-white rounded-br-sm" : "bg-neutral-100 text-neutral-800 rounded-bl-sm"}`}>
-                          {m.content}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-            <div className="p-3 border-t flex items-center gap-2">
-              <input
-                type="text"
-                ref={inputRef}
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") sendChat(); }}
-                placeholder="Gib deine Frage ein..."
-                className="flex-1 rounded-xl border px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-              <button
-                type="button"
-                onClick={sendChat}
-                disabled={sending || !chatInput.trim() || cooldownSec > 0}
-                className="rounded-xl bg-emerald-600 text-white px-4 py-2 disabled:opacity-60"
-              >
-                {sending ? "Sending..." : (cooldownSec > 0 ? `Wait ${cooldownSec}s` : "Send")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </PlainBackground>
+    </div>
   );
 }

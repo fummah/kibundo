@@ -3,10 +3,10 @@ import React from "react";
 import { useLocation } from "react-router-dom";
 import AppRoutes from "./routes/AppRoutes";
 import { ToastContainer } from "react-toastify";
-import { ChatDockProvider } from "@/context/ChatDockContext";
-import ChatDockContainer from "@/components/chats/ChatDockContainer.jsx";
-import FooterChat from "@/components/student/mobile/FooterChat";
+// ChatDockProvider removed - not used in homework flow
+// ChatDockContainer removed - homework flow uses HomeworkCollectChat directly
 import { StudentAppProvider } from "@/context/StudentAppContext.jsx";
+import { HelmetProvider } from "react-helmet-async";
 
 import "./index.css"; // includes .scroll-y-invisible and global overflow-hidden
 
@@ -15,14 +15,14 @@ export default function App() {
   const isStudentRoute = pathname.startsWith("/student");
 
   return (
-    <ChatDockProvider>
+    <HelmetProvider>
       {isStudentRoute && (
         <StudentAppProvider>
           <AppContent />
         </StudentAppProvider>
       )}
       {!isStudentRoute && <AppContent />}
-    </ChatDockProvider>
+    </HelmetProvider>
   );
 }
 
@@ -40,38 +40,21 @@ function AppContent() {
         {isStudentRoute ? (
           <div className="w-full min-h-screen flex flex-col">
             {/* Mobile: full width (< 768px) */}
-            <div className="md:hidden w-full flex-1 relative pb-20">
+            <div className="md:hidden w-full flex-1 relative">
               {/* Chat portal mount point for mobile */}
               <div id="chat-root" className="absolute inset-0 pointer-events-none" />
               <AppRoutes />
-              
-              {/* Footer chat for mobile - fixed at bottom */}
-              <div className="fixed bottom-0 left-0 right-0 z-20">
-                <FooterChat
-                  includeOnRoutes={["/student/home", "/student/homework"]}
-                  hideOnRoutes={["/student/homework/feedback", "/student/onboarding", "/student-login", "/signin", "/signup"]}
-                />
-              </div>
             </div>
             
-            {/* iPad and larger: centered container with max-width */}
-            <div className={`hidden md:flex md:justify-center md:min-h-screen ${isStudentOnboarding ? "md:bg-transparent" : "md:bg-gray-50"}`}>
+            {/* iPad and larger: full width container */}
+            <div className={`hidden md:flex md:min-h-screen w-full ${isStudentOnboarding ? "md:bg-transparent" : "md:bg-gray-50"}`}>
               <div
-                className={`w-full max-w-[1024px] ${isStudentOnboarding ? "bg-transparent shadow-none" : "bg-white shadow-lg"} flex flex-col min-h-screen relative`}
+                className={`w-full ${isStudentOnboarding ? "bg-transparent shadow-none" : "bg-white shadow-lg"} flex flex-col min-h-screen relative`}
               >
                 {/* Chat portal mount point for desktop - inside device frame */}
                 <div id="chat-root" className="absolute inset-0 pointer-events-none" />
              
                   <AppRoutes />
-             
-                
-                {/* Footer chat for student routes - fixed at bottom */}
-                <div className="absolute bottom-0 left-0 right-0 z-20">
-                  <FooterChat
-                    includeOnRoutes={["/student/home", "/student/homework"]}
-                    hideOnRoutes={["/student/homework/feedback", "/student/onboarding", "/student-login", "/signin", "/signup"]}
-                  />
-                </div>
               </div>
             </div>
           </div>
@@ -85,16 +68,7 @@ function AppContent() {
         )}
       </div>
 
-      {/* Global floating chat dock (student routes + parent viewing student pages, EXCLUDING routes handled by FooterChat) & toasts */}
-      <ChatDockContainer 
-        includeOnRoutes={["/student/*", "/parent/myfamily/student/*"]} 
-        excludeOnRoutes={[
-          "/student/home", 
-          "/student/homework",
-          "/admin/*",  // Explicitly exclude all admin routes
-          "/admin/students/*",  // Explicitly exclude admin student routes
-        ]} 
-      />
+      {/* Chat functionality handled by individual page components (e.g., HomeworkCollectChat for homework flow) */}
       <ToastContainer position="top-center" autoClose={3000} theme="colored" />
     </>
   );

@@ -9,7 +9,7 @@ import api from "@/api/axios";
 import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
 import buddyA from "@/assets/buddies/monster1.png";
 import buddyB from "@/assets/buddies/monster2.png";
-import PlainBackground from "@/components/layouts/PlainBackground";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 
 const fallbackBuddies = [buddyA, buddyB];
 
@@ -18,6 +18,13 @@ function formatName(user = {}) {
   const last = user.last_name || user.family_name || "";
   const full = `${first} ${last}`.trim();
   return full || user.name || "Unbenannt";
+}
+
+function getInitials(name = "") {
+  const parts = name.trim().split(" ").filter(Boolean);
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
 export default function AccountSelect() {
@@ -73,15 +80,32 @@ export default function AccountSelect() {
             .map((student, index) => {
               const studentUser = student.user || {};
               
+              // Map character IDs to character images (from CharacterSelection onboarding)
+              const characterImageMap = {
+                1: "/images/img_rectangle_20.png",
+                2: "/images/img_rectangle_20_264x174.png",
+                3: "/images/img_rectangle_20_1.png",
+                4: "/images/img_rectangle_20_2.png",
+                5: "/images/img_rectangle_20_3.png",
+                6: "/images/img_rectangle_20_4.png",
+              };
+              
+              // Get characterSelection from interests (saved during onboarding)
+              const interests = Array.isArray(student.interests) ? student.interests : [];
+              const characterSelection = interests.find(
+                (item) => item?.id === "characterSelection"
+              );
+              const characterId = characterSelection?.value || characterSelection?.id;
+              const characterImg = characterId ? characterImageMap[characterId] : null;
+              
               // Priority order for avatar:
-              // 1. User's avatar (selected during onboarding in CreateProfile)
-              // 2. Selected buddy image (from onboarding buddy selection)
+              // 1. Selected character from CharacterSelection onboarding (characterSelection preference)
+              // 2. User's avatar (selected during onboarding in CreateProfile)
               // 3. Default buddy images
               const userAvatar = studentUser.avatar || null;
-              const buddyImg = student.buddy?.img || student.buddy?.avatar || null;
               
-              // Use user avatar first (from CreateProfile onboarding), then buddy, then default
-              const avatar = userAvatar || buddyImg || fallbackBuddies[index % fallbackBuddies.length];
+              // Use character selection first, then user avatar, then default
+              const avatar = characterImg || userAvatar || fallbackBuddies[index % fallbackBuddies.length];
               
               
               return {
@@ -206,60 +230,296 @@ export default function AccountSelect() {
     setPendingAccount(null);
   };
 
-  return (
-    <PlainBackground>
-      <div className="relative z-10 w-full max-w-[620px] px-6 pb-20 pt-16">
-        <button
-          type="button"
-          onClick={handleBack}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-[#F0E4D8] bg-white text-[#4F3A2D] shadow-[0_8px_16px_rgba(79,58,45,0.12)]"
-        >
-          <LeftOutlined />
-        </button>
+  const parentAccount = accounts.find((a) => a.type === "parent");
+  const childAccounts = accounts.filter((a) => a.type !== "parent");
 
-        <h1 className="mt-6 text-center text-3xl font-semibold text-[#4F3A2D]">
-          Account
-        </h1>
-
-        <p className="mt-6 text-lg font-semibold text-[#816B5B]">
-          Wer bist Du?
-        </p>
-
-        {loading ? (
-          <div className="mt-16 flex justify-center">
-            <Spin size="large" />
-          </div>
-        ) : error ? (
-          <div className="mt-8 rounded-3xl bg-white/85 p-6 text-center text-sm text-[#9A8576] shadow">
-            {error}
-          </div>
+  const renderAvatar = (account, size = 75, ring = true, fallbackColor = "#E27474") => {
+    const hasImg = !!account.avatar;
+    const initials = getInitials(account.name || "");
+    return (
+      <div
+        style={{
+          width: `${size}px`,
+          height: `${size}px`,
+          borderRadius: "50%",
+          overflow: "hidden",
+          background: hasImg ? "#F7F1E8" : fallbackColor,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxSizing: "border-box",
+          boxShadow: ring ? "0 0 0 4px #F0E4D8" : "none",
+        }}
+      >
+        {hasImg ? (
+          <img
+            src={account.avatar}
+            alt={account.name}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
         ) : (
-          <div className="mt-6 space-y-4">
-            {accounts.map((account) => (
-              <button
-                key={`${account.type}-${account.id}`}
-                type="button"
-                onClick={() => handleSelect(account)}
-                className="flex w-full items-center gap-4 rounded-[28px] bg-white/95 px-5 py-4 text-left shadow-[0_12px_28px_rgba(79,58,45,0.12)] transition hover:bg-white"
-              >
-                <img
-                  src={account.avatar || fallbackBuddies[0]}
-                  alt={account.name}
-                  className="h-14 w-14 rounded-full object-cover"
-                />
-                <span className="text-lg font-semibold text-[#4F3A2D]">
-                  {account.name}
-                </span>
-              </button>
-            ))}
-
-            {accounts.length === 0 && (
-              <div className="mt-6 rounded-[28px] bg-white/85 p-6 text-center text-sm text-[#9A8576] shadow">
-                Noch keine Konten gefunden. Lege zuerst ein Kinderkonto an.
-              </div>
-            )}
-          </div>
+          <span
+            style={{
+              fontFamily: "Nunito",
+              fontWeight: 800,
+              fontSize: `${Math.floor(size * 0.4)}px`,
+              color: "#FFFFFF",
+            }}
+          >
+            {initials}
+          </span>
         )}
+      </div>
+    );
+  };
+
+  const renderCard = (account, idx, background, accentColor = "#544C3B") => {
+    const isParent = account.type === "parent";
+    const avatarSize = isParent ? 46 : 75;
+    const avatarRing = isParent ? false : true;
+    const avatarColor = isParent ? "#FFFFFF" : "#F7F1E8";
+    const textColor = isParent ? "#E27474" : accentColor;
+    const nameSize = isParent ? "16px" : "18px";
+    const nameWeight = isParent ? 700 : 900;
+    return (
+      <button
+        key={`${account.type}-${account.id}`}
+        type="button"
+        onClick={() => handleSelect(account)}
+        style={{
+          width: "100%",
+          minHeight: "95px",
+          borderRadius: "16px",
+          background,
+          boxShadow: "2px 2px 5px rgba(0,0,0,0.25)",
+          padding: "15px",
+          boxSizing: "border-box",
+          display: "flex",
+          alignItems: "center",
+          gap: "16px",
+          textAlign: "left",
+        }}
+      >
+        {renderAvatar(account, avatarSize, avatarRing, isParent ? "#E27474" : avatarColor)}
+        <div>
+          <div
+            style={{
+              fontFamily: "Nunito",
+              fontWeight: nameWeight,
+              fontSize: nameSize,
+              lineHeight: "1.364",
+              color: isParent ? "#544C3B" : accentColor,
+              marginBottom: isParent ? "0px" : "4px",
+            }}
+          >
+            {account.name}
+          </div>
+        </div>
+      </button>
+    );
+  };
+
+  return (
+    <div className="flex justify-center overflow-hidden min-h-screen w-full relative">
+      <div
+        className="relative z-10 w-full"
+        style={{
+          maxWidth: "800px",
+          minHeight: "1280px",
+          padding: "169px 24px 24px",
+          boxSizing: "border-box",
+        }}
+      >
+        <div className="w-full" style={{ maxWidth: "752px", margin: "0 auto" }}>
+          {/* Header row: back arrow left, title centered */}
+          <div
+            style={{
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              paddingTop: "24px",
+              paddingBottom: "32px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={handleBack}
+              style={{
+                position: "absolute",
+                left: 0,
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                background: "#D9D9D9",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <LeftOutlined style={{ color: "#544C3B", fontSize: 18 }} />
+            </button>
+
+            <h1
+              style={{
+                fontFamily: "Nunito",
+                fontWeight: 900,
+                fontSize: "50px",
+                lineHeight: "68px",
+                letterSpacing: "2%",
+                textAlign: "center",
+                color: "#544C3B",
+                margin: 0,
+              }}
+            >
+              Account
+            </h1>
+          </div>
+
+          {loading ? (
+            <div className="mt-8 flex justify-center">
+              <Spin size="large" />
+            </div>
+          ) : error ? (
+            <div className="mt-24 rounded-3xl bg-white/90 p-6 text-center text-sm text-[#9A8576] shadow">
+              {error}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              {/* Kinder */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  padding: "12px 24px",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  alignItems: "center",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "Nunito",
+                    fontWeight: 900,
+                    fontSize: "24px",
+                    lineHeight: "1.364",
+                    color: "#544C3B",
+                    textAlign: "center",
+                  }}
+                >
+                  Kinder
+                </span>
+                {childAccounts.length > 0 ? (
+                  childAccounts.map((account, idx) =>
+                    renderCard(account, idx, idx % 2 === 0 ? "#DCE5FF" : "#EFDCFF", "#544C3B")
+                  )
+                ) : (
+                  <div
+                    style={{
+                      marginTop: "6px",
+                      borderRadius: "28px",
+                      background: "rgba(255,255,255,0.9)",
+                      padding: "24px",
+                      textAlign: "center",
+                      fontFamily: "Nunito",
+                      fontSize: "14px",
+                      color: "#9A8576",
+                      boxShadow: "0 12px 28px rgba(79,58,45,0.12)",
+                    }}
+                  >
+                    Noch keine Konten gefunden. Lege zuerst ein Kinderkonto an.
+                  </div>
+                )}
+
+                {/* Short info text directly under Kinder, as in Figma */}
+                <p
+                  style={{
+                    marginTop: "16px",
+                    fontFamily: "Nunito",
+                    fontWeight: 400,
+                    fontSize: "18px",
+                    lineHeight: "1.364",
+                    color: "#000000",
+                    textAlign: "left",
+                  }}
+                >
+                  Jedes Kind benötigt einen eigenen Account um eine individuell angepasste Lernerfahrung und optimale Ergebnisse zu erzielen.
+                  <br />
+                  Über die Settings können jederzeit weitere Kinder hinzugefügt werden.
+                </p>
+              </div>
+
+              {/* Eltern */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  padding: "12px 24px",
+                  width: "100%",
+                  boxSizing: "border-box",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "Nunito",
+                    fontWeight: 900,
+                    fontSize: "24px",
+                    lineHeight: "1.364",
+                    color: "#544C3B",
+                    textAlign: "left",
+                  }}
+                >
+                  Eltern
+                </span>
+                {parentAccount &&
+                  renderCard(parentAccount, 0, "#FFFFFF", "#544C3B")}
+              </div>
+
+              {/* Info block */}
+              <div
+                style={{
+                  padding: "0 24px",
+                  boxSizing: "border-box",
+                  textAlign: "center",
+                  color: "#000000",
+                  maxWidth: "704px",
+                  margin: "0 auto",
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: "Nunito",
+                    fontWeight: 900,
+                    fontSize: "35px",
+                    lineHeight: "1.364",
+                    color: "#87A01D",
+                    marginBottom: "16px",
+                  }}
+                >
+                  Eltern und Kinder Devices
+                </div>
+                <p
+                  style={{
+                    fontFamily: "Nunito",
+                    fontWeight: 400,
+                    fontSize: "18px",
+                    lineHeight: "1.364",
+                    color: "#000000",
+                    whiteSpace: "pre-line",
+                  }}
+                >
+                  Es gibt zwei Möglichkeiten zur Nutzung.
+                  {"\n"}Matheo und Stefanie können sich nun über ihren Kinderaccount sicher auf einem weiteren Device einloggen und Kibundo nutzen. Dazu müssen sich die Eltern auf dem weiteren Device einmalig einloggen.
+                  {"\n"}Alternativ kann nun auch das aktuell genutzte Device an die Kinder übergeben werden.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Password Modal for Parent Profile */}
@@ -285,6 +545,6 @@ export default function AccountSelect() {
           size="large"
         />
       </Modal>
-    </PlainBackground>
+    </div>
   );
 }

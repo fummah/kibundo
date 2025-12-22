@@ -1,9 +1,11 @@
 export const INTRO_LS_KEY = "kib_intro_seen_v1";
 export const TOUR_LS_KEY  = "kibundo_tour_done";
+export const HOMEWORK_TUTORIAL_LS_KEY = "kibundo_homework_tutorial_seen_v1";
 
 // Get user-specific keys
 const getIntroKey = (userId) => userId ? `${INTRO_LS_KEY}::u:${userId}` : INTRO_LS_KEY;
 const getTourKey = (userId) => userId ? `${TOUR_LS_KEY}::u:${userId}` : TOUR_LS_KEY;
+const getHomeworkTutorialKey = (userId) => userId ? `${HOMEWORK_TUTORIAL_LS_KEY}::u:${userId}` : HOMEWORK_TUTORIAL_LS_KEY;
 
 export const hasSeenIntro = (userId = null) => {
   try { 
@@ -33,16 +35,32 @@ export const markTourDone = (userId = null) => {
   } catch {}
 };
 
+export const hasSeenHomeworkTutorial = (userId = null) => {
+  try { 
+    const key = getHomeworkTutorialKey(userId);
+    return localStorage.getItem(key) === "1"; 
+  } catch { return false; }
+};
+
+export const markHomeworkTutorialSeen = (userId = null) => {
+  try { 
+    const key = getHomeworkTutorialKey(userId);
+    localStorage.setItem(key, "1"); 
+  } catch {}
+};
+
 // Clear onboarding flags for a specific user (useful when logging out)
 export const clearOnboardingFlags = (userId = null) => {
   try {
     if (userId) {
       localStorage.removeItem(getIntroKey(userId));
       localStorage.removeItem(getTourKey(userId));
+      localStorage.removeItem(getHomeworkTutorialKey(userId));
     } else {
       // Clear legacy keys if no userId provided
       localStorage.removeItem(INTRO_LS_KEY);
       localStorage.removeItem(TOUR_LS_KEY);
+      localStorage.removeItem(HOMEWORK_TUTORIAL_LS_KEY);
     }
   } catch {}
 };

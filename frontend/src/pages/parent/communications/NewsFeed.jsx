@@ -8,7 +8,6 @@ import { RightOutlined } from "@ant-design/icons";
 import api from "@/api/axios";
 import BottomTabBar from "@/components/parent/BottomTabBar.jsx";
 import ParentSpaceBar from "@/components/parent/ParentSpaceBar.jsx";
-import PlainBackground from "@/components/layouts/PlainBackground.jsx";
 
 // Background (optional: looks consistent with other parent screens)
 import globalBg from "@/assets/backgrounds/global-bg.png";
@@ -440,7 +439,7 @@ export default function NewsFeed() {
   }
 
   return (
-    <PlainBackground className="flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden">
       {/* Scrollable content area */}
       <div className="flex-1 overflow-y-auto">
         <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 py-10 pb-24">
@@ -537,6 +536,6 @@ export default function NewsFeed() {
       <div className="flex-shrink-0">
         <BottomTabBar />
       </div>
-    </PlainBackground>
+    </div>
   );
 }

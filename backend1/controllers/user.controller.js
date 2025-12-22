@@ -1636,11 +1636,9 @@ exports.getStudentById = async (req, res) => {
 exports.addstudent = async (req, res) => {
   try {
     const studentData = req.body;
-    // 🔥 Validate: Limit interests to maximum 2 focus topics
-    if (studentData.interests && Array.isArray(studentData.interests) && studentData.interests.length > 2) {
-      console.warn(`⚠️ [addstudent] Trying to create student with ${studentData.interests.length} interests, limiting to 2`);
-      studentData.interests = studentData.interests.slice(0, 2);
-    }
+    // Save all interests (onboarding preferences can be more than 2)
+    // The limit of 2 was for manual "focus topics" only, not onboarding preferences
+    // Allow all onboarding preferences to be saved
     const student = await db.student.create(studentData);
     res.status(201).json(student);
   } catch (error) {
@@ -1736,13 +1734,10 @@ exports.editStudent = async (req, res) => {
     // Update JSONB fields (profile, interests, buddy)
     if (profile !== undefined) studentUpdateFields.profile = profile;
     if (interests !== undefined) {
-      // 🔥 Validate: Limit interests to maximum 2 focus topics
-      if (Array.isArray(interests) && interests.length > 2) {
-        console.warn(`⚠️ [editStudent] Student ${id} tried to save ${interests.length} interests, limiting to 2`);
-        studentUpdateFields.interests = interests.slice(0, 2);
-      } else {
-        studentUpdateFields.interests = interests;
-      }
+      // Save all interests (onboarding preferences can be more than 2)
+      // The limit of 2 was for manual "focus topics" only, not onboarding preferences
+      // Allow all onboarding preferences to be saved
+      studentUpdateFields.interests = interests;
     }
     if (buddy !== undefined) studentUpdateFields.buddy = buddy;
     
@@ -3598,22 +3593,58 @@ exports.getStudentIdByUserId = async (req, res) => {
     
     console.log("🔍 Looking up student_id for user_id:", userId);
     
-    // Find student record by user_id
-    const student = await db.student.findOne({
-      where: { user_id: userId },
-      attributes: ['id']
-    });
+    let studentId = null;
     
-    if (!student) {
+    // Try using Sequelize model first
+    try {
+      if (db.student) {
+        const student = await db.student.findOne({
+          where: { user_id: userId },
+          attributes: ['id']
+        });
+        
+        if (student) {
+          studentId = student.id;
+        }
+      }
+    } catch (modelErr) {
+      console.warn("⚠️ Sequelize model query failed, trying raw SQL:", modelErr.message);
+    }
+    
+    // Fallback to raw SQL if Sequelize fails
+    if (!studentId) {
+      try {
+        const result = await db.sequelize.query(
+          'SELECT id FROM students WHERE user_id = :userId LIMIT 1',
+          {
+            replacements: { userId },
+            type: db.Sequelize.QueryTypes.SELECT
+          }
+        );
+        
+        if (result && result.length > 0) {
+          studentId = result[0].id;
+        }
+      } catch (sqlErr) {
+        console.error("❌ Raw SQL query also failed:", sqlErr.message);
+        throw sqlErr;
+      }
+    }
+    
+    if (!studentId) {
       console.log("⚠️ No student record found for user_id:", userId);
       return res.status(404).json({ message: 'Student not found for this user' });
     }
     
-    console.log("✅ Found student_id:", student.id, "for user_id:", userId);
-    res.json({ student_id: student.id });
+    console.log("✅ Found student_id:", studentId, "for user_id:", userId);
+    res.json({ student_id: studentId });
   } catch (err) {
     console.error("❌ Error fetching student_id:", err);
-    res.status(500).json({ message: err.message || 'Internal server error' });
+    console.error("❌ Error stack:", err.stack);
+    res.status(500).json({ 
+      message: err.message || 'Internal server error',
+      error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
   }
 };
 
@@ -3749,9 +3780,35 @@ exports.updateHomeworkCompletion = async (req, res) => {
       return res.status(400).json({ message: "Valid homework scan id is required" });
     }
 
-    const { completedAt, completionPhotoUrl } = req.body || {};
-    if (typeof completedAt === "undefined" && typeof completionPhotoUrl === "undefined") {
-      return res.status(400).json({ message: "No completion fields provided" });
+    const { completedAt, completionPhotoUrl, createdAt, status } = req.body || {};
+    
+    console.log("📝 updateHomeworkCompletion request:", {
+      scanId,
+      body: req.body,
+      bodyKeys: Object.keys(req.body || {}),
+      completedAt,
+      completionPhotoUrl,
+      createdAt,
+      status,
+      statusType: typeof status,
+      statusValue: status,
+      hasCompletedAt: typeof completedAt !== "undefined",
+      hasCompletionPhotoUrl: typeof completionPhotoUrl !== "undefined",
+      hasCreatedAt: typeof createdAt !== "undefined",
+      hasStatus: typeof status !== "undefined" && status !== null && status !== ""
+    });
+    
+    // Check if at least one field is provided
+    const hasAnyField = (
+      typeof completedAt !== "undefined" || 
+      typeof completionPhotoUrl !== "undefined" || 
+      typeof createdAt !== "undefined" || 
+      (typeof status !== "undefined" && status !== null && status !== "")
+    );
+    
+    if (!hasAnyField) {
+      console.log("❌ No fields provided for update");
+      return res.status(400).json({ message: "No fields provided for update" });
     }
 
     const userId = req.user?.id;
@@ -3907,6 +3964,46 @@ exports.updateHomeworkCompletion = async (req, res) => {
     }
     if (completionPhotoUrl !== undefined) {
       updates.completion_photo_url = completionPhotoUrl || null;
+    }
+    if (createdAt !== undefined) {
+      if (createdAt) {
+        const date = new Date(createdAt);
+        if (!Number.isNaN(date.getTime())) {
+          updates.created_at = date;
+          console.log("✅ Updating created_at to:", date.toISOString());
+        } else {
+          return res.status(400).json({ message: "Invalid createdAt date format" });
+        }
+      } else {
+        return res.status(400).json({ message: "createdAt cannot be null or empty" });
+      }
+    }
+    
+    if (status !== undefined) {
+      const validStatuses = ['pending', 'completed', 'do_it_later'];
+      const statusStr = String(status).trim();
+      console.log("🔍 Status validation:", {
+        received: status,
+        asString: statusStr,
+        isValid: validStatuses.includes(statusStr)
+      });
+      
+      if (validStatuses.includes(statusStr)) {
+        updates.status = statusStr;
+        console.log("✅ Updating status to:", statusStr);
+        
+        // If status is 'completed', also set completed_at if not already set
+        if (statusStr === 'completed' && !updates.completed_at && !scanRecord.completed_at) {
+          updates.completed_at = new Date();
+        }
+      } else {
+        console.log("❌ Invalid status received:", status, "Valid options:", validStatuses);
+        return res.status(400).json({ 
+          message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+          received: status,
+          validOptions: validStatuses
+        });
+      }
     }
     
     // 🔥 If scan has no student_id and user is a student, assign it to them

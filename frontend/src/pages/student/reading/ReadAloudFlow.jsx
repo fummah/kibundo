@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 
 import BackButton from "@/components/student/common/BackButton.jsx";
 import GreetingBanner from "@/components/student/common/GreetingBanner.jsx";
-import { ChatStripSpacer } from "@/components/student/mobile/FooterChat"; // keeps content above chat footer
+// ChatStripSpacer removed - not needed
 
 import { ocrImage, sttCaptureMock } from "@/api/reading.js";
 import { diffTranscript } from "@/utils/diffTranscript.js";
@@ -266,7 +266,6 @@ export default function ReadAloudFlow() {
       )}
 
       {/* Reserve space so the footer chat never overlaps content */}
-      <ChatStripSpacer />
     </div>
   );
 }

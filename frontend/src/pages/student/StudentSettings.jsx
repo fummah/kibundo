@@ -193,6 +193,8 @@ export default function StudentSettings() {
   const [interestDraft, setInterestDraft] = useState("");
   const [buddyModal, setBuddyModal] = useState(false);
   const [pendingBuddy, setPendingBuddy] = useState(buddy || BUDDIES[0]);
+  const [characterModal, setCharacterModal] = useState(false);
+  const [pendingCharacter, setPendingCharacter] = useState(null);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -231,10 +233,21 @@ export default function StudentSettings() {
     const currentInterests = interests || [];
     const savedInterests = a.interests || [];
     
-    // Compare interests arrays - deep comparison
+    // Compare interests arrays - handle both string and object formats
     const interestsChanged = 
       currentInterests.length !== savedInterests.length ||
-      currentInterests.some((interest, idx) => interest !== savedInterests[idx]);
+      currentInterests.some((interest, idx) => {
+        const saved = savedInterests[idx];
+        if (typeof interest === 'string' && typeof saved === 'string') {
+          return interest !== saved;
+        }
+        // Compare objects by id and value
+        if (typeof interest === 'object' && typeof saved === 'object') {
+          return interest?.id !== saved?.id || interest?.value !== saved?.value;
+        }
+        // Mixed types are different
+        return true;
+      });
     
     // Compare buddy IDs (handle both object and null cases)
     // Normalize both to null if missing id
@@ -278,9 +291,75 @@ export default function StudentSettings() {
 
   const themePreview = useMemo(() => THEME_GRADIENT[theme] || THEME_GRADIENT.indigo, [theme]);
 
+  // ----- Get character from characterSelection preference -----
+  const characterImageMap = {
+    1: "/images/img_rectangle_20.png",
+    2: "/images/img_rectangle_20_264x174.png",
+    3: "/images/img_rectangle_20_1.png",
+    4: "/images/img_rectangle_20_2.png",
+    5: "/images/img_rectangle_20_3.png",
+    6: "/images/img_rectangle_20_4.png",
+  };
+  
+  const CHARACTERS = [
+    { id: 1, src: "/images/img_rectangle_20.png", alt: "Character 1 - Boy with striped shirt" },
+    { id: 2, src: "/images/img_rectangle_20_264x174.png", alt: "Character 2 - Girl with red hair" },
+    { id: 3, src: "/images/img_rectangle_20_1.png", alt: "Character 3 - Boy with blonde hair" },
+    { id: 4, src: "/images/img_rectangle_20_2.png", alt: "Character 4 - Girl with dark hair" },
+    { id: 5, src: "/images/img_rectangle_20_3.png", alt: "Character 5 - Boy with curly hair" },
+    { id: 6, src: "/images/img_rectangle_20_4.png", alt: "Character 6 - Girl with blonde braids" },
+  ];
+  
+  // Get characterSelection from interests
+  const characterSelection = useMemo(() => {
+    const interestsArray = Array.isArray(interests) ? interests : [];
+    const characterPref = interestsArray.find(
+      (item) => item?.id === "characterSelection"
+    );
+    const characterId = characterPref?.value || characterPref?.id;
+    return characterId ? characterImageMap[characterId] : null;
+  }, [interests]);
+  
+  // Get current character ID
+  const currentCharacterId = useMemo(() => {
+    const interestsArray = Array.isArray(interests) ? interests : [];
+    const characterPref = interestsArray.find(
+      (item) => item?.id === "characterSelection"
+    );
+    return characterPref?.value || characterPref?.id || null;
+  }, [interests]);
+
   // ----- Live buddy preview -----
+  // Ensure we only show actual buddies, not characters
   const displayBuddy = useMemo(() => {
-    return buddyModal ? (pendingBuddy || buddy) : buddy;
+    const currentBuddy = buddyModal ? (pendingBuddy || buddy) : buddy;
+    
+    // If no buddy, return default Milo
+    if (!currentBuddy) {
+      return BUDDIES[0]; // Milo (kibundo-buddy)
+    }
+    
+    // Check if buddy has character-like properties (character data mistakenly saved as buddy)
+    const isCharacter = 
+      currentBuddy.name?.toLowerCase().includes("character") || 
+      (typeof currentBuddy.id === "number" && currentBuddy.id >= 1 && currentBuddy.id <= 6) ||
+      (typeof currentBuddy.id === "string" && /^[1-6]$/.test(currentBuddy.id)) ||
+      currentBuddy.img?.includes("img_rectangle_20") ||
+      currentBuddy.avatar?.includes("img_rectangle_20");
+    
+    // If it's character data, return default Milo instead
+    if (isCharacter) {
+      return BUDDIES[0]; // Return Milo (kibundo-buddy) as default
+    }
+    
+    // Valid buddy - check if it's a valid buddy ID
+    const validBuddyIds = BUDDIES.map(b => b.id);
+    if (currentBuddy.id && !validBuddyIds.includes(currentBuddy.id)) {
+      // Not a valid buddy ID, return default
+      return BUDDIES[0];
+    }
+    
+    return currentBuddy;
   }, [buddyModal, pendingBuddy, buddy]);
   const isPreviewingBuddy = buddyModal && (pendingBuddy?.id !== buddy?.id);
 
@@ -708,7 +787,14 @@ export default function StudentSettings() {
   const addInterest = async () => {
     const v = interestDraft.trim();
     if (!v) return;
-    if ((interests || []).includes(v)) {
+    
+    // Check if interest already exists (handle both string and object formats)
+    const interestExists = (interests || []).some(it => {
+      if (typeof it === 'string') return it === v;
+      return it?.value === v || it?.id === v;
+    });
+    
+    if (interestExists) {
       message.info?.("Already added.");
       return;
     }
@@ -717,6 +803,8 @@ export default function StudentSettings() {
       message.warning?.("Du kannst maximal 2 Fokusthemen auswählen. Bitte entferne zuerst ein Thema, bevor du ein neues hinzufügst.");
       return;
     }
+    
+    // Add as simple string for manual interests (not from onboarding)
     const newInterests = [...(interests || []), v];
     setInterests(newInterests);
     setInterestDraft("");
@@ -741,8 +829,25 @@ export default function StudentSettings() {
   };
 
   const removeInterest = async (val) => {
-    const newInterests = (interests || []).filter((x) => x !== val);
+    // Handle both string and object formats when filtering
+    const newInterests = (interests || []).filter((x) => {
+      if (typeof val === 'string') {
+        // If val is a string, compare with string interests or object values
+        return typeof x === 'string' ? x !== val : (x?.value !== val && x?.id !== val);
+      } else {
+        // If val is an object, compare by id or value
+        const valId = val?.id;
+        const valValue = val?.value;
+        if (typeof x === 'string') {
+          return x !== valValue && x !== valId;
+        }
+        return x?.id !== valId && x?.value !== valValue;
+      }
+    });
     setInterests(newInterests);
+    
+    // Get display value for message
+    const displayVal = typeof val === 'string' ? val : (val?.value || val?.id || 'interest');
     
     // Auto-save interests to database
     if (hasServerRecord && serverStudentId) {
@@ -754,12 +859,12 @@ export default function StudentSettings() {
         };
         
         await api.patch(`/student/${serverStudentId}`, payload);
-        message.success?.(`Interest "${val}" removed!`);
+        message.success?.(`Interest "${displayVal}" removed!`);
       } catch (error) {
         message.error?.("Could not remove interest. Please try again.");
       }
     } else {
-      message.warning?.(`Interest "${val}" removed locally. Click Save Settings to persist.`);
+      message.warning?.(`Interest "${displayVal}" removed locally. Click Save Settings to persist.`);
     }
   };
 
@@ -786,6 +891,31 @@ export default function StudentSettings() {
     setBuddyModal(false);
   };
 
+  const confirmCharacter = () => {
+    if (!pendingCharacter) return;
+    
+    // Update characterSelection in interests
+    const interestsArray = Array.isArray(interests) ? interests : [];
+    const updatedInterests = interestsArray.filter(
+      (item) => item?.id !== "characterSelection"
+    );
+    
+    // Add new characterSelection preference
+    updatedInterests.push({
+      id: "characterSelection",
+      value: pendingCharacter.id,
+      prompt: "Wähle Deine Figur aus die dich begleitet." // Default prompt
+    });
+    
+    // Update interests in context
+    setInterests(updatedInterests);
+    
+    // Force image re-render by updating the key
+    setBuddyImageKey(prev => prev + 1);
+    
+    // Close the modal
+    setCharacterModal(false);
+  };
 
   const handleSwitchProfile = () => {
     navigate("/parent/account", { replace: true });
@@ -817,9 +947,21 @@ export default function StudentSettings() {
               const a = initialRef.current;
               const currentInterests = interests || [];
               const savedInterests = a.interests || [];
+              // Compare interests arrays - handle both string and object formats
               const interestsChanged = 
                 currentInterests.length !== savedInterests.length ||
-                currentInterests.some((interest, idx) => interest !== savedInterests[idx]);
+                currentInterests.some((interest, idx) => {
+                  const saved = savedInterests[idx];
+                  if (typeof interest === 'string' && typeof saved === 'string') {
+                    return interest !== saved;
+                  }
+                  // Compare objects by id and value
+                  if (typeof interest === 'object' && typeof saved === 'object') {
+                    return interest?.id !== saved?.id || interest?.value !== saved?.value;
+                  }
+                  // Mixed types are different
+                  return true;
+                });
               const currentBuddyId = buddy?.id ?? null;
               const savedBuddyId = a.buddy?.id ?? null;
               const buddyChanged = currentBuddyId !== savedBuddyId;
@@ -884,12 +1026,12 @@ export default function StudentSettings() {
                   <div className={`p-6 bg-gradient-to-br ${themePreview} rounded-2xl text-white mb-6`}>
                     <Row align="middle" gutter={[16, 16]}>
                       <Col xs={24} sm="auto">
-                        <div className="flex justify-center">
+                        <div className="flex flex-col items-center gap-2">
                           <Badge dot={isDirty} color="#52c41a">
                             <img
-                              key={`buddy-profile-${displayBuddy?.id || "default"}-${buddyImageKey}`}
-                              src={displayBuddy?.img || buddyMilo}
-                              alt={displayBuddy?.name || "Learning Buddy"}
+                              key={`profile-character-${characterSelection || "default"}-${buddyImageKey}`}
+                              src={characterSelection || displayBuddy?.img || buddyMilo}
+                              alt="Profile Character"
                               width={avatarSize}
                               height={avatarSize}
                               className="border-4 border-white shadow-lg object-contain rounded-2xl"
@@ -898,6 +1040,20 @@ export default function StudentSettings() {
                               }}
                             />
                           </Badge>
+                          <Button
+                            type="default"
+                            size="small"
+                            icon={<Edit className="h-3 w-3" />}
+                            onClick={() => {
+                              // Set pending character to current character when opening modal
+                              const currentChar = CHARACTERS.find(c => c.id === currentCharacterId) || CHARACTERS[0];
+                              setPendingCharacter(currentChar);
+                              setCharacterModal(true);
+                            }}
+                            className="rounded-lg text-xs"
+                          >
+                            Change Character
+                          </Button>
                         </div>
                       </Col>
                       <Col flex="auto">
@@ -1226,7 +1382,7 @@ export default function StudentSettings() {
                     <Button 
                       type="primary" 
                       className="rounded-xl" 
-                      onClick={() => navigate("/student/onboarding/interests")}
+                      onClick={() => navigate("/student/onboarding/buddy")}
                     >
                       Run Interests Wizard
                     </Button>
@@ -1240,20 +1396,25 @@ export default function StudentSettings() {
                           : "No interests yet — add some below to personalize your learning experience"}
                       </Text>
                     ) : (
-                      (interests || []).map((it) => (
-                        <Tag
-                          key={it}
-                          closable
-                          onClose={(e) => {
-                            e.preventDefault();
-                            removeInterest(it);
-                          }}
-                          className="rounded-full px-4 py-2 text-base"
-                          color="blue"
-                        >
-                          {it}
-                        </Tag>
-                      ))
+                      (interests || []).map((it, idx) => {
+                        // Handle both old format (string) and new format (object with id, value, prompt)
+                        const interestValue = typeof it === 'string' ? it : (it?.value || it?.id || String(it));
+                        const interestKey = typeof it === 'string' ? it : (it?.id || `interest-${idx}`);
+                        return (
+                          <Tag
+                            key={interestKey}
+                            closable
+                            onClose={(e) => {
+                              e.preventDefault();
+                              removeInterest(it);
+                            }}
+                            className="rounded-full px-4 py-2 text-base"
+                            color="blue"
+                          >
+                            {interestValue}
+                          </Tag>
+                        );
+                      })
                     )}
                   </div>
 
@@ -1385,6 +1546,70 @@ export default function StudentSettings() {
               <div className="flex items-center gap-3">
                 <BuddyAvatar src={b.img} size={56} />
                 <div className="font-semibold">{b.name}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </Modal>
+
+      {/* Character modal with live preview */}
+      <Modal
+        open={characterModal}
+        onCancel={() => {
+          setCharacterModal(false);
+          // Reset pending character to current character when canceling
+          const currentChar = CHARACTERS.find(c => c.id === currentCharacterId) || CHARACTERS[0];
+          setPendingCharacter(currentChar);
+        }}
+        onOk={confirmCharacter}
+        okText="Choose"
+        className="rounded-2xl"
+        width={isMobile ? 360 : 520}
+      >
+        <Title level={5} className="!mb-3">
+          Choose Your Character
+        </Title>
+
+        {/* Live preview in modal */}
+        <div className="mb-4 flex items-center gap-3">
+          <Avatar 
+            key={`character-modal-${(pendingCharacter || CHARACTERS.find(c => c.id === currentCharacterId))?.id || "default"}-${buddyImageKey}`}
+            size={72} 
+            src={(pendingCharacter || CHARACTERS.find(c => c.id === currentCharacterId))?.src || CHARACTERS[0].src} 
+          />
+          <div>
+            <div className="font-semibold text-base">
+              Character {(pendingCharacter || CHARACTERS.find(c => c.id === currentCharacterId))?.id || 1}
+            </div>
+            <Text type="secondary" className="text-xs">
+              This is how your character will look on your account.
+            </Text>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          {CHARACTERS.map((char) => (
+            <button
+              key={char.id}
+              onClick={() => {
+                setPendingCharacter(char);
+                // Force preview update
+                setBuddyImageKey(prev => prev + 1);
+              }}
+              className={`text-left rounded-xl border-2 p-2 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-neutral-300 ${
+                pendingCharacter?.id === char.id ? "border-blue-500" : "border-transparent hover:border-neutral-200"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <img
+                  src={char.src}
+                  alt={char.alt}
+                  className="w-14 h-14 rounded-lg object-cover"
+                  onError={(e) => {
+                    e.target.src = CHARACTERS[0].src;
+                  }}
+                />
+                <div className="font-semibold">Character {char.id}</div>
               </div>
             </button>
           ))}

@@ -1,0 +1,50 @@
+// Icons from Figma: https://www.figma.com/design/pPMoR8IkrWf21lyT7PGFXZ/Kibundo-Design?node-id=108-16581
+export { default as Icon01 } from './icon-01.svg?react';
+export { default as Icon02 } from './icon-02.svg?react';
+export { default as Icon03 } from './icon-03.svg?react';
+export { default as Icon04 } from './icon-04.svg?react';
+export { default as Icon05 } from './icon-05.svg?react';
+export { default as Icon06 } from './icon-06.svg?react';
+export { default as Icon07 } from './icon-07.svg?react';
+export { default as Icon08 } from './icon-08.svg?react';
+export { default as Icon09 } from './icon-09.svg?react';
+export { default as Icon10 } from './icon-10.svg?react';
+export { default as Icon11 } from './icon-11.svg?react';
+export { default as Icon12 } from './icon-12.svg?react';
+export { default as Icon13 } from './icon-13.svg?react';
+export { default as Icon14 } from './icon-14.svg?react';
+export { default as Icon15 } from './icon-15.svg?react';
+export { default as Icon16 } from './icon-16.svg?react';
+export { default as Icon17 } from './icon-17.svg?react';
+export { default as Icon18 } from './icon-18.svg?react';
+export { default as Icon19 } from './icon-19.svg?react';
+export { default as Icon20 } from './icon-20.svg?react';
+export { default as Icon21 } from './icon-21.svg?react';
+export { default as Icon22 } from './icon-22.svg?react';
+export { default as Icon23 } from './icon-23.svg?react';
+
+// Also export as URL strings for use as img src
+export { default as icon01Url } from './icon-01.svg';
+export { default as icon02Url } from './icon-02.svg';
+export { default as icon03Url } from './icon-03.svg';
+export { default as icon04Url } from './icon-04.svg';
+export { default as icon05Url } from './icon-05.svg';
+export { default as icon06Url } from './icon-06.svg';
+export { default as icon07Url } from './icon-07.svg';
+export { default as icon08Url } from './icon-08.svg';
+export { default as icon09Url } from './icon-09.svg';
+export { default as icon10Url } from './icon-10.svg';
+export { default as icon11Url } from './icon-11.svg';
+export { default as icon12Url } from './icon-12.svg';
+export { default as icon13Url } from './icon-13.svg';
+export { default as icon14Url } from './icon-14.svg';
+export { default as icon15Url } from './icon-15.svg';
+export { default as icon16Url } from './icon-16.svg';
+export { default as icon17Url } from './icon-17.svg';
+export { default as icon18Url } from './icon-18.svg';
+export { default as icon19Url } from './icon-19.svg';
+export { default as icon20Url } from './icon-20.svg';
+export { default as icon21Url } from './icon-21.svg';
+export { default as icon22Url } from './icon-22.svg';
+export { default as icon23Url } from './icon-23.svg';
+

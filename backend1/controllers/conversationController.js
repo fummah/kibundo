@@ -36,14 +36,35 @@ export const handleConversation = async (req, res) => {
     if (process.env.DEBUG) {
       console.debug("🎯 Backend received agentName:", agentName);
     }
+    
+    // 🔥 CRITICAL: Detect greeting FIRST, before any conversation logic
+    // Match greetings more broadly - any message that is just a greeting word/phrase
+    const trimmedMessage = message ? message.trim() : '';
+    const isGreeting = trimmedMessage && /^(hallo|hi|hey|guten\s+(tag|morgen|abend)|hello|guten\s+tag|moin|hallo\s+kibundo|hi\s+kibundo|hey\s+kibundo)$/i.test(trimmedMessage);
+    
+    if (isGreeting) {
+      console.log(`✅ Greeting detected: "${trimmedMessage}" - will create fresh conversation and ignore all homework context`);
+    }
+    
     let convId = conversationId;
 
     // Only log conversation requests in debug mode to reduce noise
     if (process.env.DEBUG) {
-      console.debug("🔍 Conversation request:", { conversationId, userId: effectiveUserId, studentId, message: message?.substring(0, 50), scanId });
+      console.debug("🔍 Conversation request:", { conversationId, userId: effectiveUserId, studentId, message: message?.substring(0, 50), scanId, isGreeting });
     }
 
-    if (!convId) {
+    // 🔥 CRITICAL: For greetings, ALWAYS create a new conversation to avoid reusing old ones with scanIds
+    // Even if conversationId is provided, ignore it for greetings to ensure a fresh start
+    if (isGreeting) {
+      // Create a completely fresh conversation for greetings - ignore any provided conversationId
+      const title = `Greeting conversation for ${effectiveUserId || "guest"} ${new Date().toISOString()}`;
+      const r = await pool.query(
+        `INSERT INTO conversations(user_id, scan_id, title) VALUES($1,$2,$3) RETURNING *`,
+        [effectiveUserId || null, null, title] // Always null scanId for greeting conversations
+      );
+      convId = r.rows[0].id;
+      console.log("✅ Created new greeting conversation:", convId, "(no scanId, ignoring provided conversationId)");
+    } else if (!convId) {
       const title = `Conversation for ${effectiveUserId || "guest"} ${new Date().toISOString()}`;
       const r = await pool.query(
         `INSERT INTO conversations(user_id, scan_id, title) VALUES($1,$2,$3) RETURNING *`,
@@ -82,6 +103,15 @@ export const handleConversation = async (req, res) => {
     );
     
     let conversationHistory = historyResult.rows || [];
+    
+    // 🔥 CRITICAL: For greetings, completely clear conversation history
+    // This prevents the AI from seeing ANY previous homework content when student just greets
+    if (isGreeting) {
+      // For greetings, use empty history - only the current greeting message
+      conversationHistory = [];
+      console.log(`✅ Greeting detected - cleared all conversation history (was ${historyResult.rows.length} messages)`);
+    }
+    
     if (process.env.DEBUG) {
       console.debug(`✅ Retrieved ${conversationHistory.length} messages from history`);
     }
@@ -132,10 +162,14 @@ export const handleConversation = async (req, res) => {
       }
     }
 
-    // Fetch homework context if scanId is provided
+    // Fetch homework context if scanId is provided AND this is not just a greeting
+    // isGreeting is already defined above at the beginning of the function
+    // 🔥 CRITICAL: For greetings, ignore scanId completely - don't load homework context
+    const effectiveScanId = isGreeting ? null : scanId;
+    
     let grounding = "";
     let parsedQuestions = [];
-    if (scanId) {
+    if (effectiveScanId && !isGreeting) {
       // Reduced logging - only log in debug mode
       if (process.env.DEBUG) {
         console.debug("🔍 Fetching homework context for scanId:", scanId);
@@ -210,7 +244,7 @@ export const handleConversation = async (req, res) => {
           questionsSection += `\n\n`;
         }
         
-        grounding = `${gradeInstruction}🔥🔥🔥 CRITICAL - HOMEWORK CONTEXT - ABSOLUTE PRIORITY 🔥🔥🔥\n\nTHIS IS THE ACTUAL HOMEWORK CONTENT THE STUDENT IS WORKING ON:\n\n${rawText}${questionsSection}\n⚠️⚠️⚠️ ABSOLUTE REQUIREMENTS ⚠️⚠️⚠️:\n- You MUST ALWAYS reference this specific homework content when answering questions.\n- If the student asks "what is my homework about" or "what are the questions", you MUST describe the homework content shown above.\n- NEVER say "I don't have homework context" or "I can't see the homework" - the homework is provided above.\n- NEVER talk about different homework (like flashcards, mental math, etc.) unless it matches the content above.\n- When the student asks about "question 1", "question 2", etc., you MUST refer to the questions in the homework content above.\n- Always answer questions based on THIS SPECIFIC homework content, not generic examples.\n- When the student provides any answer, statement, or response that relates to the homework, recognize it as an answer attempt and provide interactive feedback.\n- Guide the student through questions interactively - acknowledge their answers, provide encouragement, and help them understand if they're on the right track.\n- Adapt your feedback and guidance to the specific type of questions in this homework (whether they are math problems, reading comprehension, multiple choice, etc.).\n\n`;
+        grounding = `${gradeInstruction}🔥🔥🔥 CRITICAL - HOMEWORK CONTEXT - ABSOLUTE PRIORITY 🔥🔥🔥\n\nTHIS IS THE ACTUAL HOMEWORK CONTENT THE STUDENT IS WORKING ON:\n\n${rawText}${questionsSection}\n⚠️⚠️⚠️ ABSOLUTE REQUIREMENTS ⚠️⚠️⚠️:\n- You MUST ALWAYS reference this specific homework content when answering questions.\n- ⚠️⚠️⚠️ EXCEPTION: If the student is JUST greeting (e.g., "hi", "hallo"), DO NOT show or mention this homework content. Just greet back and ask about homework.\n- If the student asks "what is my homework about" or "what are the questions", you MUST describe the homework content shown above.\n- NEVER say "I don't have homework context" or "I can't see the homework" - the homework is provided above.\n- NEVER talk about different homework (like flashcards, mental math, etc.) unless it matches the content above.\n- When the student asks about "question 1", "question 2", etc., you MUST refer to the questions in the homework content above.\n- Always answer questions based on THIS SPECIFIC homework content, not generic examples.\n- When the student provides any answer, statement, or response that relates to the homework, recognize it as an answer attempt and provide interactive feedback.\n- Guide the student through questions interactively - acknowledge their answers, provide encouragement, and help them understand if they're on the right track.\n- Adapt your feedback and guidance to the specific type of questions in this homework (whether they are math problems, reading comprehension, multiple choice, etc.).\n\n`;
         if (process.env.DEBUG) {
           console.debug("✅ Homework context found:", rawText?.substring(0, 100) + "...");
           console.debug("✅ Parsed questions found:", parsedQuestions.length);
@@ -230,7 +264,8 @@ export const handleConversation = async (req, res) => {
 
     // 🔥 PREPEND HOMEWORK CONTEXT TO THE LAST (CURRENT) MESSAGE IF IT EXISTS
     // The current message should be the last one in the history (we just inserted it)
-    if (scanId && grounding && conversationHistory.length > 0) {
+    // BUT: Don't prepend homework context for greetings
+    if (effectiveScanId && grounding && conversationHistory.length > 0 && !isGreeting) {
       const lastMessage = conversationHistory[conversationHistory.length - 1];
       // Check if this is a student message (should be the current one we just inserted)
       if (lastMessage.sender === "student") {
@@ -244,8 +279,50 @@ export const handleConversation = async (req, res) => {
       }
     }
 
+    // 🔥 CRITICAL: For greetings, add explicit instruction at the very top to ignore all homework content
+    const greetingWarning = isGreeting ? `
+      ⚠️⚠️⚠️⚠️⚠️ KRITISCH - GRUß ERKANNT - HÖCHSTE PRIORITÄT ⚠️⚠️⚠️⚠️⚠️:
+      - Der Schüler hat NUR gegrüßt (z.B. "hi", "hallo")
+      - IGNORIERE KOMPLETT alle Hausaufgaben-Kontexte, die unten erwähnt werden könnten
+      - IGNORIERE alle Hausaufgaben-Inhalte, Aufgaben, Fragen, Antworten oder Lösungen
+      - Antworte NUR mit einer Begrüßung und Frage nach Hausaufgabe zum Scannen
+      - NIEMALS Hausaufgaben-Inhalte zeigen, auch nicht wenn sie in der Konversation erwähnt werden
+      - DEINE ANTWORT: Maximal 2 Sätze - Begrüßung + Frage nach Hausaufgabe zum Scannen
+      - BEISPIEL RICHTIG: "Hi ${childFirstName}! 👋 Hast du eine Hausaufgabe, die wir scannen oder beschreiben können? 📷📝"
+      - BEISPIEL FALSCH (NIEMALS): "Hallo! Lass uns die Aufgaben anschauen..." oder "Aufgabe 1: ..."
+      
+    ` : '';
+    
     const systemPrompt = `
       Du bist Kibundo, ein geduldiger und freundlicher Hausaufgabenhelfer für Schüler der Klassen 1-7.
+      
+      ${greetingWarning}
+      
+      🔥🔥🔥 WICHTIG - CHAT-FOKUS - NUR HAUSAUFGABEN SAMMELN UND SCANNEN 🔥🔥🔥:
+      - Dieser Chat dient AUSSCHLIESSLICH zum Sammeln und Scannen von Hausaufgaben
+      - ⚠️⚠️⚠️ KRITISCH: Wenn der Schüler NUR grüßt (z.B. "Hallo", "Hi", "Guten Tag", "Hallo Kibundo", "hi"), grüße freundlich zurück und frage, ob er eine Hausaufgabe hat, die wir scannen oder beschreiben können
+      - ⚠️⚠️⚠️ ABSOLUT VERBOTEN bei einem einfachen Gruß: NIEMALS Hausaufgaben-Inhalte, Aufgaben, Fragen, Antworten, Lösungen, oder irgendwelche Hausaufgaben-Details zeigen oder erwähnen
+      - ⚠️⚠️⚠️ Bei einem Gruß: IGNORIERE komplett alle Hausaufgaben-Kontexte, die in der Konversationshistorie oder im System vorhanden sein könnten
+      - ⚠️⚠️⚠️ Bei einem Gruß: Antworte NUR mit einer Begrüßung und Frage nach Hausaufgaben zum Scannen - KEINE Inhalte zeigen
+      - ⚠️⚠️⚠️ Bei einem Gruß: NIEMALS "Aufgabe 1", "Aufgabe 2", "Spiegelachse", "Addieren", oder ähnliche Hausaufgaben-Begriffe erwähnen
+      - ⚠️⚠️⚠️ Bei einem Gruß: NIEMALS Rechenaufgaben lösen, Lösungen zeigen, oder Hausaufgaben-Inhalte beschreiben
+      - Wenn der Schüler keine Hausaufgabe gescannt oder beschrieben hat, ermutige ihn, dies zu tun
+      - Fokus: Hausaufgaben scannen (Foto) oder beschreiben (Text/Sprache)
+      - Wenn der Schüler Fragen zur Hausaufgabe stellt, beantworte sie, aber erinnere ihn daran, dass der Hauptzweck das Sammeln/Scannen ist
+      - Bei allgemeinen Fragen, die nichts mit Hausaufgaben zu tun haben, leite den Schüler zurück zum Hausaufgaben-Sammeln
+      
+      BEISPIEL FÜR ERSTE NACHRICHT (wenn Schüler NUR grüßt - KEINE Hausaufgaben-Inhalte zeigen):
+      - Schüler: "Hallo" → Kibundo: "Hallo ${childFirstName}! 👋 Schön, dich zu sehen! Hast du eine Hausaufgabe, die wir scannen oder beschreiben können? 📷📝"
+      - Schüler: "Hi Kibundo" → Kibundo: "Hi ${childFirstName}! 👋 Wie kann ich dir heute bei deinen Hausaufgaben helfen? Hast du eine Hausaufgabe zum Scannen? 📷"
+      - Schüler: "hi" → Kibundo: "Hi ${childFirstName}! 👋 Hast du eine Hausaufgabe, die wir scannen oder beschreiben können? 📷📝"
+      - Schüler: "Guten Tag" → Kibundo: "Guten Tag, ${childFirstName}! 👋 Hast du heute Hausaufgaben, die wir zusammen anschauen können? 📚"
+      - ⚠️⚠️⚠️ KRITISCH: Bei einem einfachen Gruß NIEMALS sofort Aufgaben, Fragen, Antworten, Lösungen oder Inhalte aus einer vorherigen Hausaufgabe zeigen oder erwähnen!
+      - ⚠️⚠️⚠️ Bei einem Gruß: NIEMALS Rechenaufgaben lösen, Antworten geben, oder Lösungen zeigen - auch wenn Hausaufgaben-Kontext vorhanden ist
+      - ⚠️⚠️⚠️ Bei einem Gruß: NIEMALS "Aufgabe 1", "Aufgabe 2", "28 + 38 = 66" oder ähnliche Hausaufgaben-Inhalte erwähnen
+      - ⚠️⚠️⚠️ BEISPIEL FALSCH (NIEMALS SO): "Hallo Rachfort! Lass uns die Aufgaben zusammen anschauen. Aufgabe 1: 28 + 38 = 66..."
+      - ⚠️⚠️⚠️ BEISPIEL RICHTIG: "Hi ${childFirstName}! 👋 Hast du eine Hausaufgabe, die wir scannen oder beschreiben können? 📷📝"
+      - ⚠️⚠️⚠️ Nur wenn der Schüler explizit nach einer bestimmten Hausaufgabe fragt oder sagt "zeig mir meine Hausaufgabe" oder "hilf mir bei Aufgabe 1", dann zeige die Inhalte
+      - ⚠️⚠️⚠️ DEINE ANTWORT BEI EINEM GRUß SOLLTE MAXIMAL 2 SÄTZE SEIN: Begrüßung + Frage nach Hausaufgabe zum Scannen
       
       SCHÜLERINFORMATIONEN:
       - Vollständiger Name des Schülers: ${childFullName}
@@ -284,7 +361,7 @@ export const handleConversation = async (req, res) => {
       - BEACHTE: Diese Interessen sind von ${childFirstName} selbst ausgewählt und sind daher besonders wichtig für seine Motivation und das Lernen
       ` : ''}
       
-      ${grounding}
+      ${isGreeting ? '' : grounding}
       
       ⚠️⚠️⚠️ KRITISCH - ABSOLUTE SPRACHREGELN - KEINE AUSNAHMEN ⚠️⚠️⚠️:
       - DU MUSST IMMER UND ÜBERALL NUR DEUTSCH VERWENDEN
@@ -302,9 +379,19 @@ export const handleConversation = async (req, res) => {
       - KEINE AUSNAHMEN - DEUTSCH IST PFLICHT
       
       WICHTIGE FUNKTIONSREGELN:
-      - Wenn Hausaufgabenkontext vorhanden ist, beantworte Fragen spezifisch zu diesen Hausaufgaben
+      - Dieser Chat dient AUSSCHLIESSLICH zum Sammeln und Scannen von Hausaufgaben
+      - ⚠️⚠️⚠️ KRITISCH: Wenn der Schüler NUR grüßt (z.B. "hi", "hallo"), IGNORIERE komplett alle Hausaufgaben-Kontexte, auch wenn sie in der Konversation vorhanden sind
+      - ⚠️⚠️⚠️ Bei einem Gruß: NIEMALS Hausaufgaben-Inhalte, Aufgaben, Fragen oder Antworten zeigen - NUR begrüßen und nach Hausaufgabe zum Scannen fragen
+      - Wenn der Schüler keine Hausaufgabe gescannt oder beschrieben hat, ermutige ihn ZUERST, dies zu tun:
+        * "Lass uns zuerst deine Hausaufgabe scannen oder beschreiben, ${childFirstName}! 📷"
+        * "Hast du ein Foto deiner Hausaufgabe? Oder möchtest du sie mir beschreiben? 📝"
+        * "Scanne ein Foto oder beschreibe deine Hausaufgabe mit Text oder Sprache, ${childFirstName}!"
+      - Wenn Hausaufgabenkontext vorhanden ist UND der Schüler explizit danach fragt, beantworte Fragen spezifisch zu diesen Hausaufgaben
       - Sage niemals "Ich habe keinen Hausaufgabenkontext" oder "keine spezifischen Hausaufgaben bereitgestellt"
-      - Beziehe deine Antworten immer auf den gescannten Hausaufgabeninhalt
+      - Beziehe deine Antworten immer auf den gescannten Hausaufgabeninhalt - ABER NUR wenn der Schüler explizit danach fragt, nicht bei einem Gruß
+      - Wenn der Schüler allgemeine Fragen stellt, die nichts mit Hausaufgaben zu tun haben, leite ihn freundlich zurück:
+        * "Das ist interessant, ${childFirstName}! Aber lass uns zuerst deine Hausaufgabe scannen oder beschreiben. 📷"
+        * "Ich helfe dir gerne, ${childFirstName}! Aber dieser Chat ist für Hausaufgaben. Hast du eine Hausaufgabe, die wir scannen können? 📝"
       
       🔥🔥🔥 ABSOLUTE REGEL - IMMER ANTWORTEN 🔥🔥🔥:
       - Du MUSST IMMER auf JEDE Nachricht von ${childFirstName} antworten, egal wie kurz sie ist
@@ -314,28 +401,74 @@ export const handleConversation = async (req, res) => {
       - Zeige durch deine Antwort, dass du zuhörst und bereit bist zu helfen
       - Wenn du unsicher bist, was ${childFirstName} meint, frage nach oder biete Hilfe an
       
-      🔥🔥🔥 PÄDAGOGISCHER ANSATZ - MOTIVATION ZUM SELBSTDENKEN 🔥🔥🔥:
+      🔥🔥🔥 PÄDAGOGISCHER ANSATZ - MOTIVATION ZUM SELBSTDENKEN - HÖCHSTE PRIORITÄT 🔥🔥🔥:
+      
+      ⚠️⚠️⚠️ ABSOLUTE REGEL - NIEMALS SOFORT ANTWORTEN GEBEN ⚠️⚠️⚠️:
+      - NIEMALS die Antwort direkt geben, wenn der Schüler nach einer Frage fragt
+      - IMMER ZUERST den Schüler ermutigen, selbst zu denken und zu versuchen
+      - Selbst wenn der Schüler sagt "Ich weiß es nicht" oder "Hilf mir", motiviere ihn ZUERST zum Selbstversuch
+      - Die Antwort ist das LETZTE, was du gibst - nur nach mehreren Versuchen und Ermutigungen
+      
       - MOTIVIERE ZUERST: Wenn der Schüler eine Frage stellt, motiviere ihn ZUERST, selbst nachzudenken
-        * "Versuche es zuerst selbst! Du schaffst das! 💪"
-        * "Ich glaube an dich! Denk nochmal nach! 🌟"
-        * "Super, dass du es versuchst! Denk an das, was wir gelernt haben!"
+        * "Versuche es zuerst selbst, ${childFirstName}! Du schaffst das! 💪"
+        * "Ich glaube an dich, ${childFirstName}! Denk nochmal nach - du weißt mehr, als du denkst! 🌟"
+        * "Super, dass du es versuchst, ${childFirstName}! Denk an das, was wir gelernt haben!"
+        * "Lass uns zusammen nachdenken, ${childFirstName}! Was denkst du könnte die Antwort sein?"
+        * "Probiere es aus, ${childFirstName}! Ich bin hier, um dir zu helfen, wenn du wirklich nicht weiterkommst."
+        * "Du kannst das schaffen, ${childFirstName}! Nimm dir einen Moment Zeit und denk nach."
       
       - GIB TIPPS BEI SCHWIERIGKEITEN: Wenn der Schüler Schwierigkeiten hat oder um Hilfe bittet, gib ZUERST TIPPS:
         * Gib leitende Hinweise, keine vollständigen Antworten
+        * Führe den Schüler zum Nachdenken, aber gib nicht die Lösung preis
         * WICHTIG: Formatierte Tipps müssen mit speziellen Tags markiert werden:
           * Format: [TIP] Dein Tipp-Text hier [/TIP]
-          * Beispiel: "Versuche es nochmal! [TIP] Denk daran, was du über Formen gelernt hast. Wie viele Seiten hat ein Quadrat? [/TIP]"
-          * Beispiel: "Lass uns zusammen nachdenken. [TIP] Schau dir die Bilder genau an. Was fällt dir auf? [/TIP]"
+          * Beispiel: "Versuche es nochmal, ${childFirstName}! [TIP] Denk daran, was du über Formen gelernt hast. Wie viele Seiten hat ein Quadrat? [/TIP]"
+          * Beispiel: "Lass uns zusammen nachdenken, ${childFirstName}. [TIP] Schau dir die Bilder genau an. Was fällt dir auf? [/TIP]"
         * Tipps werden automatisch schön formatiert mit einem Tipp-Icon angezeigt
       
       - ANTWORT NUR ALS LETZTE OPTION: Gib die vollständige Antwort NUR wenn:
-        * Der Schüler mehrmals um Hilfe gebeten hat (nach 2-3 Hinweisen)
-        * Der Schüler explizit sagt "Ich kann es nicht", "Ich weiß es wirklich nicht"
-        * Der Schüler frustriert ist oder aufgibt
-        * Selbst dann: Erkläre den Lösungsweg Schritt für Schritt
+        * Der Schüler mehrmals um Hilfe gebeten hat (nach 3-4 Hinweisen und Ermutigungen)
+        * Der Schüler explizit sagt "Ich kann es wirklich nicht", "Ich habe es mehrmals versucht", "Ich gebe auf"
+        * Der Schüler frustriert ist oder aufgibt (aber auch dann: ermutige noch einmal zum Versuch)
+        * Selbst dann: Erkläre den Lösungsweg Schritt für Schritt, damit der Schüler lernt
+      
+      - WICHTIG: Wenn der Schüler eine Antwort gibt (richtig oder falsch), bestätige IMMER seinen Versuch:
+        * "Super, dass du es versucht hast, ${childFirstName}!"
+        * "Gut, dass du nachgedacht hast, ${childFirstName}!"
+        * Dann gib Feedback und ermutige zur nächsten Frage oder zur Korrektur
       
       - Biete schrittweise Hilfe für die spezifischen Aufgaben in den Hausaufgaben
       - Verwende eine warme, ermutigende und sehr einfache Sprache, damit Kinder sie verstehen
+      - Erinnere den Schüler daran, dass Lernen durch Versuch und Fehler passiert - das ist völlig normal!
+      
+      📝📝📝 CHATGPT-STIL FORMATIERUNG - ABSOLUTE PRIORITÄT 📝📝📝:
+      - Formatiere deine Antworten wie ChatGPT: klar strukturiert, gut lesbar, mit Markdown-Formatierung
+      - Verwende Markdown für bessere Lesbarkeit:
+        * **Fett** für wichtige Begriffe oder Überschriften
+        * *Kursiv* für Betonung
+        * \`Code\` für mathematische Formeln oder spezielle Begriffe
+        * - Listen mit Aufzählungszeichen für Schritte oder Punkte
+        * 1. Nummerierte Listen für Schritt-für-Schritt-Anleitungen
+        * > Blockquotes für wichtige Hinweise oder Zusammenfassungen
+        * \`\`\`code\`\`\` für Code-Blöcke (bei mathematischen Formeln oder Berechnungen)
+      - Strukturiere lange Antworten mit Überschriften (## Überschrift)
+      - Verwende Absätze für bessere Lesbarkeit (leere Zeile zwischen Absätzen)
+      - Bei Schritt-für-Schritt-Erklärungen: Verwende nummerierte Listen
+      - Bei Aufzählungen: Verwende Aufzählungszeichen
+      - Bei mathematischen Formeln: Verwende \`Formel\` für Inline-Formeln oder Code-Blöcke für komplexe Formeln
+      - Beispiel für gut formatierte Antwort:
+        "## Lösung für Aufgabe 1
+        
+        Um diese Aufgabe zu lösen, folge diesen Schritten:
+        
+        1. **Schritt 1**: Lies die Aufgabe genau durch
+        2. **Schritt 2**: Identifiziere, was gesucht ist
+        3. **Schritt 3**: Berechne das Ergebnis
+        
+        > 💡 **Tipp**: Denk daran, dass \`2 + 2 = 4\` ist.
+        
+        Die Lösung ist **4**."
+      - Deine Antworten sollten visuell ansprechend und leicht zu lesen sein, genau wie ChatGPT
       
       🔥🔥🔥 INTERAKTIVE FRAGEN-BEARBEITUNG - HÖCHSTE PRIORITÄT 🔥🔥🔥:
       Wenn ${childFirstName} eine Antwort oder Aussage macht, die sich auf die Hausaufgabe bezieht, musst du:
@@ -447,7 +580,40 @@ export const handleConversation = async (req, res) => {
     `;
 
     // 🔥 SEND FULL CONVERSATION HISTORY TO OPENAI (homework context already prepended to current message)
-    const { text: aiReply, raw } = await askOpenAI(systemPrompt, conversationHistory, { max_tokens: 800 });
+    // For greetings, use ONLY the current greeting message - completely ignore all history
+    let messagesToSend;
+    if (isGreeting) {
+      // For greetings, send ONLY the current greeting - no history at all
+      messagesToSend = [{ sender: "student", content: message }];
+      console.log(`✅ Greeting detected - sending ONLY current message to AI, ignoring all ${conversationHistory.length} history messages`);
+    } else {
+      messagesToSend = conversationHistory;
+    }
+    
+    let aiReply, raw;
+    try {
+      const result = await askOpenAI(systemPrompt, messagesToSend, { max_tokens: 800 });
+      aiReply = result.text;
+      raw = result.raw;
+    } catch (openAIError) {
+      // Handle OpenAI API errors with user-friendly messages
+      if (openAIError.code === 'QUOTA_EXCEEDED' || openAIError.status === 503) {
+        console.error("❌ OpenAI quota exceeded in conversation:", openAIError.message);
+        return res.status(503).json({ 
+          error: "Der AI-Service ist vorübergehend nicht verfügbar. Bitte versuche es später erneut.",
+          code: "QUOTA_EXCEEDED"
+        });
+      } else if (openAIError.code === 'RATE_LIMIT' || (openAIError.status === 429 && openAIError.code !== 'insufficient_quota')) {
+        console.error("❌ OpenAI rate limit in conversation:", openAIError.message);
+        return res.status(429).json({ 
+          error: "Zu viele Anfragen. Bitte warte einen Moment und versuche es erneut.",
+          code: "RATE_LIMIT"
+        });
+      } else {
+        // Re-throw to be caught by outer catch block
+        throw openAIError;
+      }
+    }
 
     // 🔥 SAFETY CHECK: Ensure we always have a response, especially for polite messages
     let finalReply = aiReply?.trim() || "";

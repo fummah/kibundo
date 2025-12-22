@@ -4,10 +4,10 @@ import { Route, Navigate, Outlet, useLocation, useSearchParams } from "react-rou
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import { ROLES, toRoleId } from "@/utils/roleMapper";
 import { StudentAppProvider } from "@/context/StudentAppContext.jsx";
-import MobileShell from "@/components/student/mobile/MobileShell.jsx";
+// MobileShell removed - using direct routing
 import IntroGate from "@/routes/IntroGate.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
-import { hasSeenIntro, hasDoneTour } from "@/pages/student/onboarding/introFlags";
+import { hasSeenIntro, hasSeenHomeworkTutorial } from "@/pages/student/onboarding/introFlags";
 
 // --- Optional helpers from api (safe if missing) ---
 let setPortalTokenFn = null;
@@ -19,14 +19,20 @@ try {
 
 // --- Lazy student pages ---
 // Onboarding
-const WelcomeIntro      = lazy(() => import("@/pages/student/onboarding/WelcomeIntro.jsx"));
-const WelcomeTour       = lazy(() => import("@/pages/student/onboarding/WelcomeTour.jsx"));
-const BuddySelect       = lazy(() => import("@/pages/student/onboarding/BuddySelect.jsx"));
-const InterestsWizard   = lazy(() => import("@/pages/student/onboarding/InterestsWizard.jsx"));
-const WelcomeSuccess    = lazy(() => import("@/pages/student/onboarding/WelcomeSuccess.jsx"));
+const LoadingScreen     = lazy(() => import("@/pages/student/onboarding/LoadingScreen.jsx"));
+const CharacterSelection = lazy(() => import("@/pages/student/onboarding/CharacterSelection.jsx"));
+const RobotVsMagic      = lazy(() => import("@/pages/student/onboarding/RobotVsMagic.jsx"));
+const DinosaursVsUnicorns = lazy(() => import("@/pages/student/onboarding/DinosaursVsUnicorns.jsx"));
+const TreeHouseVsCastle = lazy(() => import("@/pages/student/onboarding/TreeHouseVsCastle.jsx"));
+const LearningPreference = lazy(() => import("@/pages/student/onboarding/LearningPreference.jsx"));
+const AnimalPreference  = lazy(() => import("@/pages/student/onboarding/AnimalPreference.jsx"));
+const ActivityPreference = lazy(() => import("@/pages/student/onboarding/ActivityPreference.jsx"));
+const ColorPreference   = lazy(() => import("@/pages/student/onboarding/ColorPreference.jsx"));
+const CreativeActivityPreference = lazy(() => import("@/pages/student/onboarding/CreativeActivityPreference.jsx"));
+const Congratulations   = lazy(() => import("@/pages/student/onboarding/Congratulations.jsx"));
 
 // Home
-const StudentHome       = lazy(() => import("@/pages/student/HomeScreen.jsx"));
+const StudentHome       = lazy(() => import("@/pages/student/ChildHomeScreen.jsx"));
 
 // Learning
 const LearningScreen    = lazy(() => import("@/pages/student/LearningScreen.jsx"));
@@ -38,12 +44,11 @@ const ReadAloudFlow     = lazy(() => import("@/pages/student/reading/ReadAloudFl
 const AiReadingTextFlow = lazy(() => import("@/pages/student/reading/AiReadingTextFlow.jsx"));
 const ReadingQuizFlow   = lazy(() => import("@/pages/student/reading/ReadingQuizFlow.jsx"));
 
-// Homework (new structure)
-import HomeworkLayout from "@/pages/student/homework/HomeworkLayout.jsx";
-const HomeworkList       = lazy(() => import("@/pages/student/homework/HomeworkList.jsx"));
-const HomeworkDoing      = lazy(() => import("@/pages/student/homework/HomeworkDoing.jsx"));
-const HomeworkChat       = lazy(() => import("@/pages/student/homework/HomeworkChat.jsx"));
-const HomeworkFeedback   = lazy(() => import("@/pages/student/homework/HomeworkFeedback.jsx"));
+
+// Homework
+const HomeworkTutorial  = lazy(() => import("@/pages/student/HomeworkExplainer.jsx"));
+const HomeworkHome       = lazy(() => import("@/pages/student/homework/HomeworkHome.jsx"));
+const HomeworkCollectChat = lazy(() => import("@/pages/student/homework/HomeworkCollectChat.jsx"));
 
 // Progress / Motivation
 const TreasureMap       = lazy(() => import("@/pages/student/TreasureMap.jsx"));
@@ -54,6 +59,62 @@ const StudentSettings   = lazy(() => import("@/pages/student/StudentSettings.jsx
 
 // --- Helpers ---
 const Fallback = <div className="p-4">Loading…</div>;
+
+// Shared layout wrapper for all student screens (same frame as parents)
+const StudentLayout = () => (
+  <div className="flex justify-center bg-white overflow-hidden min-h-screen w-full relative">
+    <div
+      className="relative w-full"
+      style={{
+        maxWidth: "1280px",
+        minHeight: "100vh",
+        margin: "0 auto",
+        background: "#FFFFFF",
+        boxSizing: "border-box",
+      }}
+    >
+      {/* Background layers exactly like Figma node 1-292 */}
+      <div className="absolute inset-0 pointer-events-none" style={{ width: "100%", height: "100%" }}>
+        {/* 1. Main background image - Figma node 1-293 (full 1280x800) */}
+        <img
+          src="/images/img_background.png"
+          alt="Background"
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+          }}
+        />
+        
+        {/* 3. Bottom background layer - Figma node 8:394 - sand/gradient layer, anchored to bottom, extends upward, covers at least half screen */}
+        <img
+          src="/images/img_home_background_layer.svg"
+          alt="Background layer"
+          style={{
+            position: "absolute",
+            left: 0,
+            bottom: 0,
+            width: "100%",
+            height: "clamp(50vh, 50vh, 60vh)",
+            minHeight: "50vh",
+            objectFit: "cover",
+            objectPosition: "center bottom",
+            zIndex: 1,
+          }}
+        />
+      </div>
+      {/* Content */}
+      <div className="relative z-10 w-full h-full">
+        <StudentAppProvider>
+          <Outlet />
+        </StudentAppProvider>
+      </div>
+    </div>
+  </div>
+);
 
 // Onboarding gate (for /student/home)
 function HomeGate() {
@@ -66,8 +127,25 @@ function HomeGate() {
     : (user?.id || user?.user_id || null);
   
   if (!hasSeenIntro(studentId)) return <Navigate to="/student/onboarding/welcome-intro" replace />;
-  if (!hasDoneTour(studentId))  return <Navigate to="/student/onboarding/welcome-tour" replace />;
   return <StudentHome />;
+}
+
+function HomeworkTutorialGate() {
+  // Get user ID from auth context - use selected child account if parent is viewing child
+  const { user, account } = useAuthContext();
+  
+  // If parent has selected a child account (Netflix-style), use that child's ID
+  const studentId = account?.type === "child" && account?.userId 
+    ? account.userId 
+    : (user?.id || user?.user_id || null);
+  
+  // If tutorial already seen, redirect to homework home
+  if (hasSeenHomeworkTutorial(studentId)) {
+    return <Navigate to="/student/homework" replace />;
+  }
+  
+  // Otherwise, show the tutorial
+  return <HomeworkTutorial />;
 }
 
 /**
@@ -154,19 +232,12 @@ export default function StudentRoutes() {
 
       {/* For everything else under /student, allow portal token OR ProtectedRoute */}
       <Route element={<StudentAccessGate allowedRoles={STUDENT_ROLES} />}>
-        <Route
-          path="/student"
-          element={
-            <StudentAppProvider>
-              <Outlet />
-            </StudentAppProvider>
-          }
-        >
+        <Route path="/student" element={<StudentLayout />}>
           {/* Default → /student/home */}
           <Route index element={<Navigate to="home" replace />} />
 
-          {/* Mobile layout shell */}
-          <Route element={<MobileShell />}>
+          {/* Student routes */}
+          <Route>
             <Route
               element={
                 <Suspense fallback={Fallback}>
@@ -182,14 +253,20 @@ export default function StudentRoutes() {
                 path="onboarding/welcome-intro"
                 element={
                   <IntroGate>
-                    <WelcomeIntro />
+                    <LoadingScreen />
                   </IntroGate>
                 }
               />
-              <Route path="onboarding/welcome-tour" element={<WelcomeTour />} />
-              <Route path="onboarding/buddy"        element={<BuddySelect />} />
-              <Route path="onboarding/interests"    element={<InterestsWizard />} />
-              <Route path="onboarding/success"      element={<WelcomeSuccess />} />
+              <Route path="onboarding/buddy"        element={<CharacterSelection />} />
+              <Route path="onboarding/robot-vs-magic" element={<RobotVsMagic />} />
+              <Route path="onboarding/dinosaurs-vs-unicorns" element={<DinosaursVsUnicorns />} />
+              <Route path="onboarding/treehouse-vs-castle" element={<TreeHouseVsCastle />} />
+              <Route path="onboarding/learning-preference" element={<LearningPreference />} />
+              <Route path="onboarding/animal-preference" element={<AnimalPreference />} />
+              <Route path="onboarding/activity-preference" element={<ActivityPreference />} />
+              <Route path="onboarding/color-preference" element={<ColorPreference />} />
+              <Route path="onboarding/creative-activity-preference" element={<CreativeActivityPreference />} />
+              <Route path="onboarding/success"      element={<Congratulations />} />
 
               {/* Learning */}
               <Route path="learning" element={<LearningScreen />} />
@@ -202,21 +279,9 @@ export default function StudentRoutes() {
               <Route path="reading/quiz"       element={<ReadingQuizFlow />} />
 
               {/* Homework Flow */}
-              {/* Chat route outside of layout for full-screen experience */}
-              <Route path="homework/chat" element={<HomeworkChat />} />
-              
-              {/* Other homework routes with layout */}
-              <Route path="homework" element={<HomeworkLayout />}>
-                <Route index element={<HomeworkList />} />
-                <Route path="doing"      element={<HomeworkDoing />} />
-                <Route path="feedback"   element={<HomeworkFeedback />} />
-
-                {/* Legacy fallback routes */}
-                <Route path="interaction"       element={<Navigate to="doing" replace />} />
-                <Route path="done"              element={<Navigate to="feedback" replace />} />
-                <Route path="chat/:taskId"      element={<Navigate to="chat" replace />} />
-                <Route path="feedback/:taskId"  element={<Navigate to="feedback" replace />} />
-              </Route>
+              <Route path="homework-tutorial" element={<HomeworkTutorialGate />} />
+              <Route path="homework" element={<HomeworkHome />} />
+              <Route path="homework/collect" element={<HomeworkCollectChat />} />
 
               {/* Progress / Motivation */}
               <Route path="map"         element={<TreasureMap />} />

@@ -7,6 +7,7 @@ import { useAuthContext } from "@/context/AuthContext";
 import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
 import api from "@/api/axios";
 import heroImage from "@/assets/onboarding-dino.png";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 import useEnsureGerman from "@/hooks/useEnsureGerman.js";
 import { NUNITO_FONT_STACK } from "@/constants/fonts.js";
 import { hasSeenIntro, hasDoneTour } from "@/pages/student/onboarding/introFlags";
@@ -178,56 +179,57 @@ export default function StudentLogin() {
 
   if (!ready) {
     return (
-      <div
-        className="relative min-h-screen w-full overflow-hidden"
-        style={{
-          background:
-            "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
-          fontFamily: NUNITO_FONT_STACK,
-        }}
-      />
+      <div className="flex justify-center bg-white overflow-hidden min-h-screen w-full relative">
+        <div
+          className="relative w-full"
+          style={{
+            maxWidth: "800px",
+            minHeight: "1280px",
+            boxSizing: "border-box",
+            background: "#FFFFFF",
+            fontFamily: NUNITO_FONT_STACK,
+          }}
+        >
+          <div className="absolute inset-0 pointer-events-none">
+            <img
+              src={globalBg}
+              alt="Background"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          </div>
+        </div>
+      </div>
     );
   }
 
   return (
-    <div
-      className="relative min-h-screen w-full overflow-hidden"
-      style={{
-        background:
-          "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
-        fontFamily: NUNITO_FONT_STACK,
-      }}
-    >
-      <Toaster position="top-center" />
-
-      <div className="relative z-10 flex min-h-screen flex-col items-center justify-between px-4 py-10">
-        <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
+    <div className="flex justify-center bg-white overflow-hidden min-h-screen w-full relative">
+      <div
+        className="relative w-full"
+        style={{
+          maxWidth: "800px",
+          minHeight: "1280px",
+          boxSizing: "border-box",
+          background: "#FFFFFF",
+          fontFamily: NUNITO_FONT_STACK,
+        }}
+      >
+        <div className="absolute inset-0 pointer-events-none">
           <img
-            src={heroImage}
-            alt="Kibundo Buddy"
-            style={{ width: "201px", height: "412px" }}
-            className="drop-shadow-[0_12px_30px_rgba(0,0,0,0.12)]"
+            src={globalBg}
+            alt="Background"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
           />
-          <div className="space-y-3">
-            <Title
-              level={1}
-              className="!m-0 text-4xl font-bold tracking-[0.08em] md:text-5xl"
-              style={{ color: "#FF7F32", fontSize: "60px" }}
-            >
-              Kibundo
-            </Title>
-            <Text
-              className="block text-base font-medium md:text-lg"
-              style={{ color: "#31A892" }}
-            >
-              Hausaufgaben mit Spaß
-              <br />
-              und in Deinem Tempo
-            </Text>
-          </div>
         </div>
 
-        <div className="w-full max-w-md rounded-[32px] bg-white/90 p-8 shadow-xl backdrop-blur-sm">
+        <Toaster position="top-center" />
+
+        <div
+          className="relative z-10 w-full"
+          style={{ maxWidth: "752px", margin: "0 auto", padding: "120px 24px 24px" }}
+        >
+          {/* Student entry card only (no parent startscreen here) */}
+          <div className="w-full max-w-md rounded-[32px] bg-white/90 p-8 shadow-xl backdrop-blur-sm mx-auto">
           {loadingStudent ? (
             <div className="flex flex-col items-center justify-center py-12">
               <Spin size="large" />
@@ -303,8 +305,9 @@ export default function StudentLogin() {
               Als Erwachsener anmelden
             </button>
           </div>
+          </div>
         </div>
-      </div>
+        </div>
     </div>
   );
 }

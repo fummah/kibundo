@@ -11,8 +11,8 @@ export default function AuthBackground({
     <div
       className={`relative min-h-screen w-full overflow-hidden ${className}`}
       style={{
-        background:
-          "linear-gradient(180deg, #F8C9AA 0%, #F9E7D9 42%, #CBEADF 100%)",
+        // Default: transparent app background; screens can supply their own via `style`
+        backgroundColor: "transparent",
         fontFamily: NUNITO_FONT_STACK,
         ...style,
       }}

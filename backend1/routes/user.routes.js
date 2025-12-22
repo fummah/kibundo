@@ -158,8 +158,12 @@ router.get("/student-id", verifyToken, getStudentIdByUserId);
 router.put("/homeworkscans/:id/completion", verifyToken, updateHomeworkCompletion);
 router.get("/student/:id/homeworkscans", verifyToken, async (req, res) => {
   try {
-    const studentId = req.params.id;
-    console.log("📚 Route /student/:id/homeworkscans called with ID:", studentId);
+    const studentId = parseInt(req.params.id, 10);
+    if (isNaN(studentId)) {
+      return res.status(400).json({ message: "Invalid student ID" });
+    }
+    
+    console.log("📚 Route /student/:id/homeworkscans called with ID:", studentId, "(type:", typeof studentId, ")");
     
     // Directly query for this specific student's homework
     const homeworks = await HomeworkScan.findAll({
@@ -168,6 +172,22 @@ router.get("/student/:id/homeworkscans", verifyToken, async (req, res) => {
     });
     
     console.log("📚 Found", homeworks.length, "homework submissions for student", studentId);
+    
+    // Debug: Also check for any scans with null student_id or different student_ids
+    if (homeworks.length === 0) {
+      const allScans = await HomeworkScan.findAll({
+        limit: 10,
+        order: [['created_at', 'DESC']],
+        attributes: ['id', 'student_id', 'detected_subject', 'created_at']
+      });
+      console.log("🔍 Debug: Recent scans in database:", allScans.map(s => ({
+        id: s.id,
+        student_id: s.student_id,
+        subject: s.detected_subject,
+        created: s.created_at
+      })));
+    }
+    
     res.json(homeworks);
   } catch (err) {
     console.error("❌ Error fetching student homework:", err);

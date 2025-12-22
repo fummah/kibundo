@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import BackButton from "@/components/student/common/BackButton.jsx";
 import GreetingBanner from "@/components/student/common/GreetingBanner.jsx";
 import CardTile from "@/components/student/common/CardTile.jsx";
-import { ChatStripSpacer } from "@/components/student/mobile/FooterChat";
+// ChatStripSpacer removed - not needed
 
 import { useStudentApp } from "@/context/StudentAppContext.jsx";
 import { useAuthContext } from "@/context/AuthContext.jsx";
@@ -84,7 +84,6 @@ export default function LearningScreen() {
       </div>
 
       {/* Keep content above chat footer */}
-      <ChatStripSpacer />
     </div>
   );
 }

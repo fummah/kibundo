@@ -15,9 +15,9 @@ export default function IntroGate({ children }) {
   const location = useLocation();
   const allowReturn = Boolean(location.state?.allowIntroReturn);
   
-  // If intro already seen, send to the next step (Welcome Tour)
+  // If intro already seen, send to the next step (Buddy Selection)
   if (hasSeenIntro(studentId) && !allowReturn) {
-    return <Navigate to="/student/onboarding/welcome-tour" replace />;
+    return <Navigate to="/student/onboarding/buddy" replace />;
   }
   // Otherwise, render the Intro screen
   return children ?? null;

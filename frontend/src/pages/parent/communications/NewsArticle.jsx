@@ -4,7 +4,6 @@ import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { Spin, Tag, Empty, Button, Typography, message } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import BottomTabBar from "@/components/parent/BottomTabBar";
-import PlainBackground from "@/components/layouts/PlainBackground";
 import api from "@/api/axios";
 
 const { Text, Title } = Typography;
@@ -202,7 +201,7 @@ export default function NewsArticle() {
   };
 
   return (
-    <PlainBackground className="flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden">
       {/* Scrollable content area */}
       <div className="flex-1 overflow-y-auto">
         <div className="relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 py-10 pb-24">
@@ -372,6 +371,6 @@ export default function NewsArticle() {
       <div className="flex-shrink-0">
         <BottomTabBar />
       </div>
-    </PlainBackground>
+    </div>
   );
 }

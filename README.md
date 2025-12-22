@@ -10,6 +10,10 @@ Kibundo ist eine umfassende Bildungsplattform, die darauf ausgelegt ist, das Ler
 - **Mehrsprachige Unterstützung**: Vollständig auf Deutsch lokalisiert
 - **Sichere Kommunikation**: DSGVO-konforme Datenverarbeitung
 
+## 🎨 Design
+
+- **Figma**: [Kibundo Design](https://www.figma.com/design/pPMoR8IkrWf21lyT7PGFXZ/Kibundo-Design?node-id=69-8337&t=fRpa6pswFq1dP4y0-1) - UI/UX Designs und Komponenten
+
 ## 🛠️ Technologie-Stack
 
 ### Frontend

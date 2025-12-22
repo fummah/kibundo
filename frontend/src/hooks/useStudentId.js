@@ -17,7 +17,7 @@ export function useStudentId() {
 
   // If user is a student, use their own ID
   const roleId = Number(user?.role_id ?? user?.roleId ?? user?.role?.id ?? NaN);
-  const isStudent = roleId === 3 || roleId === 4; // ROLES.STUDENT or legacy role 3
+  const isStudent = roleId === 1; // ROLES.STUDENT = 1
 
   if (isStudent) {
     return user?.id || user?.user_id || null;

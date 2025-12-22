@@ -8,9 +8,9 @@ import api from "@/api/axios";
 import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
 import { useAuthContext } from "@/context/AuthContext";
 import { INTRO_LS_KEY, TOUR_LS_KEY } from "@/pages/student/onboarding/introFlags";
-import CircularBackground from "@/components/layouts/CircularBackground";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const BUNDESLAENDER = [
   "Baden-Württemberg",
@@ -69,7 +69,7 @@ export default function SignUp() {
   const [form] = Form.useForm();
 
   const inputClass =
-    "h-12 w-full rounded-2xl border border-[#E9DED2] bg-white px-4 text-base text-[#4F3A2D] placeholder:text-[#BCB1A8] shadow-[0_6px_16px_rgba(87,60,42,0.08)] focus:border-[#FF9A36] focus:shadow-[0_10px_24px_rgba(255,154,54,0.28)] transition";
+    "h-12 w-full rounded-[12px] border border-[#C9B7A7] bg-white px-4 text-base text-[#4F3A2D] placeholder:text-[rgba(0,0,0,0.3)] shadow-sm focus:border-[#C9B7A7] focus:shadow-md transition";
 
   const bundeslandOptions = useMemo(
     () =>
@@ -169,47 +169,95 @@ export default function SignUp() {
   };
 
   return (
-    <CircularBackground>
-      <Toaster position="top-center" />
-
-      <div className="w-full max-w-[600px] md:max-w-[800px] h-screen flex flex-col overflow-hidden mx-auto">
-        {/* Back button + centered title */}
-        <div className="mb-4 flex items-center flex-shrink-0 pt-2">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F4E3D3] shadow-[0_4px_10px_rgba(87,60,42,0.18)]"
-          >
-            <LeftOutlined className="text-base text-[#4F3A2D]" />
-          </button>
-          <div className="flex-1">
-            <Title
-              level={2}
-              className="m-0 text-center font-semibold !text-[#4F3A2D] text-xl md:text-2xl"
-            >
-              Registrieren
-            </Title>
-          </div>
+    <div className="flex justify-center bg-white overflow-hidden min-h-screen w-full relative">
+      <div
+        className="relative w-full"
+        style={{
+          maxWidth: "1280px",
+          minHeight: "100vh",
+          boxSizing: "border-box",
+          background: "#FFFFFF",
+          margin: "0 auto",
+        }}
+      >
+        <div className="absolute inset-0 pointer-events-none">
+          <img
+            src={globalBg}
+            alt="Background"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
         </div>
 
-        <div className="flex-1 overflow-y-auto pr-2 -mr-2">
+        <Toaster position="top-center" />
+
+        <div
+          className="relative z-10 w-full"
+          style={{ maxWidth: "752px", margin: "0 auto", padding: "75px 24px 24px" }}
+        >
+          {/* Back button + title row */}
+          <div
+            style={{
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: "32px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              style={{
+                position: "absolute",
+                left: 0,
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                background: "#D9D9D9",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <LeftOutlined style={{ color: "#544C3B", fontSize: 18 }} />
+            </button>
+
+            <h1
+              style={{
+                fontFamily: "Nunito",
+                fontWeight: 900,
+                fontSize: "45px",
+                lineHeight: "1.364",
+                letterSpacing: "2%",
+                textAlign: "left",
+                color: "#544C3B",
+                margin: 0,
+              }}
+            >
+              Registrieren
+            </h1>
+          </div>
+
           <Form
             form={form}
             onFinish={handleFinish}
             autoComplete="off"
             requiredMark={false}
             layout="vertical"
-            className="space-y-0 pb-4"
+            className="space-y-0 pb-4 mx-auto"
             colon={false}
+            style={{ maxWidth: "350px" }}
           >
           <Form.Item
             name="first_name"
             rules={[{ required: true, message: "Bitte geben Sie Ihren Vornamen ein" }]}
-            className="mb-3"
-            label={<span className="hidden">Vorname</span>}
+            className="mb-4"
+            label={<span className="hidden">Vorname Elternteil</span>}
           >
             <Input
-              placeholder="Vorname"
+              placeholder="Vorname Elternteil"
               autoComplete="given-name"
               disabled={loading}
               className={inputClass}
@@ -219,11 +267,11 @@ export default function SignUp() {
           <Form.Item
             name="last_name"
             rules={[{ required: true, message: "Bitte geben Sie Ihren Nachnamen ein" }]}
-            className="mb-3"
-            label={<span className="hidden">Nachname</span>}
+            className="mb-4"
+            label={<span className="hidden">Nachname Elternteil</span>}
           >
             <Input
-              placeholder="Nachname"
+              placeholder="Nachname Elternteil"
               autoComplete="family-name"
               disabled={loading}
               className={inputClass}
@@ -233,7 +281,7 @@ export default function SignUp() {
           <Form.Item
             name="bundesland"
             rules={[{ required: false }]}
-            className="mb-3"
+            className="mb-4"
             label={<span className="hidden">Bundesland (fakultativ)</span>}
           >
             <div className={`${inputClass} flex items-center !px-0`}>
@@ -257,7 +305,7 @@ export default function SignUp() {
               { required: true, message: "E-Mail ist erforderlich" },
               { type: "email", message: "Ungültige E-Mail-Adresse" },
             ]}
-            className="mb-1"
+            className="mb-2"
             label={<span className="hidden">E-Mail</span>}
           >
             <Input
@@ -271,7 +319,7 @@ export default function SignUp() {
             />
           </Form.Item>
 
-          <Form.Item className="mb-3">
+          <Form.Item className="mb-4">
             <Text className="text-xs text-[#816B5B]">
               Diese E-Mail-Adresse wird auch Ihr Benutzername beim Anmelden sein.
             </Text>
@@ -286,7 +334,7 @@ export default function SignUp() {
                 message: "Das Passwort muss mindestens 6 Zeichen lang sein",
               },
             ]}
-            className="mb-3"
+            className="mb-4"
             label={<span className="hidden">Passwort</span>}
           >
             <Input.Password
@@ -360,14 +408,32 @@ export default function SignUp() {
             </Checkbox>
           </Form.Item>
 
-          <div className="mt-6 text-center text-sm font-medium text-[#816B5B] tracking-wide">
+          <div className="mt-2 text-center text-sm font-medium text-[#816B5B] tracking-wide opacity-70">
             7 Tage kostenlos testen ohne Risiko!
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="mt-5 h-14 w-full rounded-full bg-[#FF8400] text-lg font-semibold text-white shadow-[0_12px_24px_rgba(255,132,0,0.35)] transition hover:bg-[#FF7600] disabled:cursor-not-allowed disabled:opacity-80"
+            style={{
+              marginTop: "20px",
+              width: "275px",
+              height: "65px",
+              borderRadius: "32px",
+              background: "#EF7C2E",
+              boxShadow: "1px 1px 4px rgba(0,0,0,0.25)",
+              border: "none",
+              fontFamily: "Nunito",
+              fontWeight: 900,
+              fontSize: "25px",
+              color: "#FFFFFF",
+              letterSpacing: "2%",
+              cursor: "pointer",
+              display: "block",
+              marginLeft: "auto",
+              marginRight: "auto",
+              opacity: loading ? 0.8 : 1,
+            }}
           >
             {loading ? "Wird registriert..." : "Registrieren"}
           </button>
@@ -381,6 +447,6 @@ export default function SignUp() {
         </Form>
         </div>
       </div>
-    </CircularBackground>
+    </div>
   );
 }

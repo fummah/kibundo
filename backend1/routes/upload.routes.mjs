@@ -3,7 +3,7 @@ import multer from "multer";
 import { createRequire } from "module";
 import fs from "fs";
 import path from "path";
-import { handleUpload } from "../controllers/uploadController.mjs";
+import { handleUpload, createHomeworkFromText } from "../controllers/uploadController.mjs";
 
 // Import CommonJS module
 const require = createRequire(import.meta.url);
@@ -64,5 +64,8 @@ const upload = multer({
 
 // Define POST route for uploading a single file
 router.post("/",verifyToken, upload.single("file"), handleUpload);
+
+// Define POST route for creating homework from text description (no file)
+router.post("/text", verifyToken, createHomeworkFromText);
 
 export default router;

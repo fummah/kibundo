@@ -148,17 +148,22 @@ export default function ParentChat() {
         const response = await api.get(`/conversations/${conversationId}/messages`);
         
         if (response?.data && Array.isArray(response.data)) {
-          const formattedMessages = response.data.map(msg => {
+          const formattedMessages = response.data.map((msg) => {
             // Determine if this is a parent message or agent message
             // Backend stores: "parent" for parent messages, "bot" or "agent" for AI messages
-            const isParentMessage = msg.sender === "parent" || msg.sender === "user" || msg.sender === "student";
+            const isParentMessage =
+              msg.sender === "parent" || msg.sender === "user" || msg.sender === "student";
             const isBotMessage = msg.sender === "bot" || msg.sender === "agent";
-            
-            const sender = isParentMessage 
-              ? (user?.name || user?.first_name || "You") 
+          
+            const sender = isParentMessage
+              ? (user?.name || user?.first_name || "You")
               : (msg?.meta?.agentName || agentName || "Parent Assistant");
             
-            const messageType = isParentMessage ? "sent" : (isBotMessage ? "received" : "received");
+            const messageType = isParentMessage
+              ? "sent"
+              : isBotMessage
+              ? "received"
+              : "received";
             
             // Safely parse timestamp
             let timestamp = new Date();
@@ -176,8 +181,8 @@ export default function ParentChat() {
             return makeMsg({
               type: messageType,
               content: msg.content || "",
-              sender: sender,
-              timestamp: timestamp
+              sender,
+              timestamp,
             });
           });
 
@@ -275,22 +280,70 @@ export default function ParentChat() {
     try {
       // Use the fetched agent from admin settings, fallback to "ParentAgent"
       const agentToUse = selectedAgent || "ParentAgent";
+      const preferredName =
+        user?.first_name || user?.name?.split(" ")[0] || user?.name || "Parent";
+      const lastName =
+        user?.last_name || user?.family_name || null;
+      const fullName = lastName ? `${preferredName} ${lastName}` : preferredName;
       
       const { data } = await api.post("/ai/chat", { 
         question: text, 
         ai_agent: agentToUse,
         conversationId: conversationId, // 🔥 Send conversation ID for memory
-        mode: "parent" // Identify as parent chat
+        mode: "parent", // Identify as parent chat
+        // Give backend a clear hint which name to use when greeting
+        context: `The user's preferred display name is "${preferredName}". Their full name is "${fullName}". Greet and refer to them using their preferred display name, and when asked for full name or surname, use exactly this full name. Do not invent or strip any parts of it, and do not fall back to email, username, or internal IDs.`,
       });
       
       // 🔥 Update conversation ID if backend returns a new one (first message)
       if (data?.conversationId && data.conversationId !== conversationId) {
         setConversationId(data.conversationId);
       }
+
+      // Post-process answer to replace technical login/email names with the friendly name
+      const rawAnswer = data?.answer ?? "(No answer returned)";
+      let friendlyAnswer = rawAnswer;
+
+      try {
+        const emailLocalPart = user?.email ? String(user.email).split("@")[0] : null;
+        const possibleIds = [
+          user?.username,
+          user?.name,
+          emailLocalPart,
+        ].filter(Boolean);
+
+        const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+        possibleIds.forEach((id) => {
+          const re = new RegExp(escapeRegex(String(id)), "gi");
+          friendlyAnswer = friendlyAnswer.replace(re, preferredName);
+        });
+
+        // If we know a last name, fix common German sentences about full name / missing surname
+        if (lastName) {
+          const fullNamePattern = new RegExp(
+            `Ihr vollständiger Name ist\\s+${escapeRegex(preferredName)}[.。]?`,
+            "g"
+          );
+          friendlyAnswer = friendlyAnswer.replace(
+            fullNamePattern,
+            `Ihr vollständiger Name ist ${fullName}.`
+          );
+
+          const noSurnamePattern = /Im aktuellen Datenbank-Snapshot ist kein Nachname für Sie angegeben\./g;
+          friendlyAnswer = friendlyAnswer.replace(
+            noSurnamePattern,
+            `Ihr Nachname ist ${lastName}.`
+          );
+        }
+      } catch {
+        // If anything goes wrong, just fall back to raw answer
+        friendlyAnswer = rawAnswer;
+      }
       
       return { 
         ok: true, 
-        answer: data?.answer ?? "(No answer returned)",
+        answer: friendlyAnswer,
         agentName: data?.agentName ?? agentName,
         conversationId: data?.conversationId || conversationId
       };

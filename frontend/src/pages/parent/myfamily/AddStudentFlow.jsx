@@ -307,35 +307,70 @@ export default function AddStudentFlow() {
   }
 
   const inputClass =
-    "h-11 sm:h-12 w-full rounded-2xl border border-[#E9DED2] bg-white px-3 sm:px-4 text-sm sm:text-base text-[#4F3A2D] placeholder:text-[#BCB1A8] shadow-[0_6px_16px_rgba(87,60,42,0.08)] focus:border-[#FF9A36] focus:shadow-[0_10px_24px_rgba(255,154,54,0.28)] transition";
+    "h-11 sm:h-12 w-full rounded-[12px] border border-[#C9B7A7] bg-white px-4 text-base text-[#4F3A2D] placeholder:text-[rgba(0,0,0,0.3)] shadow-sm focus:border-[#C9B7A7] focus:shadow-md transition";
 
   return (
     <CircularBackground>
-      <div className="flex flex-col items-center w-full px-4 sm:px-6 md:px-8">
-        {/* Back button and title */}
-        <div className="w-full max-w-7xl mb-4 sm:mb-6">
-          <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6">
-            <Button 
-              type="text" 
-              icon={<LeftOutlined />} 
+      <div
+        className="relative z-10 w-full"
+        style={{ maxWidth: "752px", margin: "0 auto", padding: "75px 24px 24px" }}
+      >
+          {/* Back button and title row */}
+          <div
+            style={{
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: "32px",
+            }}
+          >
+            <button
+              type="button"
               onClick={() => navigate("/parent/home")}
-              className="!p-0 !h-auto text-neutral-700"
-            />
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-neutral-800 mb-0">
-              Schülerdetails
+              style={{
+                position: "absolute",
+                left: 0,
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                background: "#D9D9D9",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <LeftOutlined style={{ color: "#544C3B", fontSize: 18 }} />
+            </button>
+
+            <h1
+              style={{
+                fontFamily: "Nunito",
+                fontWeight: 900,
+                fontSize: "50px",
+                lineHeight: "68px",
+                letterSpacing: "2%",
+                textAlign: "left",
+                color: "#544C3B",
+                margin: 0,
+              }}
+            >
+              {t("parent.addStudent.title", "Schülerdetails")}
             </h1>
           </div>
 
-        {/* ---------- Step 0: Form ---------- */}
-        {step === 0 && (
-          <div className="w-full max-w-7xl !pb-5" style={{ paddingBottom: '20px' }}>
+          {/* ---------- Step 0: Form ---------- */}
+          {step === 0 && (
             <Form
               key="add-student-step2"
               layout="vertical"
               requiredMark={false}
               onFinish={onCreate}
-              className="space-y-0 pb-0"
+              className="space-y-0 pb-0 mx-auto"
               colon={false}
+              style={{ maxWidth: "350px" }}
             >
               <Form.Item
                 name="first_name"
@@ -343,26 +378,11 @@ export default function AddStudentFlow() {
                   { required: true, message: t("errors.required", "This field is required.") },
                   { min: 2, message: t("errors.minChars", { n: 2 }) },
                 ]}
-                className="mb-3"
+                className="mb-4"
                 label={<span className="hidden">First Name</span>}
               >
                 <Input 
                   placeholder="Vorname"
-                  className={inputClass}
-                />
-              </Form.Item>
-
-              <Form.Item
-                name="last_name"
-                rules={[
-                  { required: true, message: t("errors.required", "This field is required.") },
-                  { min: 2, message: t("errors.minChars", { n: 2 }) },
-                ]}
-                className="mb-3"
-                label={<span className="hidden">Last Name</span>}
-              >
-                <Input 
-                  placeholder="Nachname"
                   className={inputClass}
                 />
               </Form.Item>
@@ -381,7 +401,7 @@ export default function AddStudentFlow() {
                     },
                   },
                 ]}
-                className="mb-3"
+                className="mb-4"
                 label={<span className="hidden">Age</span>}
               >
                 <Input 
@@ -396,7 +416,7 @@ export default function AddStudentFlow() {
               <Form.Item
                 name="class_id"
                 rules={[{ required: true, message: t("errors.required", "This field is required.") }]}
-                className="mb-3"
+                className="mb-4"
                 label={<span className="hidden">Class</span>}
               >
                 <Select
@@ -420,7 +440,7 @@ export default function AddStudentFlow() {
               <Form.Item
                 name="state"
                 rules={[{ required: true, message: t("errors.required", "This field is required.") }]}
-                className="mb-3"
+                className="mb-4"
                 label={<span className="hidden">State</span>}
               >
                 <Select
@@ -442,37 +462,43 @@ export default function AddStudentFlow() {
 
               <Form.Item
                 name="school"
-                className="mb-0"
+                className="mb-6"
                 label={<span className="hidden">School (Optional)</span>}
               >
                 <Input 
-                  placeholder="Schulname eingeben (fakultativ)"
+                  placeholder="Schulname"
                   className={inputClass}
                 />
               </Form.Item>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-4 sm:gap-3 mt-12 sm:mt-16">
-                <Button 
-                  onClick={() => navigate("/parent/home")}
-                  className="h-12 px-4 sm:px-6 rounded-2xl text-sm sm:text-base order-2 sm:order-1"
+              <div className="flex flex-col items-center gap-4 mt-10">
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  style={{
+                    width: "275px",
+                    height: "65px",
+                    borderRadius: "32px",
+                    background: "#EF7C2E",
+                    boxShadow: "1px 1px 4px rgba(0,0,0,0.25)",
+                    border: "none",
+                    fontFamily: "Nunito",
+                    fontWeight: 900,
+                    fontSize: "25px",
+                    color: "#FFFFFF",
+                    letterSpacing: "2%",
+                    cursor: "pointer",
+                    opacity: submitting ? 0.7 : 1,
+                  }}
                 >
-                  {t("common.cancel", "Cancel")}
-                </Button>
-                <Button 
-                  type="primary" 
-                  htmlType="submit" 
-                  loading={submitting}
-                  className="h-12 px-4 sm:px-6 rounded-2xl !bg-[#FF9A36] hover:!bg-[#FF8A1A] border-none text-sm sm:text-base order-1 sm:order-2"
-                >
-                  Erstellen
-                </Button>
+                  {submitting ? t("common.loading", "Bitte warten...") : "Erstellen"}
+                </button>
               </div>
             </Form>
-          </div>
-        )}
+          )}
 
-        {/* ---------- Step 1: Success ---------- */}
-        {step === 1 && (
+          {/* ---------- Step 1: Success ---------- */}
+          {step === 1 && (
           <div className="w-full max-w-7xl flex flex-col items-center text-center">
             <CheckCircleFilled className="text-emerald-500 mb-4" style={{ fontSize: "80px" }} />
             <Title level={3} className="!mb-2">
@@ -505,7 +531,6 @@ export default function AddStudentFlow() {
           </div>
         )}
         </div>
-      </div>
       
       {/* Custom styles for Select components */}
       <style>{`

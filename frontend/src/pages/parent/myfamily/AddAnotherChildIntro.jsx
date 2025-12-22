@@ -1,10 +1,8 @@
 // src/pages/parent/myfamily/AddAnotherChildIntro.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { PlusOutlined } from "@ant-design/icons";
+import { PlusOutlined, LeftOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
-
-// ParentShell is now handled at route level
 import CircularBackground from "@/components/layouts/CircularBackground";
 import buddyImg from "@/assets/buddies/kibundo-buddy.png";
 
@@ -14,80 +12,171 @@ export default function AddAnotherChildIntro() {
 
   return (
     <CircularBackground>
-      {/* Buddy - positioned in bottom half */}
       <div
-        className="absolute left-1/2 -translate-x-1/2 z-[4]"
-        style={{ 
-          bottom: 'calc(50% - 60px)'
-        }}
+        className="relative z-10 w-full"
+        style={{ maxWidth: "752px", margin: "0 auto", padding: "75px 24px 24px" }}
       >
-        <img
-          src={buddyImg}
-          alt="Kibundo Buddy"
-          width={120}
-          height={120}
-          className="mx-auto drop-shadow-[0_18px_32px_rgba(0,0,0,0.18)] select-none"
-          draggable={false}
-        />
-      </div>
-
-      {/* Content at the bottom feet of the buddy */}
-      <div className="flex flex-col items-center text-center px-4 sm:px-6 w-full" style={{ marginTop: 'calc(50vh + 60px)' }}>
-        {/* Header */}
-        <h2 className="text-center text-[16px] font-extrabold text-neutral-800 mt-6">
-          {t("parent.addChild.intro.kicker", "Los geht's")}
-        </h2>
-
-        {/* Headline */}
-        <h1 className="mt-4 sm:mt-6 text-center font-extrabold leading-tight text-xl sm:text-[28px] md:text-[34px] text-lime-700">
-          {t("parent.addChild.more.headline", "Weiteres Kind anlegen")}
-        </h1>
-
-        {/* Copy (16px) */}
-        <div className="mx-auto mt-3 max-w-[640px] text-center text-sm sm:text-[15px] md:text-[16px] text-neutral-600 space-y-1">
-          <p>
-            {t(
-              "parent.addChild.more.copy1",
-              "Du kannst mehrere Kinder anlegen."
-            )}
-          </p>
-          <p>
-            {t(
-              "parent.addChild.more.copy2",
-              "Das Hinzufügen ist jederzeit auch nachträglich möglich."
-            )}
-          </p>
-        </div>
-
-        {/* Primary CTA (card style) - Add another child */}
-        <div className="mt-7 flex justify-center w-full">
-          <button
-            type="button"
-            onClick={() => navigate("/parent/myfamily/add-student-flow?step=0")}
-            className="group w-full max-w-[600px] md:max-w-[800px] rounded-[20px] bg-white shadow-[0_14px_36px_rgba(0,0,0,0.12)] ring-1 ring-black/5 px-6 py-5 transition active:scale-[0.995] hover:shadow-[0_18px_48px_rgba(0,0,0,0.14)]"
+          {/* Back button + title row */}
+          <div
+            style={{
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: "32px",
+            }}
           >
-            <div className="flex items-center gap-4 justify-center">
-              <span className="grid h-12 w-12 place-items-center rounded-full bg-gradient-to-b from-[#ffa64d] to-[#ff7a1a] text-white shadow-[0_10px_18px_rgba(255,122,26,0.35)]">
-                <PlusOutlined className="text-xl" />
-              </span>
-              <span className="text-[18px] md:text-[20px] font-extrabold text-orange-600 group-hover:text-orange-700">
-                {t("parent.addChild.more.cta", "Weiteres Kind hinzufügen")}
-              </span>
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              style={{
+                position: "absolute",
+                left: 0,
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                background: "#D9D9D9",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <LeftOutlined style={{ color: "#544C3B", fontSize: 18 }} />
+            </button>
+
+            <h1
+              style={{
+                fontFamily: "Nunito",
+                fontWeight: 900,
+                fontSize: "50px",
+                lineHeight: "68px",
+                letterSpacing: "2%",
+                textAlign: "center",
+                color: "#544C3B",
+                margin: 0,
+              }}
+            >
+              {t("parent.addChild.more.title", "Los geht‘s")}
+            </h1>
+          </div>
+
+          {/* Kibundo illustration */}
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "32px" }}>
+            <img
+              src={buddyImg}
+              alt="Kibundo Buddy"
+              style={{ width: "191px", height: "375px", objectFit: "contain" }}
+              draggable={false}
+            />
+          </div>
+
+          {/* Headline and copy */}
+          <div style={{ textAlign: "center", marginBottom: "32px" }}>
+            <div
+              style={{
+                fontFamily: "Nunito",
+                fontWeight: 900,
+                fontSize: "35px",
+                lineHeight: "1.364",
+                color: "#87A01D",
+                marginBottom: "12px",
+              }}
+            >
+              {t("parent.addChild.more.headline", "Weiteres Kind anlegen")}
             </div>
-          </button>
-        </div>
+            <p
+              style={{
+                fontFamily: "Nunito",
+                fontWeight: 400,
+                fontSize: "18px",
+                lineHeight: "1.364",
+                color: "#000000",
+                maxWidth: "476px",
+                margin: "0 auto",
+              }}
+            >
+              {t(
+                "parent.addChild.more.copy",
+                "Du kannst für mehrere Kinder Konten hinzufügen. Das Hinzufügen ist jederzeit auch nachträglich möglich. Für jedes weitere Kind erhälst Du eine Vergünstigung."
+              )}
+            </p>
+          </div>
 
-        {/* Secondary CTA (Skip) */}
-        <div className="mt-4 flex justify-center w-full">
-          <button
-            type="button"
-            onClick={() => navigate("/parent/home")}
-            className="w-full max-w-[600px] md:max-w-[800px] h-12 rounded-full bg-[#ff7a1a] text-white font-semibold shadow-[0_10px_24px_rgba(255,122,26,0.35)] active:scale-[0.995] transition hover:bg-[#e86d18]"
-          >
-            {t("parent.addChild.more.skip", "Skip")}
-          </button>
+          {/* Primary CTA card - Kind hinzufügen */}
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "32px" }}>
+            <button
+              type="button"
+              onClick={() => navigate("/parent/myfamily/add-student-flow?step=0")}
+              style={{
+                position: "relative",
+                width: "260px",
+                height: "165px",
+                borderRadius: "16px",
+                background: "rgba(255,255,255,0.25)",
+                border: "2px dashed #FFFFFF",
+                boxShadow: "1.5px 1.5px 6px rgba(0,0,0,0.25)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <div
+                style={{
+                  width: "72px",
+                  height: "72px",
+                  borderRadius: "50%",
+                  background: "#EF7C2E",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "1.5px 1.5px 6px rgba(0,0,0,0.25)",
+                  marginBottom: "16px",
+                }}
+              >
+                <PlusOutlined style={{ color: "#FFFFFF", fontSize: 28 }} />
+              </div>
+              <div
+                style={{
+                  fontFamily: "Nunito",
+                  fontWeight: 900,
+                  fontSize: "25px",
+                  lineHeight: "1.364",
+                  color: "#544C3B",
+                }}
+              >
+                {t("parent.addChild.more.cta", "Kind hinzufügen")}
+              </div>
+            </button>
+          </div>
+
+          {/* Secondary CTA - Überspringen */}
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <button
+              type="button"
+              onClick={() => navigate("/parent/home")}
+              style={{
+                width: "275px",
+                height: "65px",
+                borderRadius: "32px",
+                background: "#EF7C2E",
+                boxShadow: "1px 1px 4px rgba(0,0,0,0.25)",
+                border: "none",
+                fontFamily: "Nunito",
+                fontWeight: 900,
+                fontSize: "25px",
+                letterSpacing: "2%",
+                color: "#FFFFFF",
+                cursor: "pointer",
+              }}
+            >
+              {t("parent.addChild.more.skip", "Überspringen")}
+            </button>
+          </div>
         </div>
-      </div>
     </CircularBackground>
   );
 }

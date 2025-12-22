@@ -21,6 +21,21 @@ import { useAuthContext } from "@/context/AuthContext";
 import { useStudentApp } from "@/context/StudentAppContext";
 import api from "@/api/axios";
 
+// Helper to safely use StudentApp context (returns null if not available)
+const useStudentAppSafe = () => {
+  try {
+    return useStudentApp();
+  } catch (error) {
+    // If provider is not available, return a safe default
+    return {
+      setProfile: () => {}, // No-op function
+      profile: { name: "", ttsEnabled: true, theme: "indigo" },
+      buddy: null,
+      interests: [],
+    };
+  }
+};
+
 const { useBreakpoint } = Grid;
 const { Title, Text } = Typography;
 
@@ -41,7 +56,7 @@ export default function CreateProfile() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { setProfile } = useStudentApp();
+  const { setProfile } = useStudentAppSafe();
   const [selected, setSelected] = useState(null);
   const [saving, setSaving] = useState(false);
   const screens = useBreakpoint();
@@ -113,7 +128,7 @@ export default function CreateProfile() {
     }
     
     // Navigate to interests selection after avatar selection
-    navigate("/student/onboarding/interests");
+    navigate("/student/onboarding/robot-vs-magic");
   };
 
   // --- styles

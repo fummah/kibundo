@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 import BackButton from "@/components/student/common/BackButton.jsx";
 import GreetingBanner from "@/components/student/common/GreetingBanner.jsx";
-import { ChatStripSpacer } from "@/components/student/mobile/FooterChat";
+// ChatStripSpacer removed - not needed
 
 import { fetchReadingQuiz } from "@/api/reading.js";
 import { useTaskTimer } from "@/hooks/useTaskTimer.js";
@@ -219,7 +219,6 @@ export default function ReadingQuizFlow() {
       )}
 
       {/* Keep content above the chat footer across all views */}
-      <ChatStripSpacer />
     </div>
   );
 }

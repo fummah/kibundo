@@ -282,13 +282,28 @@ export const handleUpload = async (req, res) => {
           }
         } else if (userRoleId === 1) {
           // User is a student - verify it's their own student_id
+          console.log("🔍 Verifying student ownership: student_id=", studentId, "user_id=", userId);
           const studentCheck = await pool.query(
-            "SELECT id FROM students WHERE id = $1 AND user_id = $2 LIMIT 1",
-            [studentId, userId]
+            "SELECT id, user_id FROM students WHERE id = $1 LIMIT 1",
+            [studentId]
           );
           if (!studentCheck.rows[0]) {
-            return res.status(403).json({ error: "Student ID does not match logged-in user" });
+            console.error("❌ Student not found with id:", studentId);
+            return res.status(403).json({ error: "Student ID not found" });
           }
+          const studentUserId = studentCheck.rows[0].user_id;
+          if (studentUserId !== userId) {
+            console.error("❌ Student ID mismatch: student.user_id=", studentUserId, "logged_in_user_id=", userId);
+            return res.status(403).json({ 
+              error: "Student ID does not match logged-in user",
+              details: {
+                provided_student_id: studentId,
+                student_user_id: studentUserId,
+                logged_in_user_id: userId
+              }
+            });
+          }
+          console.log("✅ Student ownership verified");
         }
       } else {
         return res.status(400).json({ error: "Invalid student_id provided" });
@@ -371,14 +386,59 @@ export const handleUpload = async (req, res) => {
       }
     }
 
-    // Save scan record (always create a new scan for the new image)
-    const scanRes = await pool.query(
-      `INSERT INTO homework_scans(student_id, raw_text, file_url, grade, created_by)
-       VALUES($1, $2, $3, $4, $5) RETURNING *`,
-      [studentId || null, null, fileUrl, gradeValue, userId ? String(userId) : null]
-    );
-    scan = scanRes.rows[0];
-    scanId = scan.id;
+    // Save scan record - update existing scan if scanId provided, otherwise create new
+    const finalStudentId = studentId || null;
+    
+    if (existingScanId && !isNaN(existingScanId) && previousScan) {
+      // Update existing scan with new image
+      console.log("💾 Updating existing scan:", existingScanId, "with new fileUrl:", fileUrl);
+      const updateRes = await pool.query(
+        `UPDATE homework_scans 
+         SET file_url = $1, grade = $2, processed_at = NULL
+         WHERE id = $3 RETURNING *`,
+        [fileUrl, gradeValue, existingScanId]
+      );
+      if (updateRes.rows.length > 0) {
+        scan = updateRes.rows[0];
+        scanId = scan.id;
+        console.log("✅ Scan updated successfully - scan.id:", scan.id, "scan.student_id:", scan.student_id, "(type:", typeof scan.student_id, ")");
+      } else {
+        console.warn("⚠️ Could not update scan, creating new one instead");
+        // Fall through to create new scan
+        const scanRes = await pool.query(
+          `INSERT INTO homework_scans(student_id, raw_text, file_url, grade, created_by)
+           VALUES($1, $2, $3, $4, $5) RETURNING *`,
+          [finalStudentId, null, fileUrl, gradeValue, userId ? String(userId) : null]
+        );
+        scan = scanRes.rows[0];
+        scanId = scan.id;
+        console.log("✅ Scan saved successfully - scan.id:", scan.id, "scan.student_id:", scan.student_id, "(type:", typeof scan.student_id, ")");
+      }
+    } else {
+      // Create new scan
+      console.log("💾 Creating new scan with student_id:", finalStudentId, "(type:", typeof finalStudentId, "), fileUrl:", fileUrl, "grade:", gradeValue);
+      console.log("💾 INSERT values:", {
+        student_id: finalStudentId,
+        raw_text: null,
+        file_url: fileUrl,
+        grade: gradeValue,
+        created_by: userId ? String(userId) : null
+      });
+      
+      const scanRes = await pool.query(
+        `INSERT INTO homework_scans(student_id, raw_text, file_url, grade, created_by)
+         VALUES($1, $2, $3, $4, $5) RETURNING *`,
+        [finalStudentId, null, fileUrl, gradeValue, userId ? String(userId) : null]
+      );
+      scan = scanRes.rows[0];
+      scanId = scan.id;
+      console.log("✅ Scan saved successfully - scan.id:", scan.id, "scan.student_id:", scan.student_id, "(type:", typeof scan.student_id, ")");
+    }
+    
+    // Verify the saved student_id matches what we intended
+    if (finalStudentId !== null && scan.student_id !== finalStudentId) {
+      console.error("❌ MISMATCH: Intended student_id:", finalStudentId, "but saved student_id:", scan.student_id);
+    }
 
     // Use existing conversation if provided, otherwise create new one
     if (conversationId && !isNaN(conversationId)) {
@@ -714,9 +774,16 @@ export const handleUpload = async (req, res) => {
       );
     }
 
-    // Include task_type in response
+    // Fetch the updated scan from database to include all updated fields (detected_subject, raw_text, etc.)
+    const updatedScanRes = await pool.query(
+      `SELECT * FROM homework_scans WHERE id = $1 LIMIT 1`,
+      [scan.id]
+    );
+    const updatedScan = updatedScanRes.rows[0] || scan;
+    
+    // Include task_type and all updated fields in response
     const responseScan = {
-      ...scan,
+      ...updatedScan,
       task_type: detectedTaskType,
     };
     
@@ -745,5 +812,163 @@ export const handleUpload = async (req, res) => {
       ...(process.env.NODE_ENV === "development" && { stack: err.stack })
     };
     res.status(500).json(errorDetails);
+  }
+};
+
+// ✅ Create homework from text description (no image)
+export const createHomeworkFromText = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const userRoleId = req.user?.role_id;
+    const { description, student_id } = req.body;
+
+    if (!description || !description.trim()) {
+      return res.status(400).json({ error: "Homework description is required" });
+    }
+
+    // Get student_id
+    let studentId = student_id ? parseInt(student_id, 10) : null;
+    if (isNaN(studentId)) studentId = null;
+    let classId = null;
+
+    if (studentId && !isNaN(studentId)) {
+      // Use provided student_id and fetch class_id
+      const studentRes = await pool.query(
+        "SELECT id, class_id FROM students WHERE id = $1 LIMIT 1",
+        [studentId]
+      );
+      const studentRow = studentRes.rows[0] || {};
+      if (studentRow.id) {
+        classId = studentRow.class_id || null;
+        // Verify the student belongs to the user
+        if (userRoleId === 2) {
+          // User is a parent - verify student is their child
+          const parentRes = await pool.query(
+            "SELECT id FROM parents WHERE user_id = $1 LIMIT 1",
+            [userId]
+          );
+          if (parentRes.rows[0]) {
+            const parentId = parentRes.rows[0].id;
+            const childCheck = await pool.query(
+              "SELECT id FROM students WHERE id = $1 AND parent_id = $2 LIMIT 1",
+              [studentId, parentId]
+            );
+            if (!childCheck.rows[0]) {
+              return res.status(403).json({ error: "Student does not belong to this parent" });
+            }
+          }
+        } else if (userRoleId === 1) {
+          // User is a student - verify it's their own student_id
+          const studentCheck = await pool.query(
+            "SELECT id, user_id FROM students WHERE id = $1 LIMIT 1",
+            [studentId]
+          );
+          if (!studentCheck.rows[0]) {
+            return res.status(403).json({ error: "Student ID not found" });
+          }
+          const studentUserId = studentCheck.rows[0].user_id;
+          if (studentUserId !== userId) {
+            return res.status(403).json({ error: "Student ID does not match logged-in user" });
+          }
+        }
+      } else {
+        return res.status(400).json({ error: "Invalid student_id provided" });
+      }
+    } else {
+      // Fallback: Find student by user_id
+      const studentRes = await pool.query(
+        "SELECT id, class_id FROM students WHERE user_id = $1 LIMIT 1",
+        [userId]
+      );
+      const studentRow = studentRes.rows[0] || {};
+      studentId = studentRow.id || null;
+      classId = studentRow.class_id || null;
+      
+      // If no student found and user is a parent, try to get first child
+      if (!studentId && userRoleId === 2) {
+        const parentRes = await pool.query(
+          "SELECT id FROM parents WHERE user_id = $1 LIMIT 1",
+          [userId]
+        );
+        if (parentRes.rows[0]) {
+          const parentId = parentRes.rows[0].id;
+          const childRes = await pool.query(
+            "SELECT id, class_id FROM students WHERE parent_id = $1 ORDER BY id LIMIT 1",
+            [parentId]
+          );
+          if (childRes.rows[0]) {
+            studentId = childRes.rows[0].id;
+            classId = childRes.rows[0].class_id || null;
+          }
+        }
+      }
+    }
+
+    if (!studentId) {
+      return res.status(400).json({ error: "Could not determine student ID" });
+    }
+
+    await ensureGradeColumnIsText();
+
+    let gradeValue = null;
+    if (classId) {
+      try {
+        const classRes = await pool.query(
+          "SELECT class_name FROM classes WHERE id = $1 LIMIT 1",
+          [classId]
+        );
+        const className = classRes.rows[0]?.class_name;
+        gradeValue = className || String(classId);
+      } catch (gradeErr) {
+        console.warn("⚠️ Could not resolve class name for class_id:", classId, gradeErr.message);
+        gradeValue = String(classId);
+      }
+    }
+
+    // Create homework scan entry with text description (no file)
+    const scanRes = await pool.query(
+      `INSERT INTO homework_scans(student_id, raw_text, file_url, grade, created_by)
+       VALUES($1, $2, $3, $4, $5) RETURNING *`,
+      [studentId, description.trim(), null, gradeValue, String(userId)]
+    );
+    const scan = scanRes.rows[0];
+
+    // Try to detect subject from description using OpenAI
+    try {
+      const openai = getOpenAIClient();
+      const subjectPrompt = `Bestimme das Fach (Subject) für diese Hausaufgabe. Antworte nur mit einem Wort: "Mathe", "Deutsch", oder "Sonstiges".\n\nHausaufgabe: ${description.substring(0, 200)}`;
+      
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "Du bist ein Assistent, der das Fach einer Hausaufgabe bestimmt. Antworte nur mit einem Wort: Mathe, Deutsch, oder Sonstiges." },
+          { role: "user", content: subjectPrompt }
+        ],
+        max_tokens: 10,
+        temperature: 0.3
+      });
+
+      const detectedSubject = completion.choices[0]?.message?.content?.trim() || null;
+      if (detectedSubject && ["Mathe", "Deutsch", "Sonstiges"].includes(detectedSubject)) {
+        await pool.query(
+          "UPDATE homework_scans SET detected_subject = $1 WHERE id = $2",
+          [detectedSubject, scan.id]
+        );
+        scan.detected_subject = detectedSubject;
+      }
+    } catch (aiErr) {
+      console.warn("⚠️ Could not detect subject:", aiErr.message);
+    }
+
+    res.json({ 
+      success: true, 
+      scan: {
+        ...scan,
+        detected_subject: scan.detected_subject || null
+      }
+    });
+  } catch (error) {
+    console.error("❌ Error creating homework from text:", error);
+    res.status(500).json({ error: error.message || "Error creating homework entry" });
   }
 };

@@ -3,14 +3,14 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
 import { Input, Button, Typography } from "antd";
-import { UserOutlined, LockOutlined } from "@ant-design/icons";
+import { UserOutlined, LockOutlined, LeftOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { useAuthContext } from "@/context/AuthContext";
 import { ROLE_PATHS, ROLES } from "@/utils/roleMapper";
 import api from "@/api/axios";
 import heroImage from "@/assets/onboarding-dino.png";
+import globalBg from "@/assets/backgrounds/global-bg.png";
 import useEnsureGerman from "@/hooks/useEnsureGerman.js";
-import CircularBackground from "@/components/layouts/CircularBackground";
 import {
   hasSeenIntro,
   hasDoneTour,
@@ -111,74 +111,199 @@ export default function SignIn() {
   const goForgot = () => navigate("/forgot-password");
 
   return (
-    <CircularBackground>
-      <Toaster position="top-center" />
-
-      <div className="flex min-h-screen flex-col items-center justify-between w-full">
-        <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
+    <div className="flex justify-center bg-white overflow-hidden min-h-screen w-full relative">
+      <div
+        className="relative w-full"
+        style={{
+          maxWidth: "1280px",
+          minHeight: "100vh",
+          margin: "0 auto",
+          boxSizing: "border-box",
+          background: "#FFFFFF",
+        }}
+      >
+        <div className="absolute inset-0 pointer-events-none">
           <img
-            src={heroImage}
-            alt="Kibundo Buddy"
-            style={{ width: "201px", height: "412px" }}
-            className="drop-shadow-[0_12px_30px_rgba(0,0,0,0.12)]"
+            src={globalBg}
+            alt="Background"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
           />
-          <div className="space-y-3">
-            <Title
-              level={1}
-              className="!m-0 text-4xl font-bold tracking-[0.08em] md:text-5xl"
-              style={{ color: "#FF7F32", fontSize: "60px" }}
+        </div>
+
+        <Toaster position="top-center" />
+
+        <div
+          className="relative z-10 w-full"
+          style={{ maxWidth: "752px", margin: "0 auto", padding: "75px 24px 24px" }}
+        >
+          {/* Back button */}
+          <button
+            type="button"
+            onClick={() => navigate("/", { replace: true })}
+            style={{
+              position: "absolute",
+              left: 48,
+              top: 48,
+              width: "48px",
+              height: "48px",
+              borderRadius: "50%",
+              background: "#D9D9D9",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
+          >
+            <LeftOutlined style={{ color: "#544C3B", fontSize: 18 }} />
+          </button>
+
+          {/* Title */}
+          <div
+            style={{
+              marginBottom: "32px",
+              textAlign: "center",
+            }}
+          >
+            <h1
+              style={{
+                fontFamily: "Nunito",
+                fontWeight: 900,
+                fontSize: "45px",
+                lineHeight: "1.364",
+                letterSpacing: "2%",
+                textAlign: "center",
+                color: "#544C3B",
+                margin: 0,
+              }}
             >
-              Kibundo
-            </Title>
+              Anmelden
+            </h1>
+          </div>
+
+          {/* Kibundo image in center (like Figma) */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              marginBottom: "24px",
+            }}
+          >
+            <div
+              style={{
+                width: "178px",
+                height: "350px",
+                borderRadius: "16px",
+                overflow: "hidden",
+              }}
+            >
+              <img
+                src={heroImage}
+                alt="Kibundo"
+                style={{ width: "100%", height: "100%" }}
+              />
+            </div>
+          </div>
+
+          {/* Slogan from startscreen Figma: Hausaufgaben mit Spaß und in Deinem Tempo */}
+          <div
+            style={{
+              textAlign: "center",
+              marginBottom: "32px",
+            }}
+          >
             <Text
-              className="block text-base font-medium md:text-lg"
-              style={{ color: "#31A892" }}
+              style={{
+                fontFamily: "Nunito",
+                fontWeight: 400,
+                fontSize: "18px",
+                lineHeight: "1.364",
+                color: "#287D7F",
+              }}
             >
               Hausaufgaben mit Spaß
               <br />
               und in Deinem Tempo
             </Text>
           </div>
-        </div>
 
-        <div className="w-full max-w-[600px] md:max-w-[800px] mb-8">
-          <Title
-            level={3}
-            className="!mb-2 text-center text-2xl md:text-3xl font-semibold text-[#5A4C3A]"
-          >
-            Anmelden
-          </Title>
-          <Text className="mb-6 block text-center text-sm md:text-base text-[#8A8075]">
-            Melde dich an, um mit Kibundo weiterzulernen.
-          </Text>
+          {/* Form card like Group 17 (350px wide) */}
+          <div style={{ maxWidth: "350px", margin: "0 auto" }}>
+            <div
+              style={{
+                width: "350px",
+                height: "52px",
+                borderRadius: "12px",
+                border: "1px solid #C9B7A7",
+                background: "#FFFFFF",
+                marginBottom: "8px",
+                display: "flex",
+                alignItems: "center",
+                padding: "0 16px",
+                boxSizing: "border-box",
+              }}
+            >
+              <Input
+                size="large"
+                prefix={<UserOutlined />}
+                placeholder="E-Mail oder Benutzername"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                bordered={false}
+                style={{
+                  padding: 0,
+                  boxShadow: "none",
+                }}
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
+            </div>
 
-          <div className="space-y-4">
-            <Input
-              size="large"
-              prefix={<UserOutlined />} 
-              placeholder="E-Mail oder Benutzername"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="rounded-full border-none bg-[#F6F1E8] py-2 text-base shadow-inner transition focus:bg-white focus:shadow-md"
-              autoComplete="username"
-              autoCapitalize="none"
-              autoCorrect="off"
-            />
+            <div
+              style={{
+                width: "350px",
+                height: "52px",
+                borderRadius: "12px",
+                border: "1px solid #C9B7A7",
+                background: "#FFFFFF",
+                marginBottom: "8px",
+                display: "flex",
+                alignItems: "center",
+                padding: "0 16px",
+                boxSizing: "border-box",
+              }}
+            >
+              <Input.Password
+                size="large"
+                prefix={<LockOutlined />}
+                placeholder="Passwort"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                bordered={false}
+                style={{
+                  padding: 0,
+                  boxShadow: "none",
+                }}
+                autoComplete="current-password"
+                onPressEnter={handleSubmit}
+              />
+            </div>
 
-            <Input.Password
-              size="large"
-              prefix={<LockOutlined />}
-              placeholder="Passwort"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="rounded-full border-none bg-[#F6F1E8] py-2 text-base shadow-inner transition focus:bg-white focus:shadow-md"
-              autoComplete="current-password"
-              onPressEnter={handleSubmit}
-            />
-
-            <div className="mb-3 text-right">
+            <div
+              style={{
+                marginBottom: "16px",
+                textAlign: "right",
+              }}
+            >
               <Text
-                className="cursor-pointer text-sm font-medium text-[#FF7F32] hover:underline"
+                className="cursor-pointer"
+                style={{
+                  fontFamily: "Nunito",
+                  fontWeight: 400,
+                  fontSize: "16px",
+                  color: "#EF7C2E",
+                }}
                 onClick={goForgot}
               >
                 Passwort vergessen?
@@ -189,17 +314,41 @@ export default function SignIn() {
               type="primary"
               size="large"
               onClick={handleSubmit}
-              className="w-full rounded-full border-none bg-[#FF7F32] text-lg font-semibold tracking-wide shadow-lg transition hover:bg-[#ff6c12]"
               loading={loading}
+              style={{
+                width: "275px",
+                height: "65px",
+                borderRadius: "32px",
+                background: "#EF7C2E",
+                border: "none",
+                fontFamily: "Nunito",
+                fontWeight: 900,
+                fontSize: "25px",
+                color: "#FFFFFF",
+                letterSpacing: "2%",
+                display: "block",
+                margin: "0 auto 16px",
+              }}
             >
               {loading ? "Wird angemeldet..." : "Anmelden"}
             </Button>
 
-            <div className="text-center text-sm text-[#8A8075]">
+            <div
+              style={{
+                textAlign: "center",
+                fontFamily: "Nunito",
+                fontWeight: 400,
+                fontSize: "18px",
+                color: "#544C3B",
+              }}
+            >
               Noch kein Konto?{" "}
               <Link
                 to="/signup"
-                className="font-semibold text-[#FF7F32] hover:underline"
+                style={{
+                  fontWeight: 900,
+                  color: "#EF7C2E",
+                }}
               >
                 Registrieren
               </Link>
@@ -207,6 +356,6 @@ export default function SignIn() {
           </div>
         </div>
       </div>
-    </CircularBackground>
+    </div>
   );
 }

@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 import BackButton from "@/components/student/common/BackButton.jsx";
 import GreetingBanner from "@/components/student/common/GreetingBanner.jsx";
 import StudentStatsCard from "@/components/student/StudentStatsCard.jsx";
-import { ChatStripSpacer } from "@/components/student/mobile/FooterChat";
+// ChatStripSpacer removed - not needed
 
 const { Title, Text } = Typography;
 
@@ -238,7 +238,6 @@ export default function TreasureMap() {
       </Modal>
 
       {/* Ensure content never hides behind the chat footer */}
-      <ChatStripSpacer />
     </div>
   );
 }

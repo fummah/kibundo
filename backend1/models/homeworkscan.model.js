@@ -70,13 +70,15 @@ module.exports = (sequelize, DataTypes) => {
     task_type: {
       type: DataTypes.STRING,
       allowNull: true
+    },
+    status: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: 'pending',
+      validate: {
+        isIn: [['pending', 'completed', 'do_it_later']]
+      }
     }
-    // NOTE: status column doesn't exist in database yet
-    // Uncomment this after your backend developer adds this column:
-    // status: {
-    //   type: DataTypes.ENUM('pending', 'completed', 'cancelled'),
-    //   defaultValue: 'pending'
-    // }
   }, {
     timestamps: false, // disable Sequelize's automatic createdAt/updatedAt
     tableName: "homework_scans"
