@@ -7,7 +7,8 @@
     "dev:trace-dep": "cross-env NODE_OPTIONS=--trace-deprecation vite",
     "dev:no-dep-warnings": "cross-env NODE_OPTIONS=--no-deprecation vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "echo \"No tests specified\" && exit 0"
   },
   "dependencies": {
     "@ant-design/compatible": "^5.1.4",
