@@ -1,5 +1,5 @@
 // src/routes/StudentsRoutes.jsx
-import { Suspense, lazy, useEffect } from "react";
+import React, { Suspense, lazy, useEffect } from "react";
 import { Route, Navigate, Outlet, useLocation, useSearchParams } from "react-router-dom";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import { ROLES, toRoleId } from "@/utils/roleMapper";
@@ -61,18 +61,38 @@ const StudentSettings   = lazy(() => import("@/pages/student/StudentSettings.jsx
 const Fallback = <div className="p-4">Loading…</div>;
 
 // Shared layout wrapper for all student screens (same frame as parents)
-const StudentLayout = () => (
-  <div className="flex justify-center bg-white overflow-hidden min-h-screen w-full relative">
-    <div
-      className="relative w-full"
-      style={{
-        maxWidth: "1280px",
-        minHeight: "100vh",
-        margin: "0 auto",
-        background: "#FFFFFF",
-        boxSizing: "border-box",
-      }}
-    >
+const StudentLayout = () => {
+  // Detect if we're on desktop (PC) - show as tablet window
+  const [isDesktop, setIsDesktop] = React.useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth >= 1024;
+  });
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return (
+    <div className="flex justify-center bg-gray-100 overflow-hidden min-h-screen w-full relative">
+      {/* Tablet window container for desktop/PC */}
+      <div
+        className="relative"
+        style={{
+          width: isDesktop ? "1024px" : "100%",
+          maxWidth: isDesktop ? "1024px" : "1280px",
+          minHeight: "100vh",
+          margin: isDesktop ? "0 auto" : "0",
+          background: "#FFFFFF",
+          boxSizing: "border-box",
+          boxShadow: isDesktop ? "0 0 20px rgba(0, 0, 0, 0.1)" : "none",
+          position: isDesktop ? "relative" : "static",
+        }}
+      >
       {/* Background layers exactly like Figma node 1-292 */}
       <div className="absolute inset-0 pointer-events-none" style={{ width: "100%", height: "100%" }}>
         {/* 1. Main background image - Figma node 1-293 (full 1280x800) */}
@@ -112,9 +132,10 @@ const StudentLayout = () => (
           <Outlet />
         </StudentAppProvider>
       </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // Onboarding gate (for /student/home)
 function HomeGate() {

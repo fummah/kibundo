@@ -44,6 +44,7 @@ const LearningPreference = () => {
   };
   const { user, account } = useAuthContext();
   const [selectedOption, setSelectedOption] = useState(null);
+  const hasSpokenRef = useRef(false); // Guard to prevent double reading
 
   // Get the effective student ID using the hook
   const studentId = useStudentId();
@@ -63,7 +64,8 @@ const LearningPreference = () => {
   };
 
   useEffect(() => {
-    if (ttsEnabled && ready) {
+    if (ttsEnabled && ready && !hasSpokenRef.current) {
+      hasSpokenRef.current = true; // Mark as spoken
       const timer = setTimeout(() => {
         try {
           const u = new SpeechSynthesisUtterance(textToSpeak);
@@ -266,9 +268,9 @@ const LearningPreference = () => {
             style={{
               left: 'clamp(-15px, -1.64vw, -21px)',
               top: 'clamp(70px, 12.125vw, 97px)',
-              width: 'clamp(200px, 19.53vw, 250px)',
+              width: 'clamp(280px, 26vw, 340px)',
               height: 'auto',
-              minHeight: 'clamp(90px, 8.67vw, 111px)'
+              minHeight: 'clamp(120px, 12vw, 150px)'
             }}
           >
             {/* Speech Bubble Arrow - responsive */}
@@ -277,7 +279,7 @@ const LearningPreference = () => {
               alt="Speech indicator"
               className="absolute"
               style={{
-                left: 'clamp(100px, 10.5vw, 134.79px)',
+                left: 'clamp(140px, 13vw, 170px)',
                 top: 'clamp(-14px, -2.25vw, -18px)',
                 width: 'clamp(40px, 4.3vw, 55.21px)',
                 height: 'auto',
@@ -295,7 +297,7 @@ const LearningPreference = () => {
                 borderColor: '#E1EAAC',
                 borderWidth: '1px',
                 boxShadow: '2px 2px 4px rgba(0, 0, 0, 0.25)',
-                padding: 'clamp(12px, 1.4vw, 18px)'
+                padding: 'clamp(18px, 2.5vw, 24px)'
               }}
             >
               <p 
@@ -303,8 +305,8 @@ const LearningPreference = () => {
                 style={{ 
                   fontFamily: 'Nunito',
                   fontWeight: 400,
-                  fontSize: 'clamp(14px, 1.4vw, 18px)',
-                  lineHeight: '1.36',
+                  fontSize: 'clamp(16px, 1.6vw, 20px)',
+                  lineHeight: '1.4',
                   color: '#000000',
                   margin: 0
                 }}

@@ -490,7 +490,7 @@ export default function ParentHome() {
         setMessages([
           {
             role: "assistant",
-            content: `Hello ${parentName}! I'm your Assistant. How can I help you today?`,
+            content: `Hallo ${parentName} (Elternteil)! Ich bin dein Kibundo KI-Assistent. Wie kann ich dir heute helfen?`,
             agentName: "Parent Assistant"
           }
         ]);

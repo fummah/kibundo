@@ -33,6 +33,7 @@ import {
   HomeOutlined,
   SwapOutlined,
 } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 
 import { useAuthContext } from "@/context/AuthContext.jsx";
 import api from "@/api/axios";
@@ -41,6 +42,7 @@ import BottomTabBar from "@/components/parent/BottomTabBar.jsx";
 const { useBreakpoint } = Grid;
 
 export default function Settings() {
+  const { t } = useTranslation();
   const { user, isAuthenticated, logout } = useAuthContext();
   const [form] = Form.useForm();
   const [twoFA, setTwoFA] = useState(Boolean(user?.mfa_enabled));
@@ -93,7 +95,7 @@ export default function Settings() {
         setStates(processedStates);
       } catch (error) {
         console.error("Error fetching user data or states:", error);
-        message.error("Failed to load user information");
+        message.error(t("parent.settings.messages.loadFailed"));
       } finally {
         setLoadingStates(false);
       }
@@ -132,7 +134,7 @@ export default function Settings() {
       const userData = currentUser || user;
       
       if (!userData?.id) {
-        message.error("User ID not found. Please refresh the page.");
+        message.error(t("parent.settings.messages.userNotFound"));
         return;
       }
 
@@ -173,12 +175,12 @@ export default function Settings() {
         });
       }
 
-      message.success("Settings saved successfully");
+      message.success(t("parent.settings.messages.saveSuccess"));
     } catch (error) {
       // AntD form validation error (required fields, formats, etc.)
       if (error?.errorFields) {
         console.error("Validation error saving settings:", error);
-        message.error("Please check the highlighted fields and try again.");
+        message.error(t("parent.settings.messages.validationError"));
         return;
       }
 
@@ -194,8 +196,8 @@ export default function Settings() {
 
       message.error(
         serverMessage
-          ? `Failed to save settings: ${serverMessage}`
-          : "Failed to save settings. Please try again."
+          ? t("parent.settings.messages.saveFailedWithMessage", { message: serverMessage })
+          : t("parent.settings.messages.saveFailed")
       );
     }
   };
@@ -206,8 +208,8 @@ export default function Settings() {
 
   const confirmLogout = () => {
     Modal.confirm({
-      title: "Log out?",
-      okText: "Log out",
+      title: t("parent.settings.security.logoutConfirmTitle"),
+      okText: t("parent.settings.security.logoutConfirmOk"),
       okButtonProps: { danger: true, icon: <LogoutOutlined /> },
       onOk: async () => {
         try {
@@ -263,6 +265,7 @@ export default function Settings() {
       setActiveTab={setActiveTab}
       notificationPrefs={notificationPrefs}
       setNotificationPrefs={setNotificationPrefs}
+      t={t}
     />
   );
 }
@@ -287,6 +290,7 @@ function SettingsContent({
   setNotificationPrefs,
   twoFA,
   setTwoFA,
+  t,
 }) {
   const displayUser = currentUser || {};
   const displayName = useMemo(() => {
@@ -296,8 +300,8 @@ function SettingsContent({
     if (name) return name;
     if (displayUser.name) return displayUser.name;
     if (displayUser.email) return displayUser.email.split("@")[0];
-    return "Parent";
-  }, [displayUser]);
+    return t("parent.settings.defaultDisplayName");
+  }, [displayUser, t]);
 
   const initials = useMemo(() => {
     return (
@@ -315,7 +319,7 @@ function SettingsContent({
   };
 
   const handleNotificationSave = () => {
-    message.success("Notification preferences saved.");
+    message.success(t("parent.settings.notifications.preferencesSaved"));
   };
 
   const renderProfileTab = (
@@ -323,39 +327,39 @@ function SettingsContent({
           <Row gutter={[16, 16]}>
             <Col xs={24} md={12}>
               <Form.Item
-                label="First Name"
+                label={t("parent.settings.profile.firstName")}
                 name="first_name"
-                rules={[{ required: true, message: "Please enter your first name" }]}
+                rules={[{ required: true, message: t("parent.settings.profile.firstNameRequired") }]}
               >
-                <Input className="rounded-xl" placeholder="First name" />
+                <Input className="rounded-xl" placeholder={t("parent.settings.profile.firstNamePlaceholder")} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item
-                label="Last Name"
+                label={t("parent.settings.profile.lastName")}
                 name="last_name"
-                rules={[{ required: true, message: "Please enter your last name" }]}
+                rules={[{ required: true, message: t("parent.settings.profile.lastNameRequired") }]}
               >
-                <Input className="rounded-xl" placeholder="Last name" />
+                <Input className="rounded-xl" placeholder={t("parent.settings.profile.lastNamePlaceholder")} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item
-                label="Email"
+                label={t("parent.settings.profile.email")}
                 name="email"
-                rules={[{ type: "email", message: "Please enter a valid email" }]}
+                rules={[{ type: "email", message: t("parent.settings.profile.emailInvalid") }]}
               >
-                <Input className="rounded-xl" placeholder="email@example.com" />
+                <Input className="rounded-xl" placeholder={t("parent.settings.profile.emailPlaceholder")} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item
-                label="Phone"
+                label={t("parent.settings.profile.phone")}
                 name="phone"
               >
                 <Input
                   className="rounded-xl"
-                  placeholder="+49 30 12345678"
+                  placeholder={t("parent.settings.profile.phonePlaceholder")}
                   onChange={(e) => {
                     const digits = e.target.value;
                     form.setFieldsValue({ phone: digits });
@@ -365,11 +369,11 @@ function SettingsContent({
             </Col>
             <Col xs={24} md={12}>
               <Form.Item 
-                label="State (Bundesland)" 
+                label={t("parent.settings.profile.state")} 
                 name="state"
               >
                 <Select
-                  placeholder="Bundesland auswählen"
+                  placeholder={t("parent.settings.profile.statePlaceholder")}
                   options={states}
                   loading={loadingStates}
                   showSearch
@@ -380,7 +384,7 @@ function SettingsContent({
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="Locale" name="locale">
+              <Form.Item label={t("parent.settings.profile.locale")} name="locale">
                 <Select
                   options={[
                     { value: "de-DE", label: "Deutsch (Deutschland)" },
@@ -399,27 +403,27 @@ function SettingsContent({
           <Row gutter={[16, 16]}>
             <Col xs={24} md={12}>
               <Form.Item
-                label="New Password"
+                label={t("parent.settings.security.newPassword")}
                 name="password"
-                tooltip="Leave blank to keep your current password"
+                tooltip={t("parent.settings.security.passwordTooltip")}
               >
-            <Input.Password placeholder="Enter new password" />
+            <Input.Password placeholder={t("parent.settings.security.newPasswordPlaceholder")} />
               </Form.Item>
             </Col>
           </Row>
       <Card className="rounded-2xl border border-orange-100 bg-orange-50/70" styles={{ body: { padding: 0 } }}>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-6">
           <div>
-            <h3 className="font-semibold text-orange-800 m-0">Two-factor Authentication</h3>
+            <h3 className="font-semibold text-orange-800 m-0">{t("parent.settings.security.twoFactorAuth")}</h3>
             <p className="text-sm text-orange-700 m-0">
-              Add an extra layer of protection to your account.
+              {t("parent.settings.security.twoFactorAuthDescription")}
             </p>
           </div>
           <Switch
             checked={twoFA}
             onChange={(checked) => {
               setTwoFA(checked);
-              message.info("Two-factor settings will be updated soon.");
+              message.info(t("parent.settings.security.twoFactorAuthInfo"));
             }}
           />
         </div>
@@ -427,9 +431,9 @@ function SettingsContent({
       <Card className="rounded-2xl border border-red-100 bg-red-50/70" styles={{ body: { padding: 0 } }}>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-6">
           <div>
-            <h3 className="font-semibold text-red-800 m-0">Logout</h3>
+            <h3 className="font-semibold text-red-800 m-0">{t("parent.settings.security.logout")}</h3>
             <p className="text-sm text-red-700 m-0">
-              Sign out of your account. You'll need to log in again to access your account.
+              {t("parent.settings.security.logoutDescription")}
             </p>
           </div>
           <Button
@@ -438,7 +442,7 @@ function SettingsContent({
             onClick={confirmLogout}
             className="w-full md:w-auto"
           >
-            Logout
+            {t("parent.settings.security.logoutButton")}
           </Button>
         </div>
       </Card>
@@ -451,17 +455,17 @@ function SettingsContent({
         <div className="p-6">
           <div className="flex items-center gap-3 mb-3">
             <FileTextOutlined className="text-xl text-amber-500" />
-            <h3 className="text-lg font-semibold m-0">Plan Overview</h3>
+            <h3 className="text-lg font-semibold m-0">{t("parent.settings.billing.planOverview")}</h3>
           </div>
           <p className="text-sm text-gray-600 mb-4">
-            Review your active plan and trial period.
+            {t("parent.settings.billing.planOverviewDescription")}
           </p>
           <Button 
             icon={<FileTextOutlined />}
             onClick={goOverview}
             className="w-full md:w-auto"
           >
-            View Plan Overview
+            {t("parent.settings.billing.viewPlanOverview")}
           </Button>
         </div>
       </Card>
@@ -470,17 +474,17 @@ function SettingsContent({
         <div className="p-6">
           <div className="flex items-center gap-3 mb-3">
             <CreditCardOutlined className="text-xl text-emerald-500" />
-            <h3 className="text-lg font-semibold m-0">Subscription Options</h3>
+            <h3 className="text-lg font-semibold m-0">{t("parent.settings.billing.subscriptionOptions")}</h3>
           </div>
           <p className="text-sm text-gray-600 mb-4">
-            Upgrade or adjust your subscription preferences.
+            {t("parent.settings.billing.subscriptionDescription")}
           </p>
           <Button 
             icon={<CreditCardOutlined />}
             onClick={goSubscription}
             className="w-full md:w-auto"
           >
-            Manage Subscription
+            {t("parent.settings.billing.manageSubscription")}
           </Button>
         </div>
       </Card>
@@ -489,17 +493,17 @@ function SettingsContent({
         <div className="p-6">
           <div className="flex items-center gap-3 mb-3">
             <SolutionOutlined className="text-xl text-blue-500" />
-            <h3 className="text-lg font-semibold m-0">Invoices</h3>
+            <h3 className="text-lg font-semibold m-0">{t("parent.settings.billing.invoices")}</h3>
           </div>
           <p className="text-sm text-gray-600 mb-4">
-            Download receipts for your accounting.
+            {t("parent.settings.billing.invoicesDescription")}
           </p>
           <Button 
             icon={<SolutionOutlined />}
             onClick={goInvoices}
             className="w-full md:w-auto"
           >
-            View Invoices
+            {t("parent.settings.billing.viewInvoices")}
           </Button>
         </div>
       </Card>
@@ -508,17 +512,17 @@ function SettingsContent({
         <div className="p-6">
           <div className="flex items-center gap-3 mb-3">
             <GiftOutlined className="text-xl text-pink-500" />
-            <h3 className="text-lg font-semibold m-0">Coupons</h3>
+            <h3 className="text-lg font-semibold m-0">{t("parent.settings.billing.coupons")}</h3>
           </div>
           <p className="text-sm text-gray-600 mb-4">
-            Redeem promo codes or share vouchers with friends.
+            {t("parent.settings.billing.couponsDescription")}
           </p>
           <Button 
             icon={<GiftOutlined />}
             onClick={goCoupons}
             className="w-full md:w-auto"
           >
-            View Coupons
+            {t("parent.settings.billing.viewCoupons")}
           </Button>
         </div>
       </Card>
@@ -530,23 +534,23 @@ function SettingsContent({
       {[
         {
           key: "weeklyDigest",
-          label: "Weekly progress digest",
-          description: "Receive a summary of your child's activity every Monday.",
+          label: t("parent.settings.notifications.weeklyDigest"),
+          description: t("parent.settings.notifications.weeklyDigestDescription"),
         },
         {
           key: "homeworkUpdates",
-          label: "Homework updates",
-          description: "Be notified when new scans or feedback are available.",
+          label: t("parent.settings.notifications.homeworkUpdates"),
+          description: t("parent.settings.notifications.homeworkUpdatesDescription"),
         },
         {
           key: "marketingEmails",
-          label: "Tips & offers",
-          description: "Get product updates and special offers from Kibundo.",
+          label: t("parent.settings.notifications.tipsOffers"),
+          description: t("parent.settings.notifications.tipsOffersDescription"),
         },
         {
           key: "productAnnouncements",
-          label: "Product announcements",
-          description: "Hear about new features and betas before anyone else.",
+          label: t("parent.settings.notifications.productAnnouncements"),
+          description: t("parent.settings.notifications.productAnnouncementsDescription"),
         },
       ].map((pref) => (
         <Card key={pref.key} className="rounded-2xl shadow-sm border border-neutral-100" styles={{ body: { padding: 0 } }}>
@@ -581,7 +585,7 @@ function SettingsContent({
           letterSpacing: "2%",
         }}
       >
-        Save notification preferences
+        {t("parent.settings.notifications.savePreferences")}
       </Button>
     </div>
   );
@@ -592,7 +596,7 @@ function SettingsContent({
       label: (
         <span className="flex items-center gap-2">
           <UserOutlined />
-          Profile
+          {t("parent.settings.tabs.profile")}
         </span>
       ),
       children: renderProfileTab,
@@ -602,7 +606,7 @@ function SettingsContent({
       label: (
         <span className="flex items-center gap-2">
           <LockOutlined />
-          Security
+          {t("parent.settings.tabs.security")}
         </span>
       ),
       children: renderSecurityTab,
@@ -612,7 +616,7 @@ function SettingsContent({
       label: (
         <span className="flex items-center gap-2">
           <CreditCardOutlined />
-          Billing
+          {t("parent.settings.tabs.billing")}
         </span>
       ),
       children: renderBillingTab,
@@ -622,7 +626,7 @@ function SettingsContent({
       label: (
         <span className="flex items-center gap-2">
           <BellOutlined />
-          Notifications
+          {t("parent.settings.tabs.notifications")}
         </span>
       ),
       children: renderNotificationsTab,
@@ -640,9 +644,9 @@ function SettingsContent({
                 {initials}
               </Avatar>
               <div>
-                <h1 className="text-2xl md:text-3xl font-extrabold m-0">Settings</h1>
+                <h1 className="text-2xl md:text-3xl font-extrabold m-0">{t("parent.settings.title")}</h1>
                 <p className="text-gray-600 m-0">
-                  Manage your account, family and billing preferences.
+                  {t("parent.settings.subtitle")}
                 </p>
               </div>
             </div>
@@ -668,7 +672,7 @@ function SettingsContent({
                   whiteSpace: "nowrap",
                 }}
               >
-                Switch Profile
+                {t("parent.settings.switchProfile")}
               </Button>
             </div>
           </div>
@@ -677,7 +681,7 @@ function SettingsContent({
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="text-sm" style={{ color: "#544C3B" }}>
-                  Signed in as
+                  {t("parent.settings.signedInAs")}
                 </div>
                 <div className="text-2xl font-semibold" style={{ color: "#3A362E" }}>
                   {displayName}
@@ -723,8 +727,8 @@ function SettingsContent({
                   justifyContent: "center",
                   whiteSpace: "nowrap",
                 }}
-              >
-                Save changes
+                >
+                {t("parent.settings.saveChanges")}
           </Button>
             </div>
           </Form>

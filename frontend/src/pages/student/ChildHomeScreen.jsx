@@ -12,6 +12,7 @@ const ChildHomeScreen = () => {
   const { user, account } = useAuthContext();
   const [highlightedButton, setHighlightedButton] = useState(null);
   const utteranceRef = useRef(null);
+  const hasSpokenRef = useRef(false); // Guard to prevent double reading
   
   // Get student ID (use selected child account if parent is viewing child)
   const studentId = account?.type === "child" && account?.userId 
@@ -59,6 +60,7 @@ const ChildHomeScreen = () => {
 
   useEffect(() => {
     if (!ttsEnabled) return;
+    if (hasSpokenRef.current) return; // Prevent double reading
 
     const timing = calculateHighlightTiming();
     let startTime = null;
@@ -66,7 +68,9 @@ const ChildHomeScreen = () => {
 
     const speak = () => {
       if (typeof window === 'undefined' || !window.speechSynthesis) return;
+      if (hasSpokenRef.current) return; // Additional guard
       
+      hasSpokenRef.current = true; // Mark as spoken
       window.speechSynthesis.cancel();
       
       const utterance = new SpeechSynthesisUtterance(textToSpeak);
@@ -103,6 +107,7 @@ const ChildHomeScreen = () => {
       utterance.onerror = () => {
         setHighlightedButton(null);
         highlightTimers.forEach(timer => clearTimeout(timer));
+        hasSpokenRef.current = false; // Reset on error so it can retry
       };
       
       utteranceRef.current = utterance;
@@ -227,9 +232,9 @@ const ChildHomeScreen = () => {
             style={{
               left: 'clamp(-16px, -2.625vw, -21px)',
               top: 'clamp(70px, 12.125vw, 97px)',
-              width: 'clamp(200px, 19.5vw, 250px)',
+              width: 'clamp(280px, 26vw, 340px)',
               height: 'auto',
-              minHeight: 'clamp(90px, 13.875vw, 111px)'
+              minHeight: 'clamp(120px, 17vw, 150px)'
             }}
           >
             {/* Speech Bubble Arrow - responsive */}
@@ -238,7 +243,7 @@ const ChildHomeScreen = () => {
               alt="Speech indicator"
               className="absolute"
               style={{
-                left: 'clamp(100px, 10.5vw, 134.79px)',
+                left: 'clamp(140px, 13vw, 170px)',
                 top: 'clamp(-14px, -2.25vw, -18px)',
                 width: 'clamp(40px, 4.3vw, 55.21px)',
                 height: 'auto',
@@ -251,12 +256,12 @@ const ChildHomeScreen = () => {
               className="absolute rounded-[18px] border w-full"
               style={{
                 height: 'auto',
-                minHeight: 'clamp(90px, 13.875vw, 111px)',
+                minHeight: 'clamp(120px, 17vw, 150px)',
                 backgroundColor: '#D9F98D',
                 borderColor: '#E1EAAC',
                 borderWidth: '1px',
                 boxShadow: '2px 2px 4px rgba(0, 0, 0, 0.25)',
-                padding: 'clamp(12px, 2.25vw, 18px)'
+                padding: 'clamp(18px, 2.8vw, 24px)'
               }}
             >
               <p
@@ -264,8 +269,8 @@ const ChildHomeScreen = () => {
                 style={{
                   fontFamily: 'Nunito',
                   fontWeight: 400,
-                  fontSize: 'clamp(14px, 1.406vw, 18px)',
-                  lineHeight: '1.36',
+                  fontSize: 'clamp(16px, 1.6vw, 20px)',
+                  lineHeight: '1.4',
                   color: '#000000',
                   margin: 0
                 }}

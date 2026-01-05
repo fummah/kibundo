@@ -7,7 +7,7 @@ import { useAuthContext } from '@/context/AuthContext';
 import { useStudentApp } from '@/context/StudentAppContext';
 import kibundoAvatar from '@/assets/kibundo_chat.png';
 
-const HomeworkCollectChat = ({ isOpen, onClose, onScanComplete, initialScanId = null }) => {
+const HomeworkCollectChat = ({ isOpen, onClose, onScanComplete, initialScanId = null, isCompletingHomework = false }) => {
   const studentUserId = useStudentId(); // This is the user_id
   const { user } = useAuthContext();
   const { buddy, profile, interests } = useStudentApp();
@@ -144,6 +144,7 @@ const HomeworkCollectChat = ({ isOpen, onClose, onScanComplete, initialScanId = 
   const [conversationId, setConversationId] = useState(null);
   const [scanId, setScanId] = useState(null);
   const chatEndRef = useRef(null);
+  const lastSpokenMessageId = useRef(null);
 
   // Try to parse older markdown-based scan result messages into structured data
   const parseScanResultText = (text = '') => {
@@ -583,6 +584,10 @@ const HomeworkCollectChat = ({ isOpen, onClose, onScanComplete, initialScanId = 
       if (scanId) {
         formData.append('scanId', scanId.toString());
       }
+      // Check if this is a completion scan - use prop value directly
+      if (isCompletingHomework) {
+        formData.append('isCompletingHomework', 'true');
+      }
 
       // Upload and scan the image
       let data;
@@ -643,6 +648,78 @@ const HomeworkCollectChat = ({ isOpen, onClose, onScanComplete, initialScanId = 
       };
       setMessages(prev => [...prev, scanMessage]);
 
+      // 🔥 Handle completion comparison if this is a completion scan
+      if (isCompletingHomework && data.completionComparison) {
+        const comparison = data.completionComparison;
+        let comparisonText = '';
+        
+        if (comparison.all_completed) {
+          comparisonText += `## ✅ Großartig! Du hast alle Aufgaben bearbeitet!\n\n`;
+        } else {
+          comparisonText += `## ⚠️ Fast geschafft!\n\n`;
+        }
+        
+        if (comparison.total_questions) {
+          comparisonText += `**Ergebnis:** ${comparison.correct_answers || 0} von ${comparison.total_questions} Aufgaben richtig\n\n`;
+        }
+        
+        if (comparison.incorrect_tasks && comparison.incorrect_tasks.length > 0) {
+          comparisonText += `**Falsche Aufgaben:**\n\n`;
+          comparison.incorrect_tasks.forEach((task, index) => {
+            comparisonText += `${index + 1}. **${task.question}**\n`;
+            comparisonText += `   Deine Antwort: ${task.student_answer}\n`;
+            comparisonText += `   Richtige Antwort: ${task.correct_answer}\n`;
+            comparisonText += `   💡 ${task.feedback}\n\n`;
+          });
+        }
+        
+        if (comparison.feedback) {
+          comparisonText += `**Feedback:**\n\n${comparison.feedback}\n\n`;
+        }
+        
+        if (comparison.can_mark_completed) {
+          comparisonText += `✅ Du kannst die Hausaufgabe jetzt als erledigt markieren!`;
+        } else {
+          comparisonText += `⚠️ Bitte korrigiere die falschen Aufgaben, bevor du die Hausaufgabe als erledigt markierst.`;
+        }
+        
+        const comparisonMessage = {
+          id: Date.now() + 2,
+          sender: 'kibundo',
+          type: 'completionComparison',
+          text: comparisonText.trim(),
+          timestamp: new Date(),
+          comparison: comparison
+        };
+        setMessages(prev => [...prev, comparisonMessage]);
+        
+        // Auto-speak the comparison message
+        if (window.speechSynthesis && comparisonText.trim()) {
+          setTimeout(() => {
+            window.speechSynthesis.cancel();
+            const plainText = comparisonText
+              .replace(/##\s+/g, '')
+              .replace(/\*\*/g, '')
+              .replace(/\n\n/g, '. ')
+              .replace(/\n/g, ' ')
+              .trim();
+            const utterance = new SpeechSynthesisUtterance(plainText);
+            utterance.lang = 'de-DE';
+            utterance.rate = 0.9;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+            window.speechSynthesis.speak(utterance);
+            lastSpokenMessageId.current = comparisonMessage.id;
+          }, 500);
+        }
+        
+        // Notify parent component about completion status
+        if (onScanComplete && comparison.can_mark_completed) {
+          // Allow marking as completed
+          onScanComplete({ canMarkCompleted: true, comparison });
+        }
+      }
+      
       // Add Kibundo's message with scanned results
       const rawText = data.scan?.raw_text || data.parsed?.raw_text || null;
       const questions = data.parsed?.questions || [];
@@ -695,6 +772,27 @@ const HomeworkCollectChat = ({ isOpen, onClose, onScanComplete, initialScanId = 
             timestamp: new Date()
           };
           setMessages(prev => [...prev, resultsMessage]);
+          
+          // Auto-speak the scan results message
+          if (window.speechSynthesis && resultsText.trim()) {
+            setTimeout(() => {
+              window.speechSynthesis.cancel();
+              // Extract plain text from markdown for speech
+              const plainText = resultsText
+                .replace(/##\s+/g, '')
+                .replace(/\*\*/g, '')
+                .replace(/\n\n/g, '. ')
+                .replace(/\n/g, ' ')
+                .trim();
+              const utterance = new SpeechSynthesisUtterance(plainText);
+              utterance.lang = 'de-DE';
+              utterance.rate = 0.9;
+              utterance.pitch = 1.0;
+              utterance.volume = 1.0;
+              window.speechSynthesis.speak(utterance);
+              lastSpokenMessageId.current = resultsMessage.id;
+            }, 300);
+          }
         }
       }
       
@@ -731,6 +829,26 @@ const HomeworkCollectChat = ({ isOpen, onClose, onScanComplete, initialScanId = 
                     timestamp: new Date()
                   };
                   setMessages(prev => [...prev, resultsMessage]);
+                  
+                  // Auto-speak the updated scan results
+                  if (window.speechSynthesis && resultsMessage.text) {
+                    setTimeout(() => {
+                      window.speechSynthesis.cancel();
+                      const plainText = resultsMessage.text
+                        .replace(/##\s+/g, '')
+                        .replace(/\*\*/g, '')
+                        .replace(/\n\n/g, '. ')
+                        .replace(/\n/g, ' ')
+                        .trim();
+                      const utterance = new SpeechSynthesisUtterance(plainText);
+                      utterance.lang = 'de-DE';
+                      utterance.rate = 0.9;
+                      utterance.pitch = 1.0;
+                      utterance.volume = 1.0;
+                      window.speechSynthesis.speak(utterance);
+                      lastSpokenMessageId.current = resultsMessage.id;
+                    }, 300);
+                  }
                 }
               }
             }
@@ -738,6 +856,37 @@ const HomeworkCollectChat = ({ isOpen, onClose, onScanComplete, initialScanId = 
             console.warn('Could not fetch updated scan subject:', err);
           }
         }, 2000); // Wait 2 seconds for AI processing
+      }
+
+      // Prompt for due date after scanning
+      if (newScanId && !scanId) {
+        // This is a new scan, prompt for due date
+        setTimeout(() => {
+          const dueDateInput = window.prompt(
+            'Bitte gib das Abgabedatum für diese Hausaufgabe ein (z.B. "bis diesen Mittwoch" oder "bis 15.01.2025"):'
+          );
+          
+          if (dueDateInput && dueDateInput.trim()) {
+            // Send the due date to the backend or store it
+            // For now, we'll add it as a message and let the AI handle it
+            const dueDateMessage = {
+              id: Date.now() + 10,
+              sender: 'child',
+              text: `📅 Abgabedatum: ${dueDateInput.trim()}`,
+              timestamp: new Date()
+            };
+            setMessages(prev => [...prev, dueDateMessage]);
+            
+            // Optionally send to backend to update the scan
+            try {
+              api.put(`/homeworkscans/${newScanId}`, {
+                due_date: dueDateInput.trim()
+              }).catch(err => console.warn('Could not save due date:', err));
+            } catch (err) {
+              console.warn('Error saving due date:', err);
+            }
+          }
+        }, 1000); // Wait 1 second after scan results are shown
       }
 
       // Don't automatically send a message - let the student ask when they're ready
@@ -826,6 +975,26 @@ const HomeworkCollectChat = ({ isOpen, onClose, onScanComplete, initialScanId = 
                 timestamp: new Date()
               };
               setMessages(prev => [...prev, resultsMessage]);
+              
+              // Auto-speak the homework details
+              if (window.speechSynthesis && resultsMessage.text) {
+                setTimeout(() => {
+                  window.speechSynthesis.cancel();
+                  const plainText = resultsMessage.text
+                    .replace(/##\s+/g, '')
+                    .replace(/\*\*/g, '')
+                    .replace(/\n\n/g, '. ')
+                    .replace(/\n/g, ' ')
+                    .trim();
+                  const utterance = new SpeechSynthesisUtterance(plainText);
+                  utterance.lang = 'de-DE';
+                  utterance.rate = 0.9;
+                  utterance.pitch = 1.0;
+                  utterance.volume = 1.0;
+                  window.speechSynthesis.speak(utterance);
+                  lastSpokenMessageId.current = resultsMessage.id;
+                }, 300);
+              }
             }
 
             // Notify parent component
@@ -868,6 +1037,20 @@ const HomeworkCollectChat = ({ isOpen, onClose, onScanComplete, initialScanId = 
       };
 
       setMessages(prev => [...prev, aiMessage]);
+      
+      // Auto-speak the AI response
+      if (data?.answer && window.speechSynthesis) {
+        setTimeout(() => {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(data.answer);
+          utterance.lang = 'de-DE';
+          utterance.rate = 0.9;
+          utterance.pitch = 1.0;
+          utterance.volume = 1.0;
+          window.speechSynthesis.speak(utterance);
+          lastSpokenMessageId.current = aiMessage.id;
+        }, 300); // Small delay to ensure message is rendered
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage = {

@@ -363,11 +363,13 @@ export const handleUpload = async (req, res) => {
     // 🔥 Check if this is a continuation of an existing conversation
     const existingConversationId = req.body?.conversationId ? parseInt(req.body.conversationId, 10) : null;
     const existingScanId = req.body?.scanId ? parseInt(req.body.scanId, 10) : null;
+    const isCompletingHomework = req.body?.isCompletingHomework === 'true' || req.body?.isCompletingHomework === true;
     let previousScan = null;
     let conversationId = existingConversationId;
     let scanId = null;
     let scan = null;
     let isDifferentHomework = false;
+    let completionComparison = null;
 
     // If we have an existing scan, fetch it to compare
     if (existingScanId && !isNaN(existingScanId)) {
@@ -781,6 +783,98 @@ export const handleUpload = async (req, res) => {
     );
     const updatedScan = updatedScanRes.rows[0] || scan;
     
+    // 🔥 If this is a completion scan, compare blank vs filled worksheets
+    if (isCompletingHomework && previousScan && previousScan.file_url) {
+      try {
+        console.log("🔍 Comparing blank vs filled worksheet for completion check...");
+        
+        // Read the original blank scan image
+        const originalImagePath = path.join(process.cwd(), previousScan.file_url.replace('/uploads/', 'uploads/'));
+        let originalImageBase64 = null;
+        
+        if (fs.existsSync(originalImagePath)) {
+          const originalImageBuffer = fs.readFileSync(originalImagePath);
+          const originalMimeType = originalImagePath.endsWith('.png') ? 'image/png' : 'image/jpeg';
+          originalImageBase64 = originalImageBuffer.toString('base64');
+          
+          // Use AI to compare blank vs filled worksheets
+          const comparisonPrompt = `
+Du bist Kibundo, ein freundlicher Hausaufgabenhelfer. Du vergleichst ein leeres Arbeitsblatt mit einem ausgefüllten Arbeitsblatt.
+
+WICHTIG:
+- Vergleiche das LEERE Arbeitsblatt (erstes Bild) mit dem AUSGEFÜLLTEN Arbeitsblatt (zweites Bild)
+- Identifiziere ALLE Fragen und Aufgaben
+- Prüfe, ob ALLE Aufgaben beantwortet wurden
+- Prüfe die Richtigkeit der Antworten
+- Liste alle falschen Antworten auf
+- Gib konstruktives Feedback auf Deutsch
+
+Antworte im folgenden JSON-Format:
+{
+  "all_completed": true/false,
+  "total_questions": Anzahl,
+  "correct_answers": Anzahl,
+  "incorrect_answers": Anzahl,
+  "incorrect_tasks": [
+    {
+      "question": "Frage/Aufgabe",
+      "student_answer": "Antwort des Schülers",
+      "correct_answer": "Richtige Antwort",
+      "feedback": "Konstruktives Feedback auf Deutsch"
+    }
+  ],
+  "feedback": "Gesamtfeedback auf Deutsch - ermutigend und hilfreich",
+  "can_mark_completed": true/false
+}
+
+WICHTIG: Alle Texte müssen auf Deutsch sein!
+`;
+          
+          const comparisonCompletion = await getOpenAIClient().chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: comparisonPrompt },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "Vergleiche das leere Arbeitsblatt (erstes Bild) mit dem ausgefüllten Arbeitsblatt (zweites Bild). Prüfe alle Antworten und gib Feedback auf Deutsch." },
+                  { type: "image_url", image_url: { url: `data:${originalMimeType};base64,${originalImageBase64}` } },
+                  { type: "image_url", image_url: { url: `data:${mimeType};base64,${fileBase64}` } },
+                ],
+              },
+            ],
+            max_tokens: 2000,
+            temperature: 0.3,
+          });
+          
+          const comparisonText = comparisonCompletion.choices[0].message.content;
+          let comparisonParsed = null;
+          try {
+            let comparisonJsonText = comparisonText.trim().replace(/^```json\s*/i, "").replace(/```$/, "");
+            comparisonParsed = JSON.parse(comparisonJsonText);
+          } catch {
+            // If JSON parsing fails, create a structured response from text
+            comparisonParsed = {
+              all_completed: comparisonText.toLowerCase().includes('vollständig') || comparisonText.toLowerCase().includes('alle'),
+              feedback: comparisonText,
+              can_mark_completed: !comparisonText.toLowerCase().includes('unvollständig') && !comparisonText.toLowerCase().includes('fehlt')
+            };
+          }
+          
+          completionComparison = comparisonParsed;
+          console.log("✅ Completion comparison done:", completionComparison);
+          
+          // Track API usage for comparison
+          trackAPIUsage(comparisonCompletion.usage, 'vision-comparison');
+        } else {
+          console.warn("⚠️ Original scan image not found at:", originalImagePath);
+        }
+      } catch (comparisonError) {
+        console.error("❌ Error comparing worksheets:", comparisonError);
+        // Don't fail the upload if comparison fails
+      }
+    }
+    
     // Include task_type and all updated fields in response
     const responseScan = {
       ...updatedScan,
@@ -798,6 +892,7 @@ export const handleUpload = async (req, res) => {
       },
       aiText,
       conversationId,
+      completionComparison, // Include comparison results if available
       isDifferentHomework, // 🔥 Flag to indicate if this is a different homework than the previous scan
       previousScanId: previousScan?.id || null, // Include previous scan ID for reference
     });

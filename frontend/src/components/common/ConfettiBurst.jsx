@@ -82,34 +82,51 @@ export default function ConfettiBurst({ taskId, forceShow = false }) {
       ];
 
       // Fire bursts from multiple positions with slight delays for a shower effect
-      burstPositions.forEach((pos, index) => {
+      // Use requestAnimationFrame for smoother timing
+      const fireBurst = (pos, delay) => {
         setTimeout(() => {
           if (!cancelled) {
-            confetti({
-              particleCount: 100,
-              spread: 120, // Wider spread for full screen coverage
-              origin: pos,
-              colors: ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#b892ff', '#ff9a56', '#ffcc5c'],
-              startVelocity: 45,
-              gravity: 0.8,
+            requestAnimationFrame(() => {
+              if (!cancelled) {
+                confetti({
+                  particleCount: 100,
+                  spread: 120, // Wider spread for full screen coverage
+                  origin: pos,
+                  colors: ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#b892ff', '#ff9a56', '#ffcc5c'],
+                  startVelocity: 45,
+                  gravity: 0.8,
+                  ticks: 200, // More ticks for smoother animation
+                  decay: 0.94, // Slower decay for longer animation
+                });
+              }
             });
           }
-        }, index * 100);
+        }, delay);
+      };
+
+      burstPositions.forEach((pos, index) => {
+        fireBurst(pos, index * 80); // Reduced delay for smoother effect
       });
 
       // Additional center burst for extra celebration - from top
       setTimeout(() => {
         if (!cancelled) {
-          confetti({
-            particleCount: 150,
-            spread: 180, // Maximum spread for full screen
-            origin: { x: 0.5, y: 0.05 }, // From top of page
-            colors: ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#b892ff', '#ff9a56', '#ffcc5c'],
-            startVelocity: 50,
-            gravity: 0.9,
+          requestAnimationFrame(() => {
+            if (!cancelled) {
+              confetti({
+                particleCount: 150,
+                spread: 180, // Maximum spread for full screen
+                origin: { x: 0.5, y: 0.05 }, // From top of page
+                colors: ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#b892ff', '#ff9a56', '#ffcc5c'],
+                startVelocity: 50,
+                gravity: 0.9,
+                ticks: 200, // More ticks for smoother animation
+                decay: 0.94, // Slower decay for longer animation
+              });
+            }
           });
         }
-      }, 300);
+      }, 250); // Reduced delay
     })();
 
     return () => { cancelled = true; };

@@ -261,7 +261,7 @@ const CharacterSelection = () => {
             style={{
               left: 'clamp(7px, 0.55vw, 7px)',
               top: 'clamp(97px, 12.125vh, 97px)',
-              width: 'clamp(160px, 16.56vw, 212px)',
+              width: 'clamp(220px, 22vw, 280px)',
               minHeight: 'auto'
             }}
           >
@@ -285,12 +285,12 @@ const CharacterSelection = () => {
               className="rounded-[18px] border"
               style={{
                 width: '100%',
-                minHeight: 'clamp(60px, 7.5vh, 86px)',
+                minHeight: 'clamp(80px, 9vh, 110px)',
                 backgroundColor: '#D9F98D',
                 borderColor: '#E1EAAC',
                 borderWidth: '1px',
                 boxShadow: '2px 2px 4px rgba(0, 0, 0, 0.25)',
-                padding: 'clamp(12px, 1.5vh, 18px)',
+                padding: 'clamp(18px, 2.2vh, 24px)',
                 boxSizing: 'border-box',
                 display: 'flex',
                 alignItems: 'center'
@@ -301,8 +301,8 @@ const CharacterSelection = () => {
                 style={{ 
                   fontFamily: 'Nunito',
                   fontWeight: 400,
-                  fontSize: 'clamp(14px, 1.4vw, 18px)',
-                  lineHeight: '1.36',
+                  fontSize: 'clamp(16px, 1.6vw, 20px)',
+                  lineHeight: '1.4',
                   color: '#000000',
                   margin: 0,
                   wordWrap: 'break-word',

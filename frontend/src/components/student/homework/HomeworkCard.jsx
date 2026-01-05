@@ -113,21 +113,21 @@ const HomeworkCard = ({
         <div
           style={{
             position: 'absolute',
-            top: '-8px', // Slightly overlapping the card border
-            right: '-8px', // Slightly overlapping the card border
-            width: '60px',
-            height: '60px',
+            top: '-10px', // Slightly overlapping the card border
+            right: '-10px', // Slightly overlapping the card border
+            width: '56px',
+            height: '56px',
             borderRadius: '50%', // Circular
             backgroundColor: '#FF7831',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 3,
+            zIndex: 25, // Higher than action buttons to ensure visibility
             boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.25)',
             opacity: 1 // Full opacity - not affected by card greying
           }}
         >
-          <svg width="30" height="30" viewBox="0 0 14 14" fill="none">
+          <svg width="28" height="28" viewBox="0 0 14 14" fill="none">
             <path d="M11.6667 3.5L5.25 9.91667L2.33334 7" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </div>
@@ -148,33 +148,33 @@ const HomeworkCard = ({
 
         <hr className="my-2" style={{ borderColor: '#1a1a1a' }} />
 
-        <div className="flex gap-4 mt-3">
+        <div className="flex gap-3 mt-3" style={{ paddingRight: isCompleted ? '8px' : '0' }}>
 
           {/* SUBJECT ICON */}
-          <div className="w-20 h-20 bg-white border-2 border-gray-500 rounded-full flex items-center justify-center">
+          <div className="flex-shrink-0 w-20 h-20 bg-white border-2 border-gray-500 rounded-full flex items-center justify-center">
             <img src={subjectIcon} alt={subjectName} className="w-14 h-14 object-contain" />
           </div>
 
           {/* DETAILS */}
-          <div className="flex-1 flex flex-col gap-2">
+          <div className="flex-1 flex flex-col gap-2.5 min-w-0" style={{ overflow: 'hidden' }}>
 
             {/* TASK */}
-            <div className="flex items-center gap-2">
-              <img src={icon01Url} className="w-4 h-4" />
-              <span className="text-sm" style={{ fontFamily: 'Nunito', color: '#1a1a1a', fontSize: '16px' }}>{taskTitle}</span>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <img src={icon01Url} className="w-5 h-5 flex-shrink-0" alt="Task" />
+              <span className="text-sm truncate" style={{ fontFamily: 'Nunito', color: '#1a1a1a', fontSize: '15px', lineHeight: '1.3' }}>{taskTitle}</span>
             </div>
 
             {/* SOURCE */}
-            <div className="flex items-center gap-2">
-              <img src={icon07Url} className="w-4 h-4" />
-              <span className="text-sm" style={{ fontFamily: 'Nunito', color: '#1a1a1a', fontSize: '16px' }}>{sourceText}</span>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <img src={icon07Url} className="w-5 h-5 flex-shrink-0" alt="Page" />
+              <span className="text-sm truncate" style={{ fontFamily: 'Nunito', color: '#1a1a1a', fontSize: '15px', lineHeight: '1.3' }}>{sourceText}</span>
             </div>
 
             {/* DATE */}
-            <div className="relative flex items-center gap-2">
-              <div className="absolute inset-0 bg-white rounded-lg" />
-              <img src={icon24Url} className="w-4 h-4 z-10 ml-2" />
-              <span className="z-10 font-bold text-sm px-2 py-1" style={{ fontFamily: 'Nunito', color: '#1a1a1a', fontSize: '16px' }}>
+            <div className="relative flex items-center gap-2.5 min-w-0" style={{ marginTop: '2px' }}>
+              <div className="absolute inset-0 bg-white rounded-lg" style={{ left: '-2px', right: '-2px' }} />
+              <img src={icon24Url} className="w-5 h-5 flex-shrink-0 z-10" alt="Date" style={{ marginLeft: '4px' }} />
+              <span className="z-10 font-bold text-sm px-2 py-1 truncate" style={{ fontFamily: 'Nunito', color: '#1a1a1a', fontSize: '15px', lineHeight: '1.3' }}>
                 {dateText}
               </span>
             </div>
@@ -184,14 +184,14 @@ const HomeworkCard = ({
 
       </div>
 
-      {/* ACTION BUTTONS - positioned to overlap border at bottom right (same as completed badge) */}
+      {/* ACTION BUTTONS - positioned to overlap border at bottom right */}
       {/* Buttons are visible even for completed cards */}
       <div 
         className="absolute flex gap-2" 
         style={{ 
-          bottom: '-8px', // Overlapping the card border (same as completed badge)
-          right: '-8px',  // Overlapping the card border (same as completed badge)
-          zIndex: 20,
+          bottom: '-10px', // Overlapping the card border
+          right: '-10px',  // Overlapping the card border
+          zIndex: 20, // Lower than completed badge
           pointerEvents: 'auto'
         }}
       >

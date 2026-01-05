@@ -74,27 +74,35 @@ const ConfettiRibbons = ({
           return `
           @keyframes confettiFall${index} {
             0% {
-              transform: translateX(${getTranslateX(baseX)}) translateY(-488px) rotate(0deg);
+              transform: translate3d(${getTranslateX(baseX)}, -488px, 0) rotate(0deg);
               opacity: 1;
             }
             5% {
-              transform: translateX(${getTranslateX(baseX + config.splashX)}) translateY(-400px) rotate(${config.splashRotate}deg);
+              transform: translate3d(${getTranslateX(baseX + config.splashX)}, -400px, 0) rotate(${config.splashRotate}deg);
               opacity: 1;
             }
             10% {
-              transform: translateX(${getTranslateX(baseX - config.splashX * 0.75)}) translateY(-300px) rotate(${-config.splashRotate * 0.6}deg);
+              transform: translate3d(${getTranslateX(baseX - config.splashX * 0.75)}, -300px, 0) rotate(${-config.splashRotate * 0.6}deg);
               opacity: 0.95;
             }
+            20% {
+              transform: translate3d(${getTranslateX(baseX + config.splashX * 0.5)}, -200px, 0) rotate(${config.splashRotate * 0.3}deg);
+              opacity: 0.9;
+            }
+            40% {
+              transform: translate3d(${getTranslateX(baseX - config.splashX * 0.3)}, 0px, 0) rotate(${-config.splashRotate * 0.2}deg);
+              opacity: 0.85;
+            }
             65% {
-              transform: translateX(${getTranslateX(baseX)}) translateY(${fadeAt - 50}px) rotate(0deg);
+              transform: translate3d(${getTranslateX(baseX)}, ${fadeAt - 50}px, 0) rotate(0deg);
               opacity: 0.7;
             }
             75% {
-              transform: translateX(${getTranslateX(baseX)}) translateY(${fadeAt}px) rotate(0deg);
+              transform: translate3d(${getTranslateX(baseX)}, ${fadeAt}px, 0) rotate(0deg);
               opacity: 0;
             }
             100% {
-              transform: translateX(${getTranslateX(baseX)}) translateY(${fadeAt}px) rotate(0deg);
+              transform: translate3d(${getTranslateX(baseX)}, ${fadeAt}px, 0) rotate(0deg);
               opacity: 0;
             }
           }
@@ -117,7 +125,10 @@ const ConfettiRibbons = ({
             objectFit: 'contain',
             zIndex: 9999,
             pointerEvents: 'none',
-            animation: `${ribbon.animationName} ${ribbon.duration}s ease-in infinite`,
+            willChange: 'transform, opacity', // Optimize for animation
+            backfaceVisibility: 'hidden', // Prevent flickering
+            transform: 'translateZ(0)', // Force hardware acceleration
+            animation: `${ribbon.animationName} ${ribbon.duration}s cubic-bezier(0.4, 0, 0.2, 1) infinite`,
             animationDelay: `${ribbon.delay}s`
           }}
         />

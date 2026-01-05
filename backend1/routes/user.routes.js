@@ -166,10 +166,38 @@ router.get("/student/:id/homeworkscans", verifyToken, async (req, res) => {
     console.log("📚 Route /student/:id/homeworkscans called with ID:", studentId, "(type:", typeof studentId, ")");
     
     // Directly query for this specific student's homework
-    const homeworks = await HomeworkScan.findAll({
-      where: { student_id: studentId },
-      order: [['created_at', 'DESC']]
-    });
+    // Try with all attributes first, fallback to explicit attributes if task_type doesn't exist
+    let homeworks;
+    try {
+      homeworks = await HomeworkScan.findAll({
+        where: { student_id: studentId },
+        order: [['created_at', 'DESC']]
+      });
+    } catch (err) {
+      // Check if error is about missing task_type column (check multiple error message locations)
+      const errorMsg = err.message || err.parent?.message || err.original?.message || '';
+      const isTaskTypeError = errorMsg.includes('task_type') || errorMsg.includes('does not exist');
+      
+      if (isTaskTypeError) {
+        console.log("⚠️ task_type column doesn't exist, querying without it");
+        homeworks = await HomeworkScan.findAll({
+          where: { student_id: studentId },
+          order: [['created_at', 'DESC']],
+          attributes: [
+            'id', 'student_id', 'file_url', 'detected_subject', 'grade', 'publisher', 
+            'tags', 'notes', 'processed_at', 'created_by', 'created_at', 'raw_text', 
+            'api_tokens_used', 'api_cost_usd', 'completion_photo_url', 'completed_at', 'status'
+          ]
+        });
+        // Add null task_type to each result for consistency
+        homeworks = homeworks.map(hw => {
+          const json = hw.toJSON ? hw.toJSON() : hw;
+          return { ...json, task_type: null };
+        });
+      } else {
+        throw err;
+      }
+    }
     
     console.log("📚 Found", homeworks.length, "homework submissions for student", studentId);
     

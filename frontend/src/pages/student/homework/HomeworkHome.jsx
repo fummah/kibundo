@@ -148,27 +148,21 @@ const HomeworkHome = () => {
   const handleCompleteHomework = async () => {
     if (!editingScanId) return;
 
-    try {
-      const completedAt = new Date().toISOString();
-      await api.put(`/homeworkscans/${editingScanId}/completion`, {
-        status: 'completed',
-        completedAt
-      });
+    // Prompt to scan completed worksheet before marking as completed
+    const shouldScan = window.confirm(
+      'Bitte scanne zuerst das vollständig ausgefüllte Arbeitsblatt ein.\n\n' +
+      'Die KI wird dann deine Ergebnisse überprüfen, falsche Aufgaben zeigen und dir helfen, bevor die Hausaufgabe als erledigt markiert wird.'
+    );
 
-      // Update local state
-      setHomeworkScans(prev => prev.map(scan => 
-        scan.id === editingScanId 
-          ? { ...scan, status: 'completed', completed_at: completedAt }
-          : scan
-      ));
-
-      setShowEditModal(false);
-      setEditingScanId(null);
-      console.log('✅ Homework marked as completed');
-    } catch (error) {
-      console.error('❌ Error completing homework:', error);
-      alert('Fehler beim Markieren der Hausaufgabe als erledigt. Bitte versuche es erneut.');
+    if (!shouldScan) {
+      return; // User cancelled
     }
+
+    // Open the collect chat modal to scan the completed worksheet
+    setShowEditModal(false);
+    setSelectedScanId(editingScanId);
+    setIsCompletingHomework(true);
+    setShowCollectModal(true);
   };
 
   const handleDoItLater = async () => {
@@ -1306,12 +1300,14 @@ const HomeworkHome = () => {
               pointerEvents: 'auto'
             }}
           >
-            <HomeworkCollectChat 
+            <HomeworkCollectChat
               isOpen={showCollectModal}
               initialScanId={selectedScanId}
+              isCompletingHomework={isCompletingHomework}
               onClose={() => {
                 setShowCollectModal(false);
                 setSelectedScanId(null);
+                setIsCompletingHomework(false);
               }}
               onScanComplete={() => {
                 // Refresh homework scans when a new scan is completed

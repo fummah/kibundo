@@ -295,6 +295,83 @@
           "empty": "Keine externen Angebote verfügbar"
         }
       }
+    },
+    "settings": {
+      "title": "Einstellungen",
+      "subtitle": "Verwalten Sie Ihre Kontoeinstellungen, Familie und Abrechnungspräferenzen.",
+      "signedInAs": "Angemeldet als",
+      "switchProfile": "Profil wechseln",
+      "saveChanges": "Änderungen speichern",
+      "defaultDisplayName": "Elternteil",
+      "tabs": {
+        "profile": "Profil",
+        "security": "Sicherheit",
+        "billing": "Abrechnung",
+        "notifications": "Benachrichtigungen"
+      },
+      "profile": {
+        "firstName": "Vorname",
+        "firstNamePlaceholder": "Vorname",
+        "firstNameRequired": "Bitte geben Sie Ihren Vornamen ein",
+        "lastName": "Nachname",
+        "lastNamePlaceholder": "Nachname",
+        "lastNameRequired": "Bitte geben Sie Ihren Nachnamen ein",
+        "email": "E-Mail",
+        "emailPlaceholder": "email@beispiel.de",
+        "emailInvalid": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
+        "phone": "Telefon",
+        "phonePlaceholder": "+49 30 12345678",
+        "state": "Bundesland",
+        "statePlaceholder": "Bundesland auswählen",
+        "locale": "Sprache"
+      },
+      "security": {
+        "newPassword": "Neues Passwort",
+        "newPasswordPlaceholder": "Neues Passwort eingeben",
+        "passwordTooltip": "Leer lassen, um Ihr aktuelles Passwort beizubehalten",
+        "twoFactorAuth": "Zwei-Faktor-Authentifizierung",
+        "twoFactorAuthDescription": "Fügen Sie eine zusätzliche Sicherheitsebene zu Ihrem Konto hinzu.",
+        "twoFactorAuthInfo": "Zwei-Faktor-Einstellungen werden bald aktualisiert.",
+        "logout": "Abmelden",
+        "logoutDescription": "Melden Sie sich von Ihrem Konto ab. Sie müssen sich erneut anmelden, um auf Ihr Konto zuzugreifen.",
+        "logoutButton": "Abmelden",
+        "logoutConfirmTitle": "Abmelden?",
+        "logoutConfirmOk": "Abmelden"
+      },
+      "billing": {
+        "planOverview": "Planübersicht",
+        "planOverviewDescription": "Überprüfen Sie Ihren aktiven Plan und die Testphase.",
+        "viewPlanOverview": "Planübersicht anzeigen",
+        "subscriptionOptions": "Abonnementoptionen",
+        "subscriptionDescription": "Aktualisieren oder passen Sie Ihre Abonnementpräferenzen an.",
+        "manageSubscription": "Abonnement verwalten",
+        "invoices": "Rechnungen",
+        "invoicesDescription": "Laden Sie Belege für Ihre Buchhaltung herunter.",
+        "viewInvoices": "Rechnungen anzeigen",
+        "coupons": "Gutscheine",
+        "couponsDescription": "Lösen Sie Aktionscodes ein oder teilen Sie Gutscheine mit Freunden.",
+        "viewCoupons": "Gutscheine anzeigen"
+      },
+      "notifications": {
+        "weeklyDigest": "Wöchentlicher Fortschrittsbericht",
+        "weeklyDigestDescription": "Erhalten Sie jeden Montag eine Zusammenfassung der Aktivitäten Ihres Kindes.",
+        "homeworkUpdates": "Hausaufgaben-Updates",
+        "homeworkUpdatesDescription": "Benachrichtigt werden, wenn neue Scans oder Feedback verfügbar sind.",
+        "tipsOffers": "Tipps & Angebote",
+        "tipsOffersDescription": "Erhalten Sie Produkt-Updates und Sonderangebote von Kibundo.",
+        "productAnnouncements": "Produktankündigungen",
+        "productAnnouncementsDescription": "Erfahren Sie vor allen anderen von neuen Funktionen und Betas.",
+        "savePreferences": "Benachrichtigungseinstellungen speichern",
+        "preferencesSaved": "Benachrichtigungseinstellungen gespeichert."
+      },
+      "messages": {
+        "saveSuccess": "Einstellungen erfolgreich gespeichert",
+        "loadFailed": "Benutzerinformationen konnten nicht geladen werden",
+        "userNotFound": "Benutzer-ID nicht gefunden. Bitte aktualisieren Sie die Seite.",
+        "validationError": "Bitte überprüfen Sie die hervorgehobenen Felder und versuchen Sie es erneut.",
+        "saveFailed": "Einstellungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+        "saveFailedWithMessage": "Einstellungen konnten nicht gespeichert werden: {{message}}"
+      }
     }
   },
   "filters": {

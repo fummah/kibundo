@@ -33,6 +33,7 @@ const TreeHouseVsCastle = () => {
   };
   const { user, account } = useAuthContext();
   const [selectedChoice, setSelectedChoice] = useState(null);
+  const hasSpokenRef = useRef(false); // Guard to prevent double reading
   const [isPortrait, setIsPortrait] = useState(() => {
     if (typeof window === 'undefined') return true;
     return window.matchMedia('(orientation: portrait)').matches;
@@ -64,7 +65,8 @@ const TreeHouseVsCastle = () => {
   };
 
   useEffect(() => {
-    if (ttsEnabled && ready) {
+    if (ttsEnabled && ready && !hasSpokenRef.current) {
+      hasSpokenRef.current = true; // Mark as spoken
       const timer = setTimeout(() => {
         try {
           const u = new SpeechSynthesisUtterance(textToSpeak);
@@ -282,10 +284,11 @@ const TreeHouseVsCastle = () => {
           <div 
             className="absolute"
             style={{
-              left: '2px',
-              top: '97px',
-              width: '217px',
-              height: '111px'
+              left: 'clamp(2px, 0.2vw, 2px)',
+              top: 'clamp(97px, 12.125vh, 97px)',
+              width: 'clamp(280px, 26vw, 340px)',
+              height: 'auto',
+              minHeight: 'clamp(120px, 14vh, 160px)'
             }}
           >
             {/* Speech Bubble Arrow - 55.21x25.32 at x:134.79, y:-18 relative to speech bubble */}
@@ -294,10 +297,11 @@ const TreeHouseVsCastle = () => {
               alt="Speech indicator"
               className="absolute"
               style={{
-                left: '134.79px',
-                top: '-18px',
-                width: '55.21px',
-                height: '25.32px'
+                left: 'clamp(140px, 13vw, 170px)',
+                top: 'clamp(-18px, -2.25vh, -18px)',
+                width: 'clamp(40px, 4.31vw, 55.21px)',
+                height: 'auto',
+                aspectRatio: '55.21 / 25.32'
               }}
             />
             
@@ -305,13 +309,14 @@ const TreeHouseVsCastle = () => {
             <div 
               className="absolute rounded-[18px] border flex items-center"
               style={{
-                width: '217px',
-                height: '111px',
+                width: '100%',
+                height: '100%',
+                minHeight: 'clamp(120px, 14vh, 160px)',
                 backgroundColor: '#D9F98D',
                 borderColor: '#E1EAAC',
                 borderWidth: '1px',
                 boxShadow: '2px 2px 4px rgba(0, 0, 0, 0.25)',
-                padding: '18px'
+                padding: 'clamp(18px, 2.5vw, 24px)'
               }}
             >
               <p 
@@ -319,7 +324,7 @@ const TreeHouseVsCastle = () => {
                 style={{ 
                   fontFamily: 'Nunito',
                   fontWeight: 400,
-                  fontSize: '18px',
+                  fontSize: 'clamp(16px, 1.6vw, 20px)',
                   lineHeight: '24.5px',
                   color: '#000000',
                   margin: 0

@@ -106,7 +106,7 @@ export default function ParentChat() {
   );
   
   const welcomeMessage = useMemo(
-    () => `Hello ${firstName}! I'm your Kibundo AI assistant. How can I help you today?`,
+    () => `Hallo ${firstName} (Elternteil)! Ich bin dein Kibundo KI-Assistent. Wie kann ich dir heute helfen?`,
     [firstName]
   );
 
