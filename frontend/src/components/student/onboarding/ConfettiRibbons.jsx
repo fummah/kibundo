@@ -77,27 +77,23 @@ const ConfettiRibbons = ({
               transform: translate3d(${getTranslateX(baseX)}, -488px, 0) rotate(0deg);
               opacity: 1;
             }
-            5% {
-              transform: translate3d(${getTranslateX(baseX + config.splashX)}, -400px, 0) rotate(${config.splashRotate}deg);
+            10% {
+              transform: translate3d(${getTranslateX(baseX + config.splashX)}, -350px, 0) rotate(${config.splashRotate}deg);
               opacity: 1;
             }
-            10% {
-              transform: translate3d(${getTranslateX(baseX - config.splashX * 0.75)}, -300px, 0) rotate(${-config.splashRotate * 0.6}deg);
+            25% {
+              transform: translate3d(${getTranslateX(baseX - config.splashX * 0.5)}, -200px, 0) rotate(${-config.splashRotate * 0.5}deg);
               opacity: 0.95;
             }
-            20% {
-              transform: translate3d(${getTranslateX(baseX + config.splashX * 0.5)}, -200px, 0) rotate(${config.splashRotate * 0.3}deg);
-              opacity: 0.9;
-            }
-            40% {
-              transform: translate3d(${getTranslateX(baseX - config.splashX * 0.3)}, 0px, 0) rotate(${-config.splashRotate * 0.2}deg);
+            50% {
+              transform: translate3d(${getTranslateX(baseX + config.splashX * 0.3)}, 0px, 0) rotate(${config.splashRotate * 0.2}deg);
               opacity: 0.85;
             }
-            65% {
-              transform: translate3d(${getTranslateX(baseX)}, ${fadeAt - 50}px, 0) rotate(0deg);
-              opacity: 0.7;
+            70% {
+              transform: translate3d(${getTranslateX(baseX)}, ${fadeAt - 30}px, 0) rotate(0deg);
+              opacity: 0.5;
             }
-            75% {
+            85% {
               transform: translate3d(${getTranslateX(baseX)}, ${fadeAt}px, 0) rotate(0deg);
               opacity: 0;
             }
@@ -129,7 +125,11 @@ const ConfettiRibbons = ({
             backfaceVisibility: 'hidden', // Prevent flickering
             transform: 'translateZ(0)', // Force hardware acceleration
             animation: `${ribbon.animationName} ${ribbon.duration}s cubic-bezier(0.4, 0, 0.2, 1) infinite`,
-            animationDelay: `${ribbon.delay}s`
+            animationDelay: `${ribbon.delay}s`,
+            // Additional performance optimizations
+            contain: 'layout style paint', // CSS containment for better performance
+            isolation: 'isolate', // Create new stacking context
+            imageRendering: 'auto' // Let browser optimize image rendering
           }}
         />
       ))}

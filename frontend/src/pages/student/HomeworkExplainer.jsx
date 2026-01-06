@@ -274,16 +274,35 @@ const HomeworkExplainer = () => {
             padding: 'clamp(16px, 1.875vw, 24px)'
           }}
         >
-          {/* Horizontal line - responsive */}
-          <div
-            className="absolute left-1/2 transform -translate-x-1/2"
+          {/* Arched connecting line - passes through centers of all three circles */}
+          <svg
+            className="absolute"
             style={{
-              top: 'clamp(80px, 12.75vw, 102px)',
-              width: 'clamp(500px, 52.5vw, 672px)',
-              height: 'clamp(20px, 3.375vw, 27px)',
-              borderTop: '3px solid #544C3B'
+              left: 0,
+              top: 'clamp(30px, 4.75vw, 38px)',
+              width: '100%',
+              height: 'clamp(100px, 15.75vw, 126px)',
+              overflow: 'visible',
+              zIndex: 0,
+              pointerEvents: 'none'
             }}
-          />
+            viewBox="0 0 748 126"
+            preserveAspectRatio="none"
+          >
+            {/* Curve passes through centers of all three circles */}
+            {/* Sammeln: left=8px, width=121px → center X=68.5px, circle center Y=86.5px (relative to SVG top) */}
+            {/* machen: left=313px, width=121px → center X=373.5px, circle center Y=60.5px (relative to SVG top) */}
+            {/* Reflexion: left=619px, width=121px → center X=679.5px, circle center Y=86.5px (relative to SVG top) */}
+            <path
+              d="M 68.5 86.5 C 221 86.5 221 60.5 373.5 60.5 C 526 60.5 526 86.5 679.5 86.5"
+              stroke="#544C3B"
+              strokeWidth="3"
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
 
           {/* Frame 4 - Sammeln - responsive */}
           <div

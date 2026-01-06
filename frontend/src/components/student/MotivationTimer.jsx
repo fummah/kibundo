@@ -141,14 +141,43 @@ export default function MotivationTimer({
       setMinutes(def);
       setRemaining(def * 60 * 1000);
     }
-    // confetti (tiny)
+    // confetti (tiny) - optimized for performance
     const el = document.createElement("div");
-    el.innerHTML = `<div class="fixed inset-0 pointer-events-none z-[9999]">
-      ${Array.from({length: 28}).map((_,i)=>`<span class="absolute -top-4 w-2 h-3 rounded-sm" style="left:${(i*13)%100}%; background:${["#ff6b6b","#ffd93d","#6bcb77","#4d96ff","#b892ff"][i%5]}; animation:kib-pop 1200ms linear ${i*30}ms forwards;"></span>`).join("")}
-    </div>
-    <style>@keyframes kib-pop { to { transform: translateY(110vh) rotate(540deg); opacity:.9 } }</style>`;
+    el.className = "fixed inset-0 pointer-events-none z-[9999]";
+    el.style.willChange = "transform, opacity";
+    el.style.contain = "layout style paint";
+    
+    const particles = Array.from({length: 20}).map((_,i) => {
+      const span = document.createElement("span");
+      span.className = "absolute -top-4 w-2 h-3 rounded-sm";
+      span.style.cssText = `
+        left: ${(i*15)%100}%;
+        background: ${["#ff6b6b","#ffd93d","#6bcb77","#4d96ff","#b892ff"][i%5]};
+        will-change: transform, opacity;
+        transform: translateZ(0);
+        animation: kib-pop 1200ms cubic-bezier(0.4, 0, 0.2, 1) ${i*25}ms forwards;
+      `;
+      return span;
+    });
+    
+    particles.forEach(p => el.appendChild(p));
+    
+    const style = document.createElement("style");
+    style.textContent = `
+      @keyframes kib-pop { 
+        to { 
+          transform: translate3d(0, 110vh, 0) rotate(360deg); 
+          opacity: 0.8;
+        } 
+      }
+    `;
+    document.head.appendChild(style);
     document.body.appendChild(el);
-    setTimeout(() => el.remove(), 1400);
+    
+    setTimeout(() => {
+      el.remove();
+      style.remove();
+    }, 1400);
 
     onComplete && onComplete();
   }

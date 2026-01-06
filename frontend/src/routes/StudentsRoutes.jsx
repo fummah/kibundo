@@ -83,8 +83,8 @@ const StudentLayout = () => {
       <div
         className="relative"
         style={{
-          width: isDesktop ? "1024px" : "100%",
-          maxWidth: isDesktop ? "1024px" : "1280px",
+          width: isDesktop ? "100%" : "100%",
+          maxWidth: isDesktop ? "100%" : "100%",
           minHeight: "100vh",
           margin: isDesktop ? "0 auto" : "0",
           background: "#FFFFFF",
@@ -118,9 +118,8 @@ const StudentLayout = () => {
             left: 0,
             bottom: 0,
             width: "100%",
-            height: "clamp(50vh, 50vh, 60vh)",
-            minHeight: "50vh",
-            objectFit: "cover",
+            height: "100%",
+            objectFit: "cover", // Same as top background for consistent resolution
             objectPosition: "center bottom",
             zIndex: 1,
           }}

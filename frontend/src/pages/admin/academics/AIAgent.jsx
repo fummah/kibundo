@@ -387,7 +387,7 @@ export default function AIAgent() {
       setCurrentPage(1); // Reset to first page after creating agent
       
       // Clear all form fields
-      setSelectedState("");
+      setSelectedState(""); // Keep for state management but field is hidden
       setSelectedGrade("");
       setState((s) => ({
         ...s,
@@ -584,6 +584,7 @@ export default function AIAgent() {
 
     const payload = {
       ...editFormData,
+      state: null, // State field is hidden, always set to null
       master_prompt:
         editFormData.master_prompt ??
         editingAgent.master_prompt ??
@@ -1021,6 +1022,7 @@ export default function AIAgent() {
                 }}
                 options={[
                   { value: "", label: "All Grades" },
+                  { value: "all", label: "All (Agent Setting)" },
                   ...grades.map((g) => ({
                     value: String(g.value),
                     label: g.label || `Grade ${g.value}`,
@@ -1127,7 +1129,7 @@ export default function AIAgent() {
                         )}
                         {a.grade && (
                           <Tag color="purple">
-                            Grade: {grades.find(g => Number(g.value) === Number(a.grade))?.label || a.grade}
+                            Grade: {a.grade === "all" || a.grade === "All" ? "All" : (grades.find(g => Number(g.value) === Number(a.grade))?.label || a.grade)}
                           </Tag>
                         )}
                         {a.state && (
@@ -1206,7 +1208,8 @@ export default function AIAgent() {
               }
             />
 
-            <Select
+            {/* State Select - Hidden */}
+            {/* <Select
               size="large"
               placeholder="Select State…"
               className="w-full mt-3"
@@ -1216,7 +1219,7 @@ export default function AIAgent() {
               allowClear
               optionFilterProp="label"
               options={states.map((st) => ({ value: st.id, label: st.name }))}
-            />
+            /> */}
 
             <Select
               size="large"
@@ -1227,7 +1230,14 @@ export default function AIAgent() {
               loading={loadingGrades}
               allowClear
               optionFilterProp="label"
-              options={grades}
+              options={[
+                { value: "all", label: "All" },
+                ...grades
+              ]}
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+              }
             />
 
             {/* Entities from /entities */}
@@ -1390,7 +1400,7 @@ export default function AIAgent() {
                     name,
                     agent_name: name,
                     description: `Agent for ${entities.join(", ")}`,
-                    state: selectedState || null,
+                    state: null, // State field is hidden, always set to null
                     grade: selectedGrade || null,
                     entities,
                     file_name: apiValue || "",
@@ -1465,7 +1475,8 @@ export default function AIAgent() {
             />
           </Form.Item>
 
-          <Form.Item label="State">
+          {/* State Select - Hidden */}
+          {/* <Form.Item label="State">
             <Select
               placeholder="Select State"
               value={editFormData.state ? Number(editFormData.state) : undefined}
@@ -1484,22 +1495,25 @@ export default function AIAgent() {
                 (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
               }
             />
-          </Form.Item>
+          </Form.Item> */}
 
           <Form.Item label="Grade">
             <Select
               placeholder="Select Grade"
-              value={editFormData.grade ? Number(editFormData.grade) : undefined}
+              value={editFormData.grade === "all" ? "all" : (editFormData.grade ? Number(editFormData.grade) : undefined)}
               onChange={(value) =>
                 setEditFormData({ ...editFormData, grade: value })
               }
               allowClear
               optionFilterProp="label"
               loading={loadingGrades}
-              options={grades.map((g) => ({ 
-                value: Number(g.value), 
-                label: g.label || `Grade ${g.value}` 
-              }))}
+              options={[
+                { value: "all", label: "All" },
+                ...grades.map((g) => ({ 
+                  value: Number(g.value), 
+                  label: g.label || `Grade ${g.value}` 
+                }))
+              ]}
               showSearch
               filterOption={(input, option) =>
                 (option?.label ?? "").toLowerCase().includes(input.toLowerCase())

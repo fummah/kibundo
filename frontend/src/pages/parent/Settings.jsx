@@ -319,7 +319,24 @@ function SettingsContent({
   };
 
   const handleNotificationSave = () => {
-    message.success(t("parent.settings.notifications.preferencesSaved"));
+    message.success({
+      content: (
+        <span style={{ 
+          display: 'block',
+          wordWrap: 'break-word',
+          wordBreak: 'break-word',
+          whiteSpace: 'normal',
+          maxWidth: '500px',
+          lineHeight: '1.5'
+        }}>
+          {t("parent.settings.notifications.preferencesSaved")}
+        </span>
+      ),
+      duration: 3,
+      style: {
+        marginTop: '80px', // Add top margin to prevent overlap with button
+      },
+    });
   };
 
   const renderProfileTab = (
@@ -569,24 +586,36 @@ function SettingsContent({
           </div>
         </Card>
       ))}
-      <Button
-        type="primary"
-        icon={<SaveOutlined />}
-        onClick={handleNotificationSave}
-        style={{
-          width: 317,
-          height: 49,
-          borderRadius: 32,
-          background: "#EF7C2E",
-          border: "none",
-          fontFamily: "Nunito",
-          fontWeight: 900,
-          fontSize: 18,
-          letterSpacing: "2%",
-        }}
-      >
-        {t("parent.settings.notifications.savePreferences")}
-      </Button>
+      <div style={{ marginTop: '16px', marginBottom: '16px' }}>
+        <Button
+          type="primary"
+          icon={<SaveOutlined />}
+          onClick={handleNotificationSave}
+          style={{
+            minWidth: 317,
+            width: 'auto',
+            maxWidth: '100%',
+            minHeight: 49,
+            height: 'auto',
+            borderRadius: 32,
+            background: "#EF7C2E",
+            border: "none",
+            fontFamily: "Nunito",
+            fontWeight: 900,
+            fontSize: 18,
+            letterSpacing: "2%",
+            whiteSpace: "normal",
+            wordWrap: "break-word",
+            padding: "12px 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+          }}
+        >
+          {t("parent.settings.notifications.savePreferences")}
+        </Button>
+      </div>
     </div>
   );
 

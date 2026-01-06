@@ -72,65 +72,67 @@ export default function ConfettiBurst({ taskId, forceShow = false }) {
         document.head.appendChild(styleEl);
       }
 
-      // Multiple bursts from different positions across the top of the screen
-      const burstPositions = [
-        { x: 0.1, y: 0.05 }, // Left side - from top
-        { x: 0.3, y: 0.05 }, // Left-center - from top
-        { x: 0.5, y: 0.05 }, // Center - from top
-        { x: 0.7, y: 0.05 }, // Right-center - from top
-        { x: 0.9, y: 0.05 }, // Right side - from top
-      ];
-
-      // Fire bursts from multiple positions with slight delays for a shower effect
-      // Use requestAnimationFrame for smoother timing
-      const fireBurst = (pos, delay) => {
-        setTimeout(() => {
-          if (!cancelled) {
-            requestAnimationFrame(() => {
-              if (!cancelled) {
-                confetti({
-                  particleCount: 100,
-                  spread: 120, // Wider spread for full screen coverage
-                  origin: pos,
-                  colors: ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#b892ff', '#ff9a56', '#ffcc5c'],
-                  startVelocity: 45,
-                  gravity: 0.8,
-                  ticks: 200, // More ticks for smoother animation
-                  decay: 0.94, // Slower decay for longer animation
-                });
-              }
-            });
-          }
-        }, delay);
+      // Optimized confetti configuration for smooth performance
+      const confettiConfig = {
+        particleCount: 50, // Reduced for better performance
+        spread: 70,
+        origin: { x: 0.5, y: 0.05 },
+        colors: ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#b892ff'],
+        startVelocity: 30,
+        gravity: 0.8,
+        ticks: 100, // Reduced ticks for smoother animation
+        decay: 0.92,
+        drift: 0,
+        scalar: 1,
+        zIndex: 99999,
+        disableForReducedMotion: true, // Respect user preferences
       };
 
-      burstPositions.forEach((pos, index) => {
-        fireBurst(pos, index * 80); // Reduced delay for smoother effect
-      });
-
-      // Additional center burst for extra celebration - from top
-      setTimeout(() => {
+      // Use requestAnimationFrame for smooth timing
+      requestAnimationFrame(() => {
         if (!cancelled) {
-          requestAnimationFrame(() => {
-            if (!cancelled) {
-              confetti({
-                particleCount: 150,
-                spread: 180, // Maximum spread for full screen
-                origin: { x: 0.5, y: 0.05 }, // From top of page
-                colors: ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#b892ff', '#ff9a56', '#ffcc5c'],
-                startVelocity: 50,
-                gravity: 0.9,
-                ticks: 200, // More ticks for smoother animation
-                decay: 0.94, // Slower decay for longer animation
-              });
-            }
+          // Single optimized burst from center
+          confetti(confettiConfig);
+          
+          // Additional bursts with slight delays for layered effect
+          const additionalBursts = [
+            { x: 0.25, delay: 100 },
+            { x: 0.75, delay: 150 },
+          ];
+
+          additionalBursts.forEach((burst) => {
+            setTimeout(() => {
+              if (!cancelled) {
+                requestAnimationFrame(() => {
+                  if (!cancelled) {
+                    confetti({
+                      ...confettiConfig,
+                      origin: { x: burst.x, y: 0.05 },
+                      particleCount: 30, // Fewer particles for side bursts
+                    });
+                  }
+                });
+              }
+            }, burst.delay);
           });
         }
-      }, 250); // Reduced delay
+      });
     })();
 
-    return () => { cancelled = true; };
-  }, [taskId]);
+    return () => { 
+      cancelled = true;
+      // Clean up canvas elements after animation completes
+      setTimeout(() => {
+        const canvases = document.querySelectorAll('body > canvas');
+        canvases.forEach(canvas => {
+          // Only remove canvas-confetti canvases (they have specific dimensions)
+          if (canvas.width && canvas.height && canvas.style.position === 'fixed') {
+            canvas.remove();
+          }
+        });
+      }, 5000); // Wait for animations to complete
+    };
+  }, [taskId, forceShow]);
 
   return null;
 }
