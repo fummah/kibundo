@@ -22,6 +22,7 @@ const HomeworkHome = () => {
   const [editingScanId, setEditingScanId] = useState(null);
   const [forceUpdate, setForceUpdate] = useState(0);
   const [isCompletedSectionExpanded, setIsCompletedSectionExpanded] = useState(true);
+  const [isCompletingHomework, setIsCompletingHomework] = useState(false);
   const [isPortrait, setIsPortrait] = useState(() => {
     if (typeof window === 'undefined') return true;
     return window.matchMedia('(orientation: portrait)').matches;
