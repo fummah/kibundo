@@ -62,6 +62,29 @@ exports.approveBetaUser = async (req, res) => {
     // Send approval email
     const userData = { ...user.toJSON() };
     delete userData.password;
+
+    let frontendBase = process.env.FRONTEND_URL;
+    if (!frontendBase) {
+      const origin = req.get('origin') || req.get('referer');
+      if (origin) {
+        try {
+          const url = new URL(origin);
+          frontendBase = `${url.protocol}//${url.host}`;
+        } catch {
+          // ignore
+        }
+      }
+    }
+    if (!frontendBase) {
+      const xfProto = req.get('x-forwarded-proto');
+      const xfHost = req.get('x-forwarded-host');
+      if (xfProto && xfHost) {
+        frontendBase = `${xfProto}://${xfHost}`;
+      }
+    }
+    if (frontendBase) {
+      userData.frontendBase = String(frontendBase).replace(/\/+$/, "");
+    }
     
     emailService.sendBetaApprovalEmail(userData)
       .then((result) => {

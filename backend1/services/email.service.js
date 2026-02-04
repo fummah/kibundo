@@ -291,6 +291,8 @@ async function sendWelcomeEmail(user) {
     full_name: `${user.first_name || ""} ${user.last_name || ""}`.trim() || "User",
   };
 
+  console.log("📧 [sendWelcomeEmail] FRONTEND_URL:", process.env.FRONTEND_URL, "Computed login_url:", variables.login_url);
+
   console.log("📧 [sendWelcomeEmail] Variables:", { email: variables.email, full_name: variables.full_name, has_password: !!variables.password, parent_id: user.parent_id });
 
   // Try to use template from database first
@@ -391,6 +393,8 @@ async function sendBetaSignupEmail(user) {
     email: user.email,
     login_url: `${getFrontendBase()}/signin`,
   };
+
+  console.log("📧 [sendBetaSignupEmail] FRONTEND_URL:", process.env.FRONTEND_URL, "Computed login_url:", variables.login_url);
 
   const subject = "🚀 Deine Beta-Anmeldung bei Kibundo";
   
@@ -497,11 +501,25 @@ async function sendBetaApprovalEmail(user) {
     return { success: false, error: "Email service not available" };
   }
 
+  const frontendBaseOverride = user?.frontendBase;
+  const frontendBase = String(frontendBaseOverride || process.env.FRONTEND_URL || "http://localhost:5173")
+    .trim()
+    .replace(/\/+$/, "");
+
   const variables = {
     full_name: `${user.first_name} ${user.last_name}`,
     email: user.email,
-    login_url: `${getFrontendBase()}/signin`,
+    login_url: `${frontendBase}/signin`,
   };
+
+  console.log(
+    "📧 [sendBetaApprovalEmail] FRONTEND_URL:",
+    process.env.FRONTEND_URL,
+    "Override frontendBase:",
+    frontendBaseOverride,
+    "Computed login_url:",
+    variables.login_url
+  );
 
   const subject = "🎉 Dein Beta-Zugang wurde freigeschaltet!";
   
