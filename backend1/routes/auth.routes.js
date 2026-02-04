@@ -19,6 +19,10 @@ router.post("/login", authController.login);
 // Student login
 router.post("/student-login", authController.studentLogin);
 
+// Forgot/reset password
+router.post("/forgot-password", authController.forgotPassword);
+router.post("/reset-password", authController.resetPassword);
+
 // Public endpoint to get student list for login
 router.get("/students-for-login", authController.getStudentsForLogin);
 

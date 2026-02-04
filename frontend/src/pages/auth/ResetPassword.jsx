@@ -1,26 +1,47 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast, Toaster } from "react-hot-toast";
 import { Card, Form, Input, Button, Typography } from "antd";
-import { MailOutlined, ArrowLeftOutlined } from "@ant-design/icons";
-import api from "../../api/axios";
+import { LockOutlined, ArrowLeftOutlined } from "@ant-design/icons";
+import api from "@/api/axios";
 import globalBg from "@/assets/backgrounds/global-bg.png";
 
-export default function ForgotPassword() {
+export default function ResetPassword() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const token = useMemo(() => params.get("token") || "", [params]);
 
-  const [form, setForm] = useState({ email: "" });
+  const [form, setForm] = useState({ password: "", confirm_password: "" });
   const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (e) =>
+    setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.email) return toast.error("Please enter your email.");
+
+    if (!token) {
+      toast.error("Invalid or missing reset token.");
+      return;
+    }
+    if (!form.password) {
+      toast.error("Please enter a new password.");
+      return;
+    }
+    if (form.password !== form.confirm_password) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+
     setLoading(true);
     try {
-      await api.post("/auth/forgot-password", { email: form.email });
-      toast.success("Reset instructions sent to your email.");
+      await api.post("/auth/reset-password", {
+        token,
+        password: form.password,
+        confirm_password: form.confirm_password,
+      });
+      toast.success("Password updated successfully. You can now sign in.");
+      setTimeout(() => navigate("/signin"), 800);
     } catch (err) {
       toast.error(err.response?.data?.message || "Something went wrong");
     } finally {
@@ -57,24 +78,35 @@ export default function ForgotPassword() {
           >
             <div className="mb-6">
               <Typography.Title level={3} style={{ marginBottom: 4, textAlign: "center" }}>
-                Forgot password
+                Reset password
               </Typography.Title>
               <Typography.Paragraph style={{ marginBottom: 0, textAlign: "center", opacity: 0.75 }}>
-                Enter your email and we’ll send you a secure reset link.
+                Choose a strong password to secure your account.
               </Typography.Paragraph>
             </div>
 
             <Form layout="vertical" onSubmitCapture={handleSubmit} requiredMark={false}>
-              <Form.Item label="Email" required>
-                <Input
+              <Form.Item label="New password" required>
+                <Input.Password
                   size="large"
-                  name="email"
-                  type="email"
-                  value={form.email}
+                  name="password"
+                  value={form.password}
                   onChange={handleChange}
-                  prefix={<MailOutlined />}
-                  placeholder="you@example.com"
-                  autoComplete="email"
+                  prefix={<LockOutlined />}
+                  placeholder="Enter new password"
+                  autoComplete="new-password"
+                />
+              </Form.Item>
+
+              <Form.Item label="Confirm new password" required>
+                <Input.Password
+                  size="large"
+                  name="confirm_password"
+                  value={form.confirm_password}
+                  onChange={handleChange}
+                  prefix={<LockOutlined />}
+                  placeholder="Confirm new password"
+                  autoComplete="new-password"
                 />
               </Form.Item>
 
@@ -86,7 +118,7 @@ export default function ForgotPassword() {
                 loading={loading}
                 style={{ borderRadius: 12, height: 44 }}
               >
-                Send reset link
+                Update password
               </Button>
 
               <Button

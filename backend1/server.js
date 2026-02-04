@@ -10,7 +10,13 @@ const app = express();
 const corsOrigins = String(process.env.CORS_ORIGINS || '').trim();
 const allowedOrigins = corsOrigins
   ? corsOrigins.split(',').map((s) => s.trim()).filter(Boolean)
-  : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080'];
+  : [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:8080',
+    'http://217.160.29.143',
+    'https://217.160.29.143',
+  ];
 
 app.use(cors({
   origin: (origin, callback) => {

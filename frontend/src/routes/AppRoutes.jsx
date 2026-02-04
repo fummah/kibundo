@@ -14,6 +14,7 @@ import BetaSignUp from "@/pages/auth/BetaSignUp.jsx";
 import BetaSignUpSuccess from "@/pages/auth/BetaSignUpSuccess.jsx";
 import SubscriptionChoice from "@/pages/auth/SubscriptionChoice.jsx";
 import ForgotPassword from "@/pages/auth/ForgotPassword.jsx";
+import ResetPassword from "@/pages/auth/ResetPassword.jsx";
 import NotFound from "@/components/NotFound.jsx";
 import SplashScreen from "@/pages/common/SplashScreen.jsx";
 
@@ -76,6 +77,7 @@ export default function AppRoutes() {
           }
         />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/unauthorized" element={<div>Unauthorized Access</div>} />
 
         {/* 🆕 Public SSO intake */}

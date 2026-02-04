@@ -8,6 +8,95 @@ const Parent = db.parent;
 const Teacher = db.teacher;
 const emailService = require("../services/email.service");
 
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const user = await User.findOne({ where: { email } });
+
+    // Always return success to avoid account enumeration
+    if (!user) {
+      return res.status(200).json({ message: "If this email exists, reset instructions have been sent." });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      console.error("❌ Forgot password error: JWT_SECRET is not configured");
+      return res.status(500).json({ message: "Server misconfiguration", error: "JWT_SECRET is not configured" });
+    }
+
+    const token = jwt.sign(
+      { id: user.id, email: user.email, type: "password_reset" },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    const frontendBase = String(process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/+$/, "");
+    const resetUrl = `${frontendBase}/reset-password?token=${encodeURIComponent(token)}`;
+
+    await emailService.sendEmail({
+      to: user.email,
+      subject: "Password Reset - Kibundo",
+      html: `
+        <p>Hello${user.first_name ? ` ${user.first_name}` : ""},</p>
+        <p>You requested a password reset. Click the link below to set a new password:</p>
+        <p><a href="${resetUrl}">Reset Password</a></p>
+        <p>This link expires in 15 minutes.</p>
+        <p>If you did not request this, you can ignore this email.</p>
+      `,
+      text: `You requested a password reset. Open this link to set a new password: ${resetUrl} (expires in 15 minutes). If you did not request this, ignore this email.`,
+    });
+
+    return res.status(200).json({ message: "If this email exists, reset instructions have been sent." });
+  } catch (err) {
+    console.error("❌ Forgot password error:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, password, confirm_password } = req.body || {};
+    if (!token || !password) {
+      return res.status(400).json({ message: "Token and new password are required" });
+    }
+    if (confirm_password != null && password !== confirm_password) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      console.error("❌ Reset password error: JWT_SECRET is not configured");
+      return res.status(500).json({ message: "Server misconfiguration", error: "JWT_SECRET is not configured" });
+    }
+
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (e) {
+      return res.status(400).json({ message: "Invalid or expired reset token" });
+    }
+
+    if (payload?.type !== "password_reset" || !payload?.id) {
+      return res.status(400).json({ message: "Invalid reset token" });
+    }
+
+    const user = await User.findByPk(payload.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+    await user.update({ password: hashed });
+
+    return res.status(200).json({ message: "Password updated successfully" });
+  } catch (err) {
+    console.error("❌ Reset password error:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
 exports.betaSignup = async (req, res) => {
   try {
     // Handle both field name variations (frontend may send 'phone' or 'contact_number', 'bundesland' or 'state')
@@ -487,6 +576,10 @@ exports.login = async (req, res) => {
     }
 
     // ONLY AFTER ALL CHECKS PASS: Generate token
+    if (!process.env.JWT_SECRET) {
+      console.error("❌ Login error: JWT_SECRET is not configured");
+      return res.status(500).json({ message: "Server misconfiguration", error: "JWT_SECRET is not configured" });
+    }
     const token = jwt.sign(
       { id: user.id, email: user.email, role_id: user.role_id },
       process.env.JWT_SECRET,
@@ -595,6 +688,10 @@ exports.studentLogin = async (req, res) => {
     }
 
     // Generate token (no password check for students)
+    if (!process.env.JWT_SECRET) {
+      console.error("❌ Student login error: JWT_SECRET is not configured");
+      return res.status(500).json({ message: "Server misconfiguration", error: "JWT_SECRET is not configured" });
+    }
     const token = jwt.sign(
       { id: user.id, email: user.email, role_id: user.role_id },
       process.env.JWT_SECRET,
