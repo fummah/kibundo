@@ -28,7 +28,7 @@ exports.betaSignup = async (req, res) => {
 
     // Normalize field names (support both frontend and backend naming)
     const finalContactNumber = contact_number || phone;
-    const finalState = state || bundesland;
+    const finalState = state || bundesland || null;
 
     console.log("🔍 Beta signup request received:", { 
       role_id, 
@@ -83,15 +83,32 @@ exports.betaSignup = async (req, res) => {
         });
       } else {
         // If user exists but is not a beta user, convert them to beta
-        await existingUser.update({
+        const betaUpdate = {
           is_beta: true,
           beta_status: 'pending',
           beta_requested_at: new Date(),
-          isActive: false
-        });
+          isActive: false,
+        };
+        if (finalContactNumber) betaUpdate.contact_number = finalContactNumber;
+        if (finalState) betaUpdate.state = finalState;
+
+        await existingUser.update(betaUpdate);
 
         const userData = { ...existingUser.toJSON() };
         delete userData.password;
+
+        console.log("📧 Attempting to send beta signup confirmation email to:", userData.email);
+        emailService.sendBetaSignupEmail(userData)
+          .then((result) => {
+            if (result?.success) {
+              console.log("✅ Beta signup confirmation email sent successfully to:", userData.email, "Message ID:", result.messageId);
+            } else {
+              console.error("❌ Failed to send beta signup confirmation email to:", userData.email, "Error:", result?.error);
+            }
+          })
+          .catch((emailError) => {
+            console.error("❌ Exception sending beta signup confirmation email to:", userData.email, "Error:", emailError);
+          });
 
         return res.status(200).json({ 
           message: "Dein bestehender Account wurde für das Beta-Programm angemeldet!",
@@ -182,6 +199,19 @@ exports.betaSignup = async (req, res) => {
 
     console.log("✅ Beta signup successful:", { userId: newUser.id, role_id: roleIdNum, email: newUser.email, parent_id: newUser.parent_id || null });
 
+    console.log("📧 Attempting to send beta signup confirmation email to:", userData.email);
+    emailService.sendBetaSignupEmail(userData)
+      .then((result) => {
+        if (result?.success) {
+          console.log("✅ Beta signup confirmation email sent successfully to:", userData.email, "Message ID:", result.messageId);
+        } else {
+          console.error("❌ Failed to send beta signup confirmation email to:", userData.email, "Error:", result?.error);
+        }
+      })
+      .catch((emailError) => {
+        console.error("❌ Exception sending beta signup confirmation email to:", userData.email, "Error:", emailError);
+      });
+
     res.status(201).json({ 
       message: "Beta registration successful! Your account is pending approval.", 
       user: userData,
@@ -216,7 +246,7 @@ exports.signup = async (req, res) => {
 
     // Normalize field names (support both frontend and backend naming)
     const finalContactNumber = contact_number || phone;
-    const finalState = state || bundesland;
+    const finalState = state || bundesland || null;
 
     console.log("🔍 Signup request received:", { 
       role_id, 

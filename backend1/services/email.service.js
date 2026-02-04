@@ -42,8 +42,16 @@ function getTransporter() {
 
   // If no SMTP credentials are configured, create a test account (for development)
   if (!smtpConfig.auth.user || !smtpConfig.auth.pass) {
+    const missing = [];
+    if (!process.env.SMTP_HOST) missing.push("SMTP_HOST");
+    if (!process.env.SMTP_PORT) missing.push("SMTP_PORT");
+    if (!process.env.SMTP_USER) missing.push("SMTP_USER");
+    if (!process.env.SMTP_PASSWORD) missing.push("SMTP_PASSWORD");
     console.warn("⚠️  SMTP credentials not configured. Email sending will be disabled.");
-    console.warn("   Set SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASSWORD environment variables.");
+    if (missing.length) {
+      console.warn("   Missing env vars:", missing.join(", "));
+    }
+    console.warn("   Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD (and optionally SMTP_FROM). ");
     return null;
   }
 
@@ -195,6 +203,21 @@ async function sendEmail(options) {
   const emailTransporter = getTransporter();
   if (!emailTransporter) {
     console.warn(`⚠️  Email not sent to ${options.to}: SMTP not configured`);
+    console.warn(
+      "   Current SMTP config:",
+      JSON.stringify(
+        {
+          SMTP_HOST: process.env.SMTP_HOST || null,
+          SMTP_PORT: process.env.SMTP_PORT || null,
+          SMTP_SECURE: process.env.SMTP_SECURE || null,
+          SMTP_USER: process.env.SMTP_USER ? "[set]" : null,
+          SMTP_PASSWORD: process.env.SMTP_PASSWORD ? "[set]" : null,
+          SMTP_FROM: process.env.SMTP_FROM || null,
+        },
+        null,
+        2
+      )
+    );
     return { success: false, error: "SMTP not configured" };
   }
 

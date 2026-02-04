@@ -27,6 +27,8 @@ export default function ParentsList() {
                 [u.first_name, u.last_name].filter(Boolean).join(" ").trim() ||
                 p.name || "-";
 
+              const stateValue = u.state ?? p.state ?? p.bundesland ?? u.bundesland;
+
               const parsed = {
                 // fields available for row + detail prefill
                 id: p.id,
@@ -36,7 +38,10 @@ export default function ParentsList() {
 
                 // 🔹 NEW / FIXED mappings
                 contact_number: fb(u.contact_number ?? p.contact_number),
-                bundesland: fb(u.state ?? p.bundesland),
+                // Keep legacy key for older UI + stored column prefs
+                bundesland: fb(stateValue),
+                // Also expose as "state" for clearer naming + newer UI
+                state: fb(stateValue),
 
                 created_at: p.created_at || u.created_at || null,
 
@@ -98,12 +103,13 @@ export default function ParentsList() {
 
           // 🔹 Show as “State”, value comes from user.state (bundesland)
           bundesland: F.text("State", "bundesland"),
+          state: F.text("State", "state"),
 
           created_at: F.date("Date added", "created_at"),
         }),
 
         // 🔹 Make contact + state visible by default
-        defaultVisible: ["status", "id", "name", "email", "contact_number", "bundesland", "created_at"],
+        defaultVisible: ["status", "id", "name", "email", "contact_number", "bundesland", "state", "created_at"],
       }}
     />
   );
