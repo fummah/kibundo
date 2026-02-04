@@ -8,6 +8,228 @@ const Parent = db.parent;
 const Teacher = db.teacher;
 const emailService = require("../services/email.service");
 
+exports.betaSignup = async (req, res) => {
+  try {
+    // Handle both field name variations (frontend may send 'phone' or 'contact_number', 'bundesland' or 'state')
+    const { 
+      first_name, 
+      last_name, 
+      email, 
+      contact_number, 
+      phone,  // Frontend sends 'phone'
+      state,
+      bundesland,  // Frontend sends 'bundesland'
+      gender,  // 'male' or 'female'
+      password, 
+      confirm_password, 
+      role_id,
+      is_beta
+    } = req.body;
+
+    // Normalize field names (support both frontend and backend naming)
+    const finalContactNumber = contact_number || phone;
+    const finalState = state || bundesland;
+
+    console.log("🔍 Beta signup request received:", { 
+      role_id, 
+      email, 
+      is_beta,
+      role_id_type: typeof role_id,
+      role_id_value: role_id,
+      fullBody: JSON.stringify({ first_name, last_name, email, role_id, finalContactNumber, finalState, is_beta })
+    });
+
+    // Validate required fields
+    if (!first_name || !last_name || !email || !password || !confirm_password || !role_id || !is_beta) {
+      return res.status(400).json({ message: "All required fields must be provided" });
+    }
+
+    // Ensure this is a beta signup
+    if (!is_beta) {
+      return res.status(400).json({ message: "This endpoint is for beta signups only" });
+    }
+
+    // 1. Check if passwords match
+    if (password !== confirm_password) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+
+    // 2. Validate role_id - Ensure it's a valid role
+    // Role IDs: 1=Student, 2=Parent, 3=Teacher, 10=Admin
+    const validRoleIds = [1, 2, 3, 10];
+    const roleIdNum = Number(role_id);
+    
+    console.log("🎯 Role validation:", { 
+      original_role_id: role_id, 
+      converted_roleIdNum: roleIdNum,
+      isValid: validRoleIds.includes(roleIdNum)
+    });
+    
+    if (!validRoleIds.includes(roleIdNum)) {
+      return res.status(400).json({ 
+        message: `Invalid role_id. Valid roles are: 1 (Student), 2 (Parent), 3 (Teacher), 10 (Admin). Received: ${role_id}` 
+      });
+    }
+
+    // 3. Check if user exists and handle appropriately
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      // If user already exists, check if they're already a beta user
+      if (existingUser.is_beta) {
+        return res.status(409).json({ 
+          message: "Du bist bereits für das Beta-Programm angemeldet.",
+          already_beta: true,
+          beta_status: existingUser.beta_status
+        });
+      } else {
+        // If user exists but is not a beta user, convert them to beta
+        await existingUser.update({
+          is_beta: true,
+          beta_status: 'pending',
+          beta_requested_at: new Date()
+        });
+        
+        // Send beta signup confirmation email
+        const userData = { ...existingUser.toJSON() };
+        delete userData.password;
+        
+        emailService.sendBetaSignupEmail(userData)
+          .then((result) => {
+            if (result.success) {
+              console.log("✅ Beta signup confirmation email sent successfully to:", userData.email);
+            } else {
+              console.error("❌ Failed to send beta signup confirmation email to:", userData.email, "Error:", result.error);
+            }
+          })
+          .catch((emailError) => {
+            console.error("❌ Exception sending beta signup confirmation email to:", userData.email, "Error:", emailError);
+          });
+        
+        return res.status(200).json({ 
+          message: "Dein bestehender Account wurde für das Beta-Programm angemeldet!",
+          user: userData,
+          beta_status: 'pending',
+          requires_approval: true,
+          converted_to_beta: true
+        });
+      }
+    }
+
+    // 4. Hash password and create user with beta status
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = await User.create({
+      role_id: roleIdNum,
+      first_name,
+      last_name,
+      email,
+      contact_number: finalContactNumber,
+      state: finalState,
+      gender: gender && ['male', 'female'].includes(gender.toLowerCase()) ? gender.toLowerCase() : null,
+      password: hashedPassword,
+      is_beta: true,
+      beta_status: 'pending',
+      beta_requested_at: new Date(),
+    });
+
+    console.log("✅ Beta user created:", { userId: newUser.id, role_id: newUser.role_id, expectedRoleId: roleIdNum });
+
+    // 5. Create role-specific records
+    // Role 1 = Student
+    if (roleIdNum === 1) {
+      const newStudent = await Student.create({
+        user_id: newUser.id,
+        created_by: newUser.id,
+      });
+      console.log("✅ Beta Student record created:", { studentId: newStudent.id, userId: newUser.id });
+    } 
+    // Role 2 = Parent
+    else if (roleIdNum === 2) {
+      console.log("🎯 Creating BETA PARENT record for role_id = 2, user_id =", newUser.id);
+      let newParent = null;
+      try {
+        newParent = await Parent.create({
+          user_id: newUser.id,
+          created_by: newUser.id,
+        });
+        console.log("✅ BETA PARENT record created successfully:", { parentId: newParent.id, userId: newUser.id, role_id: roleIdNum });
+      } catch (parentError) {
+        console.error("❌ FAILED to create Beta Parent record:", parentError);
+        throw parentError;
+      }
+      
+      // Store parent_id for email sending
+      newUser.parent_id = newParent.id;
+      
+      // For parents: email is the portal login (username)
+      await User.update(
+        { username: email },
+        { where: { id: newUser.id } }
+      );
+      console.log("✅ Set username to email for beta parent:", email);
+    } 
+    // Role 3 = Teacher
+    else if (roleIdNum === 3) {
+      console.log("🎯 Creating BETA TEACHER record for role_id = 3, user_id =", newUser.id);
+      try {
+        const newTeacher = await Teacher.create({
+          user_id: newUser.id,
+          class_id: 1,
+          created_by: newUser.id,
+        });
+        console.log("✅ BETA TEACHER record created successfully:", { teacherId: newTeacher.id, userId: newUser.id, role_id: roleIdNum });
+      } catch (teacherError) {
+        console.error("❌ FAILED to create Beta Teacher record:", teacherError);
+        throw teacherError;
+      }
+    }
+    // Role 10 = Admin (no additional record needed)
+    else {
+      console.log("⚠️ No role-specific record to create for role_id:", roleIdNum);
+    }
+
+    // 6. Return success message (no token for beta users - they need approval)
+    const userData = { ...newUser.toJSON() };
+    delete userData.password;
+
+    console.log("✅ Beta signup successful:", { userId: newUser.id, role_id: roleIdNum, email: newUser.email, parent_id: newUser.parent_id || null });
+
+    // 7. Send beta signup confirmation email (non-blocking)
+    const emailData = {
+      ...userData,
+      password: password, // Include plain password for email
+      parent_id: newUser.parent_id || null,
+      beta_status: 'pending'
+    };
+    
+    console.log("📧 Attempting to send beta signup confirmation email to:", emailData.email);
+    emailService.sendBetaSignupEmail(emailData)
+      .then((result) => {
+        if (result.success) {
+          console.log("✅ Beta signup confirmation email sent successfully to:", emailData.email, "Message ID:", result.messageId);
+        } else {
+          console.error("❌ Failed to send beta signup confirmation email to:", emailData.email, "Error:", result.error);
+        }
+      })
+      .catch((emailError) => {
+        console.error("❌ Exception sending beta signup confirmation email to:", emailData.email, "Error:", emailError);
+        // Don't fail the signup if email fails
+      });
+
+    res.status(201).json({ 
+      message: "Beta registration successful! Your account is pending approval.", 
+      user: userData,
+      beta_status: 'pending',
+      requires_approval: true
+    });
+  } catch (err) {
+    console.error("❌ Beta signup error:", err);
+    res.status(500).json({ 
+      message: "Server error during beta signup", 
+      error: err.message 
+    });
+  }
+};
+
 exports.signup = async (req, res) => {
   try {
     // Handle both field name variations (frontend may send 'phone' or 'contact_number', 'bundesland' or 'state')
@@ -230,14 +452,35 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // 3. Generate token
+    // 3. Check beta user approval status (temporarily disabled for testing)
+    // if (user.is_beta && user.beta_status !== 'approved') {
+    //   if (user.beta_status === 'pending') {
+    //     return res.status(403).json({ 
+    //       message: "Your beta account is pending approval. You will receive an email once your account is approved.",
+    //       beta_status: user.beta_status,
+    //       requires_approval: true
+    //     });
+    //   } else if (user.beta_status === 'rejected') {
+    //     return res.status(403).json({ 
+    //       message: "Your beta account application has been rejected. Please contact support for more information.",
+    //       beta_status: user.beta_status
+    //     });
+    //   } else {
+    //     return res.status(403).json({ 
+    //       message: "Your beta account status is invalid. Please contact support.",
+    //       beta_status: user.beta_status
+    //     });
+    //   }
+    // }
+
+    // 4. Generate token
     const token = jwt.sign(
       { id: user.id, email: user.email, role_id: user.role_id },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
 
-    // 4. Exclude password from response
+    // 5. Exclude password from response
     const userData = { ...user.toJSON() };
     delete userData.password;
 

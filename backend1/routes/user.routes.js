@@ -14,7 +14,8 @@ addcurriculum, getAllCurriculum,getCurriculumById, deleteCurriculum, addWorkshee
     getAllStates, getAllAgents, getAgentsForStudent, getPublicTables,addAgent, getHomeworks, getHomeworkScanById, deleteHomeworkScan, getStudentIdByUserId, getStudentApiUsage, getStudentUsageStats, getAiAgentSettings,updateAiAgentSettings,updateAgent, 
     updateHomeworkCompletion,
     getCurrentUser, debugUser, deleteAgent, editUser,editSubject,editClass,deleteClass,editProduct,editSubscription, editQuiz, editStudent, editTeacher, editParent, 
-updateStudentStatus, updateTeacherStatus, updateParentStatus, changePassword, adminUpdateCredentials, deleteUser } = require("../controllers/user.controller");
+updateStudentStatus, updateTeacherStatus, updateParentStatus, changePassword, adminUpdateCredentials, deleteUser,
+    getBetaUsers, approveBetaUser, rejectBetaUser, getBetaStats } = require("../controllers/user.controller");
 const { getDashboard, getStatisticsDashboard, getReportFilters, generateReport, getOverviewDashboard } = require("../controllers/others.controller");
 const { verifyToken } = require("../middlewares/authJwt");
 
@@ -254,6 +255,12 @@ router.patch("/parent/:id", verifyToken, editParent);
 router.patch("/student/:id/status", verifyToken, updateStudentStatus);
 router.patch("/teacher/:id/status", verifyToken, updateTeacherStatus);
 router.patch("/parent/:id/status", verifyToken, updateParentStatus);
+
+// Beta user management routes
+router.get("/beta-users", verifyToken, getBetaUsers);
+router.get("/beta-stats", verifyToken, getBetaStats);
+router.patch("/beta-users/:id/approve", verifyToken, approveBetaUser);
+router.patch("/beta-users/:id/reject", verifyToken, rejectBetaUser);
 
 // Student-Subject assignment routes
 router.post("/student/:studentId/subject/:subjectId", verifyToken, async (req, res) => {

@@ -183,9 +183,9 @@ export default function StudentSettings() {
     }
     
     // Priority 3: Only update if name is empty, matches old defaultName, or is a fallback value
-    if (!name || name === "Student" || name === defaultName || !defaultName) {
+    if (!name || name === "Student" || name === "Schüler" || name === defaultName || !defaultName) {
       // Only update if defaultName has a meaningful value
-      if (defaultName && defaultName.trim() && defaultName !== "Student") {
+      if (defaultName && defaultName.trim() && defaultName !== "Student" && defaultName !== "Schüler") {
         setName(defaultName);
       }
     }
@@ -216,7 +216,7 @@ export default function StudentSettings() {
     if (account?.type === "child" && account?.id) return account.id;
     // Priority 4: userId as fallback
     if (userId) return userId;
-    return "N/A";
+    return "k. A.";
   }, [serverStudentId, studentData?.id, account?.type, account?.id, userId]);
 
   // baseline - tracks the last saved state
@@ -275,7 +275,7 @@ export default function StudentSettings() {
     const handleBeforeUnload = (e) => {
       if (isDirty) {
         e.preventDefault();
-        e.returnValue = "You have unsaved changes. Are you sure you want to leave?";
+        e.returnValue = "Du hast ungespeicherte Änderungen. Möchtest du die Seite wirklich verlassen?";
         return e.returnValue;
       }
     };
@@ -302,12 +302,12 @@ export default function StudentSettings() {
   };
   
   const CHARACTERS = [
-    { id: 1, src: "/images/img_rectangle_20.png", alt: "Character 1 - Boy with striped shirt" },
-    { id: 2, src: "/images/img_rectangle_20_264x174.png", alt: "Character 2 - Girl with red hair" },
-    { id: 3, src: "/images/img_rectangle_20_1.png", alt: "Character 3 - Boy with blonde hair" },
-    { id: 4, src: "/images/img_rectangle_20_2.png", alt: "Character 4 - Girl with dark hair" },
-    { id: 5, src: "/images/img_rectangle_20_3.png", alt: "Character 5 - Boy with curly hair" },
-    { id: 6, src: "/images/img_rectangle_20_4.png", alt: "Character 6 - Girl with blonde braids" },
+    { id: 1, src: "/images/img_rectangle_20.png", alt: "Figur 1 – Junge mit gestreiftem Shirt" },
+    { id: 2, src: "/images/img_rectangle_20_264x174.png", alt: "Figur 2 – Mädchen mit roten Haaren" },
+    { id: 3, src: "/images/img_rectangle_20_1.png", alt: "Figur 3 – Junge mit blonden Haaren" },
+    { id: 4, src: "/images/img_rectangle_20_2.png", alt: "Figur 4 – Mädchen mit dunklen Haaren" },
+    { id: 5, src: "/images/img_rectangle_20_3.png", alt: "Figur 5 – Junge mit lockigen Haaren" },
+    { id: 6, src: "/images/img_rectangle_20_4.png", alt: "Figur 6 – Mädchen mit blonden Zöpfen" },
   ];
   
   // Get characterSelection from interests
@@ -512,7 +512,7 @@ export default function StudentSettings() {
         };
       } catch (e) {
         if (!cancelled) {
-          message.error?.("Could not load your settings. Using local defaults.");
+          message.error?.("Einstellungen konnten nicht geladen werden. Lokale Standardwerte werden verwendet.");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -723,7 +723,7 @@ export default function StudentSettings() {
         });
         setHasServerRecord(true);
         setServerStudentId(created?.id ?? created?._id ?? userId);
-        message.success?.("Student created and settings saved!");
+        message.success?.("Profil erstellt und Einstellungen gespeichert!");
       } else {
         // Update existing student record in database
         const payload = {
@@ -737,7 +737,7 @@ export default function StudentSettings() {
         };
         
         await api.patch(`/student/${serverStudentId}`, payload);
-        message.success?.("Saved successfully");
+        message.success?.("Erfolgreich gespeichert");
       }
 
       // Update initialRef after successful save - this marks the state as "saved"
@@ -778,7 +778,7 @@ export default function StudentSettings() {
       // This helps ensure isDirty recalculates with the new initialRef
       await new Promise(resolve => setTimeout(resolve, 100));
     } catch (error) {
-      message.error?.("Could not save settings. Please try again.");
+      message.error?.("Einstellungen konnten nicht gespeichert werden. Bitte versuche es erneut.");
     } finally {
       setSaving(false);
     }
@@ -795,7 +795,7 @@ export default function StudentSettings() {
     });
     
     if (interestExists) {
-      message.info?.("Already added.");
+      message.info?.("Schon hinzugefügt.");
       return;
     }
     // 🔥 Limit to maximum 2 focus topics
@@ -819,12 +819,12 @@ export default function StudentSettings() {
         };
         
         await api.patch(`/student/${serverStudentId}`, payload);
-        message.success?.(`Interest "${v}" saved!`);
+        message.success?.(`Interesse „${v}“ gespeichert!`);
       } catch (error) {
-        message.error?.("Could not save interest. Please try again.");
+        message.error?.("Interesse konnte nicht gespeichert werden. Bitte versuche es erneut.");
       }
     } else {
-      message.warning?.(`Interest "${v}" added locally. Click Save Settings to persist.`);
+      message.warning?.(`Interesse „${v}“ wurde nur lokal hinzugefügt. Klicke auf „Änderungen speichern“, um es zu speichern.`);
     }
   };
 
@@ -859,18 +859,18 @@ export default function StudentSettings() {
         };
         
         await api.patch(`/student/${serverStudentId}`, payload);
-        message.success?.(`Interest "${displayVal}" removed!`);
+        message.success?.(`Interesse „${displayVal}“ entfernt!`);
       } catch (error) {
-        message.error?.("Could not remove interest. Please try again.");
+        message.error?.("Interesse konnte nicht entfernt werden. Bitte versuche es erneut.");
       }
     } else {
-      message.warning?.(`Interest "${displayVal}" removed locally. Click Save Settings to persist.`);
+      message.warning?.(`Interesse „${displayVal}“ wurde nur lokal entfernt. Klicke auf „Änderungen speichern“, um es zu speichern.`);
     }
   };
 
   const confirmBuddy = () => {
     // Just update local state - don't save to database yet
-    // Save will happen when user clicks "Save Changes" button
+    // Gespeichert wird erst, wenn der Nutzer auf „Änderungen speichern“ klickt
     const buddyToUpdate = pendingBuddy ? {
       id: pendingBuddy.id,
       name: pendingBuddy.name,
@@ -941,7 +941,7 @@ export default function StudentSettings() {
         <div className="flex items-center gap-3">
           <BackButton 
             className="p-2 rounded-full hover:bg-neutral-100 active:scale-95" 
-            aria-label="Back"
+            aria-label="Zurück"
             onBeforeNavigate={() => {
               // Force recalculation of isDirty by reading initialRef directly
               const a = initialRef.current;
@@ -973,10 +973,11 @@ export default function StudentSettings() {
               if (actuallyDirty) {
                 return new Promise((resolve) => {
                   Modal.confirm({
-                    title: "Unsaved Changes",
-                    content: "You have unsaved changes. Are you sure you want to leave? Your changes will be lost.",
-                    okText: "Leave",
-                    cancelText: "Stay",
+                    title: "Ungespeicherte Änderungen",
+                    content:
+                      "Du hast ungespeicherte Änderungen. Möchtest du die Seite wirklich verlassen? Deine Änderungen gehen verloren.",
+                    okText: "Verlassen",
+                    cancelText: "Bleiben",
                     onOk: () => resolve(true),
                     onCancel: () => resolve(false),
                   });
@@ -988,9 +989,9 @@ export default function StudentSettings() {
           <div className="min-w-0">
             <Title level={3} className="!mb-0 flex items-center gap-2 !text-[clamp(1.15rem,2vw,1.5rem)]">
               <Settings className="h-5 w-5 shrink-0" />
-              <span className="truncate">Settings</span>
+              <span className="truncate">Einstellungen</span>
             </Title>
-            <Text type="secondary" className="block truncate">Manage your profile and preferences</Text>
+            <Text type="secondary" className="block truncate">Verwalte dein Profil und deine Einstellungen</Text>
           </div>
         </div>
 
@@ -1002,7 +1003,7 @@ export default function StudentSettings() {
           disabled={saving || (!isDirty && hasServerRecord)}
           className="rounded-xl w-full sm:w-auto"
         >
-          Save Changes
+          Änderungen speichern
         </Button>
       </div>
 
@@ -1017,7 +1018,7 @@ export default function StudentSettings() {
               label: (
                 <span className="flex items-center gap-2">
                   <User2 className="h-4 w-4" />
-                  Profile
+                  Profil
                 </span>
               ),
               children: (
@@ -1028,17 +1029,20 @@ export default function StudentSettings() {
                       <Col xs={24} sm="auto">
                         <div className="flex flex-col items-center gap-2">
                           <Badge dot={isDirty} color="#52c41a">
-                            <img
-                              key={`profile-character-${characterSelection || "default"}-${buddyImageKey}`}
-                              src={characterSelection || displayBuddy?.img || buddyMilo}
-                              alt="Profile Character"
-                              width={avatarSize}
-                              height={avatarSize}
-                              className="border-4 border-white shadow-lg object-contain rounded-2xl"
-                              onError={(e) => {
-                                e.target.src = buddyMilo;
-                              }}
-                            />
+                            <div
+                              className="rounded-full ring-4 ring-white shadow-lg overflow-hidden flex items-center justify-center bg-transparent"
+                              style={{ width: avatarSize, height: avatarSize }}
+                            >
+                              <img
+                                key={`profile-character-${characterSelection || "default"}-${buddyImageKey}`}
+                                src={characterSelection || displayBuddy?.img || buddyMilo}
+                                alt="Profilfigur"
+                                className="w-[82%] h-[82%] object-contain"
+                                onError={(e) => {
+                                  e.target.src = buddyMilo;
+                                }}
+                              />
+                            </div>
                           </Badge>
                           <Button
                             type="default"
@@ -1052,7 +1056,7 @@ export default function StudentSettings() {
                             }}
                             className="rounded-lg text-xs"
                           >
-                            Change Character
+                            Figur ändern
                           </Button>
                         </div>
                       </Col>
@@ -1060,7 +1064,14 @@ export default function StudentSettings() {
                         <Title level={2} className="!mb-2 !text-white">
                           {(() => {
                             // Priority 1: Use name state if valid
-                            if (name && name.trim() && name !== "Settings" && name !== "Profile" && name !== "Student") {
+                            if (
+                              name &&
+                              name.trim() &&
+                              name !== "Settings" &&
+                              name !== "Profile" &&
+                              name !== "Student" &&
+                              name !== "Schüler"
+                            ) {
                               return name;
                             }
                             // Priority 2: Use studentData directly if available (most reliable)
@@ -1071,15 +1082,22 @@ export default function StudentSettings() {
                               if (studentFullName) return studentFullName;
                             }
                             // Priority 3: Use defaultName if valid
-                            if (defaultName && defaultName.trim() && defaultName !== "Settings" && defaultName !== "Profile" && defaultName !== "Student") {
+                            if (
+                              defaultName &&
+                              defaultName.trim() &&
+                              defaultName !== "Settings" &&
+                              defaultName !== "Profile" &&
+                              defaultName !== "Student" &&
+                              defaultName !== "Schüler"
+                            ) {
                               return defaultName;
                             }
                             // Fallback
-                            return "Student";
+                            return "Schüler";
                           })()}
                         </Title>
                         <Text className="text-white/90 text-lg">
-                          Student ID: {displayStudentId}
+                          Schüler-ID: {displayStudentId}
                         </Text>
                       </Col>
                     </Row>
@@ -1093,10 +1111,10 @@ export default function StudentSettings() {
                       <Row gutter={[16, 16]}>
                         <Col xs={24} md={12}>
                           <div className="space-y-2">
-                            <Text strong className="text-base">Display Name</Text>
-                            <Tooltip title="Contact your teacher or admin to change your name">
+                            <Text strong className="text-base">Anzeigename</Text>
+                            <Tooltip title="Bitte wende dich an deine Lehrkraft oder den Admin, um deinen Namen zu ändern">
                               <Input
-                                placeholder="Enter your name"
+                                placeholder="Name eingeben"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 className="rounded-xl"
@@ -1109,9 +1127,9 @@ export default function StudentSettings() {
                         </Col>
                         <Col xs={24} md={12}>
                           <div className="space-y-2">
-                            <Text strong className="text-base">Grade</Text>
+                            <Text strong className="text-base">Klasse</Text>
                             <Input 
-                              value={studentData?.class?.class_name || studentData?.class_name || "N/A"} 
+                              value={studentData?.class?.class_name || studentData?.class_name || "k. A."} 
                               disabled 
                               className="rounded-xl" 
                               size="large"
@@ -1120,9 +1138,9 @@ export default function StudentSettings() {
                         </Col>
                         <Col xs={24} md={12}>
                           <div className="space-y-2">
-                            <Text strong className="text-base">Age</Text>
+                            <Text strong className="text-base">Alter</Text>
                             <Input 
-                              value={studentData?.age !== undefined && studentData?.age !== null ? String(studentData.age) : "N/A"} 
+                              value={studentData?.age !== undefined && studentData?.age !== null ? String(studentData.age) : "k. A."} 
                               disabled 
                               className="rounded-xl" 
                               size="large"
@@ -1138,17 +1156,17 @@ export default function StudentSettings() {
                           <div className="flex-1">
                             <Text strong className="flex items-center gap-2 text-base">
                               <Volume2 className="h-5 w-5" />
-                              Text-to-Speech
+                              Vorlesen
                             </Text>
                             <Text type="secondary" className="block mt-1">
-                              Enable voice feedback from your buddy
+                              Aktiviere Sprachausgabe von deinem Buddy
                             </Text>
                           </div>
                           <Switch 
                             checked={ttsEnabled} 
                             onChange={(checked) => {
                               // Update local state only - don't save to database yet
-                              // Save will happen when user clicks "Save Changes" button
+                              // Gespeichert wird erst, wenn der Nutzer auf „Änderungen speichern“ klickt
                               setTTSEnabled(checked);
                               setTtsEnabled(checked);
                               setProfile({ ...profile, ttsEnabled: checked });
@@ -1167,20 +1185,20 @@ export default function StudentSettings() {
               label: (
                 <span className="flex items-center gap-2">
                   <Palette className="h-4 w-4" />
-                  Appearance
+                  Aussehen
                 </span>
               ),
               children: (
                 <div className="py-4 space-y-6">
                   {/* Theme Selection */}
                   <div>
-                    <Title level={4} className="!mb-4">Color Theme</Title>
+                    <Title level={4} className="!mb-4">Farbthema</Title>
                     <Segmented
                       block
                       value={theme}
                       onChange={(val) => {
                         // Update local state only - don't save to database yet
-                        // Save will happen when user clicks "Save Changes" button
+                        // Gespeichert wird erst, wenn der Nutzer auf „Änderungen speichern“ klickt
                         setTheme(val);
                         setColorTheme(val);
                         setProfile({ ...profile, theme: val });
@@ -1193,8 +1211,8 @@ export default function StudentSettings() {
                       size="large"
                     />
                     <Alert
-                      message="Theme Preview"
-                      description="Your selected theme will be applied across the entire application."
+                      message="Vorschau"
+                      description="Dein ausgewähltes Thema wird in der gesamten App verwendet."
                       type="info"
                       icon={<Info className="h-4 w-4" />}
                       showIcon
@@ -1208,14 +1226,14 @@ export default function StudentSettings() {
                   <div>
                     <Title level={4} className="!mb-4 flex items-center gap-2">
                       <Wand2 className="h-5 w-5" />
-                      Learning Buddy
+                      Lernbuddy
                     </Title>
                     <div className="p-6 bg-gray-50 rounded-2xl">
                       <div className="flex items-center gap-4 flex-wrap">
                         <img
                           key={`buddy-appearance-${displayBuddy?.id || "default"}-${buddyImageKey}`}
                           src={displayBuddy?.img || buddyMilo}
-                          alt={displayBuddy?.name || "Learning Buddy"}
+                          alt={displayBuddy?.name || "Lernbuddy"}
                           width={80}
                           height={80}
                           className="border-2 border-gray-200 object-contain rounded-xl"
@@ -1226,14 +1244,14 @@ export default function StudentSettings() {
                         <div className="flex-1 min-w-[220px]">
                           <div className="flex items-center gap-2 mb-1">
                             <Title level={5} className="!mb-0">
-                              {displayBuddy?.name || "No buddy selected"}
+                              {displayBuddy?.name || "Kein Buddy ausgewählt"}
                             </Title>
                             {isPreviewingBuddy && (
-                              <Tag color="blue">Preview</Tag>
+                              <Tag color="blue">Vorschau</Tag>
                             )}
                           </div>
                           <Text type="secondary" className="block mb-3">
-                            Pick a friend to guide you through your learning journey
+                            Wähle einen Freund, der dich auf deiner Lernreise begleitet
                           </Text>
                           <Button 
                             type="primary" 
@@ -1245,7 +1263,7 @@ export default function StudentSettings() {
                             }} 
                             icon={<Edit className="h-4 w-4" />}
                           >
-                            Change Buddy
+                            Buddy ändern
                           </Button>
                         </div>
                       </div>
@@ -1259,7 +1277,7 @@ export default function StudentSettings() {
               label: (
                 <span className="flex items-center gap-2">
                   <GraduationCap className="h-4 w-4" />
-                  Academic
+                  Schule
                 </span>
               ),
               children: (
@@ -1273,8 +1291,8 @@ export default function StudentSettings() {
                         <Col xs={24} sm={8}>
                           <Card className="text-center rounded-xl border-2 border-blue-100 bg-blue-50">
                             <Statistic
-                              title={<Text strong className="text-gray-700">Class</Text>}
-                              value={studentData?.class?.class_name || studentData?.class_name || "N/A"}
+                              title={<Text strong className="text-gray-700">Klasse</Text>}
+                              value={studentData?.class?.class_name || studentData?.class_name || "k. A."}
                               prefix={<GraduationCap className="h-5 w-5 text-blue-600" />}
                               valueStyle={{ fontSize: 20, fontWeight: 700, color: "#1890ff" }}
                             />
@@ -1283,7 +1301,7 @@ export default function StudentSettings() {
                         <Col xs={24} sm={8}>
                           <Card className="text-center rounded-xl border-2 border-green-100 bg-green-50">
                             <Statistic
-                              title={<Text strong className="text-gray-700">Subjects</Text>}
+                              title={<Text strong className="text-gray-700">Fächer</Text>}
                               value={studentData?.subject?.length || 0}
                               prefix={<BookOpen className="h-5 w-5 text-green-600" />}
                               valueStyle={{ fontSize: 20, fontWeight: 700, color: "#52c41a" }}
@@ -1293,13 +1311,13 @@ export default function StudentSettings() {
                         <Col xs={24} sm={8}>
                           <Card className="text-center rounded-xl border-2 border-purple-100 bg-purple-50">
                             <Statistic
-                              title={<Text strong className="text-gray-700">Parent</Text>}
+                              title={<Text strong className="text-gray-700">Elternteil</Text>}
                               value={
                                 studentData?.parent?.user
                                   ? [studentData.parent.user.first_name, studentData.parent.user.last_name]
                                       .filter(Boolean)
-                                      .join(" ") || "Linked"
-                                  : "N/A"
+                                      .join(" ") || "Verknüpft"
+                                  : "k. A."
                               }
                               prefix={<Users className="h-5 w-5 text-purple-600" />}
                               valueStyle={{ fontSize: 16, fontWeight: 700, color: "#722ed1" }}
@@ -1310,9 +1328,9 @@ export default function StudentSettings() {
 
                       <Divider />
 
-                      {/* Enrolled Subjects */}
+                      {/* Fächer */}
                       <div>
-                        <Title level={4} className="!mb-4">Enrolled Subjects</Title>
+                        <Title level={4} className="!mb-4">Fächer</Title>
                         <div className="flex flex-wrap gap-2">
                           {(() => {
                             const subjects = studentData?.subject || studentData?.subjects || [];
@@ -1320,7 +1338,7 @@ export default function StudentSettings() {
                             if (!Array.isArray(subjects) || subjects.length === 0) {
                               return (
                                 <Tag color="default" className="text-sm px-4 py-2 rounded-xl">
-                                  No subjects enrolled
+                                  Keine Fächer eingetragen
                                 </Tag>
                               );
                             }
@@ -1349,14 +1367,14 @@ export default function StudentSettings() {
 
                       {/* Parent/Guardian Info */}
                       <div>
-                        <Title level={4} className="!mb-4">Parent/Guardian</Title>
+                        <Title level={4} className="!mb-4">Eltern/Erziehungsberechtigte</Title>
                         <Card className="rounded-xl bg-gray-50">
                           <Text className="text-gray-700 text-base">
                             {studentData?.parent?.user
                               ? [studentData.parent.user.first_name, studentData.parent.user.last_name].filter(Boolean).join(" ") ||
                                 studentData.parent.user.email ||
-                                "N/A"
-                              : "No parent/guardian linked"}
+                                "k. A."
+                              : "Kein Elternteil verknüpft"}
                           </Text>
                         </Card>
                       </div>
@@ -1370,21 +1388,21 @@ export default function StudentSettings() {
               label: (
                 <span className="flex items-center gap-2">
                   <Wand2 className="h-4 w-4" />
-                  Interests
+                  Interessen
                 </span>
               ),
               children: (
                 <div className="py-4 space-y-6">
                   <div className="flex items-center justify-between">
                     <Title level={4} className="!mb-0">
-                      {name || defaultName ? `${name || defaultName}'s Interests` : "My Interests"}
+                      {name || defaultName ? `Interessen von ${name || defaultName}` : "Meine Interessen"}
                     </Title>
                     <Button 
                       type="primary" 
                       className="rounded-xl" 
                       onClick={() => navigate("/student/onboarding/buddy")}
                     >
-                      Run Interests Wizard
+                      Interessen-Assistent starten
                     </Button>
                   </div>
 
@@ -1392,8 +1410,8 @@ export default function StudentSettings() {
                     {(interests || []).length === 0 ? (
                       <Text type="secondary" className="text-base">
                         {name || defaultName 
-                          ? `${name || defaultName} hasn't added any interests yet — add some below to personalize your learning experience`
-                          : "No interests yet — add some below to personalize your learning experience"}
+                          ? `${name || defaultName} hat noch keine Interessen hinzugefügt — füge unten welche hinzu, um dein Lernen zu personalisieren`
+                          : "Noch keine Interessen — füge unten welche hinzu, um dein Lernen zu personalisieren"}
                       </Text>
                     ) : (
                       (interests || []).map((it, idx) => {
@@ -1419,17 +1437,17 @@ export default function StudentSettings() {
                   </div>
 
                   <div>
-                    <Text strong className="block mb-2 text-base">Add New Interest</Text>
+                    <Text strong className="block mb-2 text-base">Neues Interesse hinzufügen</Text>
                     <Space.Compact className="w-full" size="large">
                       <Input
                         value={interestDraft}
                         onChange={(e) => setInterestDraft(e.target.value)}
-                        placeholder="E.g., Dinosaurs, Space, Art..."
+                        placeholder="z. B. Dinosaurier, Weltraum, Kunst..."
                         className="rounded-l-xl"
                         onPressEnter={addInterest}
                       />
                       <Button type="primary" onClick={addInterest} className="rounded-r-xl">
-                        Add
+                        Hinzufügen
                       </Button>
                     </Space.Compact>
                   </div>
@@ -1441,14 +1459,14 @@ export default function StudentSettings() {
               label: (
                 <span className="flex items-center gap-2">
                   <Settings className="h-4 w-4" />
-                  Account
+                  Konto
                 </span>
               ),
               children: (
                 <div className="py-4 space-y-6">
                   <Alert
-                    message="Account Settings"
-                    description="Switch between profiles or manage your account preferences"
+                    message="Kontoeinstellungen"
+                    description="Wechsle zwischen Profilen oder verwalte deine Kontoeinstellungen"
                     type="info"
                     showIcon
                     className="rounded-xl"
@@ -1457,8 +1475,8 @@ export default function StudentSettings() {
                   <Card className="rounded-xl bg-blue-50 border-blue-200">
                     <div className="flex items-center justify-between flex-wrap gap-4">
                       <div>
-                        <Title level={5} className="!mb-1 !text-blue-700">Switch Profile</Title>
-                        <Text type="secondary">Choose a different profile to continue</Text>
+                        <Title level={5} className="!mb-1 !text-blue-700">Profil wechseln</Title>
+                        <Text type="secondary">Wähle ein anderes Profil, um fortzufahren</Text>
                       </div>
                       <Button 
                         icon={<Users className="h-4 w-4" />} 
@@ -1467,7 +1485,7 @@ export default function StudentSettings() {
                         className="rounded-xl"
                         size="large"
                       >
-                        Switch Profile
+                        Profil wechseln
                       </Button>
                     </div>
                   </Card>
@@ -1491,7 +1509,7 @@ export default function StudentSettings() {
             disabled={saving || (!isDirty && hasServerRecord)}
             aria-live="polite"
           >
-            Save Changes
+            Änderungen speichern
           </Button>
         </div>
       )}
@@ -1505,12 +1523,12 @@ export default function StudentSettings() {
           setPendingBuddy(buddy || BUDDIES[0]);
         }}
         onOk={confirmBuddy}
-        okText="Choose"
+        okText="Auswählen"
         className="rounded-2xl"
         width={isMobile ? 360 : 520}
       >
         <Title level={5} className="!mb-3">
-          Choose a Buddy
+          Wähle einen Buddy
         </Title>
 
         {/* Live preview in modal */}
@@ -1522,10 +1540,10 @@ export default function StudentSettings() {
           />
           <div>
             <div className="font-semibold text-base">
-              {(pendingBuddy || buddy)?.name || "Select a buddy"}
+              {(pendingBuddy || buddy)?.name || "Buddy auswählen"}
             </div>
             <Text type="secondary" className="text-xs">
-              This is how your buddy will look before you apply it.
+              So sieht dein Buddy aus, bevor du ihn speicherst.
             </Text>
           </div>
         </div>
@@ -1552,7 +1570,7 @@ export default function StudentSettings() {
         </div>
       </Modal>
 
-      {/* Character modal with live preview */}
+      {/* Figuren-Modal mit Live-Vorschau */}
       <Modal
         open={characterModal}
         onCancel={() => {
@@ -1562,12 +1580,12 @@ export default function StudentSettings() {
           setPendingCharacter(currentChar);
         }}
         onOk={confirmCharacter}
-        okText="Choose"
+        okText="Auswählen"
         className="rounded-2xl"
         width={isMobile ? 360 : 520}
       >
         <Title level={5} className="!mb-3">
-          Choose Your Character
+          Wähle deine Figur
         </Title>
 
         {/* Live preview in modal */}
@@ -1579,10 +1597,10 @@ export default function StudentSettings() {
           />
           <div>
             <div className="font-semibold text-base">
-              Character {(pendingCharacter || CHARACTERS.find(c => c.id === currentCharacterId))?.id || 1}
+              Figur {(pendingCharacter || CHARACTERS.find(c => c.id === currentCharacterId))?.id || 1}
             </div>
             <Text type="secondary" className="text-xs">
-              This is how your character will look on your account.
+              So sieht deine Figur in deinem Profil aus.
             </Text>
           </div>
         </div>
@@ -1609,7 +1627,7 @@ export default function StudentSettings() {
                     e.target.src = CHARACTERS[0].src;
                   }}
                 />
-                <div className="font-semibold">Character {char.id}</div>
+                <div className="font-semibold">Figur {char.id}</div>
               </div>
             </button>
           ))}

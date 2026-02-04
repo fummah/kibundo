@@ -349,11 +349,350 @@ async function sendWelcomeEmail(user) {
   return result;
 }
 
+/**
+ * Send beta signup confirmation email
+ */
+async function sendBetaSignupEmail(user) {
+  if (!nodemailer) {
+    console.warn("⚠️  Email service not available. Skipping beta signup email.");
+    return { success: false, error: "Email service not available" };
+  }
+
+  const variables = {
+    full_name: `${user.first_name} ${user.last_name}`,
+    email: user.email,
+    login_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/signin`,
+  };
+
+  const subject = "🚀 Deine Beta-Anmeldung bei Kibundo";
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Deine Beta-Anmeldung bei Kibundo</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #FF7F32, #FF8400); color: white; padding: 30px; text-align: center; }
+        .header h1 { margin: 0; font-size: 28px; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .beta-badge { display: inline-block; background: #FF8400; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin: 20px 0; }
+        .status { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .status h3 { margin: 0 0 10px 0; color: #856404; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🚀 Beta-Anmeldung erfolgreich!</h1>
+        </div>
+        <div class="content">
+          <p>Hallo ${variables.full_name},</p>
+          <p>vielen Dank für deine Anmeldung zum Kibundo Beta-Programm!</p>
+          
+          <div class="beta-badge">
+            BETA-PROGRAMM TEILNEHMER
+          </div>
+          
+          <div class="status">
+            <h3>⏳ Warten auf Freischaltung</h3>
+            <p>Deine Anmeldung wurde erfolgreich erhalten. Dein Account wird nun von unserem Team überprüft und freigeschaltet.</p>
+            <p>Du erhältst eine weitere E-Mail, sobald dein Zugang aktiviert wurde.</p>
+          </div>
+          
+          <p><strong>Was passiert als Nächstes?</strong></p>
+          <ul>
+            <li>Wir überprüfen deine Anmeldung (in der Regel innerhalb von 24-48 Stunden)</li>
+            <li>Du erhältst eine Bestätigung, wenn dein Account freigeschaltet wurde</li>
+            <li>Dann kannst du dich mit deinen Anmeldedaten einloggen</li>
+          </ul>
+          
+          <p>Als Beta-Tester erhältst du exklusiven Zugang zu neuen Funktionen und kannst bei der Weiterentwicklung von Kibundo mitwirken.</p>
+          
+          <p>Bei Fragen stehen wir dir gerne zur Verfügung.</p>
+          <p>Viel Spaß beim Entdecken!<br>Dein Kibundo Team</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const text = `Hallo ${variables.full_name},
+
+Vielen Dank für deine Anmeldung zum Kibundo Beta-Programm!
+
+🚀 BETA-PROGRAMM TEILNEHMER
+
+⏳ Warten auf Freischaltung
+Deine Anmeldung wurde erfolgreich erhalten. Dein Account wird nun von unserem Team überprüft und freigeschaltet.
+
+Du erhältst eine weitere E-Mail, sobald dein Zugang aktiviert wurde.
+
+Was passiert als Nächstes?
+- Wir überprüfen deine Anmeldung (in der Regel innerhalb von 24-48 Stunden)
+- Du erhältst eine Bestätigung, wenn dein Account freigeschaltet wurde
+- Dann kannst du dich mit deinen Anmeldedaten einloggen
+
+Als Beta-Tester erhältst du exklusiven Zugang zu neuen Funktionen und kannst bei der Weiterentwicklung von Kibundo mitwirken.
+
+Bei Fragen stehen wir dir gerne zur Verfügung.
+
+Viel Spaß beim Entdecken!
+Dein Kibundo Team`;
+
+  const result = await sendEmail({
+    to: user.email,
+    subject,
+    html,
+    text,
+    parent_id: user.parent_id || null,
+  });
+  
+  if (result.success) {
+    console.log("✅ [sendBetaSignupEmail] Beta signup email sent successfully");
+  } else {
+    console.error("❌ [sendBetaSignupEmail] Failed to send beta signup email:", result.error);
+  }
+  
+  return result;
+}
+
+/**
+ * Send beta approval email
+ */
+async function sendBetaApprovalEmail(user) {
+  if (!nodemailer) {
+    console.warn("⚠️  Email service not available. Skipping beta approval email.");
+    return { success: false, error: "Email service not available" };
+  }
+
+  const variables = {
+    full_name: `${user.first_name} ${user.last_name}`,
+    email: user.email,
+    login_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/signin`,
+  };
+
+  const subject = "🎉 Dein Beta-Zugang wurde freigeschaltet!";
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Dein Beta-Zugang wurde freigeschaltet!</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #52c41a, #73d13d); color: white; padding: 30px; text-align: center; }
+        .header h1 { margin: 0; font-size: 28px; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .success-badge { display: inline-block; background: #52c41a; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin: 20px 0; }
+        .button { display: inline-block; padding: 12px 30px; background: #52c41a; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+        .feature-list { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; }
+        .feature-list h3 { margin: 0 0 15px 0; color: #52c41a; }
+        .feature-list ul { margin: 0; padding-left: 20px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🎉 Beta-Zugang freigeschaltet!</h1>
+        </div>
+        <div class="content">
+          <p>Hallo ${variables.full_name},</p>
+          <p>großartige Nachrichten! Dein Beta-Zugang für Kibundo wurde erfolgreich freigeschaltet.</p>
+          
+          <div class="success-badge">
+            ✅ ZUGANG AKTIVIERT
+          </div>
+          
+          <p>Du kannst dich jetzt einloggen und sofort mit der Nutzung von Kibundo beginnen.</p>
+          
+          <p style="margin-top: 20px;">
+            <a href="${variables.login_url}" class="button" style="color: white; text-decoration: none;">Jetzt einloggen</a>
+          </p>
+          
+          <div class="feature-list">
+            <h3>🚀 Was erwartet dich als Beta-Tester:</h3>
+            <ul>
+              <li>Exklusiver Zugang zu neuen Funktionen</li>
+              <li>Möglichkeit, die Plattform mitzugestalten</li>
+              <li>Prioritierter Support</li>
+              <li>Einblicke in zukünftige Entwicklungen</li>
+            </ul>
+          </div>
+          
+          <p><strong>Deine Anmeldedaten:</strong></p>
+          <p>E-Mail: ${variables.email}<br>
+          Passwort: Das bei der Anmeldung gewählte Passwort</p>
+          
+          <p>Als Beta-Tester schätzen wir dein Feedback sehr! Bei Fragen oder Anregungen kannst du dich jederzeit an uns wenden.</p>
+          
+          <p>Wir freuen uns auf dich!<br>Dein Kibundo Team</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const text = `Hallo ${variables.full_name},
+
+Großartige Nachrichten! Dein Beta-Zugang für Kibundo wurde erfolgreich freigeschaltet.
+
+✅ ZUGANG AKTIVIERT
+
+Du kannst dich jetzt einloggen und sofort mit der Nutzung von Kibundo beginnen.
+
+Login hier: ${variables.login_url}
+
+🚀 Was erwartet dich als Beta-Tester:
+- Exklusiver Zugang zu neuen Funktionen
+- Möglichkeit, die Plattform mitzugestalten
+- Prioritierter Support
+- Einblicke in zukünftige Entwicklungen
+
+Deine Anmeldedaten:
+E-Mail: ${variables.email}
+Passwort: Das bei der Anmeldung gewählte Passwort
+
+Als Beta-Tester schätzen wir dein Feedback sehr! Bei Fragen oder Anregungen kannst du dich jederzeit an uns wenden.
+
+Wir freuen uns auf dich!
+Dein Kibundo Team`;
+
+  const result = await sendEmail({
+    to: user.email,
+    subject,
+    html,
+    text,
+    parent_id: user.parent_id || null,
+  });
+  
+  if (result.success) {
+    console.log("✅ [sendBetaApprovalEmail] Beta approval email sent successfully");
+  } else {
+    console.error("❌ [sendBetaApprovalEmail] Failed to send beta approval email:", result.error);
+  }
+  
+  return result;
+}
+
+/**
+ * Send beta rejection email
+ */
+async function sendBetaRejectionEmail(user) {
+  if (!nodemailer) {
+    console.warn("⚠️  Email service not available. Skipping beta rejection email.");
+    return { success: false, error: "Email service not available" };
+  }
+
+  const variables = {
+    full_name: `${user.first_name} ${user.last_name}`,
+    email: user.email,
+    rejection_reason: user.rejection_reason || 'Keine Angabe',
+  };
+
+  const subject = "Information zu deiner Beta-Anmeldung";
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Information zu deiner Beta-Anmeldung</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #ff6b6b, #ee5a24); color: white; padding: 30px; text-align: center; }
+        .header h1 { margin: 0; font-size: 28px; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .info-box { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .info-box h3 { margin: 0 0 10px 0; color: #856404; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Information zu deiner Beta-Anmeldung</h1>
+        </div>
+        <div class="content">
+          <p>Hallo ${variables.full_name},</p>
+          <p>vielen Dank für dein Interesse am Kibundo Beta-Programm.</p>
+          
+          <div class="info-box">
+            <h3>ℹ️ Aktuell keine Plätze verfügbar</h3>
+            <p>Leider können wir deine Beta-Anmeldung derzeit nicht annehmen. Das Beta-Programm ist momentan ausgebucht.</p>
+            ${variables.rejection_reason !== 'Keine Angabe' ? `<p><strong>Grund:</strong> ${variables.rejection_reason}</p>` : ''}
+          </div>
+          
+          <p><strong>Was bedeutet das für dich?</strong></p>
+          <ul>
+            <li>Behalten wir deine Daten für zukünftige Beta-Phasen</li>
+            <li>Wir informieren dich, sobald wieder Plätze verfügbar sind</li>
+            <li>Du kannst dich jederzeit erneut bewerben</li>
+          </ul>
+          
+          <p>Wir bedauern die Unannehmlichkeiten und hoffen auf dein Verständnis.</p>
+          
+          <p>Bei Fragen stehen wir dir gerne zur Verfügung.</p>
+          
+          <p>Beste Grüße<br>Dein Kibundo Team</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const text = `Hallo ${variables.full_name},
+
+Vielen Dank für dein Interesse am Kibundo Beta-Programm.
+
+ℹ️ Aktuell keine Plätze verfügbar
+Leider können wir deine Beta-Anmeldung derzeit nicht annehmen. Das Beta-Programm ist momentan ausgebucht.
+${variables.rejection_reason !== 'Keine Angabe' ? `Grund: ${variables.rejection_reason}` : ''}
+
+Was bedeutet das für dich?
+- Behalten wir deine Daten für zukünftige Beta-Phasen
+- Wir informieren dich, sobald wieder Plätze verfügbar sind
+- Du kannst dich jederzeit erneut bewerben
+
+Wir bedauern die Unannehmlichkeiten und hoffen auf dein Verständnis.
+
+Bei Fragen stehen wir dir gerne zur Verfügung.
+
+Beste Grüße
+Dein Kibundo Team`;
+
+  const result = await sendEmail({
+    to: user.email,
+    subject,
+    html,
+    text,
+    parent_id: user.parent_id || null,
+  });
+  
+  if (result.success) {
+    console.log("✅ [sendBetaRejectionEmail] Beta rejection email sent successfully");
+  } else {
+    console.error("❌ [sendBetaRejectionEmail] Failed to send beta rejection email:", result.error);
+  }
+  
+  return result;
+}
+
 module.exports = {
   getTransporter,
   sendEmail,
   sendTemplatedEmail,
   sendWelcomeEmail,
+  sendBetaSignupEmail,
+  sendBetaApprovalEmail,
+  sendBetaRejectionEmail,
   replaceTemplateVariables,
 };
 

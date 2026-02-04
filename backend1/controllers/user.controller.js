@@ -2,6 +2,162 @@ const db = require("../models");
 const { Student, User, HomeworkScan } = db;
 const { Op } = require("sequelize");
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const emailService = require("../services/email.service");
+
+// ============================================
+// BETA USER MANAGEMENT
+// ============================================
+
+exports.getBetaUsers = async (req, res) => {
+  try {
+    const betaUsers = await db.user.findAll({
+      where: { is_beta: true },
+      attributes: { exclude: ['password'] },
+      include: [
+        {
+          model: db.role,
+          as: 'role'
+        },
+        {
+          model: db.user,
+          as: 'betaApprover',
+          attributes: ['id', 'first_name', 'last_name', 'email']
+        }
+      ],
+      order: [['beta_requested_at', 'DESC']]
+    });
+    
+    res.json(betaUsers);
+  } catch (error) {
+    console.error('Error fetching beta users:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+};
+
+exports.approveBetaUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.user.id;
+    
+    const user = await db.user.findOne({
+      where: { id, is_beta: true }
+    });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'Beta user not found' });
+    }
+    
+    if (user.beta_status === 'approved') {
+      return res.status(400).json({ message: 'User is already approved' });
+    }
+    
+    // Update user with approval
+    await user.update({
+      beta_status: 'approved',
+      beta_approved_at: new Date(),
+      beta_approved_by: adminId
+    });
+    
+    // Send approval email
+    const userData = { ...user.toJSON() };
+    delete userData.password;
+    
+    emailService.sendBetaApprovalEmail(userData)
+      .then((result) => {
+        if (result.success) {
+          console.log("✅ Beta approval email sent successfully to:", userData.email, "Message ID:", result.messageId);
+        } else {
+          console.error("❌ Failed to send beta approval email to:", userData.email, "Error:", result.error);
+        }
+      })
+      .catch((emailError) => {
+        console.error("❌ Exception sending beta approval email to:", userData.email, "Error:", emailError);
+      });
+    
+    res.json({
+      message: 'Beta user approved successfully',
+      user: userData
+    });
+  } catch (error) {
+    console.error('Error approving beta user:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+};
+
+exports.rejectBetaUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body; // Optional rejection reason
+    
+    const user = await db.user.findOne({
+      where: { id, is_beta: true }
+    });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'Beta user not found' });
+    }
+    
+    if (user.beta_status === 'rejected') {
+      return res.status(400).json({ message: 'User is already rejected' });
+    }
+    
+    // Update user with rejection
+    await user.update({
+      beta_status: 'rejected'
+    });
+    
+    // Send rejection email (optional)
+    const userData = { ...user.toJSON() };
+    delete userData.password;
+    
+    if (reason) {
+      emailService.sendBetaRejectionEmail({ ...userData, rejection_reason: reason })
+        .then((result) => {
+          if (result.success) {
+            console.log("✅ Beta rejection email sent successfully to:", userData.email);
+          } else {
+            console.error("❌ Failed to send beta rejection email to:", userData.email, "Error:", result.error);
+          }
+        })
+        .catch((emailError) => {
+          console.error("❌ Exception sending beta rejection email to:", userData.email, "Error:", emailError);
+        });
+    }
+    
+    res.json({
+      message: 'Beta user rejected successfully',
+      user: userData
+    });
+  } catch (error) {
+    console.error('Error rejecting beta user:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+};
+
+exports.getBetaStats = async (req, res) => {
+  try {
+    const stats = await db.user.findAll({
+      where: { is_beta: true },
+      attributes: [
+        [db.sequelize.fn('COUNT', db.sequelize.col('id')), 'total'],
+        [db.sequelize.fn('COUNT', db.sequelize.literal('CASE WHEN beta_status = "pending" THEN 1 END')), 'pending'],
+        [db.sequelize.fn('COUNT', db.sequelize.literal('CASE WHEN beta_status = "approved" THEN 1 END')), 'approved'],
+        [db.sequelize.fn('COUNT', db.sequelize.literal('CASE WHEN beta_status = "rejected" THEN 1 END')), 'rejected']
+      ]
+    });
+    
+    const result = stats[0];
+    res.json({
+      total_beta_users: parseInt(result.dataValues.total) || 0,
+      pending_approval: parseInt(result.dataValues.pending) || 0,
+      approved: parseInt(result.dataValues.approved) || 0,
+      rejected: parseInt(result.dataValues.rejected) || 0
+    });
+  } catch (error) {
+    console.error('Error fetching beta stats:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+};
 
 // ============================================
 // USER MANAGEMENT

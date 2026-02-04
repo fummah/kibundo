@@ -77,6 +77,10 @@ import TicketsList from "@/pages/admin/tickets/TicketsList.jsx";
 import TicketDetail from "@/pages/admin/tickets/TicketDetail.jsx";
 import TicketForm from "@/pages/admin/tickets/TicketForm.jsx";
 
+/* Users */
+import Users from "@/pages/admin/Users.jsx";
+import BetaUsers from "@/pages/admin/BetaUsers.jsx";
+
 /* Tasks */
 import TasksList from "@/pages/admin/tasks/TasksList.jsx";
 import TaskDetail from "@/pages/admin/tasks/TaskDetail.jsx";
@@ -259,6 +263,9 @@ export default function AdminRoutes() {
             <Route index element={<DatabaseOverview />} />
             <Route path="management" element={<DatabaseManagement />} />
           </Route>
+
+          {/* Beta Users */}
+          <Route path="beta-users" element={<BetaUsers />} />
 
           {/* Back-compat for any legacy nested quizzes paths */}
           <Route

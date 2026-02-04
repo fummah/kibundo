@@ -10,6 +10,8 @@ import SignUp from "@/pages/auth/SignUp.jsx";
 import SignUpSuccess from "@/pages/auth/SignUpSuccess.jsx";
 import SignUpAddChild from "@/pages/auth/SignUpAddChild.jsx";
 import SignUpAddAnotherChild from "@/pages/auth/SignUpAddAnotherChild.jsx";
+import BetaSignUp from "@/pages/auth/BetaSignUp.jsx";
+import BetaSignUpSuccess from "@/pages/auth/BetaSignUpSuccess.jsx";
 import SubscriptionChoice from "@/pages/auth/SubscriptionChoice.jsx";
 import ForgotPassword from "@/pages/auth/ForgotPassword.jsx";
 import NotFound from "@/components/NotFound.jsx";
@@ -39,6 +41,8 @@ export default function AppRoutes() {
         <Route path="/signin" element={<SignIn />} />
         <Route path="/student-login" element={<StudentLogin />} />
         <Route path="/signup" element={<SignUp />} />
+        <Route path="/beta-signup" element={<BetaSignUp />} />
+        <Route path="/beta-signup-success" element={<BetaSignUpSuccess />} />
         <Route
           path="/signup/success"
           element={

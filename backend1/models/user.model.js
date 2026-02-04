@@ -61,6 +61,26 @@ module.exports = (sequelize, DataTypes) => {
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true
+    },
+    is_beta: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    beta_status: {
+      type: DataTypes.ENUM('pending', 'approved', 'rejected'),
+      defaultValue: null
+    },
+    beta_requested_at: {
+      type: DataTypes.DATE,
+      defaultValue: null
+    },
+    beta_approved_at: {
+      type: DataTypes.DATE,
+      defaultValue: null
+    },
+    beta_approved_by: {
+      type: DataTypes.INTEGER,
+      defaultValue: null
     }
   }, {
     tableName: "users",
@@ -87,6 +107,17 @@ module.exports = (sequelize, DataTypes) => {
    User.hasMany(models.parent, {
     foreignKey: 'user_id',
     as: 'parent'
+  });
+
+  // Beta approval relationship
+  User.belongsTo(models.user, {
+    foreignKey: 'beta_approved_by',
+    as: 'betaApprover'
+  });
+
+  User.hasMany(models.user, {
+    foreignKey: 'beta_approved_by',
+    as: 'betaApprovedUsers'
   });
 
   };

@@ -13,8 +13,8 @@ const DEFAULT_DEV_PORT = String(import.meta?.env?.VITE_BACKEND_PORT || "8080");
 // Resolve base preference with dev safeguards
 let RAW_BASE = import.meta?.env?.VITE_API_BASE;
 if (!RAW_BASE) {
-  // In dev mode, use relative URL to go through Vite proxy
-  RAW_BASE = "/api";
+  // Use correct backend port 3001
+  RAW_BASE = "http://localhost:3001/api";
 } else if (import.meta?.env?.DEV) {
   // If developer provided a relative path (e.g., '/api') in dev, keep it relative
   const trimmed = String(RAW_BASE).trim();

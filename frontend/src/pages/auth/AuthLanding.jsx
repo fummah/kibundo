@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
+import { Button } from "antd";
 import globalBg from "@/assets/backgrounds/global-bg.png";
 import { NUNITO_FONT_STACK } from "@/constants/fonts.js";
 
 export default function AuthLanding() {
   const [progress, setProgress] = useState(0);
   const navigate = useNavigate();
+
+  const handleJoinBeta = () => {
+    navigate("/beta-signup");
+  };
 
   // Welcome intro style loading, then redirect to parent sign-in
   useEffect(() => {
@@ -118,13 +123,39 @@ export default function AuthLanding() {
             {"Hausaufgaben mit Spaß\nund in Deinem Tempo"}
           </p>
 
+          {/* Beta CTA Button */}
+          <Button
+            type="primary"
+            onClick={handleJoinBeta}
+            style={{
+              position: "absolute",
+              left: "50%",
+              transform: "translateX(-50%)",
+              top: "580px",
+              width: "200px",
+              height: "50px",
+              borderRadius: "25px",
+              background: "#FF8400",
+              border: "none",
+              fontFamily: "Nunito",
+              fontWeight: 700,
+              fontSize: "16px",
+              color: "#FFFFFF",
+              letterSpacing: "1%",
+              cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(255, 132, 0, 0.3)",
+            }}
+          >
+            🚀 Join the Beta
+          </Button>
+
           {/* Progress bar */}
           <div
             className="absolute overflow-hidden"
             style={{
               left: "50%",
               transform: "translateX(-50%)",
-              top: "616px",
+              top: "650px",
               width: "450px",
               maxWidth: "80vw",
               height: "12px",

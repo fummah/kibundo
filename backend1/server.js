@@ -10,7 +10,7 @@ const app = express();
 app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080'],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-XSRF-TOKEN']
 }));
 
@@ -46,7 +46,7 @@ app.use('/uploads', express.static('uploads'));
 
     // Sync DB and start server
     await db.sequelize.sync();
-    const PORT = process.env.PORT || 8080;
+    const PORT = process.env.PORT || 3001;
     app.listen(PORT, () => {
       console.log(`✅ Server is running on port ${PORT}`);
     });

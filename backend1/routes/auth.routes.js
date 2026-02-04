@@ -2,9 +2,23 @@ const express = require("express");
 const router = express.Router();
 const authController = require("../controllers/auth.controller");
 
+// POST /beta-signup - Beta user registration
+router.post("/beta-signup", (req, res, next) => {
+  console.log("🚀 Beta signup route hit!", req.body);
+  console.log("📝 Headers:", req.headers);
+  next();
+}, authController.betaSignup);
+
+// Regular signup
 router.post("/signup", authController.signup);
+
+// Login
 router.post("/login", authController.login);
-router.post("/student-login", authController.studentLogin); // Avatar-based login for students
-router.get("/students-for-login", authController.getStudentsForLogin); // Public endpoint to get student list for login
+
+// Student login
+router.post("/student-login", authController.studentLogin);
+
+// Public endpoint to get student list for login
+router.get("/students-for-login", authController.getStudentsForLogin);
 
 module.exports = router;
