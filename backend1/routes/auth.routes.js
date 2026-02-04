@@ -1,9 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const authController = require("../controllers/auth.controller");
+const { betaSignupLimiter } = require("../middlewares/rateLimit");
 
-// POST /beta-signup - Beta user registration
-router.post("/beta-signup", (req, res, next) => {
+// POST /beta-signup - Beta user registration with rate limiting
+router.post("/beta-signup", betaSignupLimiter, (req, res, next) => {
   console.log("🚀 Beta signup route hit!", req.body);
   console.log("📝 Headers:", req.headers);
   next();

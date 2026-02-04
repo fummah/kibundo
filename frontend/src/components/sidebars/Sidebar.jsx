@@ -72,6 +72,7 @@ export default function Sidebar({ menuOpen = true, setMenuOpen = () => {} }) {
         { href: "/admin/parents", label: "Parents", icon: TeamOutlined },
         { href: "/admin/students", label: "Students", icon: TeamOutlined },
         { href: "/admin/teachers", label: "Teachers", icon: TeamOutlined },
+        { href: "/admin/beta-users", label: "Beta Approvals", icon: SafetyCertificateOutlined },
       ],
     },
     {

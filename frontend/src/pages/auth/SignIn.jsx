@@ -249,7 +249,7 @@ export default function SignIn() {
                 placeholder="E-Mail oder Benutzername"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                bordered={false}
+                variant="borderless"
                 style={{
                   padding: 0,
                   boxShadow: "none",
@@ -280,7 +280,7 @@ export default function SignIn() {
                 placeholder="Passwort"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                bordered={false}
+                variant="borderless"
                 style={{
                   padding: 0,
                   boxShadow: "none",
@@ -340,6 +340,7 @@ export default function SignIn() {
                 fontWeight: 400,
                 fontSize: "18px",
                 color: "#544C3B",
+                marginBottom: "16px",
               }}
             >
               Noch kein Konto?{" "}
@@ -351,6 +352,29 @@ export default function SignIn() {
                 }}
               >
                 Registrieren
+              </Link>
+            </div>
+
+            <div
+              style={{
+                textAlign: "center",
+                fontFamily: "Nunito",
+                fontWeight: 400,
+                fontSize: "16px",
+                color: "#544C3B",
+                marginBottom: "16px",
+              }}
+            >
+              Oder{" "}
+              <Link
+                to="/beta-signup"
+                style={{
+                  fontWeight: 900,
+                  color: "#287D7F",
+                  textDecoration: "underline",
+                }}
+              >
+                Als Beta-Tester teilnehmen
               </Link>
             </div>
           </div>

@@ -54,6 +54,7 @@ exports.approveBetaUser = async (req, res) => {
     // Update user with approval
     await user.update({
       beta_status: 'approved',
+      isActive: true,
       beta_approved_at: new Date(),
       beta_approved_by: adminId
     });
@@ -103,7 +104,8 @@ exports.rejectBetaUser = async (req, res) => {
     
     // Update user with rejection
     await user.update({
-      beta_status: 'rejected'
+      beta_status: 'rejected',
+      isActive: false
     });
     
     // Send rejection email (optional)
@@ -136,22 +138,27 @@ exports.rejectBetaUser = async (req, res) => {
 
 exports.getBetaStats = async (req, res) => {
   try {
-    const stats = await db.user.findAll({
+    const result = await db.user.findOne({
       where: { is_beta: true },
       attributes: [
         [db.sequelize.fn('COUNT', db.sequelize.col('id')), 'total'],
-        [db.sequelize.fn('COUNT', db.sequelize.literal('CASE WHEN beta_status = "pending" THEN 1 END')), 'pending'],
-        [db.sequelize.fn('COUNT', db.sequelize.literal('CASE WHEN beta_status = "approved" THEN 1 END')), 'approved'],
-        [db.sequelize.fn('COUNT', db.sequelize.literal('CASE WHEN beta_status = "rejected" THEN 1 END')), 'rejected']
-      ]
+        [db.sequelize.fn('COALESCE', db.sequelize.fn('SUM', db.sequelize.literal("CASE WHEN beta_status = 'pending' THEN 1 ELSE 0 END")), 0), 'pending'],
+        [db.sequelize.fn('COALESCE', db.sequelize.fn('SUM', db.sequelize.literal("CASE WHEN beta_status = 'approved' THEN 1 ELSE 0 END")), 0), 'approved'],
+        [db.sequelize.fn('COALESCE', db.sequelize.fn('SUM', db.sequelize.literal("CASE WHEN beta_status = 'rejected' THEN 1 ELSE 0 END")), 0), 'rejected'],
+      ],
+      raw: true,
     });
-    
-    const result = stats[0];
+
+    const total = Number(result?.total || 0);
+    const pending = Number(result?.pending || 0);
+    const approved = Number(result?.approved || 0);
+    const rejected = Number(result?.rejected || 0);
+
     res.json({
-      total_beta_users: parseInt(result.dataValues.total) || 0,
-      pending_approval: parseInt(result.dataValues.pending) || 0,
-      approved: parseInt(result.dataValues.approved) || 0,
-      rejected: parseInt(result.dataValues.rejected) || 0
+      total_beta_users: Number.isFinite(total) ? total : 0,
+      pending_approval: Number.isFinite(pending) ? pending : 0,
+      approved: Number.isFinite(approved) ? approved : 0,
+      rejected: Number.isFinite(rejected) ? rejected : 0
     });
   } catch (error) {
     console.error('Error fetching beta stats:', error);

@@ -5,7 +5,6 @@ import {
   Button,
   Space,
   Modal,
-  message,
   Popconfirm,
   Tag,
   Card,
@@ -15,6 +14,7 @@ import {
   Select,
   Input,
   Tooltip,
+  message,
 } from "antd";
 import { 
   CheckOutlined, 
@@ -46,6 +46,7 @@ const BetaStatusIcons = {
 
 export default function BetaUsersManagement() {
   const { user } = useAuth();
+  const [messageApi, contextHolder] = message.useMessage();
   const [betaUsers, setBetaUsers] = useState([]);
   const [betaStats, setBetaStats] = useState({});
   const [loading, setLoading] = useState(false);
@@ -66,7 +67,7 @@ export default function BetaUsersManagement() {
       const { data } = await api.get("/beta-users");
       setBetaUsers(data);
     } catch (err) {
-      message.error("Failed to load beta users");
+      messageApi.error("Failed to load beta users");
     } finally {
       setLoading(false);
     }
@@ -78,7 +79,7 @@ export default function BetaUsersManagement() {
       const { data } = await api.get("/beta-stats");
       setBetaStats(data);
     } catch (err) {
-      message.error("Failed to load beta statistics");
+      messageApi.error("Failed to load beta statistics");
     } finally {
       setStatsLoading(false);
     }
@@ -87,22 +88,22 @@ export default function BetaUsersManagement() {
   const handleApprove = async (userId) => {
     try {
       await api.patch(`/beta-users/${userId}/approve`);
-      message.success("Beta user approved successfully!");
+      messageApi.success("Beta user approved successfully!");
       fetchBetaUsers();
       fetchBetaStats();
     } catch (err) {
-      message.error("Failed to approve beta user");
+      messageApi.error("Failed to approve beta user");
     }
   };
 
   const handleReject = async (userId) => {
     try {
       await api.patch(`/beta-users/${userId}/reject`);
-      message.success("Beta user rejected successfully!");
+      messageApi.success("Beta user rejected successfully!");
       fetchBetaUsers();
       fetchBetaStats();
     } catch (err) {
-      message.error("Failed to reject beta user");
+      messageApi.error("Failed to reject beta user");
     }
   };
 
@@ -228,6 +229,7 @@ export default function BetaUsersManagement() {
 
   return (
     <div className="p-6 bg-white dark:bg-gray-900 min-h-screen">
+      {contextHolder}
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">
           🚀 Beta User Management

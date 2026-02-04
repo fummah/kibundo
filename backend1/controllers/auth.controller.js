@@ -86,25 +86,13 @@ exports.betaSignup = async (req, res) => {
         await existingUser.update({
           is_beta: true,
           beta_status: 'pending',
-          beta_requested_at: new Date()
+          beta_requested_at: new Date(),
+          isActive: false
         });
-        
-        // Send beta signup confirmation email
+
         const userData = { ...existingUser.toJSON() };
         delete userData.password;
-        
-        emailService.sendBetaSignupEmail(userData)
-          .then((result) => {
-            if (result.success) {
-              console.log("✅ Beta signup confirmation email sent successfully to:", userData.email);
-            } else {
-              console.error("❌ Failed to send beta signup confirmation email to:", userData.email, "Error:", result.error);
-            }
-          })
-          .catch((emailError) => {
-            console.error("❌ Exception sending beta signup confirmation email to:", userData.email, "Error:", emailError);
-          });
-        
+
         return res.status(200).json({ 
           message: "Dein bestehender Account wurde für das Beta-Programm angemeldet!",
           user: userData,
@@ -129,6 +117,7 @@ exports.betaSignup = async (req, res) => {
       is_beta: true,
       beta_status: 'pending',
       beta_requested_at: new Date(),
+      isActive: false,
     });
 
     console.log("✅ Beta user created:", { userId: newUser.id, role_id: newUser.role_id, expectedRoleId: roleIdNum });
@@ -192,28 +181,6 @@ exports.betaSignup = async (req, res) => {
     delete userData.password;
 
     console.log("✅ Beta signup successful:", { userId: newUser.id, role_id: roleIdNum, email: newUser.email, parent_id: newUser.parent_id || null });
-
-    // 7. Send beta signup confirmation email (non-blocking)
-    const emailData = {
-      ...userData,
-      password: password, // Include plain password for email
-      parent_id: newUser.parent_id || null,
-      beta_status: 'pending'
-    };
-    
-    console.log("📧 Attempting to send beta signup confirmation email to:", emailData.email);
-    emailService.sendBetaSignupEmail(emailData)
-      .then((result) => {
-        if (result.success) {
-          console.log("✅ Beta signup confirmation email sent successfully to:", emailData.email, "Message ID:", result.messageId);
-        } else {
-          console.error("❌ Failed to send beta signup confirmation email to:", emailData.email, "Error:", result.error);
-        }
-      })
-      .catch((emailError) => {
-        console.error("❌ Exception sending beta signup confirmation email to:", emailData.email, "Error:", emailError);
-        // Don't fail the signup if email fails
-      });
 
     res.status(201).json({ 
       message: "Beta registration successful! Your account is pending approval.", 
@@ -452,35 +419,51 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // 3. Check beta user approval status (temporarily disabled for testing)
-    // if (user.is_beta && user.beta_status !== 'approved') {
-    //   if (user.beta_status === 'pending') {
-    //     return res.status(403).json({ 
-    //       message: "Your beta account is pending approval. You will receive an email once your account is approved.",
-    //       beta_status: user.beta_status,
-    //       requires_approval: true
-    //     });
-    //   } else if (user.beta_status === 'rejected') {
-    //     return res.status(403).json({ 
-    //       message: "Your beta account application has been rejected. Please contact support for more information.",
-    //       beta_status: user.beta_status
-    //     });
-    //   } else {
-    //     return res.status(403).json({ 
-    //       message: "Your beta account status is invalid. Please contact support.",
-    //       beta_status: user.beta_status
-    //     });
-    //   }
-    // }
+    // ENFORCE: No tokens/sessions for pending beta users
+    if (user.is_beta && user.beta_status !== 'approved') {
+      if (user.beta_status === 'pending') {
+        return res.status(403).json({ 
+          message: "Your beta account is pending approval. You will receive an email once your account is approved.",
+          beta_status: user.beta_status,
+          requires_approval: true
+        });
+      } else if (user.beta_status === 'rejected') {
+        return res.status(403).json({ 
+          message: "Your beta account application has been rejected. Please contact support for more information.",
+          beta_status: user.beta_status
+        });
+      } else {
+        return res.status(403).json({ 
+          message: "Your beta account status is invalid. Please contact support.",
+          beta_status: user.beta_status
+        });
+      }
+    }
 
-    // 4. Generate token
+    // ENFORCE: active === true (for all users)
+    if (!user.isActive) {
+      return res.status(403).json({ 
+        message: "Your account has been deactivated. Please contact support.",
+        is_active: false
+      });
+    }
+
+    // ENFORCE: status === 'Active' (for regular users only)
+    if (!user.is_beta && user.status !== 'Active') {
+      return res.status(403).json({ 
+        message: "Your account is suspended. Please contact support.",
+        status: user.status
+      });
+    }
+
+    // ONLY AFTER ALL CHECKS PASS: Generate token
     const token = jwt.sign(
       { id: user.id, email: user.email, role_id: user.role_id },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
 
-    // 5. Exclude password from response
+    // 7. Exclude password from response
     const userData = { ...user.toJSON() };
     delete userData.password;
 
@@ -542,6 +525,43 @@ exports.studentLogin = async (req, res) => {
 
     if (user.role_id !== 1) {
       return res.status(403).json({ message: "User is not a student" });
+    }
+
+    // ENFORCE: No tokens/sessions for pending beta users
+    if (user.is_beta && user.beta_status !== 'approved') {
+      if (user.beta_status === 'pending') {
+        return res.status(403).json({ 
+          message: "Your beta account is pending approval. You will receive an email once your account is approved.",
+          beta_status: user.beta_status,
+          requires_approval: true
+        });
+      } else if (user.beta_status === 'rejected') {
+        return res.status(403).json({ 
+          message: "Your beta account application has been rejected. Please contact support for more information.",
+          beta_status: user.beta_status
+        });
+      } else {
+        return res.status(403).json({ 
+          message: "Your beta account status is invalid. Please contact support.",
+          beta_status: user.beta_status
+        });
+      }
+    }
+
+    // ENFORCE: active === true
+    if (!user.isActive) {
+      return res.status(403).json({ 
+        message: "Your account has been deactivated. Please contact support.",
+        is_active: false
+      });
+    }
+
+    // ENFORCE: status === 'Active' for regular users
+    if (!user.is_beta && user.status !== 'Active') {
+      return res.status(403).json({ 
+        message: "Your account is suspended. Please contact support.",
+        status: user.status
+      });
     }
 
     // Generate token (no password check for students)
