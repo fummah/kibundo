@@ -7,8 +7,17 @@ const db = require("./models");
 const app = express();
 
 // Middleware
+const corsOrigins = String(process.env.CORS_ORIGINS || '').trim();
+const allowedOrigins = corsOrigins
+  ? corsOrigins.split(',').map((s) => s.trim()).filter(Boolean)
+  : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080'];
+
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080'],
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-XSRF-TOKEN']

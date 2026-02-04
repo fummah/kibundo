@@ -5,16 +5,13 @@ import axios from "axios";
 /**
  * Strategy:
  *  - If VITE_API_BASE is set -> use it.
- *  - Else if in dev -> http://localhost:<VITE_BACKEND_PORT || 8080>/api
- *  - Else (prod) -> '/api' (same-origin, behind reverse-proxy).
+ *  - Else -> '/api' (same-origin in prod, Vite proxy in dev).
  */
-const DEFAULT_DEV_PORT = String(import.meta?.env?.VITE_BACKEND_PORT || "8080");
-
 // Resolve base preference with dev safeguards
 let RAW_BASE = import.meta?.env?.VITE_API_BASE;
 if (!RAW_BASE) {
-  // Use correct backend port 3001
-  RAW_BASE = "http://localhost:3001/api";
+  // Default to relative base (works in prod behind reverse proxy and in dev via Vite proxy)
+  RAW_BASE = "/api";
 } else if (import.meta?.env?.DEV) {
   // If developer provided a relative path (e.g., '/api') in dev, keep it relative
   const trimmed = String(RAW_BASE).trim();
