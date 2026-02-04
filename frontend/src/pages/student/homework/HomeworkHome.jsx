@@ -8,11 +8,20 @@ import HomeworkCollectChat from './HomeworkCollectChat';
 import HomeworkHomeBackground from '@/components/student/backgrounds/HomeworkHomeBackground.jsx';
 import api from '@/api/axios';
 import { useStudentContext } from '@/hooks/useStudentId';
+import { useStudentApp } from '@/context/StudentAppContext.jsx';
+import { useAuthContext } from '@/context/AuthContext.jsx';
 
 const HomeworkHome = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { studentId } = useStudentContext();
+  const { ttsEnabled } = useStudentApp();
+  const { user, account } = useAuthContext();
+
+  // Get student ID (use selected child account if parent is viewing child)
+  const studentId = account?.type === "child" && account?.userId 
+    ? account.userId 
+    : (user?.id || user?.user_id || null);
+
   const [showSolvedCard, setShowSolvedCard] = useState(false);
   const [showCollectModal, setShowCollectModal] = useState(false);
   const [selectedScanId, setSelectedScanId] = useState(null);
@@ -27,6 +36,15 @@ const HomeworkHome = () => {
     if (typeof window === 'undefined') return true;
     return window.matchMedia('(orientation: portrait)').matches;
   });
+  const [showSpeechBubble, setShowSpeechBubble] = useState(() => {
+    // Check if user has seen the bubble before - specific to this student
+    if (typeof window !== 'undefined' && studentId) {
+      const hasSeenBubble = localStorage.getItem(`homework-speech-bubble-seen-${studentId}`);
+      console.log('Speech bubble - hasSeenBubble:', hasSeenBubble, 'for student:', studentId);
+      return !hasSeenBubble; // Show bubble if not seen before
+    }
+    return true;
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -35,6 +53,48 @@ const HomeworkHome = () => {
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, []);
+
+  const closeSpeechBubble = () => {
+    console.log('closeSpeechBubble called for student:', studentId);
+    setShowSpeechBubble(false);
+    if (typeof window !== 'undefined' && studentId) {
+      localStorage.setItem(`homework-speech-bubble-seen-${studentId}`, 'true');
+      console.log('Set homework-speech-bubble-seen to true for student:', studentId);
+      // Force a re-render by updating a dummy state
+      setForceUpdate(prev => prev + 1);
+    }
+  };
+
+  // Auto-close speech bubble after 5 seconds and mark as seen
+  useEffect(() => {
+    if (showSpeechBubble) {
+      const timer = setTimeout(() => {
+        console.log('Auto-closing speech bubble');
+        closeSpeechBubble();
+      }, 5000); // 5 seconds
+
+      return () => clearTimeout(timer);
+    }
+  }, [showSpeechBubble]);
+
+  // For testing: Add keyboard shortcut to clear localStorage (Ctrl+Shift+R)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+        e.preventDefault();
+        if (studentId) {
+          localStorage.removeItem(`homework-speech-bubble-seen-${studentId}`);
+          setShowSpeechBubble(true);
+          console.log('Cleared speech bubble localStorage - showing bubble again for student:', studentId);
+        }
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [studentId]);
 
   // Fetch homework scans for the student
   useEffect(() => {
@@ -357,13 +417,14 @@ const HomeworkHome = () => {
         {/* Back Button - top right, responsive */}
         <button
           onClick={() => navigate('/student/home')}
-          className="absolute flex items-center justify-center rounded-full hover:opacity-90 transition-opacity z-50"
+          className="absolute flex items-center justify-center rounded-full hover:opacity-90 transition-opacity"
           style={{
             top: 'clamp(16px, 3vw, 24px)',
             right: 'clamp(16px, 1.875vw, 24px)',
             width: 'clamp(40px, 3.75vw, 48px)',
             height: 'clamp(40px, 3.75vw, 48px)',
-            backgroundColor: '#D9D9D9'
+            backgroundColor: '#D9D9D9',
+            zIndex: 100 // Ensure back button is always on top
           }}
           aria-label="Go back"
         >
@@ -381,15 +442,17 @@ const HomeworkHome = () => {
         <h1
           className="absolute top-[75px] left-1/2 transform -translate-x-1/2 text-center"
           style={{
-            width: 'clamp(200px, 22.6vw, 289px)',
+            width: isPortrait ? 'clamp(180px, 35vw, 240px)' : 'clamp(200px, 22.6vw, 289px)',
             height: 'auto',
-            minHeight: 'clamp(40px, 6.875vw, 55px)',
+            minHeight: isPortrait ? 'clamp(35px, 6vw, 45px)' : 'clamp(40px, 6.875vw, 55px)',
             fontFamily: 'Nunito',
             fontWeight: 900,
-            fontSize: 'clamp(28px, 3.125vw, 40px)',
+            fontSize: isPortrait ? 'clamp(22px, 4vw, 32px)' : 'clamp(28px, 3.125vw, 40px)',
             lineHeight: '1.375',
             letterSpacing: '2%',
-            color: '#287D7F'
+            color: '#287D7F',
+            zIndex: 20, // Ensure title is above characters
+            top: isPortrait ? 'clamp(50px, 8vw, 70px)' : '75px'
           }}
         >
           Hausaufgaben
@@ -404,11 +467,10 @@ const HomeworkHome = () => {
             width: 'clamp(150px, 20.8vw, 266.48px)',
             height: 'auto',
             aspectRatio: '266.48 / 276.45',
-            objectFit: 'cover'
+            objectFit: 'cover',
+            zIndex: 5 // Ensure character is behind text
           }}
         />
-
-
 
         {/* Right Character - M3eWEd.tif - responsive */}
         <img
@@ -419,7 +481,8 @@ const HomeworkHome = () => {
             width: 'clamp(120px, 15.5vw, 199px)',
             height: 'auto',
             aspectRatio: '199 / 245.5',
-            objectFit: 'cover'
+            objectFit: 'cover',
+            zIndex: 5 // Ensure character is behind text
           }}
         />
 
@@ -431,7 +494,8 @@ const HomeworkHome = () => {
             right: 'clamp(10px, 1.56vw, 20px)',
             width: 'clamp(280px, 27.3vw, 350px)',
             height: 'auto',
-            aspectRatio: '350 / 225'
+            aspectRatio: '350 / 225',
+            zIndex: 15 // Ensure Kibundo is above characters but below title
           }}
         >
           {/* Kibundo Character Image - responsive */}
@@ -440,9 +504,9 @@ const HomeworkHome = () => {
             alt="Kibundo mascot"
             className="absolute"
             style={{
-              left: isPortrait ? 'clamp(100px, 22vw, 180px)' : 'clamp(180px, 18.8vw, 241.14px)',
+              left: isPortrait ? 'clamp(60px, 15vw, 120px)' : 'clamp(180px, 18.8vw, 241.14px)',
               top: 'clamp(4px, 0.76vw, 6.08px)',
-              width: 'clamp(80px, 8.47vw, 108.47px)',
+              width: isPortrait ? 'clamp(60px, 12vw, 80px)' : 'clamp(80px, 8.47vw, 108.47px)',
               height: 'auto',
               aspectRatio: '108.47 / 212.84',
               objectFit: 'contain'
@@ -453,10 +517,10 @@ const HomeworkHome = () => {
           <button
             className="absolute flex items-center justify-center rounded-full hover:opacity-90 transition-opacity"
             style={{
-              left: 'clamp(80px, 8.44vw, 108px)',
-              top: 'clamp(20px, 3.5vw, 28px)',
-              width: 'clamp(36px, 3.75vw, 48px)',
-              height: 'clamp(36px, 3.75vw, 48px)',
+              left: isPortrait ? 'clamp(40px, 8vw, 60px)' : 'clamp(80px, 8.44vw, 108px)',
+              top: isPortrait ? 'clamp(15px, 3vw, 20px)' : 'clamp(20px, 3.5vw, 28px)',
+              width: isPortrait ? 'clamp(28px, 5vw, 36px)' : 'clamp(36px, 3.75vw, 48px)',
+              height: isPortrait ? 'clamp(28px, 5vw, 36px)' : 'clamp(36px, 3.75vw, 48px)',
               backgroundColor: '#FFFFFF',
               boxShadow: '1px 1px 4px rgba(0, 0, 0, 0.25)'
             }}
@@ -478,10 +542,10 @@ const HomeworkHome = () => {
           <button
             className="absolute flex items-center justify-center rounded-full hover:opacity-90 transition-opacity"
             style={{
-              left: 'clamp(130px, 13.75vw, 176px)',
-              top: 'clamp(20px, 3.5vw, 28px)',
-              width: 'clamp(36px, 3.75vw, 48px)',
-              height: 'clamp(36px, 3.75vw, 48px)',
+              left: isPortrait ? 'clamp(80px, 12vw, 100px)' : 'clamp(130px, 13.75vw, 176px)',
+              top: isPortrait ? 'clamp(15px, 3vw, 20px)' : 'clamp(20px, 3.5vw, 28px)',
+              width: isPortrait ? 'clamp(28px, 5vw, 36px)' : 'clamp(36px, 3.75vw, 48px)',
+              height: isPortrait ? 'clamp(28px, 5vw, 36px)' : 'clamp(36px, 3.75vw, 48px)',
               backgroundColor: '#FFFFFF',
               boxShadow: '1px 1px 4px rgba(0, 0, 0, 0.25)'
             }}
@@ -499,70 +563,88 @@ const HomeworkHome = () => {
             />
           </button>
 
-          {/* Speech Bubble - responsive */}
-          <div
-            className="absolute"
-            style={{
-              left: 'clamp(2px, 0.31vw, 4px)',
-              top: 'clamp(70px, 12.125vw, 97px)',
-              width: 'clamp(170px, 16.8vw, 215px)',
-              height: 'auto',
-              minHeight: 'clamp(90px, 13.875vw, 111px)'
-            }}
-          >
-            {/* Speech Bubble Arrow - responsive */}
-            <img
-              src="/images/img_vector.svg"
-              alt="Speech indicator"
+        </div>
+
+        {showSpeechBubble && (
+          <div key={`speech-bubble-${forceUpdate}`}>
+            <div style={{ 
+              position: 'fixed', 
+              top: 0, 
+              left: 0, 
+              right: 0, 
+              bottom: 0, 
+              zIndex: 24, 
+              backgroundColor: 'rgba(0,0,0,0.1)' 
+            }} onClick={closeSpeechBubble} />
+            
+            {/* Speech Bubble - responsive */}
+            <div
               className="absolute"
               style={{
-                left: 'clamp(100px, 10.5vw, 134.79px)',
-                top: 'clamp(-14px, -2.25vw, -18px)',
-                width: 'clamp(40px, 4.3vw, 55.21px)',
+                left: isPortrait ? 'clamp(2px, 1vw, 4px)' : 'clamp(2px, 0.31vw, 4px)',
+                top: isPortrait ? 'clamp(50px, 10vw, 70px)' : 'clamp(70px, 12.125vw, 97px)',
+                width: isPortrait ? 'clamp(140px, 25vw, 180px)' : 'clamp(170px, 16.8vw, 215px)',
                 height: 'auto',
-                aspectRatio: '55.21 / 25.32'
+                minHeight: isPortrait ? 'clamp(70px, 12vw, 90px)' : 'clamp(90px, 13.875vw, 111px)',
+                zIndex: 25, // Ensure speech bubble is above most elements
+                transition: 'opacity 0.3s ease-in-out'
               }}
-            />
-
-            {/* Speech Bubble Content - responsive */}
-            <div
-              className="absolute rounded-[18px] border w-full"
-              style={{
-                height: 'auto',
-                minHeight: 'clamp(90px, 13.875vw, 111px)',
-                backgroundColor: '#D9F98D',
-                borderColor: '#E1EAAC',
-                borderWidth: '1px',
-                boxShadow: '2px 2px 4px rgba(0, 0, 0, 0.25)',
-                padding: 'clamp(12px, 2.25vw, 18px)'
-              }}
+              onClick={(e) => e.stopPropagation()} // Prevent bubble clicks from closing it
             >
-              <p
-                className="text-left"
+              {/* Speech Bubble Arrow - responsive */}
+              <img
+                src="/images/img_vector.svg"
+                alt="Speech indicator"
+                className="absolute"
                 style={{
-                  fontFamily: 'Nunito',
-                  fontWeight: 400,
-                  fontSize: 'clamp(14px, 1.406vw, 18px)',
-                  lineHeight: '1.36',
-                  color: '#000000',
-                  margin: 0
+                  left: isPortrait ? 'clamp(80px, 15vw, 100px)' : 'clamp(100px, 10.5vw, 134.79px)',
+                  top: isPortrait ? 'clamp(-12px, -2vw, -16px)' : 'clamp(-14px, -2.25vw, -18px)',
+                  width: isPortrait ? 'clamp(30px, 5vw, 40px)' : 'clamp(40px, 4.3vw, 55.21px)',
+                  height: 'auto',
+                  aspectRatio: '55.21 / 25.32'
+                }}
+              />
+
+              {/* Speech Bubble Content - responsive */}
+              <div
+                className="absolute rounded-[18px] border w-full"
+                style={{
+                  height: 'auto',
+                  minHeight: isPortrait ? 'clamp(70px, 12vw, 90px)' : 'clamp(90px, 13.875vw, 111px)',
+                  backgroundColor: '#D9F98D',
+                  borderColor: '#E1EAAC',
+                  borderWidth: '1px',
+                  boxShadow: '2px 2px 4px rgba(0, 0, 0, 0.25)',
+                  padding: isPortrait ? 'clamp(8px, 1.5vw, 12px)' : 'clamp(12px, 2.25vw, 18px)'
                 }}
               >
-                Was magst Du lieber.{'\n'}
-                Dinosaurier, oder{'\n'}
-                Einhörner?
-              </p>
+                <p
+                  className="text-left"
+                  style={{
+                    fontFamily: 'Nunito',
+                    fontWeight: 400,
+                    fontSize: isPortrait ? 'clamp(12px, 2vw, 16px)' : 'clamp(14px, 1.406vw, 18px)',
+                    lineHeight: '1.36',
+                    color: '#000000',
+                    margin: 0
+                  }}
+                >
+                  Was magst Du lieber.{'\n'}
+                  Dinosaurier, oder{'\n'}
+                  Einhörner?
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Neue Aufgabe Button - responsive, centered */}
         <button
           onClick={handleNewTaskClick}
           className="absolute hover:opacity-90 transition-opacity left-1/2 transform -translate-x-1/2"
           style={{
-            top: 'clamp(140px, 19.75vw, 158px)',
-            width: 'clamp(200px, 18.125vw, 232px)',
+            top: isPortrait ? 'clamp(100px, 15vw, 130px)' : 'clamp(140px, 19.75vw, 158px)',
+            width: isPortrait ? 'clamp(160px, 30vw, 200px)' : 'clamp(200px, 18.125vw, 232px)',
             height: 'auto',
             aspectRatio: '232 / 155',
             borderRadius: '16px',
@@ -571,7 +653,8 @@ const HomeworkHome = () => {
             padding: '0',
             boxSizing: 'border-box',
             position: 'relative',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            zIndex: 30 // Ensure button is above other elements
           }}
           aria-label="Neue Aufgabe"
         >
@@ -585,16 +668,16 @@ const HomeworkHome = () => {
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 'clamp(8px, 1vw, 12px)',
+              gap: isPortrait ? 'clamp(6px, 1vw, 8px)' : 'clamp(8px, 1vw, 12px)',
               width: '100%',
-              padding: 'clamp(12px, 1.5vw, 16px)'
+              padding: isPortrait ? 'clamp(8px, 1.2vw, 12px)' : 'clamp(12px, 1.5vw, 16px)'
             }}
           >
             {/* Icon */}
             <div
               style={{
-                width: 'clamp(56px, 5.625vw, 72px)',
-                height: 'clamp(56px, 5.625vw, 72px)',
+                width: isPortrait ? 'clamp(40px, 6vw, 56px)' : 'clamp(56px, 5.625vw, 72px)',
+                height: isPortrait ? 'clamp(40px, 6vw, 56px)' : 'clamp(56px, 5.625vw, 72px)',
                 borderRadius: '50%',
                 backgroundColor: '#FFFFFF',
                 boxShadow: '1.5px 1.5px 6px rgba(0, 0, 0, 0.25)',
@@ -603,7 +686,7 @@ const HomeworkHome = () => {
                 justifyContent: 'center'
               }}
             >
-              <svg style={{ width: 'clamp(32px, 3.125vw, 40px)', height: 'clamp(32px, 3.125vw, 40px)' }} viewBox="0 0 24 24" fill="none">
+              <svg style={{ width: 'clamp(24px, 2.5vw, 32px)', height: 'clamp(24px, 2.5vw, 32px)' }} viewBox="0 0 24 24" fill="none">
                 <path d="M12 5V19M5 12H19" stroke="#EF7C2E" strokeWidth="3" strokeLinecap="round"/>
               </svg>
             </div>
@@ -612,7 +695,7 @@ const HomeworkHome = () => {
               style={{
                 fontFamily: 'Nunito',
                 fontWeight: 900,
-                fontSize: 'clamp(18px, 1.95vw, 25px)',
+                fontSize: isPortrait ? 'clamp(14px, 2.5vw, 20px)' : 'clamp(18px, 1.95vw, 25px)',
                 lineHeight: '1.36',
                 letterSpacing: '2%',
                 textAlign: 'center',
@@ -627,16 +710,16 @@ const HomeworkHome = () => {
         {/* Homework Sections Container - flows naturally */}
         <div
           style={{
-            marginTop: 'clamp(240px, 32vw, 280px)',
+            marginTop: isPortrait ? 'clamp(180px, 25vw, 220px)' : 'clamp(240px, 32vw, 280px)',
             display: 'flex',
             flexDirection: 'column',
-            gap: 'clamp(16px, 2vw, 4px)',
+            gap: isPortrait ? 'clamp(12px, 2vw, 16px)' : 'clamp(16px, 2vw, 4px)',
             position: 'relative',
-            zIndex: 10,
+            zIndex: 35, // Ensure homework sections are above all other elements
             width: '100%',
             maxWidth: '100%',
             boxSizing: 'border-box',
-            padding: '0 clamp(16px, 2vw, 24px)',
+            padding: isPortrait ? '0 clamp(12px, 2vw, 16px)' : '0 clamp(16px, 2vw, 24px)',
             overflow: 'visible'
           }}
         >
@@ -1339,10 +1422,9 @@ const HomeworkHome = () => {
             />
           </div>
         )}
-      </main>
-      {/* Homework Solved Card - Pops out after homework completion */}
-      {/* Edit Homework Modal */}
-      {showEditModal && (
+        {/* Homework Solved Card - Pops out after homework completion */}
+        {/* Edit Homework Modal */}
+        {showEditModal && (
         <div
           style={{
             position: 'fixed',
@@ -1473,6 +1555,7 @@ const HomeworkHome = () => {
         isOpen={showSolvedCard} 
         onClose={() => setShowSolvedCard(false)} 
       />
+      </main>
     </>
   );
 };

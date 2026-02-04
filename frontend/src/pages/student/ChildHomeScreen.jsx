@@ -18,6 +18,17 @@ const ChildHomeScreen = () => {
   const studentId = account?.type === "child" && account?.userId 
     ? account.userId 
     : (user?.id || user?.user_id || null);
+  
+  const [showSpeechBubble, setShowSpeechBubble] = useState(() => {
+    // Check if user has seen the bubble before - specific to this student
+    if (typeof window !== 'undefined' && studentId) {
+      const hasSeenBubble = localStorage.getItem(`home-speech-bubble-seen-${studentId}`);
+      console.log('Home speech bubble - hasSeenBubble:', hasSeenBubble, 'for student:', studentId);
+      return !hasSeenBubble; // Show bubble if not seen before
+    }
+    return true;
+  });
+  const [forceUpdate, setForceUpdate] = useState(0);
   const [isPortrait, setIsPortrait] = useState(() => {
     if (typeof window === 'undefined') return true;
     return window.matchMedia('(orientation: portrait)').matches;
@@ -30,6 +41,48 @@ const ChildHomeScreen = () => {
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, []);
+
+  const closeSpeechBubble = () => {
+    console.log('Home closeSpeechBubble called for student:', studentId);
+    setShowSpeechBubble(false);
+    if (typeof window !== 'undefined' && studentId) {
+      localStorage.setItem(`home-speech-bubble-seen-${studentId}`, 'true');
+      console.log('Set home-speech-bubble-seen to true for student:', studentId);
+      // Force a re-render by updating a dummy state
+      setForceUpdate(prev => prev + 1);
+    }
+  };
+
+  // Auto-close speech bubble after 5 seconds and mark as seen
+  useEffect(() => {
+    if (showSpeechBubble) {
+      const timer = setTimeout(() => {
+        console.log('Auto-closing home speech bubble');
+        closeSpeechBubble();
+      }, 5000); // 5 seconds
+
+      return () => clearTimeout(timer);
+    }
+  }, [showSpeechBubble]);
+
+  // For testing: Add keyboard shortcut to clear localStorage (Ctrl+Shift+R)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+        e.preventDefault();
+        if (studentId) {
+          localStorage.removeItem(`home-speech-bubble-seen-${studentId}`);
+          setShowSpeechBubble(true);
+          console.log('Cleared home speech bubble localStorage - showing bubble again for student:', studentId);
+        }
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [studentId]);
 
   const textToSpeak = "Willkommen in Kibundo's Welt. Von hier aus startest du deine Abenteuer. Wenn du direkt mit den Hausaufgaben beginnen möchtest, dann klicke auf das blaue Hausaufgabenfeld. In ein paar Wochen kannst du auch zwei weitere Funktionen nutzen. Freu dich schonmal auf ein Game mit Kibundo und eine extra Funktion, um gezielt Lesen zu üben.";
 
@@ -226,64 +279,84 @@ const ChildHomeScreen = () => {
             />
           </button>
 
-          {/* Speech Bubble - responsive */}
-          <div
-            className="absolute"
-            style={{
-              left: 'clamp(-16px, -2.625vw, -21px)',
-              top: 'clamp(70px, 12.125vw, 97px)',
-              width: 'clamp(280px, 26vw, 340px)',
-              height: 'auto',
-              minHeight: 'clamp(120px, 17vw, 150px)'
-            }}
-          >
-            {/* Speech Bubble Arrow - responsive */}
-            <img
-              src="/images/img_vector.svg"
-              alt="Speech indicator"
-              className="absolute"
+          {showSpeechBubble && (
+          <div key={`home-speech-bubble-${forceUpdate}`}>
+            {/* Click overlay - closes bubble when clicked */}
+            <div
+              className="absolute inset-0"
               style={{
-                left: 'clamp(140px, 13vw, 170px)',
-                top: 'clamp(-14px, -2.25vw, -18px)',
-                width: 'clamp(40px, 4.3vw, 55.21px)',
-                height: 'auto',
-                aspectRatio: '55.21 / 25.32'
+                zIndex: 24, // Below bubble but above other elements
+                cursor: 'pointer'
+              }}
+              onClick={() => {
+                console.log('Home overlay clicked - closing speech bubble');
+                closeSpeechBubble();
               }}
             />
-
-            {/* Speech Bubble Content - responsive */}
+            
+            {/* Speech Bubble - responsive */}
             <div
-              className="absolute rounded-[18px] border w-full"
+              className="absolute"
               style={{
+                left: 'clamp(-16px, -2.625vw, -21px)',
+                top: 'clamp(70px, 12.125vw, 97px)',
+                width: 'clamp(280px, 26vw, 340px)',
                 height: 'auto',
                 minHeight: 'clamp(120px, 17vw, 150px)',
-                backgroundColor: '#D9F98D',
-                borderColor: '#E1EAAC',
-                borderWidth: '1px',
-                boxShadow: '2px 2px 4px rgba(0, 0, 0, 0.25)',
-                padding: 'clamp(18px, 2.8vw, 24px)'
+                zIndex: 25,
+                transition: 'opacity 0.3s ease-in-out'
               }}
+              onClick={(e) => e.stopPropagation()} // Prevent overlay clicks from closing it
             >
-              <p
-                className="text-left"
+              {/* Speech Bubble Arrow - responsive */}
+              <img
+                src="/images/img_vector.svg"
+                alt="Speech indicator"
+                className="absolute"
                 style={{
-                  fontFamily: 'Nunito',
-                  fontWeight: 400,
-                  fontSize: 'clamp(16px, 1.6vw, 20px)',
-                  lineHeight: '1.4',
-                  color: '#000000',
-                  margin: 0
+                  left: 'clamp(140px, 13vw, 170px)',
+                  top: 'clamp(-14px, -2.25vw, -18px)',
+                  width: 'clamp(40px, 4.3vw, 55.21px)',
+                  height: 'auto',
+                  aspectRatio: '55.21 / 25.32'
+                }}
+              />
+
+              {/* Speech Bubble Content - responsive */}
+              <div
+                className="absolute rounded-[18px] border w-full"
+                style={{
+                  height: 'auto',
+                  minHeight: 'clamp(120px, 17vw, 150px)',
+                  backgroundColor: '#D9F98D',
+                  borderColor: '#E1EAAC',
+                  borderWidth: '1px',
+                  boxShadow: '2px 2px 4px rgba(0, 0, 0, 0.25)',
+                  padding: 'clamp(18px, 2.8vw, 24px)'
                 }}
               >
-                Willkommen in Kibundo's Welt.{'\n'}
-                Von hier aus startest du deine{'\n'}
-                Abenteuer. Wenn du direkt mit{'\n'}
-                den Hausaufgaben beginnen{'\n'}
-                möchtest, dann klicke auf das{'\n'}
-                blaue Hausaufgabenfeld.
-              </p>
+                <p
+                  className="text-left"
+                  style={{
+                    fontFamily: 'Nunito',
+                    fontWeight: 400,
+                    fontSize: 'clamp(16px, 1.6vw, 20px)',
+                    lineHeight: '1.4',
+                    color: '#000000',
+                    margin: 0
+                  }}
+                >
+                  Willkommen in Kibundo's Welt.{'\n'}
+                  Von hier aus startest du deine{'\n'}
+                  Abenteuer. Wenn du direkt mit{'\n'}
+                  den Hausaufgaben beginnen{'\n'}
+                  möchtest, dann klicke auf das{'\n'}
+                  blaue Hausaufgabenfeld.
+                </p>
+              </div>
             </div>
           </div>
+        )}
         </div>
 
         {/* Button Group - fully responsive for all screen sizes */}
