@@ -125,6 +125,16 @@ export default function BetaUsersManagement() {
 
   const columns = [
     {
+      title: "ID",
+      dataIndex: "id",
+      key: "id",
+      width: 80,
+      fixed: 'left',
+      align: 'center',
+      sorter: (a, b) => Number(a?.id || 0) - Number(b?.id || 0),
+      render: (v) => v ?? '-',
+    },
+    {
       title: "User",
       dataIndex: "name",
       key: "name",
@@ -327,13 +337,14 @@ export default function BetaUsersManagement() {
         columns={columns}
         loading={loading}
         rowKey="id"
+        tableLayout="fixed"
         pagination={{ 
           pageSize: 10,
           showSizeChanger: true,
           showQuickJumper: true,
           showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} beta users`
         }}
-        scroll={{ x: 1000 }}
+        scroll={{ x: 'max-content' }}
       />
 
       {/* User Details Modal */}

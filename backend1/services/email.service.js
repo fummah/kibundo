@@ -8,6 +8,11 @@ try {
 
 const db = require("../models");
 
+function getFrontendBase() {
+  const raw = String(process.env.FRONTEND_URL || "http://localhost:5173").trim();
+  return raw.replace(/\/+$/, "");
+}
+
 /**
  * Email Service
  * Handles sending emails using nodemailer with SMTP configuration
@@ -282,7 +287,7 @@ async function sendWelcomeEmail(user) {
     last_name: user.last_name || "",
     email: user.email || "",
     password: user.password || "",
-    login_url: process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/signin` : "http://localhost:5173/signin",
+    login_url: `${getFrontendBase()}/signin`,
     full_name: `${user.first_name || ""} ${user.last_name || ""}`.trim() || "User",
   };
 
@@ -384,7 +389,7 @@ async function sendBetaSignupEmail(user) {
   const variables = {
     full_name: `${user.first_name} ${user.last_name}`,
     email: user.email,
-    login_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/signin`,
+    login_url: `${getFrontendBase()}/signin`,
   };
 
   const subject = "🚀 Deine Beta-Anmeldung bei Kibundo";
@@ -495,7 +500,7 @@ async function sendBetaApprovalEmail(user) {
   const variables = {
     full_name: `${user.first_name} ${user.last_name}`,
     email: user.email,
-    login_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/signin`,
+    login_url: `${getFrontendBase()}/signin`,
   };
 
   const subject = "🎉 Dein Beta-Zugang wurde freigeschaltet!";
