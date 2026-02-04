@@ -33,7 +33,29 @@ exports.forgotPassword = async (req, res) => {
       { expiresIn: "15m" }
     );
 
-    const frontendBase = String(process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/+$/, "");
+    let frontendBase = process.env.FRONTEND_URL;
+    if (!frontendBase) {
+      const origin = req.get('origin') || req.get('referer');
+      if (origin) {
+        try {
+          const url = new URL(origin);
+          frontendBase = `${url.protocol}//${url.host}`;
+        } catch {
+          // ignore
+        }
+      }
+    }
+    if (!frontendBase) {
+      const xfProto = req.get('x-forwarded-proto');
+      const xfHost = req.get('x-forwarded-host');
+      if (xfProto && xfHost) {
+        frontendBase = `${xfProto}://${xfHost}`;
+      }
+    }
+    if (!frontendBase) {
+      frontendBase = "http://localhost:5173";
+    }
+    frontendBase = String(frontendBase).replace(/\/+$/, "");
     const resetUrl = `${frontendBase}/reset-password?token=${encodeURIComponent(token)}`;
 
     await emailService.sendEmail({

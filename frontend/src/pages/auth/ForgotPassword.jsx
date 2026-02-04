@@ -11,6 +11,7 @@ export default function ForgotPassword() {
 
   const [form, setForm] = useState({ email: "" });
   const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -21,6 +22,10 @@ export default function ForgotPassword() {
     try {
       await api.post("/auth/forgot-password", { email: form.email });
       toast.success("Reset instructions sent to your email.");
+      setSent(true);
+      setTimeout(() => {
+        navigate("/signin");
+      }, 1200);
     } catch (err) {
       toast.error(err.response?.data?.message || "Something went wrong");
     } finally {
@@ -60,45 +65,61 @@ export default function ForgotPassword() {
                 Forgot password
               </Typography.Title>
               <Typography.Paragraph style={{ marginBottom: 0, textAlign: "center", opacity: 0.75 }}>
-                Enter your email and we’ll send you a secure reset link.
+                {sent
+                  ? "If the email exists, we’ve sent a reset link. Please check your inbox (and spam folder)."
+                  : "Enter your email and we’ll send you a secure reset link."}
               </Typography.Paragraph>
             </div>
 
-            <Form layout="vertical" onSubmitCapture={handleSubmit} requiredMark={false}>
-              <Form.Item label="Email" required>
-                <Input
+            {sent ? (
+              <div className="space-y-2">
+                <Button
+                  type="primary"
                   size="large"
-                  name="email"
-                  type="email"
-                  value={form.email}
-                  onChange={handleChange}
-                  prefix={<MailOutlined />}
-                  placeholder="you@example.com"
-                  autoComplete="email"
-                />
-              </Form.Item>
+                  block
+                  onClick={() => navigate("/signin")}
+                  style={{ borderRadius: 12, height: 44 }}
+                >
+                  Continue to sign in
+                </Button>
+              </div>
+            ) : (
+              <Form layout="vertical" onSubmitCapture={handleSubmit} requiredMark={false}>
+                <Form.Item label="Email" required>
+                  <Input
+                    size="large"
+                    name="email"
+                    type="email"
+                    value={form.email}
+                    onChange={handleChange}
+                    prefix={<MailOutlined />}
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                  />
+                </Form.Item>
 
-              <Button
-                type="primary"
-                htmlType="submit"
-                size="large"
-                block
-                loading={loading}
-                style={{ borderRadius: 12, height: 44 }}
-              >
-                Send reset link
-              </Button>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  size="large"
+                  block
+                  loading={loading}
+                  style={{ borderRadius: 12, height: 44 }}
+                >
+                  Send reset link
+                </Button>
 
-              <Button
-                type="link"
-                block
-                icon={<ArrowLeftOutlined />}
-                onClick={() => navigate("/signin")}
-                style={{ marginTop: 10 }}
-              >
-                Back to sign in
-              </Button>
-            </Form>
+                <Button
+                  type="link"
+                  block
+                  icon={<ArrowLeftOutlined />}
+                  onClick={() => navigate("/signin")}
+                  style={{ marginTop: 10 }}
+                >
+                  Back to sign in
+                </Button>
+              </Form>
+            )}
           </Card>
         </div>
       </div>
