@@ -12,6 +12,7 @@ import { saveStudentPreferences } from "@/utils/saveStudentPreferences.js";
 import TTSControlButtons from "@/components/student/onboarding/TTSControlButtons";
 import CurvedBackgroundLayer from "@/components/student/onboarding/CurvedBackgroundLayer";
 import ColorCard from "@/components/student/onboarding/ColorCard";
+import ResponsiveOnboardingContainer from "@/components/student/onboarding/ResponsiveOnboardingContainer.jsx";
 
 const ColorPreference = () => {
   const { t, i18n } = useTranslation();
@@ -189,14 +190,12 @@ const ColorPreference = () => {
         <meta property="og:title" content="Color Preference Survey | Kids Interactive Learning Adventure" />
         <meta property="og:description" content="Help your child discover their favorite colors through our fun interactive survey. Choose from red, blue, green, or yellow paint palettes in this engaging kids activity." />
       </Helmet>
-      <div className="relative w-full min-h-screen overflow-hidden flex items-center justify-center">
+      <ResponsiveOnboardingContainer>
         <main 
           className="relative overflow-hidden"
           style={{ 
-            width: '1280px', 
-            height: '800px',
-            maxWidth: '100%',
-            maxHeight: '100vh',
+            width: '100%',
+            height: '100%',
             backgroundColor: 'transparent',
             zIndex: 1,
             boxSizing: 'border-box',
@@ -299,11 +298,10 @@ const ColorPreference = () => {
           />
         </button>
 
-        {/* Kibundo Component - at x:347, y:210, 350x225 */}
+        {/* Kibundo Component - 350x225 at x:347, y:210 */}
         <div 
-          className="absolute"
+          className="absolute arch-box"
           style={{
-            left: '347px',
             top: '210px',
             width: '350px',
             height: '225px'
@@ -359,7 +357,7 @@ const ColorPreference = () => {
             <div 
               className="absolute rounded-[18px] border flex items-center"
               style={{
-                width: '100%',
+                width: '70%',
                 height: '100%',
                 minHeight: 'clamp(120px, 14vh, 160px)',
                 backgroundColor: '#D9F98D',
@@ -454,7 +452,7 @@ const ColorPreference = () => {
           ))}
         </div>
         </main>
-      </div>
+      </ResponsiveOnboardingContainer>
     </>
   );
 };

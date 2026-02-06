@@ -11,6 +11,7 @@ import { useStudentId } from "@/hooks/useStudentId.js";
 import { saveStudentPreferences } from "@/utils/saveStudentPreferences.js";
 import TTSControlButtons from "@/components/student/onboarding/TTSControlButtons";
 import CurvedBackgroundLayer from "@/components/student/onboarding/CurvedBackgroundLayer";
+import ResponsiveOnboardingContainer from "@/components/student/onboarding/ResponsiveOnboardingContainer.jsx";
 
 const CreativeActivityPreference = () => {
   const { t, i18n } = useTranslation();
@@ -49,11 +50,17 @@ const CreativeActivityPreference = () => {
       buddyImage.includes("character");
     
     // Check if buddy name or ID indicates it's a character
+    let buddyIdStr = "";
+    try {
+      if (buddy?.id !== undefined && buddy?.id !== null) buddyIdStr = String(buddy.id);
+    } catch {
+      buddyIdStr = "";
+    }
     const isCharacterData = 
       buddy.name?.toLowerCase().includes("character") ||
       buddy.name?.toLowerCase().startsWith("character") ||
       (typeof buddy.id === "number" && buddy.id >= 1 && buddy.id <= 6) ||
-      (typeof buddy.id === "string" && /^[1-6]$/.test(buddy.id.toString())) ||
+      (typeof buddy.id === "string" && /^[1-6]$/.test(buddyIdStr)) ||
       buddy.id === 4 ||
       buddy.id === "4";
     
@@ -64,7 +71,7 @@ const CreativeActivityPreference = () => {
     
     // Check if it's a valid buddy ID (should be "m1", "m2", etc. or valid buddy paths)
     const validBuddyIds = ["m1", "m2", "m3", "m4", "m5", "m6"];
-    if (buddy.id && !validBuddyIds.includes(buddy.id.toString())) {
+    if (buddy.id && !validBuddyIds.includes(buddyIdStr)) {
       // Not a valid buddy ID, return default
       return defaultBuddyImage;
     }
@@ -173,14 +180,12 @@ const CreativeActivityPreference = () => {
         <meta property="og:title" content="Creative Activity Preference | Kibundo Interest Selection" />
         <meta property="og:description" content="Choose between painting or building in this fun interactive preference selection for kids." />
       </Helmet>
-      <div className="relative w-full min-h-screen overflow-hidden flex items-center justify-center">
+      <ResponsiveOnboardingContainer>
         <main 
           className="relative overflow-hidden"
           style={{ 
-            width: '1280px', 
-            height: '800px',
-            maxWidth: '100%',
-            maxHeight: '100vh',
+            width: '100%',
+            height: '100%',
             backgroundColor: 'transparent',
             zIndex: 1,
             boxSizing: 'border-box',
@@ -285,9 +290,8 @@ const CreativeActivityPreference = () => {
 
         {/* Kibundo Component - 350x225 at x:347, y:210 */}
         <div 
-          className="absolute"
+          className="absolute arch-box"
           style={{
-            left: '347px',
             top: '210px',
             width: '350px',
             height: '225px'
@@ -343,7 +347,7 @@ const CreativeActivityPreference = () => {
             <div 
               className="absolute rounded-[18px] border flex items-center"
               style={{
-                width: '100%',
+                width: '70%',
                 height: '100%',
                 minHeight: 'clamp(120px, 14vh, 160px)',
                 backgroundColor: '#D9F98D',
@@ -465,7 +469,7 @@ const CreativeActivityPreference = () => {
           </button>
         </div>
         </main>
-      </div>
+      </ResponsiveOnboardingContainer>
     </>
   );
 };

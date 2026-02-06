@@ -17,45 +17,55 @@ try {
   setPortalTokenFn = mod.setPortalToken || null;
 } catch { /* noop: handle with direct sessionStorage below */ }
 
+const lazyDefault = (importer, name) =>
+  lazy(() =>
+    importer().then((mod) => {
+      if (!mod || !mod.default) {
+        throw new Error(`Lazy import missing default export: ${name}`);
+      }
+      return { default: mod.default };
+    })
+  );
+
 // --- Lazy student pages ---
 // Onboarding
-const LoadingScreen     = lazy(() => import("@/pages/student/onboarding/LoadingScreen.jsx"));
-const CharacterSelection = lazy(() => import("@/pages/student/onboarding/CharacterSelection.jsx"));
-const RobotVsMagic      = lazy(() => import("@/pages/student/onboarding/RobotVsMagic.jsx"));
-const DinosaursVsUnicorns = lazy(() => import("@/pages/student/onboarding/DinosaursVsUnicorns.jsx"));
-const TreeHouseVsCastle = lazy(() => import("@/pages/student/onboarding/TreeHouseVsCastle.jsx"));
-const LearningPreference = lazy(() => import("@/pages/student/onboarding/LearningPreference.jsx"));
-const AnimalPreference  = lazy(() => import("@/pages/student/onboarding/AnimalPreference.jsx"));
-const ActivityPreference = lazy(() => import("@/pages/student/onboarding/ActivityPreference.jsx"));
-const ColorPreference   = lazy(() => import("@/pages/student/onboarding/ColorPreference.jsx"));
-const CreativeActivityPreference = lazy(() => import("@/pages/student/onboarding/CreativeActivityPreference.jsx"));
-const Congratulations   = lazy(() => import("@/pages/student/onboarding/Congratulations.jsx"));
+const LoadingScreen     = lazyDefault(() => import("@/pages/student/onboarding/LoadingScreen.jsx"), "LoadingScreen");
+const CharacterSelection = lazyDefault(() => import("@/pages/student/onboarding/CharacterSelection.jsx"), "CharacterSelection");
+const RobotVsMagic      = lazyDefault(() => import("@/pages/student/onboarding/RobotVsMagic.jsx"), "RobotVsMagic");
+const DinosaursVsUnicorns = lazyDefault(() => import("@/pages/student/onboarding/DinosaursVsUnicorns.jsx"), "DinosaursVsUnicorns");
+const TreeHouseVsCastle = lazyDefault(() => import("@/pages/student/onboarding/TreeHouseVsCastle.jsx"), "TreeHouseVsCastle");
+const LearningPreference = lazyDefault(() => import("@/pages/student/onboarding/LearningPreference.jsx"), "LearningPreference");
+const AnimalPreference  = lazyDefault(() => import("@/pages/student/onboarding/AnimalPreference.jsx"), "AnimalPreference");
+const ActivityPreference = lazyDefault(() => import("@/pages/student/onboarding/ActivityPreference.jsx"), "ActivityPreference");
+const ColorPreference   = lazyDefault(() => import("@/pages/student/onboarding/ColorPreference.jsx"), "ColorPreference");
+const CreativeActivityPreference = lazyDefault(() => import("@/pages/student/onboarding/CreativeActivityPreference.jsx"), "CreativeActivityPreference");
+const Congratulations   = lazyDefault(() => import("@/pages/student/onboarding/Congratulations.jsx"), "Congratulations");
 
 // Home
-const StudentHome       = lazy(() => import("@/pages/student/ChildHomeScreen.jsx"));
+const StudentHome       = lazyDefault(() => import("@/pages/student/ChildHomeScreen.jsx"), "StudentHome");
 
 // Learning
-const LearningScreen    = lazy(() => import("@/pages/student/LearningScreen.jsx"));
-const SubjectPractice   = lazy(() => import("@/pages/student/learning/SubjectPractice.jsx"));
+const LearningScreen    = lazyDefault(() => import("@/pages/student/LearningScreen.jsx"), "LearningScreen");
+const SubjectPractice   = lazyDefault(() => import("@/pages/student/learning/SubjectPractice.jsx"), "SubjectPractice");
 
 // Reading hub + flows
-const ReadingScreen     = lazy(() => import("@/pages/student/ReadingScreen.jsx"));
-const ReadAloudFlow     = lazy(() => import("@/pages/student/reading/ReadAloudFlow.jsx"));
-const AiReadingTextFlow = lazy(() => import("@/pages/student/reading/AiReadingTextFlow.jsx"));
-const ReadingQuizFlow   = lazy(() => import("@/pages/student/reading/ReadingQuizFlow.jsx"));
+const ReadingScreen     = lazyDefault(() => import("@/pages/student/ReadingScreen.jsx"), "ReadingScreen");
+const ReadAloudFlow     = lazyDefault(() => import("@/pages/student/reading/ReadAloudFlow.jsx"), "ReadAloudFlow");
+const AiReadingTextFlow = lazyDefault(() => import("@/pages/student/reading/AiReadingTextFlow.jsx"), "AiReadingTextFlow");
+const ReadingQuizFlow   = lazyDefault(() => import("@/pages/student/reading/ReadingQuizFlow.jsx"), "ReadingQuizFlow");
 
 
 // Homework
-const HomeworkTutorial  = lazy(() => import("@/pages/student/HomeworkExplainer.jsx"));
-const HomeworkHome       = lazy(() => import("@/pages/student/homework/HomeworkHome.jsx"));
-const HomeworkCollectChat = lazy(() => import("@/pages/student/homework/HomeworkCollectChat.jsx"));
+const HomeworkTutorial  = lazyDefault(() => import("@/pages/student/HomeworkExplainer.jsx"), "HomeworkTutorial");
+const HomeworkHome       = lazyDefault(() => import("@/pages/student/homework/HomeworkHome.jsx"), "HomeworkHome");
+const HomeworkCollectChat = lazyDefault(() => import("@/pages/student/homework/HomeworkCollectChat.jsx"), "HomeworkCollectChat");
 
 // Progress / Motivation
-const TreasureMap       = lazy(() => import("@/pages/student/TreasureMap.jsx"));
-const MotivationTool    = lazy(() => import("@/pages/student/MotivationTool.jsx"));
+const TreasureMap       = lazyDefault(() => import("@/pages/student/TreasureMap.jsx"), "TreasureMap");
+const MotivationTool    = lazyDefault(() => import("@/pages/student/MotivationTool.jsx"), "MotivationTool");
 
 // Settings
-const StudentSettings   = lazy(() => import("@/pages/student/StudentSettings.jsx"));
+const StudentSettings   = lazyDefault(() => import("@/pages/student/StudentSettings.jsx"), "StudentSettings");
 
 // --- Helpers ---
 const Fallback = <div className="p-4">Loading…</div>;
@@ -106,22 +116,6 @@ const StudentLayout = () => {
             width: "100%",
             height: "100%",
             objectFit: "cover",
-          }}
-        />
-        
-        {/* 3. Bottom background layer - Figma node 8:394 - sand/gradient layer, anchored to bottom, extends upward, covers at least half screen */}
-        <img
-          src="/images/img_home_background_layer.svg"
-          alt="Background layer"
-          style={{
-            position: "absolute",
-            left: 0,
-            bottom: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover", // Same as top background for consistent resolution
-            objectPosition: "center bottom",
-            zIndex: 1,
           }}
         />
       </div>

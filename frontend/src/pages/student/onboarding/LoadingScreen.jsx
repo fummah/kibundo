@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
+import ResponsiveOnboardingContainer from "@/components/student/onboarding/ResponsiveOnboardingContainer.jsx";
 
 const LoadingScreen = () => {
   const [progress, setProgress] = useState(0);
@@ -52,14 +53,12 @@ const LoadingScreen = () => {
         <meta property="og:description" content="Kibundo macht Hausaufgaben zum Vergnügen! Eine spielerische Lern-App für Kinder mit süßen Maskottchen und individuellem Lerntempo für bessere Lernerfolge." />
       </Helmet>
 
-      <div className="relative w-full min-h-screen overflow-hidden flex items-center justify-center">
+      <ResponsiveOnboardingContainer>
         <main 
           className="relative overflow-hidden"
           style={{ 
-            width: '1280px', 
-            height: '800px',
-            maxWidth: '100%',
-            maxHeight: '100vh',
+            width: '100%',
+            height: '100%',
             backgroundColor: 'transparent',
             zIndex: 1,
             boxSizing: 'border-box',
@@ -142,7 +141,7 @@ const LoadingScreen = () => {
             />
           </div>
         </main>
-      </div>
+      </ResponsiveOnboardingContainer>
     </>
   );
 };

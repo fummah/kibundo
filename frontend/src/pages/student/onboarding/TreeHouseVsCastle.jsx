@@ -11,6 +11,7 @@ import { useStudentId } from "@/hooks/useStudentId.js";
 import { saveStudentPreferences } from "@/utils/saveStudentPreferences.js";
 import TTSControlButtons from "@/components/student/onboarding/TTSControlButtons";
 import CurvedBackgroundLayer from "@/components/student/onboarding/CurvedBackgroundLayer";
+import ResponsiveOnboardingContainer from "@/components/student/onboarding/ResponsiveOnboardingContainer.jsx";
 
 const TreeHouseVsCastle = () => {
   const { t, i18n } = useTranslation();
@@ -139,14 +140,12 @@ const TreeHouseVsCastle = () => {
         <meta property="og:title" content="Tree House vs Castle | Kibundo Interest Selection" />
         <meta property="og:description" content="Choose between tree house and castle in this fun interactive preference selection for kids." />
       </Helmet>
-      <div className="relative w-full min-h-screen overflow-hidden flex items-center justify-center">
+      <ResponsiveOnboardingContainer>
         <main 
           className="relative overflow-hidden"
           style={{ 
-            width: '1280px', 
-            height: '800px',
-            maxWidth: '100%',
-            maxHeight: '100vh',
+            width: '100%',
+            height: '100%',
             backgroundColor: 'transparent',
             zIndex: 1,
             boxSizing: 'border-box',
@@ -251,9 +250,8 @@ const TreeHouseVsCastle = () => {
 
         {/* Kibundo Component - 350x225 at x:347, y:210 */}
         <div 
-          className="absolute"
+          className="absolute arch-box"
           style={{
-            left: '347px',
             top: '210px',
             width: '350px',
             height: '225px'
@@ -309,7 +307,7 @@ const TreeHouseVsCastle = () => {
             <div 
               className="absolute rounded-[18px] border flex items-center"
               style={{
-                width: '100%',
+                width: '70%',
                 height: '100%',
                 minHeight: 'clamp(120px, 14vh, 160px)',
                 backgroundColor: '#D9F98D',
@@ -425,7 +423,7 @@ const TreeHouseVsCastle = () => {
           </button>
         </div>
         </main>
-      </div>
+      </ResponsiveOnboardingContainer>
     </>
   );
 };

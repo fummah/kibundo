@@ -3,6 +3,7 @@ import { Helmet } from 'react-helmet';
 import { useNavigate } from 'react-router-dom';
 import { useStudentId } from "@/hooks/useStudentId.js";
 import { saveStudentPreferences } from "@/utils/saveStudentPreferences.js";
+import ResponsiveOnboardingContainer from "@/components/student/onboarding/ResponsiveOnboardingContainer.jsx";
 
 const CharacterSelection = () => {
   const [selectedCharacter, setSelectedCharacter] = useState(null);
@@ -82,14 +83,12 @@ const CharacterSelection = () => {
         <meta property="og:title" content="Wähle Dein Lern-Begleiter | Kibundo Charakter-Auswahl" />
         <meta property="og:description" content="Wähle Deinen persönlichen Lern-Begleiter aus 6 verschiedenen Charakteren. Dein Kibundo-Maskottchen wird Dich durch alle Hausaufgaben und Lernaktivitäten begleiten." />
       </Helmet>
-      <div className="relative w-full min-h-screen overflow-hidden flex items-center justify-center">
+      <ResponsiveOnboardingContainer>
         <main 
           className="relative overflow-hidden"
           style={{ 
-            width: '1280px', 
-            height: '800px',
-            maxWidth: '100%',
-            maxHeight: '100vh',
+            width: '100%',
+            height: '100%',
             backgroundColor: 'transparent',
             zIndex: 1,
             boxSizing: 'border-box',
@@ -179,12 +178,11 @@ const CharacterSelection = () => {
           />
         </button>
 
-        {/* Kibundo Component - 350x225 at x:403, y:218 */}
+        {/* Kibundo Component - 350x225 at x:347, y:210 */}
         <div 
-          className="absolute"
+          className="absolute arch-box"
           style={{
-            left: '403px',
-            top: '218px',
+            top: '210px',
             width: '350px',
             height: '225px'
           }}
@@ -368,7 +366,7 @@ const CharacterSelection = () => {
           ))}
         </div>
         </main>
-      </div>
+      </ResponsiveOnboardingContainer>
     </>
   );
 };

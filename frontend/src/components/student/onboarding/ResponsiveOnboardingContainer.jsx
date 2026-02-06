@@ -15,15 +15,23 @@ export default function ResponsiveOnboardingContainer({ children }) {
       <style>{`
         .onboarding-responsive-wrapper {
           width: 100vw;
-          min-height: 100vh;
+          min-height: var(--onb-vh, 100vh);
           max-width: 100vw;
-          max-height: 100vh;
+          max-height: var(--onb-vh, 100vh);
+          height: var(--onb-vh, 100vh);
           display: flex;
           align-items: center;
           justify-content: center;
-          overflow: hidden;
+          overflow-x: hidden;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
           background: transparent;
           position: relative;
+          padding-top: env(safe-area-inset-top);
+          padding-right: env(safe-area-inset-right);
+          padding-bottom: env(safe-area-inset-bottom);
+          padding-left: env(safe-area-inset-left);
         }
         .onboarding-responsive-inner {
           position: relative;
@@ -35,17 +43,26 @@ export default function ResponsiveOnboardingContainer({ children }) {
           overflow: hidden;
           box-sizing: border-box;
         }
-        /* Portrait: fill height exactly, allow some horizontal cropping if needed */
-        @media (orientation: portrait) {
-          .onboarding-responsive-inner {
-            transform: scale(calc(100vh / ${baseHeight}));
+        .absolute.inset-x-0 {
+          border-top-left-radius: 100% 45%;
+          border-top-right-radius: 100% 45%;
+        }
+        .arch-box {
+          left: 500px;
+        }
+        @media (max-width: 768px) {
+          .arch-box {
+            left: unset;
           }
         }
-        /* Landscape / desktop: fit fully inside viewport without cropping */
-        @media (orientation: landscape) {
-          .onboarding-responsive-inner {
-            transform: scale(min(calc(100vw / ${baseWidth}), calc(100vh / ${baseHeight})));
-          }
+        /* Use 100dvh on mobile browsers where supported (prevents overlap with URL bar). */
+        .onboarding-responsive-wrapper { --onb-vh: 100vh; }
+        @supports (height: 100dvh) {
+          .onboarding-responsive-wrapper { --onb-vh: 100dvh; }
+        }
+        /* Always scale-to-fit inside the viewport (no cropping). */
+        .onboarding-responsive-inner {
+          transform: scale(min(calc(100vw / ${baseWidth}), calc(var(--onb-vh, 100vh) / ${baseHeight})));
         }
       `}</style>
       <div className="onboarding-responsive-wrapper">

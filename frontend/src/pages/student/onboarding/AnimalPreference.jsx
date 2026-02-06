@@ -10,6 +10,8 @@ import useEnsureGerman from "@/hooks/useEnsureGerman.js";
 import { useStudentId } from "@/hooks/useStudentId.js";
 import { saveStudentPreferences } from "@/utils/saveStudentPreferences.js";
 import TTSControlButtons from "@/components/student/onboarding/TTSControlButtons";
+import CurvedBackgroundLayer from "@/components/student/onboarding/CurvedBackgroundLayer";
+import ResponsiveOnboardingContainer from "@/components/student/onboarding/ResponsiveOnboardingContainer.jsx";
 
 const AnimalPreference = () => {
   const { t, i18n } = useTranslation();
@@ -138,14 +140,12 @@ const AnimalPreference = () => {
         <meta property="og:title" content="Animal Preference | Kibundo Interest Selection" />
         <meta property="og:description" content="Make your animal preference selection in this fun interactive survey for kids." />
       </Helmet>
-      <div className="relative w-full min-h-screen overflow-hidden flex items-center justify-center">
+      <ResponsiveOnboardingContainer>
         <main 
           className="relative overflow-hidden"
           style={{ 
-            width: '1280px', 
-            height: '800px',
-            maxWidth: '100%',
-            maxHeight: '100vh',
+            width: '100%',
+            height: '100%',
             backgroundColor: 'transparent',
             zIndex: 1,
             boxSizing: 'border-box',
@@ -155,6 +155,8 @@ const AnimalPreference = () => {
             paddingBottom: 'clamp(80px, 10vh, 120px)'
           }}
         >
+
+        <CurvedBackgroundLayer />
 
 
         {/* Interessen Title - responsive, centered */}
@@ -231,10 +233,9 @@ const AnimalPreference = () => {
 
         {/* Kibundo Component - responsive */}
         <div 
-          className="absolute"
+          className="absolute arch-box"
           style={{
             top: 'clamp(150px, 16.4vw, 210px)',
-            left: isPortrait ? 'clamp(50px, 10vw, 200px)' : 'clamp(200px, 27.1vw, 347px)',
             width: 'clamp(280px, 27.3vw, 350px)',
             height: 'auto',
             aspectRatio: '350 / 225'
@@ -246,12 +247,13 @@ const AnimalPreference = () => {
             alt="Kibundo mascot"
             className="absolute"
             style={{
-              left: isPortrait ? 'clamp(100px, 22vw, 180px)' : 'clamp(180px, 18.8vw, 241.14px)',
+              left: 'clamp(180px, 18.8vw, 241.14px)',
               top: 'clamp(4px, 0.76vw, 6.08px)',
               width: 'clamp(80px, 8.47vw, 108.47px)',
               height: 'auto',
               aspectRatio: '108.47 / 212.84',
-              objectFit: 'contain'
+              objectFit: 'contain',
+              zIndex: 3
             }}
           />
 
@@ -270,7 +272,8 @@ const AnimalPreference = () => {
               top: 'clamp(70px, 12.125vw, 97px)',
               width: 'clamp(280px, 26vw, 340px)',
               height: 'auto',
-              minHeight: 'clamp(120px, 12vw, 150px)'
+              minHeight: 'clamp(120px, 14vh, 160px)',
+              zIndex: 1
             }}
           >
             {/* Speech Bubble Arrow - responsive */}
@@ -291,8 +294,9 @@ const AnimalPreference = () => {
             <div 
               className="absolute rounded-[18px] border flex items-center"
               style={{
-                width: '100%',
+                width: '70%',
                 height: '100%',
+                minHeight: 'clamp(120px, 14vh, 160px)',
                 backgroundColor: '#D9F98D',
                 borderColor: '#E1EAAC',
                 borderWidth: '1px',
@@ -386,7 +390,7 @@ const AnimalPreference = () => {
           </button>
         </div>
         </main>
-      </div>
+      </ResponsiveOnboardingContainer>
     </>
   );
 };

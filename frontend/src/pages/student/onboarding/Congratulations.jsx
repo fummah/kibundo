@@ -14,6 +14,7 @@ import { App } from "antd";
 import { saveStudentPreferences } from "@/utils/saveStudentPreferences.js";
 import ConfettiRibbons from "@/components/student/onboarding/ConfettiRibbons";
 import CurvedBackgroundLayer from "@/components/student/onboarding/CurvedBackgroundLayer";
+import ResponsiveOnboardingContainer from "@/components/student/onboarding/ResponsiveOnboardingContainer.jsx";
 
 const Congratulations = () => {
   const { message } = App.useApp();
@@ -233,14 +234,12 @@ const Congratulations = () => {
         <meta property="og:title" content="Congratulations | Kibundo" />
         <meta property="og:description" content="Congratulations! You've completed the preference selection. Start your learning journey with Kibundo." />
       </Helmet>
-      <div className="relative w-full min-h-screen overflow-hidden flex items-center justify-center">
+      <ResponsiveOnboardingContainer>
         <main
           className="relative overflow-hidden"
           style={{
-            width: '1280px',
-            height: '800px',
-            maxWidth: '100%',
-            maxHeight: '100vh',
+            width: '100%',
+            height: '100%',
             backgroundColor: 'transparent',
             zIndex: 1,
             boxSizing: 'border-box',
@@ -430,7 +429,7 @@ const Congratulations = () => {
           </span>
         </button>
         </main>
-      </div>
+      </ResponsiveOnboardingContainer>
     </App>
   );
 };
